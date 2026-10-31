@@ -894,6 +894,22 @@ command-line interface may change.
 
 ### Changed
 
+- Projects are to become Archiwista's own (A-ADR-049; the author's decision of 2026-10-31,
+  ECO-054): a project directory will hold `archiwista-project.json`
+  (`archiwista-project/1`), written only by Archiwista under its lock
+  `.archiwista-project.lock`, with a name, a description, an area in `obszary/`, the store of
+  each producer and groups of pinned versions; versions the store holds will be pinned
+  without the network from "Stan lokalny", the Catalog and the file card ("Dodaj do
+  projektu…"), and the plan window's "Dodaj jako zadanie projektu" becomes "Dodaj do
+  projektu"; the project jobs become verify, check, re-pin and restore; the card gets the
+  project's activity from the action log, and exports write `pliki.txt` and
+  `ATRYBUCJE.txt` (the QGIS export stays v1.1). Kartograf and IMGWTools remove their project
+  manifests (`kartograf-project.json`, `imgw-project.json`), which Archiwista will no longer
+  read or migrate. Nothing changes in this build yet: SPEC (4.7, 8.4, 9.2, 13 "Projects"),
+  SCOPE and PRD describe it, A-ADR-039 and A-ADR-040 are superseded, and
+  `docs/plans/2026-10-31-archiwista-projects.md` builds it in the phases P2 to P6, released
+  together with v0.3 and v0.4.
+
 - **Breaking:** the year types are each person's preference (v0.4, ADR-047 erratum 1):
   `year_types` left `GET` and `PUT /api/v1/settings`, and `PUT
   /api/v1/settings/year-types` is removed; use `PUT /api/v1/preferences`. A

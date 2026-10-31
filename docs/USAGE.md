@@ -258,6 +258,15 @@ versions a scan has just indexed.
 
 ## Projects and own data
 
+> **Changing (A-ADR-049, the author's decision of 2026-10-31):** projects become
+> Archiwista's own file `archiwista-project.json`, with an area, the stores of its
+> producers and groups of pinned versions; Kartograf and IMGWTools remove their project
+> manifests, and a directory holding only one of them is no longer a project (nothing is
+> migrated). This section still describes the current build, which reads the producers'
+> manifests; it is rewritten with each phase of
+> [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
+> as the new behaviour lands. Own data and snapshots stay as described below.
+
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 
 - **The list** of projects shows the producer ("Producent"), the store, the

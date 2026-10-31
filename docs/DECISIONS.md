@@ -46,7 +46,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-020](#adr-020-imgw-data-format-own-sidecar-parquet-geojson) | IMGW data format: own sidecar, Parquet, GeoJSON | 2026-10-17 | proposed (IMGWTools ADR; SPEC 12.8) |
 | [ADR-021](#adr-021-coverage-labels-of-imgw-series) | Coverage labels of IMGW series | 2026-10-17 | accepted (P14, P15 — erratum 1; P16 — erratum 2; erratum 3: units known per ČHMÚ station; erratum 4: appearance, M11, user decision 2026-10-26) |
 | [ADR-022](#adr-022-data-without-location-catalog-instead-of-the-map) | Data without location: Catalog instead of a map | 2026-10-17 | accepted (SPEC 15: P13) |
-| [ADR-023](#adr-023-imgw-data-in-projects-the-imgwtools-manifest) | IMGW data in projects: IMGWTools manifest | 2026-10-17 | accepted (IMGW data in a project in v1.0 and two manifest files: SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0) |
+| [ADR-023](#adr-023-imgw-data-in-projects-the-imgwtools-manifest) | IMGW data in projects: IMGWTools manifest | 2026-10-17 | accepted, partly superseded by ADR-049 (the IMGWTools manifest `imgw-project.json` and the producer's project functions; IMGW versions stay pinnable in projects, as pins of `archiwista-project/1`); IMGW data in a project in v1.0: SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0; erratum 3: ADR-049 |
 | [ADR-024](#adr-024-data-sources-as-plugins-kartograf-required-imgwtools-optional) | Data sources as plugins: Kartograf required, IMGWTools optional | 2026-10-17 | accepted (amends ADR-001 and ADR-019; erratum 1: `kartograf>=0.8.0,<0.9`; amended by ADR-032) |
 | [ADR-025](#adr-025-mvp-scope-and-release-order) | MVP scope and release order | 2026-10-17 | accepted (user decision; erratum 3: "PL + CZ" as v0.6 in the MVP, with ČHMÚ stations) |
 | [ADR-026](#adr-026-mit-license-and-contributions-with-a-cla) | MIT license and contributions with a CLA | 2026-10-17 | accepted (MIT; CLA — erratum 1, user decision 2026-10-18) |
@@ -55,23 +55,24 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-029](#adr-029-store-write-role-and-project-sharing) | Store write role and project sharing | 2026-10-18 | accepted (user decision; amends ADR-013; permissions model from v0.1; erratum 1: the own data folder is set by an administrator until v0.4; erratum 2: the data folder by its owner, scans, LDAP/AD groups deferred, v0.4) |
 | [ADR-030](decisions/0030-adopt-the-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | 2026-10-25 | proposed (accepted when the author approves and merges `chore/nogat-2.1`) |
 | [ADR-031](decisions/0031-judge-the-store-marker-in-the-adapter.md) | Judge the store marker in the adapter, and refuse a store without one | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-014) |
-| [ADR-032](decisions/0032-imgwtools-source.md) | The IMGWTools source: one adapter, the extra, read first | 2026-10-25 | accepted (amends ADR-019 and ADR-024; the plan's approval is delegated; decision 14: a project is its directory, with the manifest of each producer, `SCHEMA_VERSION` 13, errata of ADR-039 and ADR-040) |
+| [ADR-032](decisions/0032-imgwtools-source.md) | The IMGWTools source: one adapter, the extra, read first | 2026-10-25 | accepted, partly superseded by ADR-049 (decision 14: a project is its directory, with the manifest of each producer); amends ADR-019 and ADR-024; the plan's approval is delegated; erratum 1: ADR-049 |
 | [ADR-033](decisions/0033-offer-the-default-root-in-the-wizard.md) | Offer the producer's default root in the wizard, and never use it | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-034](decisions/0034-producer-commands-as-data.md) | The producers' commands as data, an optional capability of the adapters | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-035](decisions/0035-availability-at-the-source.md) | The availability at the source, a job with a stored report | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a row's lines are planned by one job (ADR-044) |
 | [ADR-036](decisions/0036-the-plan-of-a-run.md) | The plan of a run: a `check` job, the plan kept with it, the state `partial` | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: the check reads the source's answers of the last hour (Kartograf ADR-056); erratum 2: a check plans several calls (ADR-044) |
 | [ADR-037](decisions/0037-the-run-of-a-command.md) | The run of a command: the capability, the `download` job and the rescan of its files | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a download runs several calls (ADR-044); erratum 2: a planned download claims its positions (ADR-047, v0.4) |
 | [ADR-038](decisions/0038-job-controls.md) | Job controls: cancel across processes, retry as a new job, the log's end | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: everyone sees the queue (ADR-047, v0.4) |
-| [ADR-039](decisions/0039-project-changes.md) | Projects created and changed through their producer, where a scan finds them | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a change names the manifest of a project of two (ADR-032 decision 14); erratum 3: every signed-in person creates a project and owns it (user decision 2026-10-26, v0.4) |
-| [ADR-040](decisions/0040-project-jobs.md) | The jobs of a project: download, repin, check, verify, and the left lock | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a job runs the tasks of one manifest (ADR-032 decision 14) |
+| [ADR-039](decisions/0039-project-changes.md) | Projects created and changed through their producer, where a scan finds them | 2026-10-26 | superseded by ADR-049 (projects are Archiwista's own file; the place rules of decision 3 and who creates a project, erratum 3, are restated there); was proposed on `feature/kartograf-data-output` |
+| [ADR-040](decisions/0040-project-jobs.md) | The jobs of a project: download, repin, check, verify, and the left lock | 2026-10-26 | superseded by ADR-049 (the jobs `project_verify`, `project_check`, `project_repin` and `project_restore` over the groups of a project; Archiwista's lock, never removed by it); was proposed on `feature/kartograf-data-output` |
 | [ADR-041](decisions/0041-preview-warm-up.md) | The warm-up of previews: the first look, a pool of its own, the room of the cache | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
-| [ADR-042](decisions/0042-actions-in-the-interface.md) | The actions in the interface: a pasted command, a task of a project, what a person may do | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
+| [ADR-042](decisions/0042-actions-in-the-interface.md) | The actions in the interface: a pasted command, a task of a project, what a person may do | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); partly superseded by ADR-049 (decisions 3 and 4: "Dodaj do projektu" of the plan window and the card's actions) |
 | [ADR-043](decisions/0043-downloads-in-the-background.md) | Downloads in the background: the plan window lets go, the top bar follows | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-044](decisions/0044-one-job-per-row.md) | One job per row: a `check` and a `download` take the calls of all the lines, and the worker starts lighter | 2026-10-26 | proposed (A and C chosen by delegated approval; accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-035, ADR-036 and ADR-037) |
 | [ADR-045](decisions/0045-station-views.md) | The station views: the routes they read and how the interface draws them | 2026-10-26 | proposed (plan Part 4, its approval open; accepted when the author approves it and merges `feature/kartograf-data-output`); erratum 1: a chart's bands are its label's gaps; erratum 2: the year types are each person's preferences (ADR-047 erratum 1, v0.4) |
 | [ADR-046](decisions/0046-team-sign-in-sessions-and-tls.md) | Team mode: sign-in, sessions and transport security | 2026-10-26 | accepted (delegated approval 2026-10-26; plan `docs/plans/2026-10-26-plan-v0.4.md`, steps T1 and T2 built; amends ADR-012 and ADR-013; LDAP/AD groups deferred); erratum 1: the source, commit, rule and licence of the list of common passwords; erratum 2: the last administrator who can sign in stays |
 | [ADR-047](decisions/0047-team-shared-work.md) | The team's shared work: the action log, the shared queue, limits per person, file download, preferences | 2026-10-26 | accepted (delegated approval 2026-10-26; plan `docs/plans/2026-10-26-plan-v0.4.md`, steps T6 to T11 built; amends ADR-012, ADR-037 and ADR-038); erratum 1: `GET`/`PUT /preferences`, an old `year_types` in `config.toml` ignored with a doctor note, `basemap` `""` for none; erratum 2: bounded audit of request-rule and token/proxy refusals (D7) |
 | [ADR-048](decisions/0048-the-user-guide.md) | The user guide: a page of its own at `/instrukcja`, readable without a session | 2026-10-31 | proposed (accepted when the author approves and merges `feature/instrukcja`) |
+| [ADR-049](decisions/0049-projects-in-archiwista.md) | Projects are Archiwista's own: the file `archiwista-project/1`, groups of pins, and the jobs over them | 2026-10-31 | accepted (the author's decision of 2026-10-31, ECO-054, D1 to D7 of the Nogat plan; built in the phases of `docs/plans/2026-10-31-archiwista-projects.md`); supersedes ADR-039, ADR-040, ADR-032 decision 14 and the IMGWTools manifest of ADR-023; partly supersedes ADR-042 |
 
 ---
 
@@ -1138,7 +1139,7 @@ API, user file, a request to IMGW-PIB for a list) remain a supplement.
 ## ADR-023: IMGW data in projects: the IMGWTools manifest
 
 **Date:** 2026-10-17
-**Status:** accepted (IMGW data in the project manifest in v1.0 and two manifest files, `kartograf-project.json` and `imgw-project.json` — user decision 2026-10-17, confirmed; SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0)
+**Status:** accepted, partly superseded by ADR-049 (the IMGWTools manifest `imgw-project.json` and the producer's project functions; IMGW versions are pins of Archiwista's `archiwista-project/1`); IMGW data in a project in v1.0 — user decision 2026-10-17, confirmed; SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0; erratum 3: ADR-049
 
 **Context:** ADR-019 point 7 and the previous recommendation for P18 excluded IMGW data
 from projects in v1.0, because the `kartograf-project/1` manifest accepts only Kartograf
@@ -1199,6 +1200,17 @@ explicitly by content (`restored_by_content`, job state `content_match`, message
 `pin_restored_by_content`); Archiwista shows this state separately from "bieżące" (current), not as an
 error, and never re-pins silently. The decision (option C) is unchanged; SPEC 12.7 (IMGW-14,
 IMGW-19), 13 v0.6 criterion 7.
+
+**Erratum 3 (2026-10-31, the author's decision ECO-054; ADR-049):** option C is superseded.
+IMGWTools removes its projects (`imgw-project/1`, `imgw project …`, `init_project` and the other
+project functions; requirement IMGW-14 is withdrawn), and a project is Archiwista's own file
+`archiwista-project.json` (`archiwista-project/1`). The user's decision stays: IMGW data is in
+projects in v1.0, as pins of IMGW archive and series versions with their `sha256` and, where the
+sidecar has one, `content_sha256`, in a group of origin `local` or `plan` (ADR-049 decisions 1, 8
+and 9). Restoring by content stays as erratum 2 says, now done by Archiwista's `project_restore`
+(state `content_match`, shown apart from `restored`, never a silent re-pin), and IMGWTools gives
+the command of a stored version (`command_for_version`, IMGW-21). The check, re-pin and restore of
+IMGW pins wait for the IMGWTools actions of v0.5.
 
 ---
 

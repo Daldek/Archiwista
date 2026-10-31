@@ -3,7 +3,8 @@
 **Date:** 2026-10-25
 **Status:** Accepted. Supplements A-ADR-019 and A-ADR-024. Decided by the plan
 `docs/plans/2026-10-25-archiwista-next.md` (Part 2, steps I1 to I7), whose approval is
-delegated; the author may still amend it (D8).
+delegated; the author may still amend it (D8). Decision 14 is superseded by ADR-049
+(erratum 1).
 
 **Context:** A-ADR-019 gave Archiwista two producers behind one source interface, and
 A-ADR-024 made Kartograf required and IMGWTools an optional plugin, both before IMGWTools
@@ -321,4 +322,14 @@ serves them through the station routes and `archiwista stations` (decision 13). 
 projects of IMGWTools are found beside Kartograf's, in the same directories or alone
 (decision 14); ADR-039 and ADR-040 have an erratum for a project of two manifests.
 
-**Errata:** none.
+**Erratum 1 (2026-10-31, the author's decision ECO-054; ADR-049):** decision 14 is
+superseded. IMGWTools and Kartograf remove their projects, so a project is no longer its
+directory with the manifest of each producer: it is a directory holding Archiwista's own
+`archiwista-project.json` (`archiwista-project/1`), found by that file only (no
+`PROJECT_MANIFESTS`), with the stores of its producers and groups of pins of any producer in
+one file (ADR-049 decisions 1, 5 and 7). The index tables `manifests` and `project_tasks` go
+(`projects`, `project_stores`, `pin_groups` and `pins` instead, `SCHEMA_VERSION` 15), and with
+them `manifests[]` of the API, `producer_required`, `other_producer`, `duplicate_task` and
+`no_project_actions`. The adapter no longer reads projects (`read_project`, `project_status`)
+and its `SCHEMAS` lose `imgw-project/1`. The other decisions are unchanged; the IMGW versions a
+project pins are pins like Kartograf's (ADR-049 decision 8).

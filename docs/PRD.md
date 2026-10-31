@@ -39,7 +39,8 @@ The character of the product: a **store manager**, not a GIS program or a
 calculation program. Archiwista orders data to be downloaded and updated, but
 has no mechanism of its own to download or process it: every action on data is
 done by the public API of the producer (Kartograf or IMGWTools), and the source
-of truth is the files in the store (sidecars, manifests).
+of truth is the files in the store (sidecars) and, for projects, the project file
+that Archiwista writes in the project directory (A-ADR-049).
 
 The code is open (MIT). Archiwista replaces subproject 5 of the Kartograf
 roadmap ("web GUI").
@@ -107,7 +108,7 @@ each requirement: the SPEC section named.
 **F1. Stores and index** (SPEC 4)
 
 - F1.1 Configuration of several stores (for example local and team); a store is a Kartograf directory and/or an IMGW directory. (v0.1)
-- F1.2 A local index of the store and the projects built from sidecars and manifests through the producers' APIs; full and incremental scan, view refresh before the answer. The index is a cache: it can be deleted and rebuilt. (v0.1)
+- F1.2 A local index of the store built from sidecars through the producers' APIs, and of the projects built from their project files (`archiwista-project.json`); full and incremental scan, view refresh before the answer. The index is a cache: it can be deleted and rebuilt. (v0.1; project files: projects)
 - F1.3 The index state is always visible ("Index from 14:02, scan in progress: 63%"); the interface never waits for a scan. (v0.1)
 - F1.4 Work on an SMB share, also mounted read-only; a disconnected share means a banner and an unchanged index, and after reconnecting a refresh without a rebuild. (v0.1)
 - F1.5 Data sources as add-ons: without IMGWTools the application works in full for Kartograf data, and the IMGW source is explicitly "unavailable" (A-ADR-024). (v0.1)
@@ -150,9 +151,10 @@ each requirement: the SPEC section named.
 
 **F8. Projects** (SPEC 4.7, UC-06, UC-07)
 
-- F8.1 A project preview: the tasks of a project as commands, pinned versions, status, the usage index ("Pinned in: Raba (field)"). (v0.1)
-- F8.2 Project actions through the producer's API: create, add and remove a task, download, re-pin, update check, verification of sums. (v0.3)
-- F8.3 A project with the manifests of both producers (`kartograf-project.json`, `imgw-project.json`) in one view with a producer column. (v0.5)
+- F8.1 A project of Archiwista (A-ADR-049; the producers keep none): a file in the project directory with a name, a description, an area and groups of pinned versions; the project card with the area on the map, groups and pins with their state, and the usage index ("Pinned in: Raba (NMT 2023)"). (v0.1 for the usage index; the rest: projects)
+- F8.2 Pinning what the store holds, without the network, from "Stan lokalny", the "Catalog" and the file card (any version, older ones too), and pinning new data from the plan window ("Add to project"). (projects)
+- F8.3 Project jobs: verification of sums without the network, update check, re-pinning and restoring missing versions through the producers' commands; a version whose command the producer cannot rebuild is pinned, and its check and restore are disabled with the reason. (projects)
+- F8.4 A project's activity from the action log, and its exports `pliki.txt` and `ATRYBUCJE.txt` in `zestawy/<name>/`. (projects)
 
 **F9. Store health** (SPEC UC-13)
 
@@ -169,7 +171,7 @@ each requirement: the SPEC section named.
 - F11.2 Coverage labels of series for each variable separately, in hydrological and calendar years with a switch; all stations, also with gaps. (v0.5)
 - F11.3 The "Station card" with a chart (gaps as breaks, no interpolation), versions and IMGW formulas; station comparison. No statistical calculations. (v0.5)
 - F11.4 Freshness of archives (a new publication, a new year), synchronisation and series as IMGWTools background jobs with the plan window and an `imgw …` command. (v0.5)
-- F11.5 IMGW project tasks with pins. (v0.5)
+- F11.5 IMGW archive and series versions pinned in projects (projects); their check, re-pin and restore through the IMGWTools actions. (v0.5)
 
 **F15. Own data and snapshots** (SPEC 4.7.1, A-ADR-027)
 
@@ -190,12 +192,12 @@ each requirement: the SPEC section named.
 **F17. The PL + CZ border** (SPEC 4.8.6, 8.3, UC-09, UC-20; A-ADR-025 erratum 3)
 
 - F17.1 PL and CZ files of one task grouped (`parent_request`) on the map and in the "Catalog"; a check of systems, vertical datum, resolution and dates with a hint for the missing download. (v0.6)
-- F17.2 "Combine › PL + CZ": a merged NMT surface on a common grid with a rule and a seam report, computed by Kartograf (KF) with a plan, in the background, with a `kartograf …` command; the result as a derived product in the store and a project task. (v0.6)
-- F17.3 ČHMÚ stations (daily hydro and meteo) through IMGWTools in the F11 views: map, "Catalog", "summary" with the coverage of each variable, "Station card" with a chart and CC BY 4.0 attribution, comparison with IMGW stations, freshness and synchronisation of chosen stations, IMGW project tasks. (v0.6)
+- F17.2 "Combine › PL + CZ": a merged NMT surface on a common grid with a rule and a seam report, computed by Kartograf (KF) with a plan, in the background, with a `kartograf …` command; the result as a derived product in the store, pinned in a project like any version. (v0.6)
+- F17.3 ČHMÚ stations (daily hydro and meteo) through IMGWTools in the F11 views: map, "Catalog", "summary" with the coverage of each variable, "Station card" with a chart and CC BY 4.0 attribution, comparison with IMGW stations, freshness and synchronisation of chosen stations, ČHMÚ versions pinned in projects. (v0.6)
 
 **After the MVP** (details: SCOPE, "Out of the MVP")
 
-- F12 A project and QGIS set: `.qgz`, a list of paths, attributions, also IMGW and ČHMÚ data and a PL + CZ export without merging (SPEC 8.4). (v1.1)
+- F12 The QGIS export of a project: `.qgz`, a list of paths with their attributes, VRT wrappers and the commands that rebuild the pins, also IMGW and ČHMÚ data and a PL + CZ export without merging (SPEC 8.4; `pliki.txt` and `ATRYBUCJE.txt` are F8.4). (v1.1)
 - F13 The assistant (an LLM agent): plans data preparation, executes only after "Approve and run"; off by default (SPEC 7). (v1.2)
 - F14 Combining: mosaic, version comparison with a difference model; the processing is done in Kartograf (SPEC 8). (v1.3)
 
@@ -211,10 +213,10 @@ each requirement: the SPEC section named.
 **N2. Data integrity**
 
 - N2.1 A read-only store: Archiwista writes nothing in the producers' directories; a write goes only through the Kartograf and IMGWTools APIs.
-- N2.2 Parity with the CLI: an action through Archiwista and the same CLI command give the same versions, `sha256` and pins.
+- N2.2 Parity with the CLI: an action through Archiwista and the same CLI command give the same versions and `sha256`, and a group pinned from the action names exactly those versions.
 - N2.3 Archiwista's state (index, previews, job history) is only local and rebuildable; accounts, groups and project visibility are in a separate local state database with an export, because they cannot be rebuilt from disk; nothing on a network share or in the store.
 - N2.4 Knowledge of the store format lives only at the producers (A-ADR-014): a missing function is a requirement for the producer (SPEC 12).
-- N2.5 Apart from the index Archiwista writes only on the user's command and only in the project directory (snapshots of own data, area files, sets), in an open format readable without Archiwista.
+- N2.5 Apart from the index Archiwista writes only on the user's command and only in the project directory (the project file, snapshots of own data, area files, exports), in an open format readable without Archiwista.
 
 **N3. Performance** (reference store: 50,000 slots, 80,000 versions, 30 projects; SPEC 4.5)
 

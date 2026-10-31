@@ -6,14 +6,16 @@
 (section 16)
 **Dependency:** Kartograf 0.8.0 (`develop`) — public API
 (`kartograf/__init__.py`, `__all__`) and on-disk formats: sidecar
-`kartograf-meta/1`, the `data/` layout with a version store (`versions/`), project manifest
-`kartograf-project/1`, update plan `kartograf-plan/1`, availability report
-`kartograf-availability/1`; from v0.6 also KF (merged
+`kartograf-meta/1`, the `data/` layout with a version store (`versions/`),
+update plan `kartograf-plan/1`, availability report
+`kartograf-availability/1`, the command of a stored file (KB-6); from v0.6 also KF (merged
 PL + CZ surface, 12.5); from v0.5 IMGWTools (IMGW data) —
-a release with requirements IMGW-1..IMGW-14 (section 12.7; today 2.1.1, Beta,
+a release with requirements IMGW-1..IMGW-13 and IMGW-21 (section 12.7; today 2.1.1, Beta,
 no store): catalog `imgw-store/1`, sidecar `imgw-meta/1`, series
-`imgw-series/1` (12.8), project manifest `imgw-project/1` (IMGW-14), and from
-v0.6 a release with ČHMÚ stations (IMGW-15..IMGW-19)
+`imgw-series/1` (12.8), and from
+v0.6 a release with ČHMÚ stations (IMGW-15..IMGW-19). Projects are Archiwista's own
+file `archiwista-project/1` (4.7, A-ADR-049); the producers' project manifests
+`kartograf-project/1` and `imgw-project/1` are no longer read
 **Source documents (Kartograf repository):** `docs/ARCHITECTURE.md` 1
 and 3.1-3.5, `docs/USAGE.md`, `docs/SCOPE.md` 3.3 (roadmap, overlay rules),
 `docs/DECISIONS.md` ADR-022, ADR-024, ADR-027, ADR-036, ADR-037, ADR-039 to
@@ -34,7 +36,7 @@ data paths are replaced by `<data-dir>`. References "ARCH", "USAGE",
 "SCOPE" and "ADR-0xx" without a qualifier refer to Kartograf's documents; Archiwista's
 decisions take the form "A-ADR-0xx" (`docs/DECISIONS.md` in this repository).
 Requirements for producers are "KA-1"…"KH-2" (Kartograf) and "IMGW-1"…
-"IMGW-14" (IMGWTools, 12.7); `plik:linia` references to other repositories
+"IMGW-21" (IMGWTools, 12.7); `plik:linia` references to other repositories
 start with their name (e.g. `IMGWTools/src/imgwtools/stations.py:349`).
 
 **Table of contents:** 1. Purpose and users · 2. Glossary · 3. Use
@@ -124,13 +126,14 @@ understandable and convenient for people.** In practice:
   P4).
 - **It keeps nothing on a network share.** The index, previews and job history
   are local and can be rebuilt at any time; the source of truth is
-  sidecars and manifests (SCOPE 3.3). Accounts, groups, roles and project visibility
+  the sidecars (SCOPE 3.3) and, for projects, the project file `archiwista-project.json`
+  (4.7, A-ADR-049). Accounts, groups, roles and project visibility
   do not derive from files, so they live in a separate local state database
   (4.3, A-ADR-029) — also never on a share; rebuilding the index
   does not touch it. The exception is user data
-  that Archiwista writes on the user's command in the project directory (sets,
-  area files, snapshots of own data — 4.7.1, A-ADR-027): this is not Archiwista's
-  state, but files in an open format, readable without it.
+  that Archiwista writes on the user's command in the project directory (the project
+  file, area files, exports, snapshots of own data — 4.7, 4.7.1, A-ADR-027, A-ADR-049):
+  this is not Archiwista's state, but files in an open format, readable without it.
 - **It is not a data editor or a system for the history of objects.** It
   versions own data with snapshots of whole files (4.7.1); editing and the history of changes
   to individual objects are out of scope.
@@ -188,15 +191,16 @@ keep their meaning.
 | **Release** | A version of a source publication without a campaign: the BDOT10k vintage, SoilGrids `2.0`, the entry date of the CUZK ATOM feed | ADR-036 D29, ADR-042 |
 | **Full / partial sheet** | The index record `TAK`/`NIE` (`czy_ark_wypelniony`, in the sidecar `extra.source.full_sheet`): whether the sheet is completely filled with content | ARCH 3.2 |
 | **Kartograf job (area)** | One call for an area; its files, also on both sides of the PL/CZ border, are linked by a common `extra.parent_request` | ARCH 3.4 |
-| **Project** | A directory with the Kartograf manifest `kartograf-project.json` (`kartograf-project/1`) and/or the IMGWTools manifest `imgw-project.json` (`imgw-project/1`): project jobs (the producer's data commands with options) and pinned file versions; each manifest is written only by its producer | ARCH 3.5, ADR-040; IMGW-14, A-ADR-023 |
-| **Project job** | An entry of `tasks[]` in the manifest: name, command (e.g. `elevation download` or the IMGW command `series select`) and options | manifest spec 3.3; IMGW-14 |
-| **Pin** | An entry of `files[]` of a project job: which version (`version` or the `path` of a version in the IMGW directory, `sha256`) is used | manifest spec 3.3; IMGW-14 |
+| **Project** | (Archiwista) A directory with `archiwista-project.json` (`archiwista-project/1`), written only by Archiwista: name, description, area (a geometry file in `obszary/`), the store of each of its producers and groups of pins; its access is in the state database (A-ADR-029), its own data in `dane/` (4.7.1), its exports in `zestawy/` (8.4). Kartograf and IMGWTools keep no projects (ECO-054) | section 4.7, A-ADR-049 |
+| **Pin group** | (Archiwista) a named list of pins of a project ("grupa") with its origin: `plan` (the producer's calls that the plan window downloaded them with) or `local` (the selection in the store that chose them: "Stan lokalny", the "Katalog" (Catalog), a "Karta pliku" (File card)) | section 4.7, A-ADR-049 |
+| **Project job** | (Archiwista) a background job over the groups of a project: `project_verify` (the pinned files hashed, no network), `project_check` (the pins against the source), `project_repin` (one group anew, to the source's newer versions), `project_restore` (missing pinned versions downloaded again) | sections 4.7, 5.6, A-ADR-049 |
+| **Pin** | (Archiwista) an entry of a pin group: the version a project uses — producer, the version's path relative to the store (never a standard path), `sha256` (and `content_sha256` when the sidecar has one), size, unit, label, who pinned it and when; any number of projects pin the same version | section 4.7, A-ADR-049 |
 | **Availability** | What the source has for an area: years, variants, sheet completeness; the `check_availability` report (`kartograf-availability/1`) | ADR-041 |
 | **Variant** | (Archiwista) a set of product files sharing: year, horizontal CRS, resolution, height system and submission/campaign; file formats (e.g. `ASC`, `ASCII-NMT`) are its badges, not the key; one card in the interface | section 6.4, A-ADR-017 |
 | **Currency** | Whether the local or pinned version is the newest at the source: a `check_*` plan (`kartograf-plan/1`; statuses `current`, `newer`, `missing`, `unverifiable`, `check_failed`) | ADR-036 |
 | **Area** | The user's selection: rectangle, polygon, geometry file, sheet code, TERYT, KU or country | — |
 | **Year coverage** | (Archiwista) a coverage label of a year or release for an area: "pełne" (full), "pełne · 2 kampanie" (full, 2 campaigns), "częściowe · 58%" (partial, 58%), "brak danych" (no data), plus a separate store-state badge: "pobrane" (downloaded), "pobrane 5/12" (downloaded 5/12), "niepobrane" (not downloaded) | section 6.4 |
-| **Set** | (Archiwista) a selection of versions prepared for use outside the store: a QGIS project, a list of paths, attributions, VRT wrappers; generated from a project or from a selection, rebuildable, it is not data | section 8.4 |
+| **Set** | (Archiwista) an export of a project ("zestaw"): the directory `zestawy/<name>/` generated from its pins, with `pliki.txt` and `ATRYBUCJE.txt`, and from v1.1 the QGIS project, `pliki.csv`, VRT wrappers and the commands that rebuild the pins; rebuildable, it is not data | section 8.4, A-ADR-049 |
 | **Derived product** | (proposal for Kartograf) the result of merging, saved in the store as a version with a sidecar and a list of inputs (`extra.source_files[]`, the HSG pattern); in the IMGW directory, the series of a dataset (IMGWTools) | sections 8.1, 4.8 |
 | **IMGW dataset** | A kind of IMGW-PIB archives with a common format, e.g. daily hydro, daily precipitation; the publication unit is a period (year or month) for the whole country | section 4.8 |
 | **IMGW archive** | A file published by IMGW-PIB (e.g. `codz_2024.zip`), saved in the IMGW directory 1:1 as an immutable version with a sidecar (`sha256`, `ETag`, `Last-Modified`); slot = the file path on the IMGW server | section 4.8.1, IMGW-4 |
@@ -215,7 +219,7 @@ keep their meaning.
 | **Background job** | (Archiwista) a long operation (scan, check, download, merge, export) in a separate process, with progress and cancellation; the "Zadania" (Jobs) view | section 5.6 |
 | **Proposal** | (Archiwista) a plan of actions prepared by the assistant; it becomes background jobs only after the user's confirmation | section 7 |
 
-"Task" without a qualifier does not appear in the interface: it is always a "project task" (Kartograf or IMGWTools) or a "background job" (Archiwista).
+"Task" without a qualifier does not appear in the interface: "Zadania" (Jobs) are background jobs of Archiwista, and a project has no tasks since A-ADR-049, only pin groups. Where sections 7 (assistant, v1.2) and 8 (merging, v1.3) still speak of a "project job" in the sense of a producer's task, they mean a pin group of origin `plan`; they are revised with those versions.
 
 ## 3. Use cases
 
@@ -238,7 +242,8 @@ The sample area "Kraków" is the bbox `561000,239000,573000,249000`
 5. At the year 2023 she clicks "Pobierz…" (Download…). The plan window (`check_data(…, year=2023)`)
    says: 12 sheets, 5 already in the store, 7 to download, approx. 265 MB, written to
    the "Zespół" (Team) store; it shows the command `kartograf elevation download …`
-   and the option "Dodaj jako zadanie projektu" (Add as a project task).
+   and the option "Dodaj do projektu" (Add to project: a project and the name of a new
+   group, for example "NMT 2023"; A-ADR-049).
 6. After confirmation a background job starts (`download_data(…)`). The sheets
    on the map change color as they are downloaded; Kartograf's messages
    appear in the job.
@@ -275,35 +280,47 @@ timeline (flights 2019, 2023, 2025), which version is current, which is full
 (`full_sheet/`), which projects pin which version, metadata in
 plain language ("laser scanning, mean height error 0.06 m, full sheet"),
 the license with a "Kopiuj atrybucję" (Copy attribution) button, a preview and the actions: "Kopiuj
-ścieżkę wersji" (Copy version path), "Polecenie Kartografa" (Kartograf command), "Sprawdź aktualność" (Check for updates), "Porównaj
-wersje" (Compare versions), "Dodaj do projektu" (Add to project).
+ścieżkę wersji" (Copy version path), "Polecenie Kartografa" (Kartograf command: the
+command that selects this version, KB-6), "Sprawdź aktualność" (Check for updates), "Porównaj
+wersje" (Compare versions), "Dodaj do projektu…" (Add to project: the version chosen on the
+timeline, an older one too, into a group of a project; A-ADR-049).
 
 ### UC-05. Is there newer data?
 
 Marek selects a segment in the area or a whole project and clicks "Sprawdź
-aktualność" (Check for updates). A background job calls `check_*` (or `check_project`)
+aktualność" (Check for updates). A background job calls `check_*` (for a project, the check
+of its groups, `project_check`: A-ADR-049)
 and shows the plan in plain language: "aktualne" (up to date), "nowsza: 2025-04-26_82710" (newer: 2025-04-26_82710), "nie da
 się sprawdzić bez pobrania" (cannot be checked without downloading), "błąd sprawdzenia: …" (check error: …). The "Pobierz
 nowsze" (Download newer) button executes the same plan (`update="upgrade"`, `plan=…`), and items
-that changed in the meantime are reported by Kartograf as outdated.
+that changed in the meantime are reported by Kartograf as outdated; a project's group is
+moved to newer data by "Przepnij" (Re-pin, UC-06).
 
 ### UC-06. Project: pins, verification, update
 
-Ola opens the project "Raba": project tasks with options (shown as
-Kartograf commands) and pinned versions. "Status" answers immediately
-(`get_project_status`), "Weryfikuj" (Verify) computes SHA-256 checksums in the background
-(`verify_project`), "Sprawdź aktualizacje" (Check for updates) compares pins with the source
-(`check_project`), "Przepnij" (Re-pin) moves one task to newer data
-(`download_project(update="upgrade", tasks=["teren"])`). From the availability result (UC-01) she adds the task "Dodaj rok 2025 do projektu" (Add year 2025 to the project)
-(`add_project_task` with `year=2025`). The project "Raba" also has an IMGW task
-"przeplywy" (manifest `imgw-project.json`, IMGW-14): the same actions call
-IMGWTools project functions, and the task list has a producer column.
+Ola opens the project "Raba" (A-ADR-049): its area on the map, the description and groups
+of pinned versions, each group with its origin — "NMT 2023", downloaded through the plan
+window (UC-01) with the "Dodaj do projektu" option, shows its Kartograf commands; "Stan
+lokalny 2019", pinned from what the store already held ("Stan lokalny" of the map), shows
+the selection that chose it; "Archiwa hydro", IMGW archives pinned from the "Katalog". Each
+pin has its state from the index ("w magazynie", "brak w magazynie", "inna treść niż przypięta (SHA-256)").
+"Weryfikuj" (Verify) computes SHA-256 checksums in the background, without the network
+(`project_verify`); "Sprawdź aktualizacje" (Check for updates) compares the pins with the
+source through the producer's check of each group's calls, or of the command of each pinned
+version (`project_check`); "Przepnij" (Re-pin) moves one group to newer data
+(`project_repin`: the calls in the update mode, the group's pins replaced after the whole run
+succeeded); "Przywróć brakujące" (Restore missing) downloads missing pinned versions again on
+a colleague's computer (`project_restore`: kept when the same `sha256`, or for ČHMÚ the same
+content, returns). A version whose command the producer cannot rebuild (e.g. `soil hsg`) is
+pinned and verified, and its check and restore are disabled with the producer's reason. The
+card lists the project's activity from the action log ("Kasia: przypięcie grupy „NMT 2023”,
+wczoraj 14:02").
 
 ### UC-07. Which projects use this file?
 
 Before cleaning up the store, the team lead filters "Nieużywane przez
 żaden projekt" (Not used by any project) and "Niebieżące wersje" (Non-current versions), and sees their size and the list.
-On the file card "Przypięta w: Raba (teren), Wisła-2026 (dem)" (Pinned in: Raba (teren), Wisła-2026 (dem)) is shown.
+On the file card "Przypięta w: Raba (NMT 2023), Wisła-2026 (dem)" (Pinned in: project (group)) is shown.
 Archiwista deletes nothing; the report serves the decision (section 15, P4).
 
 ### UC-08. Sheet mosaic (from v1.3)
@@ -326,12 +343,13 @@ grid with a seam report (section 8.3); from v1.1 both layers can also be
 exported without merging to a QGIS set. ČHMÚ gauges on the Czech
 part of the catchment are shown next to IMGW stations (UC-20).
 
-### UC-10. QGIS set (from v1.1)
+### UC-10. Project exports (`pliki.txt` and `ATRYBUCJE.txt`; QGIS set from v1.1)
 
-Ola chooses "Zestaw QGIS" (QGIS set) in the project. In the project directory
-`zestawy/<name>/` is created with a `.qgz` file, a list of paths and attributions. QGIS
-opens the project without asking about coordinate systems, and the layers point to exactly the pinned
-versions (section 8.4).
+Ola chooses "Eksportuj…" (Export) in the project and names the export "raba-model". In the
+project directory `zestawy/raba-model/` is created with `pliki.txt` (the pinned version files,
+one per line, for Hydrograf and scripts) and `ATRYBUCJE.txt` (the attributions the licences
+require). From v1.1 the export also holds a `.qgz` file that QGIS opens without asking about
+coordinate systems, its layers pointing to exactly the pinned versions (section 8.4).
 
 ### UC-11. Flight comparison (difference model from v1.3)
 
@@ -347,7 +365,7 @@ z najnowszego roku z pełnym pokryciem i dodaj do projektu Raba" (Prepare a 1 m 
 from the latest year with full coverage and add them to the Raba project). The assistant
 reads the selection, checks availability (read-only), picks the year
 and presents a proposal: two Kartograf commands, 24 sheets, 9 already
-local, approx. 1.2 GB, two new project tasks; the proposal's sheets are
+local, approx. 1.2 GB, two new pin groups of the project; the proposal's sheets are
 highlighted on the map. Only "Zatwierdź i uruchom" (Approve and run) starts the background
 jobs; after they finish the assistant summarizes the result (section 7).
 
@@ -403,8 +421,10 @@ series.
    — each with a label (P14). Ola narrows it with explicit filters: "≥ 30 lat
    pełnych" (≥ 30 full years) or "rzeka: Raba z dopływami" (river: Raba with tributaries) (hydrographic code `2138…`,
    P19).
-6. "Dodaj do projektu…" (Add to project…) saves the selection (stations as a list of codes, variable,
-   years and their kind) as an IMGW project job (IMGW-14, A-ADR-023).
+6. "Dodaj do projektu…" (Add to project…) pins the versions the store holds for the selection
+   (the dataset's series version and its archives) in a pin group of the project, with the
+   selection (stations as a list of codes, variable, years and their kind) recorded in the group
+   (A-ADR-049; the station views offer it with the IMGWTools actions of v0.5).
 
 **Success:** labels consistent with a manual calculation from the archives, and the IMGW
 directory byte-identical to the one produced by the same `imgw` command from the CLI.
@@ -460,14 +480,15 @@ directory byte-identical to the one produced by the same `imgw` command from the
 ### 4.1 What we read from disk (sources of truth)
 
 Archiwista has no data of its own about the store apart from the cache.
-Everything it shows comes from the producers' files — Kartograf's and IMGWTools':
+Everything it shows comes from the producers' files — Kartograf's and IMGWTools' — and,
+for projects, from the project file that Archiwista itself writes (4.7):
 
 | File | Where | Mutability | How we read it |
 |---|---|---|---|
 | Version sidecar | `<segment>/versions/<hierarchy>/<label>_<sha8>/<file>.meta.json` | immutable (ADR-036) | once, when the version directory is first seen |
 | Version data file | next to the version sidecar | immutable | during indexing only `stat` (size); content only on demand (preview, verification) |
 | Sidecar of the standard path and `full_sheet/` | `<segment>/<hierarchy>/<file>.meta.json`, `<segment>/full_sheet/…` | mutable (link repointed to a newer version) | on change of size or modification time; the link target only from `extra.link_target` |
-| Project manifest | `<project directory>/kartograf-project.json` and `<project directory>/imgw-project.json` | mutable | on change of modification time or file checksum; always through the producer's `open_project` (strict Kartograf validation; IMGWTools — IMGW-14) |
+| Project file | `<project directory>/archiwista-project.json` (`archiwista-project/1`, A-ADR-049) | mutable, written only by Archiwista under its lock `.archiwista-project.lock` | on change of modification time or size, by Archiwista's own reader; the producers' manifests `kartograf-project.json` and `imgw-project.json` are not read |
 | Update plan | a `kartograf-plan/1` file saved with `--plan` | one-off | on demand (import of a plan from the CLI) |
 | IMGW directory marker | `<katalog IMGW>/imgw-store.json` (`schema`, `tool`, `created_at`, `producer_version`, `created_by`) | changes only with the contract version | at every scan: recognition of the directory and of the `imgw-store/1` version (IMGW-13) |
 | IMGW version sidecar (archive, station catalog, dataset series) | `<katalog IMGW>/{archives,stations,series}/versions/…/<file>.meta.json` (`imgw-meta/1`) | immutable | once, through `read_meta` (IMGW-10) |
@@ -492,11 +513,11 @@ in an unsupported contract version (e.g. `imgw-store/2` — reported,
 not read; IMGW-13).
 
 **Archiwista writes nothing to the store** (in none of the producers'
-directories). In the project directory
-it writes only the set directory (section 8.4) and the area geometry file
-(drawn or loaded from a file) for a new project job
-(`obszary/`, 10.1); manifests are changed only by the APIs of their producers —
-Kartograf and IMGWTools (A-ADR-003, A-ADR-023).
+directories). In the project directory it writes, on a person's command, only the
+project file `archiwista-project.json` (4.7), the area geometry file (`obszary/`, 10.1),
+the exports (`zestawy/`, section 8.4) and the snapshots of own data (4.7.1); the store's
+versions are written only by the APIs of their producers — Kartograf and IMGWTools (A-ADR-003,
+A-ADR-019).
 
 ### 4.2 Reading through the producers' API
 
@@ -568,7 +589,7 @@ limits, assistant provider) is in a readable TOML file in the user's
 configuration directory and in the "Ustawienia" (Settings) view; a person's view
 preferences (the kind of years, 6.7, the basemap, path aliases) are in the state
 database below from v0.4. The index can be deleted
-at any time — "Przebuduj indeks" (Rebuild index) recreates it from the stores and manifests;
+at any time — "Przebuduj indeks" (Rebuild index) recreates it from the stores and the project files;
 only the job history and the assistant conversations are lost.
 
 The **state database** (A-ADR-029) is a separate SQLite file
@@ -605,8 +626,9 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | `station_points` | R*Tree: station points (degenerate rectangles) — area filter and station layer |
 | `station_series` | a variable of a station's series in the current dataset series version: file, `sha256` and rows, the variable's key (with the half-year period, e.g. `Q_max@winter`) and unit, first and last date with a value, list of gaps, units with a value and aggregate sums (from the `series.json` listing, IMGW-8) and the station's own known periods (datasets of station files, ČHMÚ); `series_catalogs` keeps the version read, with the dataset's unit, kind of years of its archives, first year and the periods known to the version |
 | `series_years` | each year of a variable in hydrological and calendar years (half-year characteristics: hydrological only): units, known units, units with a value — computed during indexing from the gap lists against the known periods (4.8.4); the labels, the Timeline and filters, whose longest gap comes from the gap list |
-| `search` | FTS5: sheet codes, TERYT, KU, labels, request numbers, file names, human-readable product names, project names and project tasks, station codes and names, river names |
-| `projects`, `manifests`, `project_tasks`, `pins` | known projects, one per directory, with the manifest of each producer (Kartograf, IMGWTools) as it was last read (its store, state or error), and the tasks and pins of each manifest, with its producer, linked to versions — the "which projects use the file" index (SCOPE 3.3) |
+| `search` | FTS5: sheet codes, TERYT, KU, labels, request numbers, file names, human-readable product names, project names and the names of their pin groups, station codes and names, river names |
+| `projects`, `project_stores`, `pin_groups`, `pins` | known projects, one per directory, as their file `archiwista-project.json` was last read (its state or problem, name, description, area): the store of each producer it names with the configured store matched, its groups with their origin, and the pins of each group linked to versions by store and path — the "which projects use the file" index (SCOPE 3.3; A-ADR-049) |
+| `version_calls` | the command of a stored version as its producer rebuilds it (`command_for_version`), or the producer's refusal, per version and producer version: filled by pinning and by the project jobs, read by the project card (A-ADR-049 decision 10) |
 | `availability` | latest availability reports per area and product, with a date (visible without a network); for IMGW datasets — published years with publication dates |
 | `jobs`, `job_events` | history of background jobs and their events |
 | `conversations`, `messages`, `proposals` | conversations with the assistant and its proposals |
@@ -798,10 +820,12 @@ without access to a hardware GPU (SwiftShader: 8.4 frames/s).
 
 ### 4.6 Working on an SMB share
 
-1. There is no Archiwista file on the share (SQLite, cache, locks).
-   Archiwista only reads; writes are done by the producers: Kartograf, which
-   works without byte-range locks (versions through `os.link`, manifest through
-   a `mkdir` lock and `os.replace`), and IMGWTools (point 9).
+1. There is no Archiwista file of its own state on the share (SQLite, cache).
+   The store is written only by the producers: Kartograf, which
+   works without byte-range locks (versions through `os.link`), and IMGWTools (point 9).
+   On a share Archiwista writes only user data in a project directory on a person's
+   command, the same way: the project file under a `mkdir` lock and with `os.replace`
+   (4.7), area files, exports and snapshots through a temporary name and a rename.
 2. The link target comes only from the link sidecar (`extra.link_target`).
    No logic based on inode numbers or link counts: on a CIFS share of the sample store
    the standard path and its version returned
@@ -817,11 +841,11 @@ without access to a hardware GPU (SwiftShader: 8.4 frames/s).
 6. We do not follow symbolic links pointing outside the store.
 7. The same share may be mounted under different paths (`Z:\kartograf`,
    `/mnt/nas/kartograf`): the store in the configuration has path aliases. A project
-   manifest must point to the store correctly for the process that fetches
-   (Kartograf reads `root` itself) — therefore in a team we recommend a relative
-   `root` when projects and store are on the same share,
-   and the path correction is done by a Kartograf feature (KH-1), not by manual editing
-   through Archiwista.
+   file names the store root of each producer as written: relative to the project directory
+   when the store has path aliases, so that it holds on every computer where projects and
+   store lie on the same share, else absolute; Archiwista matches it by resolved path or
+   alias, and moves it to another configured store on the owner's command
+   (`PUT /projects/{project}/stores/{producer}`, 4.7), not by manual editing.
 8. Share not connected — as in 4.4: banner, no scan and no write jobs
    (Kartograf requires an existing store directory anyway).
 9. The IMGW catalog follows the same rules: it is written exclusively by IMGWTools,
@@ -838,54 +862,82 @@ without access to a hardware GPU (SwiftShader: 8.4 frames/s).
 
 ### 4.7 Projects
 
+A project records the work on one task: the area it covers, the store versions it
+uses, the activity on it and its exports (ECO-054). It is Archiwista's own: Kartograf
+and IMGWTools keep no projects and only give the command of a stored version (KB-6,
+IMGW-21). Decisions: A-ADR-049 (D1 to D7 of the author's decision of 2026-10-31).
+
+- **The file:** a project is a directory holding `archiwista-project.json`
+  (`archiwista-project/1`), written only by Archiwista: `name`, `description`,
+  `created_at` and `created_by`; `area`, a geometry file in the project's `obszary/` with
+  its SHA-256 (`obszary/<area id>.geojson`, GeoJSON in WGS84); `stores`, for each producer
+  the root of a configured store as written (relative to the project directory when the
+  store has path aliases, 4.6 point 7); and `groups` of pins, each with a name, its origin
+  — `plan`, the producer's calls (`command` and `options`) that the plan window downloaded
+  it with, or `local`, the selections in the store that chose it ("Stan lokalny", the
+  "Katalog" (Catalog), a "Karta pliku" (File card)) — and its pins: `producer`, `version`
+  (the version's file relative to the store, never a standard path), `sha256`,
+  `content_sha256` when the sidecar has one, `size_bytes`, `unit`, `label`, `pinned_at` and
+  `pinned_by`. Who sees and changes the project is in the state database (4.3, A-ADR-029),
+  never in the file; own data and snapshots stay as 4.7.1 says.
+- **Writing:** every change takes the lock `.archiwista-project.lock` (a directory made
+  with `mkdir`, an `owner` file in it), reads the file again, changes it and replaces it
+  atomically (`os.replace`); a lock held by another writer is waited for 5 s, then the
+  change is refused (`409 conflict`, `project_locked`, the lock's path): a lock stays only
+  when a process dies during the milliseconds of a write, and only a person removes it
+  (Archiwista never does). Members of a newer Archiwista's `/1` that this one does not
+  know are kept; a file in a newer schema (`archiwista-project/2`) or an invalid one is
+  shown with its problem and never written over.
 - **Discovery:** the project directories from the configuration are searched
-  for `kartograf-project.json` and `imgw-project.json` (depth
-  ≤ 4, skipping `.git`, store directories and hidden directories);
-  a project is a directory with one of them or with both. A project can also
-  be added manually or created (`init_project` of the producer whose data
-  is added first; the second manifest is created at the first
-  job of the second producer).
-- **Reading:** always `open_project` of the producer. An invalid manifest is
-  shown with the producer's error text (e.g. "nieznany klucz 'optons'");
-  an error in one manifest does not hide the jobs of the other. The index
-  keeps one project per directory and key, with each manifest (its store,
-  state and error) and the jobs and pins of each with their producer (ADR
-  0032 decision 14); a job name used in both manifests is reported as a
-  project problem (`duplicate_task`, 14).
-- **Actions on a project of both manifests:** a change of jobs and a project
-  job act on one manifest, the one of the producer the request names, or the
-  project's only one; a project of both refuses a request that names none
-  (`producer_required`).
-- **Link to the store:** the project's `root` (and in the IMGW manifest
-  `store_dir`) is matched to the producer's directory in the configured
-  store by resolved path or alias; no match —
-  "Magazyn projektu nieznany: dodaj magazyn".
-- **Pins → versions:** by the `version` path (relative to the store)
-  and `sha256`; a pin without a version in the index has the state "brak pliku".
-- **Usage index** ("Przypięta w: …") is a table of pins; nothing goes
+  for `archiwista-project.json` only (depth ≤ 4, skipping `.git`, store directories and
+  hidden directories; a file that is a symbolic link out of the project directory is
+  invalid with `path_outside_root`). A directory holding only a producer's old manifest
+  (`kartograf-project.json`, `imgw-project.json`) is no project and is not migrated (D4).
+  A project is created by "Nowy projekt…" (`POST /projects`) in a project directory of the
+  settings, by any signed-in person, who owns it (A-ADR-039 erratum 3, kept by A-ADR-049).
+- **Link to the store:** each store root of the file is matched to the producer's
+  directory of a configured store by resolved path or alias; no match —
+  "Magazyn projektu nieznany: dodaj magazyn". The first pin of a producer adds its store;
+  a pin from another store than the one the project names for that producer is refused.
+- **Pins → versions:** by the `version` path (relative to the store) and `sha256`; a pin
+  without a present version in the index has the state "brak w magazynie", one with other
+  content "inna treść niż przypięta (SHA-256)", one of an unknown store "magazyn projektu
+  nieznany". Many projects and groups may pin the same version.
+- **Pinning what the store holds** (no network): "Dodaj do projektu…" of "Stan lokalny"
+  (the area, product, year and variant of the map), of the "Katalog" (its current result)
+  and of the "Karta pliku" (the version chosen on its timeline, an older one too) adds the
+  versions with their `sha256` from the index to a new group or to a group of origin
+  `local`.
+- **Pinning new data:** the plan window's "Dodaj do projektu" (a project and a new group's
+  name) makes the window's download pin, at its end, every file of its `files[]` and every
+  position of its plan the store already held, as a group of origin `plan` with the calls;
+  a run that did not wholly succeed pins nothing.
+- **Jobs of a project** (5.6): "Weryfikuj" (`project_verify`, no network: Archiwista
+  hashes the pinned files; a pin whose bytes changed but whose `content_sha256` matches a
+  present version is shown apart, not as an error), "Sprawdź aktualizacje"
+  (`project_check`: the producer's check of each group's calls, or of the command of each
+  version pinned locally, compared by slot and `sha256`, never by count), "Przepnij"
+  (`project_repin`: one group's calls in the update mode, its pins replaced after the whole
+  run succeeded) and "Przywróć brakujące" (`project_restore`: the calls in the default
+  mode; a missing pin is kept when its `sha256`, or for ČHMÚ its `content_sha256`,
+  returns). A version whose command the producer cannot rebuild (KB-6, IMGW-21) is pinned,
+  verified and exported, and its check, restore and re-pin are disabled with the
+  producer's reason (D5). The check, re-pin and restore of IMGW pins wait for the
+  IMGWTools actions of v0.5.
+- **Activity:** the project card lists the action log's entries of the project (A-ADR-047;
+  D7): who created, changed, pinned, unpinned and exported it and which of its jobs ran,
+  without the client addresses.
+- **Exports:** "Eksportuj…" writes `zestawy/<name>/` with `pliki.txt` and `ATRYBUCJE.txt`
+  from the pins (8.4; D6); the QGIS project comes with v1.1.
+- **Usage index** ("Przypięta w: …") is the table of pins of the index; nothing goes
   into sidecars (a sidecar is immutable, SCOPE 3.3).
-- **Manifest changes** are detected by modification time and file checksum;
-  a manifest changed while the application is running (another process, CLI) is read
-  again before every action, and the conflict is reported by the producer (locks
-  `.kartograf-project.lock` and `.imgw-project.lock`, merging per job).
-- **IMGW data in projects (P18, A-ADR-023):** from v0.5 IMGW data are
-  project jobs and pins in the IMGWTools manifest
-  `imgw-project.json` (`imgw-project/1`, IMGW-14) next to
-  `kartograf-project.json`; the Kartograf manifest format does not change.
-  An IMGW job gets into a project only through the IMGWTools API:
-  "Dodaj do projektu…" (Add to project…; from the station "Zestawienia" (Summary), the "Katalog" (Catalog), the
-  "Karta stacji" (Station card) or an assistant proposal) opens the "Okno planu" (Plan window) with the command
-  `imgw project add …`, and after confirmation the worker process calls
-  `add_project_task` (validation as in the CLI) and, if "Pobierz
-  teraz" (Download now) was selected, `download_project`, which synchronizes the needed archives,
-  builds or reuses the dataset series and pins versions (dataset
-  series, station files, station catalog, input archives). Stations are
-  saved as an explicit list of codes; selection by area also saves a geometry file
-  with a checksum (as in Kartograf), and stations without a location are added only
-  explicitly (A-ADR-022). "Status", "Weryfikuj" (Verify), "Sprawdź aktualizacje" (Check for updates)
-  and "Przepnij" (Re-pin) work for the jobs of both producers, each through its own API.
-  The set (8.4) takes IMGW versions from the pins, and `polecenia.sh` recreates them
-  with the command `imgw project download`.
+- **Changes from outside:** a project file changed while the application runs (another
+  Archiwista, a person) is noticed by its modification time and size at the next scan and
+  read again under the lock before every change.
+- **IMGW data in projects (P18):** IMGW archive and series versions are pins like any
+  other, from the "Katalog" and the file card, and from v0.5 the station views (A-ADR-023 erratum 3);
+  restoring by content (`content_match`) is shown apart from "przywrócone", never as a
+  silent re-pin.
 
 #### 4.7.1 Own data and snapshots (v0.2, A-ADR-027)
 
@@ -901,7 +953,7 @@ to the project, and snapshots are made by Archiwista in that folder.
   inside the project's directory (the default one too) must still lie there after
   resolving symbolic links: every scan and every snapshot check these rules again,
   and a folder breaking one is `invalid` and not read (`own_folder_invalid`). Archiwista's
-  configuration saves the choice, the producer's manifest remains unchanged.
+  configuration saves the choice, not the project file.
   The folder is indexed like a read-only store: raster
   and vector files recognized by GDAL/OGR (GeoPackage, Shapefile as a complete set
   of files, GeoTIFF, GeoJSON, FlatGeobuf…), with extent, CRS, layers,
@@ -1213,7 +1265,7 @@ flowchart LR
   W["Worker processes<br/>(Kartograf API or IMGWTools)"]
   MAG[("Kartograf directory<br/>local disk or SMB")]
   MIG[("IMGW directory<br/>local disk or SMB")]
-  PRJ[("Project directories<br/>kartograf-project.json, imgw-project.json")]
+  PRJ[("Project directories<br/>archiwista-project.json, obszary/, zestawy/, dane/")]
   SRC["GUGiK, CUZK, CLMS, ISRIC"]
   SIM["IMGW-PIB<br/>danepubliczne.imgw.pl"]
   LLM["Model provider<br/>or local model"]
@@ -1233,8 +1285,8 @@ flowchart LR
   W --> PRJ
   W --> SRC
   W --> SIM
-  AK -. "read (KA, open_project)" .-> MAG
-  AK -.-> PRJ
+  AK -. "read (KA)" .-> MAG
+  SVC -. "project file (read, write under its lock)" .-> PRJ
   AI -. "read (IMGW-10)" .-> MIG
   PRV -. read .-> MAG
   PRV -. "series (read_series)" .-> AI
@@ -1309,11 +1361,11 @@ Proposed split (the final one will be set by the implementation plan):
 | `src/archiwista/auth/` | `Principal` (`id`, `kind`, `roles`, `groups`), `can(principal, action, resource)`, `visible_projects(principal)` — a single place for permission decisions for the API, CLI and index queries (A-ADR-029) |
 | `src/archiwista/sources/` | source interface: adapter protocol, shared types (store entry, metadata, plan, job events), registry of adapters loaded from entry points (group `archiwista.sources`), source states, check of producer versions and schemas (5.8) |
 | `src/archiwista/adapter/kartograf/` | the only place that imports Kartograf: KA-KH calls and type conversions |
-| `src/archiwista/adapter/imgw/` | the only place that imports IMGWTools: IMGW-1..IMGW-14 calls (from v0.6 also IMGW-15..IMGW-19 — ČHMÚ stations) and type conversions |
+| `src/archiwista/adapter/imgw/` | the only place that imports IMGWTools: IMGW-1..IMGW-13 and IMGW-21 calls (from v0.6 also IMGW-15..IMGW-19 — ČHMÚ stations) and type conversions |
 | `src/archiwista/index/` | schema, scanner, queries, footprints, search, stations and series coverage |
 | `src/archiwista/jobs/` | job supervisor, queue, worker process (`python -m archiwista.jobs.worker`), event protocol |
 | `src/archiwista/previews/` | tiles and previews of rasters, vectors, LAZ, ZIP; series chart data (aggregation for display); preview cache |
-| `src/archiwista/sets/` | set for a project/QGIS (connection mode 3, section 8.4) |
+| `src/archiwista/projects/` | the project file `archiwista-project/1`: reading, validation, the lock and the atomic write, area files and the exports `zestawy/<name>/` (4.7, 8.4, A-ADR-049); the QGIS set from v1.1 |
 | `src/archiwista/assistant/` | provider adapters, tools, proposals, conversations, cost counters |
 | `src/archiwista/api/` | `/api/v1` routes (section 9) — thin, only calls to the service layer |
 | `src/archiwista/web/` | interface: ES modules (Preact + htm) and bundled libraries, served statically — no build step (A-ADR-028) |
@@ -1338,7 +1390,7 @@ which producer wrote the file:
 | `commands()`, `validate(…)`, `format_command(…)` | forms and a command to copy | KB-1, KB-3, KB-4 | IMGW-11 |
 | `plan(command, options)` | "Okno planu" (Plan window) without downloading | `check_command` (KB-5) | `check_store` (IMGW-5) |
 | `run(command, options, *, on_progress, on_notice, cancel)` | action — only in the worker process (5.6) | `run_command` (KB-5) | `run_command` → `sync_store`, `build_series` (IMGW-5, IMGW-7, IMGW-11) |
-| `project(…)` | producer project manifest: reading, adding and removing a job, download with pinning, check, verification, status (4.7) | `open_project`, `add_project_task`, `remove_project_task`, `download_project`, `check_project`, `verify_project`, `get_project_status` | the same IMGWTools project functions (IMGW-14) |
+| `command_for_version(version, *, root)` | optional (`VersionCommandAdapter`): the call that selects a stored version, from its metadata, offline; the producer's coded refusal is `unsupported` / `command_not_rebuildable` (4.7, A-ADR-049) | `command_for_file(sidecar)` (KB-6) | `command_for_version(version, root=…)` (IMGW-21) |
 | `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-033) | `store_root()` | `store_root()` of `imgwtools.config` (`IMGW_ROOT`, else `<data_dir>/imgw`) |
 
 The IMGW adapter also has the "stations and series" capabilities, which the Kartograf
@@ -1470,16 +1522,16 @@ proxy_autocreate = false                        # create a missing account on it
 
 | Kind | What it calls | Network | What it writes |
 |---|---|---|---|
-| `scan` | `list_segments`, `iter_store` (KA-1), `open_project`; IMGW catalog: IMGWTools `iter_store` (IMGW-10) | no | index |
+| `scan` | `list_segments`, `iter_store` (KA-1); the project files `archiwista-project.json` of the project directories (Archiwista's own reader, 4.7); IMGW catalog: IMGWTools `iter_store` (IMGW-10) | no | index |
 | `footprints` | `file_footprint(network=True)` (KA-4) for versions without a footprint, with a local unit footprint cache; refused in offline mode | yes | index, unit footprint cache |
 | `link_check` | `link_target` (KA-5) for a single slot, on demand from the "Karta pliku" (File card) | no | index (a problem on mismatch) |
 | `availability` | `check_availability` (heights), for the other products of the KD extension; IMGW datasets: published years from the listing and `HEAD` (`check_store`, IMGW-5) | yes | report in the index |
 | `check` | `check_command` (KB-5) → `check_data`, `check_landcover`, `check_soil`, `check_hsg`, `check_collection` → `kartograf-plan/1` plan; IMGW: `check_store` (IMGW-5) → archive freshness plan and series state | yes | — |
 | `download` | `run_command` (KB-5) → `download_data`, `download_landcover`, `download_soil`, `calculate_hsg`, `download_collection` with `update` and `plan`; IMGW: `sync_store` (IMGW-5) | yes | store (through the producer) |
 | `series` | IMGWTools `build_series` (IMGW-7) — dataset series from the current archives | no | IMGW catalog (through IMGWTools) |
-| `project_download`, `project_repin`, `project_check`, `project_verify` | `download_project` (a repin of one task with `update="upgrade"`), `check_project`, `verify_project` of the project's producer (Kartograf; IMGWTools — IMGW-14), started by `POST /projects/{id}/jobs` (ADR-040) | yes; `project_verify` no | store, manifest (through the producer); a check and a verification nothing |
+| `project_verify`, `project_check`, `project_repin`, `project_restore` | over the groups of a project (A-ADR-049): `project_verify` hashes the pinned files itself; `project_check` runs the producer's `check_command` (KB-5) of each group's calls, or of the command of each version pinned locally (`command_for_version`, KB-6, IMGW-21); `project_repin` runs one group's calls with `run_command` in the update mode; `project_restore` runs them in the default mode; started by `POST /projects/{id}/jobs` | yes; `project_verify` no | `project_repin`: store (through the producer) and the project file (its pins); `project_restore`: store (through the producer); a check and a verification nothing |
 | `compose` | Kartograf's merge functions (KE, KF, KG) | usually no | store (through Kartograf) |
-| `export` | set for QGIS (Archiwista), series to CSV through `export_series` (IMGW-12) | no | set directory in the project |
+| `export` | the QGIS set of a project (from v1.1; the exports `pliki.txt` and `ATRYBUCJE.txt` are written at once, without a job, 8.4), series to CSV through `export_series` (IMGW-12) | no | `zestawy/<name>/` in the project |
 | `preview` | local COG or preview of a large file | no | preview cache |
 | `preview_warm` | render processes of its own at the lowest priority: the thumbnail of the preview pane and the map's tiles at the file's smallest zoom of current versions (with a project: its pinned current versions and its own data), within the room the cache has without evicting previews used in the last week; never a local COG (ADR-041) | no | preview cache |
 
@@ -1492,7 +1544,7 @@ proxy_autocreate = false                        # create a missing account on it
 - **Concurrency (default):** 2 network jobs at a time, of them at most
   `network_jobs_per_person` (2) of one person, a free place going to the oldest waiting job
   of the person with the fewest running ones (v0.4, 10.2); 1 job per
-  project (manifest lock), compute jobs up to half of the cores,
+  project (A-ADR-049), compute jobs up to half of the cores,
   1 index-writing job per store (`scan`, `footprints`; the next one
   gets `409 conflict`). Overlapping jobs (the same segment and the same
   units) are marked with a warning — Kartograf will still write the version
@@ -1511,12 +1563,12 @@ proxy_autocreate = false                        # create a missing account on it
   report. Until KC-1: an interrupt signal (SIGINT; on Windows
   CTRL_BREAK_EVENT to the process group), which in the worker process is
   `KeyboardInterrupt` — like Ctrl-C in Kartograf's CLI: versions are created
-  atomically from `versions/.incoming/`, so no half-written version remains, and `finally`
-  blocks release the manifest lock. After 30 s without finishing, the process
-  is killed; only if that hits the milliseconds of the manifest write
-  does `.kartograf-project.lock` remain, which Kartograf says to remove
-  manually — Archiwista recognizes this state and shows instructions (section
-  14). After cancellation, Archiwista refreshes the slots the job concerned.
+  atomically from `versions/.incoming/`, so no half-written version remains. After 30 s
+  without finishing, the process is killed; only if that hits the milliseconds of a write of
+  the project file (a re-pin, or the pin at the end of a download, A-ADR-049) does Archiwista's
+  lock `.archiwista-project.lock` remain, and the next change of the project names it with
+  instructions to remove it by hand (section 14; Archiwista never removes it). After
+  cancellation, Archiwista refreshes the slots the job concerned.
   A job that another process supervises (a server's job cancelled at the
   terminal, or the reverse) is cancelled by that process: the request is a
   file `<jobs>/<id>.cancel` that its supervisor carries out within half a
@@ -1528,8 +1580,7 @@ proxy_autocreate = false                        # create a missing account on it
   `missing_sidecar`, 4.4), which is not a version, and repeating the same
   job completes it (the station catalog and an archive without `Last-Modified` —
   only on the same UTC day, because the label is the build or download date;
-  otherwise the problem remains until removed manually). A left-over
-  `.imgw-project.lock` (IMGW-14) is recognized like a Kartograf lock.
+  otherwise the problem remains until removed manually).
 - **Server restart:** "trwa" (running) jobs without a live process get the state
   "przerwane" (interrupted) with a "Ponów" (Retry) button; retrying is safe (Kartograf
   uses the ready local versions).
@@ -1539,7 +1590,7 @@ proxy_autocreate = false                        # create a missing account on it
   store from the scheduler, finished successfully and with no changes in the index, with no
   messages other than `footprints_failed` (footprints that failed are retried by
   every scan; this is not a change either, likewise re-reading the
-  manifests of projects without a store) — disappear with their history and log after
+  project files of projects without a store) — disappear with their history and log after
   48 h, except the newest in a store; full scans stay. Pruning
   runs at server start and every hour.
 - **Kartograf metadata cache:** worker processes get a local
@@ -1686,7 +1737,7 @@ application failure:
 **Versions and schemas.** At start, in the wizard and in `archiwista doctor`
 Archiwista checks the version of each producer library against the range
 from `pyproject.toml` and the schemas it reads: `kartograf-meta/1`,
-`kartograf-project/1`, `imgw-meta/1`, `imgw-project/…` (contract versions:
+`kartograf-store/1`, `imgw-meta/1` (contract versions:
 `store_info`, IMGW-10, IMGW-13). A mismatch gives a readable message in
 Polish (installed version, supported range, repair command) and the state
 `incompatible` for that source only. Encountering an unknown schema version
@@ -1807,10 +1858,10 @@ the state of the sources and how to install the missing ones (`archiwista[imgw]`
 1. **Area.** Tools: rectangle, polygon, "Widok mapy" (Map view), sheet code (typed
    or clicked in the sheet grid), unit code (TERYT, KU; search by
    name after KB-7), geometry file (GPKG, SHP, GeoJSON — copied to
-   Archiwista's local working directory, and for a project job to
-   the project's `obszary/`, 10.1; Kartograf receives the path of the copy),
+   Archiwista's local working directory; Kartograf receives the path of the copy),
    country. Above the map sits a badge "Obszar: Kraków · 120 km² · PL" with "Zmień"
-   (Change) and "Wyczyść" (Clear). The country (PL, CZ, both) follows from the area
+   (Change), "Wyczyść" (Clear) and "Ustaw jako obszar projektu…" (Set as a project's area: the
+   area is written as GeoJSON into the project's `obszary/`, 4.7, 10.1). The country (PL, CZ, both) follows from the area
    (`countries_for_bbox`); an area crossing the border gives PL and CZ results
    side by side.
 2. **Product.** A searchable list grouped like Kartograf's groups
@@ -1855,7 +1906,7 @@ the state of the sources and how to install the missing ones (`archiwista[imgw]`
 5. **Row actions.** "Pobierz…" (Download…), "Dodaj do projektu…" (Add to project…), "Pokaż na mapie" (Show on map),
    "Porównaj z…" (Compare with…), "Mozaika…" (Mosaic…), "Polecenie Kartografa" (Kartograf command); for IMGW stations:
    "Karta stacji" (Station card), "Porównaj z…", "Pobierz archiwa…" (Download archives…), "Przygotuj
-   szeregi…" (Prepare series…), "Dodaj do projektu…" (an IMGW project job, IMGW-14),
+   szeregi…" (Prepare series…), "Dodaj do projektu…" (a pin group of the project, A-ADR-049),
    "Dodaj do zestawu" (Add to set), "Polecenie IMGWTools" (IMGWTools command). Each one involving the network or a write
    goes through the "Okno planu" (Plan window).
 
@@ -2078,16 +2129,27 @@ BŁĄD    Pobieranie: BDOT10k 1261           Ty     wczoraj 14:02
         (tekst błędu Kartografa)                         [Ponów] [Dziennik]
 ```
 
-**g) Project**
+**g) Project** (A-ADR-049: the area, groups of pins with their origin and state, the actions
+of the project and of each group disabled with their reason, the activity from the action log,
+the exports and the own data; the names and numbers are illustrative)
 
 ```text
-PROJEKT Raba        katalog: ~/projekty/raba · magazyn: Zespół
-[Status] [Weryfikuj] [Sprawdź aktualizacje] [Pobierz] [Zestaw QGIS] [+ Zadanie]
+PROJEKT Raba                        katalog: ~/projekty/raba · właściciel: Kasia
+Zlewnia Raby do Dobczyc             obszar: zlewnia Raby · 1470 km² [Pokaż na mapie]
+[Weryfikuj] [Sprawdź aktualizacje] [Eksportuj…] [Udostępnij…]
 -----------------------------------------------------------------------------
-Zadanie   Polecenie                                    Pliki  Stan
-teren     elevation download --product nmt ...         12     przypięte 2026.10.20
-pokrycie  landcover download --product bdot10k ...     2      przypięte · 1 nowsza
-gleby     soil hsg --bbox ... --depth 0-5cm            4      niepobrane
+Grupa            Pochodzenie                                Pliki  Stan
+NMT 2023         okno planu: kartograf elevation download…  12     w magazynie
+  [Sprawdź aktualizacje] [Przepnij] [Przywróć brakujące] [Usuń grupę]
+Stan lokalny     Stan lokalny: NMT · 2019 · Raba            9      1 brak w magazynie
+  [Sprawdź aktualizacje] [Przepnij] [Przywróć brakujące] [Usuń grupę]
+Gleby HSG        Karta pliku                                 4      w magazynie
+  sprawdzanie i przywracanie niedostępne: producent nie odtworzy polecenia
+-----------------------------------------------------------------------------
+Aktywność   Kasia  przypięcie grupy „NMT 2023” · 12 plików        wczoraj 14:02
+            Marek  weryfikacja projektu · zakończone               dziś 09:15
+Eksporty    raba-model  pliki.txt · ATRYBUCJE.txt                 2026.10.31
+Dane własne kanalizacja.gpkg · zmieniony od migawki                 [Odśwież]
 ```
 
 **h) "Okno planu" (Plan window)**
@@ -2096,11 +2158,11 @@ gleby     soil hsg --bbox ... --depth 0-5cm            4      niepobrane
 POBRAĆ?  NMT 1 m · EVRF2007 · 2023 · obszar Kraków
   12 arkuszy: 5 w magazynie, 7 do pobrania (ok. 265 MB)
   Magazyn: Zespół
-  [ ] Dodaj jako zadanie projektu [Raba v]  nazwa [teren-2023]
+  [x] Dodaj do projektu [Raba v]  grupa [NMT 2023]
   Polecenie: kartograf elevation download --product nmt --country pl
     --bbox 561000,239000,573000,249000 --sheet-system 1992 --resolution 1m
     --vertical-crs EVRF2007 --year 2023 -o <store>              [Kopiuj]
-  [Anuluj]                                          [Pobierz 7 arkuszy]
+  [Anuluj]                            [Pobierz 7 arkuszy i przypnij 12]
 ```
 
 **i) "Mapa" (Map) with IMGW stations and "Zestawienie" (Summary) (Table)** (station names
@@ -2397,7 +2459,7 @@ are shown only by the "Katalog" (Catalog) view (6.8).
 Search recognises: sheet code PL-1992, PL-2000, TM33 and SM5; TERYT (2, 4,
 6 and 7 digits); KU (6 digits); EPSG code; version label (`2025-04-26_82710`);
 work ticket number; the beginning of a SHA-256 sum (from 8 characters); file name;
-project name and project job name; IMGW station code (9 digits), station name
+project name and the names of its pin groups; IMGW station code (9 digits), station name
 and river name. For advanced users: prefixes `produkt:nmt rok:2023 uklad:2180
 projekt:raba`, `stacja:149190310 zmienna:Q rzeka:Raba`, `kodrzeki:2138`
 (with tributaries `kodrzeki:2138*`), `polozenie:brak` (every prefix has
@@ -2472,7 +2534,7 @@ confirmed by the user on 2026-10-26, M11):
   and the link "Strona stacji IMGW" (IMGW station page) (`https://hydro.imgw.pl/#/station/hydro/<code>`
   — a plain link, no background requests). Actions: "Kopiuj ścieżkę pliku" (Copy file path),
   "Polecenie IMGWTools" (IMGWTools command), "Sprawdź aktualność" (Check freshness), "Przygotuj szeregi…" (Prepare series…),
-  "Porównaj z…" (Compare with…), "Dodaj do projektu…" (Add to project…) (IMGW-14), "Dodaj do zestawu" (Add to set).
+  "Porównaj z…" (Compare with…), "Dodaj do projektu…" (Add to project…; a pin group, A-ADR-049), "Dodaj do zestawu" (Add to set).
 - **Chart.** One variable or two with different units (two axes);
   range by selection. By default the chart shows the whole available period
   simplified (M11). The server returns at most 2,000 points per series:
@@ -2626,7 +2688,7 @@ shown as a badge in the message field ("Kontekst: Kraków · NMT ·
 | `find_units` | units by name or code: municipality, county, KU (KB-7) | read |
 | `search_store` | search in the index with filters (like `GET /api/v1/slots`) | read |
 | `get_slot`, `get_version` | file card: versions, metadata, pins | read |
-| `list_projects`, `get_project` | projects, project jobs, pins, state (no network) | read |
+| `list_projects`, `get_project` | projects, pin groups, pins, state (no network) | read |
 | `find_stations` | stations of an area or by attributes (river and hydrographic code with tributaries, P19): type, variable, years, coverage labels separately for each variable of the station (P16), location and its source or the reason for its absence; always with a counter of stations without a location (like `GET /stations`) | read |
 | `get_station` | station card: metadata, coverage of each variable separately, versions of series and archives, IMGW formulas | read |
 | `get_series_coverage` | coverage of a station's variables by year from the index; without archives: "unknown" and a plan to download them | read |
@@ -2799,9 +2861,9 @@ list, illustrative numbers, IMGWTools commands — proposals from 12.7):
    files: 720 in the store, 147 to download (about 30 MB), then the series
    of the dataset.
 5. `propose_actions` — a proposal card: (1) synchronisation of archives
-   and the dataset series, (2) an IMGW project job "przeplywy" in the Raba project
-   (`imgw project add`, 9 stations as a list of codes, Q, hydrological years;
-   IMGW-14), (3) the set "raba-przeplywy" with CSV flows of the 9 stations
+   and the dataset series, (2) a pin group "przeplywy" in the Raba project (the dataset's
+   series version and its archives for 9 stations as a list of codes, Q, hydrological years;
+   A-ADR-049), (3) the export "raba-przeplywy" with CSV flows of the 9 stations
    (IMGWTools export), a station layer and `ATRYBUCJE.txt`; warnings:
    "Mszana Dolna: dane od 1972", "Stróża: luki 3%", "Dobczyce: tylko H",
    "r.h. 2025 opublikowany 2026.08.31" and the IMGWTools message about the purpose of use
@@ -2814,7 +2876,7 @@ Clarifying questions: Q or H, the range of years (full by default), what to do w
 stations on the border of the area and without a location (the latter only explicitly, by
 river or hydrographic code — 6.8). The assistant does not skip stations with gaps:
 each goes into the proposal with a coverage label (P14), and the choice
-is saved as an IMGW project job (IMGW-14). **User decision
+is saved in the pin group of the project (A-ADR-049). **User decision
 2026-10-17 (section 15, P17):** calculations — characteristic flows,
 frequency analysis, low flows — are done by Hydrolog or Retman; the Archiwista
 assistant only prepares data and commands.
@@ -2832,7 +2894,7 @@ what must be added and where to implement it.
 - **L1. Input = specific versions** (`versions/…` and `sha256`), never
   standard paths: a link may jump to a newer flight, and the result
   would then silently change its content. A selection from the interface (a year from the summary,
-  a selection, a project job) is expanded to the list of versions shown
+  a selection, a pin group of a project) is expanded to the list of versions shown
   in the plan.
 - **L2. No silent substitutions.** Different horizontal systems, resolutions,
   height systems or data types are an error with an explanation or an explicit choice
@@ -2850,15 +2912,15 @@ what must be added and where to implement it.
   The same list of inputs and parameters = the same version (`reused`), so a result
   computed once serves the whole team.
 - **L6. A packaging result** (QGIS project, list of paths, VRT wrappers) is
-  a set directory in the project: not data, without versions, rebuildable from the manifest
-  (8.4).
+  a set directory in the project: not data, without versions, rebuildable from the project
+  file (8.4).
 - **L7. Plan before calculation:** every merging operation has a `check_*`
   twin (ADR-037 Z2) — inputs, grid and result system, size,
   warnings — without computing; Archiwista shows it in the "Okno planu" (Plan window).
 - **L8. Reproducibility in the project:** a merging operation is a Kartograf
-  command, so it can be a project job (an entry in
-  `kartograf/project/commands.py`): inputs pinned with the role `input`, the result
-  with the role `output` — like `soil hsg`.
+  command, so its run through the plan window can be pinned in a project as a group of
+  origin `plan` (A-ADR-049), with its result pinned like any version and its inputs named by
+  the result's sidecar (`extra.source_files`) — like `soil hsg`.
 
 Proposed names in Kartograf (the final ones will be set by a Kartograf ADR): commands
 in data groups, like `soil hsg` (ADR-039: groups by data type) —
@@ -2878,7 +2940,7 @@ added, also from segments that differ only in the sheet layout
 (PL-2000 zones; CZ: SM5 sheets in EPSG:5514 and TM33 tiles in EPSG:3045).
 Sources of the selection: a year row from the "Zestawienie" (Summary),
 a selection on the map or in the "Katalog" (Catalog),
-a project job's pins.
+the pins of a project's group.
 Choosing a variant from the "Zestawienie" (Summary) or the "Katalog" (Catalog) (A-ADR-017) expands to
 versions in a single format: by default a raster format ready for mosaicking (ASC,
 GeoTIFF), and when the variant has several such formats, the one chosen in the plan.
@@ -3048,68 +3110,63 @@ API candidates) with the contact rule, vertical checking and the report.
 `parent_request`, the consistency check with a hint, the plan and a background job
 (v0.6), and the set without merging (v1.1) — Archiwista.
 
-### 8.4 Mode 3: set for a project and QGIS (from v1.1)
+### 8.4 Mode 3: the exports of a project (`pliki.txt` and `ATRYBUCJE.txt`; QGIS from v1.1)
 
-**Input.** A project (all or selected project jobs) with pinned
-versions — the main path. Also a selection in the catalog or on the map
-(current versions) — an "ad hoc set", with the prompt "Dodaj do projektu, by
-zachować wersje" (Add to the project to keep the versions).
-IMGW stations enter the set through IMGW project jobs with pinned
-versions (`imgw-project.json`, IMGW-14; 4.7) — just like Kartograf's data.
-An ad hoc set can also include stations without a project job (a selection
-on the map or in the "Katalog" (Catalog), rows of the "Zestawienie" (Summary), an assistant proposal)
-— then their selection and current versions are recorded only in `zestaw.json`. Stations
-without a location are in the set as a table (CSV with the reason for the missing location), not as
-points of the station layer (6.8).
+The author's decision of 2026-10-31 (D6, A-ADR-049 decision 13): the release that holds
+v0.3, v0.4 and the projects writes `pliki.txt` and `ATRYBUCJE.txt`; the QGIS project and the
+other files of the table come with v1.1. The former "Zestaw" is an export of a project
+(glossary "Set").
 
-**Result** — the set directory:
+**Input.** A project's pins: of every group or of the chosen ones. A selection in the
+"Katalog" (Catalog) or on the map is pinned first ("Dodaj do projektu…", 4.7), so an export
+always names pinned versions; IMGW stations enter it through their pinned archive and series
+versions. Stations without a location are in the export as a table (CSV with the reason for
+the missing location), not as points of the station layer (6.8; v1.1).
 
-| File | Contents |
-|---|---|
-| `<name>.qgz` | QGIS project: a group per project job (or product), a layer per pinned file pointing to the **version** file (immutable bytes), layer CRS from the sidecar (`horizontal_crs`), default style by product (NMT hillshade, orthophoto RGB, CORINE palette, HSG classes), project CRS = CRS of most layers, attributions in the project metadata; the "IMGW" group: a station layer (version file of the station catalog with a filter on the selected codes) and series tables from `szeregi/` |
-| `vrt/` | VRT wrappers for files without a stored CRS (ASC, JPEG with JGW) — with an explicit SRS from the sidecar; optionally VRT mosaics of jobs (references only) |
-| `pliki.csv` | project job, unit, product, version path (relative to the store and absolute), standard path, label, `sha256`, size, horizontal and height CRS, license; for IMGW: station, dataset, variables, series file in the dataset's series version with `sha256`, and the CSV path in the set |
-| `pliki.txt` | just the list of version paths (for scripts, e.g. Hydrograf) |
-| `szeregi/` | IMGW series as CSV (`<code>_<dataset>.csv`) from the IMGWTools export (IMGW-12) — not processed by Archiwista; units in the header, gaps as empty cells, a flag column; input for, among others, Hydrolog |
-| `ATRYBUCJE.txt` | attribution texts from sidecars (`license.attribution`) without repetitions — required by the GUGiK license (art. 40a), CC BY 4.0 CUZK and the IMGW-PIB terms (§5 para. 3 and 4; 4.8.5) |
-| `polecenia.sh` | Kartograf commands that rebuild the project jobs (`format_command`, KB-4) and `imgw project download` commands that rebuild the IMGW project jobs, and for ad hoc stations — `imgw …` commands that rebuild the archives and series (IMGW-11, IMGW-14) |
-| `zestaw.json` | description of the set (`archiwista-set/1`): project, sums of both manifests, generation time, versions of Archiwista, Kartograf and IMGWTools, list of files, and for IMGW — stations, variables, years and their kind, versions of the series and of the station catalog — allows detecting an outdated set |
+**Result** — the export directory:
 
-**Where it is saved.** By default `<project directory>/zestawy/<name>/`, not
-in the store (it is not data) and without versions; regenerating replaces the
-directory atomically (new directory, then a rename). A change of pins
-in the manifest (Kartograf's or IMGW's) after generation marks the set as
-"nieaktualny — wygeneruj ponownie" (outdated — regenerate). Paths in `.qgz` and VRT are relative to the file when the
-project and the store share a common root (e.g. the same share), otherwise
-absolute; in team mode in the form appropriate for the client (path
-aliases, 4.6).
-A new current version of a dataset's series marks a set with an
-older version as "nieaktualny" (outdated) in the same way; the versions referenced in the set remain
-in the IMGW catalog (nobody deletes them).
+| File | Contents | From |
+|---|---|---|
+| `pliki.txt` | one pinned version file per line, each version once, in the order of groups and pins (for scripts, e.g. Hydrograf) | now |
+| `ATRYBUCJE.txt` | attribution texts of the pinned versions (`license.attribution` of their sidecars, kept in the index) without repetitions — required by the GUGiK license (art. 40a), CC BY 4.0 CUZK and the IMGW-PIB terms (§5 para. 3 and 4; 4.8.5) | now |
+| `<name>.qgz` | QGIS project: a group per pin group (or product), a layer per pinned file pointing to the **version** file (immutable bytes), layer CRS from the sidecar (`horizontal_crs`), default style by product (NMT hillshade, orthophoto RGB, CORINE palette, HSG classes), project CRS = CRS of most layers, attributions in the project metadata; the "IMGW" group: a station layer (version file of the station catalog with a filter on the selected codes) and series tables from `szeregi/` | v1.1 |
+| `vrt/` | VRT wrappers for files without a stored CRS (ASC, JPEG with JGW) — with an explicit SRS from the sidecar; optionally VRT mosaics of groups (references only) | v1.1 |
+| `pliki.csv` | pin group, unit, product, version path (relative to the store and absolute), standard path, label, `sha256`, size, horizontal and height CRS, license; for IMGW: station, dataset, variables, series file in the dataset's series version with `sha256`, and the CSV path in the export | v1.1 |
+| `szeregi/` | IMGW series as CSV (`<code>_<dataset>.csv`) from the IMGWTools export (IMGW-12) — not processed by Archiwista; units in the header, gaps as empty cells, a flag column; input for, among others, Hydrolog | v1.1 |
+| `polecenia.sh` | the producers' commands that rebuild the pins: the calls of the groups of origin `plan` and the command of each version pinned locally (`command_for_version`: KB-6, IMGW-21), as lines (`format_command`: KB-4, IMGW-11); a version without a command is a comment with the producer's reason | v1.1 |
+| `zestaw.json` | description of the export (`archiwista-set/1`): project, the SHA-256 of the project file it was made from, generation time, versions of Archiwista, Kartograf and IMGWTools, list of files, and for IMGW — stations, variables, years and their kind, versions of the series and of the station catalog — allows detecting an outdated export exactly | v1.1 |
+
+**Where it is saved.** `<project directory>/zestawy/<name>/`, not in the store (it is not
+data) and without versions; regenerating replaces each file atomically (a temporary name,
+then a rename), and Archiwista never removes an export. The project's list of exports says
+"projekt zmieniony po eksporcie — wygeneruj ponownie" (the project changed after the export —
+regenerate) when the project file is newer than the export (from v1.1 exactly, by
+`zestaw.json`). Paths in `pliki.txt` (and from v1.1 in `.qgz` and VRT) are relative to the
+export directory when it and the version file share a directory below the file system's root
+or drive (e.g. the same share), otherwise absolute, as the server reads them. A new current
+version of a dataset's series marks an export with an older version as "nieaktualny"
+(outdated) in the same way; the versions referenced in it remain in the IMGW catalog (nobody
+deletes them).
 
 **The "with data copy" option** (from v1.3, off by default): a copy of the
-pinned files with sidecars to `dane/<project task>/` — a package to
+pinned files with sidecars to the export directory — a package to
 hand over outside the team; the plan shows the size before copying.
 
-**Sidecar.** A set is not data, so it has no sidecar; `zestaw.json`
+**Sidecar.** An export is not data, so it has no sidecar; `zestaw.json` (v1.1)
 describes it completely, and each file has its own version sidecar in the store.
 
 **Limitations.** QGIS ≥ 3.34 LTR (QGZ, VRT); a multi-layer GeoPackage =
 one QGIS layer per layer; ZIP packages with SHP or GML — layers through
 `/vsizip/` when the format is recognized, otherwise only in the list; LAZ — a
 point cloud layer (QGIS builds an index on first opening — information
-in the set); CityGML and OBJ — only in the list; a project without pins
-(jobs not downloaded) — the set covers only pinned files and says so.
+in the export); CityGML and OBJ — only in the list; a pin whose version is missing or whose
+store is not configured is left out, and the export says how many.
 
-**What Kartograf already provides.** A manifest with pins (`open_project`),
-sidecars with CRS and license, `verify_project` (the set can be verified
-before handover).
+**What the producers provide.** Sidecars with CRS and license (read into the index), the
+command of a stored version (KB-6, IMGW-21) and `format_command` (KB-4, IMGW-11) for
+`polecenia.sh`, `export_series` (IMGW-12) for `szeregi/`. Nothing else is required.
 
-**What needs to be added.** Nothing mandatory from Kartograf; `format_command`
-(KB-4) for `polecenia.sh`. From IMGWTools: `export_series` (IMGW-12),
-`format_command` (IMGW-11) and a project manifest with pins (IMGW-14).
-
-**Where to implement.** Archiwista entirely — it is packaging
+**Where to implement.** Archiwista entirely (`src/archiwista/projects/`) — it is packaging
 and presentation without data processing (the IMGW series CSV is exported by IMGWTools).
 
 ### 8.5 Mode 4: version comparison
@@ -3196,8 +3253,8 @@ provides selection, plan, launch, preview and packaging.** Rationale:
 3. **CLI = API** (ADR-037): the same operation from the CLI, the library
    (Hydrograf), the QGIS plugin and Archiwista, with conformance tests; R6
    and `harmonize_dem` are already in Kartograf's backlog as API candidates.
-4. **Reproducibility:** only a Kartograf command can be a project job
-   with pinned inputs and result (the `soil hsg` pattern).
+4. **Reproducibility:** only a Kartograf command can be run again for a pin group of
+   origin `plan`, its result pinned and its inputs named by its sidecar (the `soil hsg` pattern).
 5. **Shared store:** a result as a version with a sidecar is visible
    and reused by everyone (L5), instead of being computed separately in each
    instance.
@@ -3223,7 +3280,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
   index — never an arbitrary file system path (10.1).
 - **Producer commands:** every command names the producer
   (`producer`: `kartograf` or `imgwtools`). Kartograf command options have
-  the same JSON form as `tasks[].options` in the project manifest (`bbox`
+  the same JSON form as the `options` of a call of a pin group of origin `plan` in the project file (`bbox`
   as 4 numbers with `bbox_crs`, per-country values as an object
   `{"pl": …, "cz": …}`, lists as arrays), and IMGWTools options have the form
   from its command catalog (IMGW-11).
@@ -3306,6 +3363,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /stores/{store}/slots/{slot}` | file card: versions, current and full, pins |
 | `GET /stores/{store}/versions/{version}` | version: metadata in human-readable form and sidecar |
 | `GET /stores/{store}/versions/{version}/sidecar` | raw sidecar |
+| `GET /stores/{store}/versions/{version}/command` | the producer's command that selects this version (`command_for_version`: KB-6, IMGW-21; offline): `producer`, `command`, `options` and its `line` (`format_command`; `null` for a producer without commands); `422 unsupported` with the reason `command_not_rebuildable` and the producer's text when its metadata does not rebuild the call, or `no_commands`; the file card's "Polecenie Kartografa" (A-ADR-049) |
 | `GET`/`POST /stores/{store}/versions/{version}/preview` | preview state or build in a `preview` job |
 | `GET /stores/{store}/versions/{version}/file` | the version's file (from v0.4, 10.2): streamed with `Range`, `Content-Disposition: attachment` with the file's name, the type of its format, `nosniff`, `Cache-Control: private, no-store`; never inline (a PDF too); a version the index knows, resolved inside the store; at most two downloads at once per person (`429 rate_limited`); logged from its first byte; a link of the interface needs no CSRF header (`Sec-Fetch-Site: same-origin` or `none`, A-ADR-047); stops about a second after its session ends (a sign-out, its expiry, the person, an administrator or a password change ending it, a revocation of agent sessions) or its account is disabled or removed: the connection closes before the file's end (`security.session_watch`) |
 | `GET /stores/{store}/versions/{version}/preview.png` | thumbnail |
@@ -3342,18 +3400,19 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /commands/parse` | pasted command → `command`, `options` (KB-2) |
 | `POST /commands/validate` | validation without the network (KB-3, IMGW-11) |
 | `POST /commands/format` | options → text of the `kartograf …` or `imgw …` command (KB-4, IMGW-11) |
-| `POST /jobs` | background job: `check`, `download`, `series`, `compose`, `export`, `preview`; `check` and `download` take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); a project's jobs start at `POST /projects/{id}/jobs` |
+| `POST /jobs` | background job: `check`, `download`, `series`, `compose`, `export`, `preview`; `check` and `download` take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); a `download` with `pin` (`project`, `group`: a new group's name) pins its files and the positions of its plan the store held into that project when it succeeds — it also needs `project.write`, and a taken group name is `409 group_exists` before a job (A-ADR-049 decision 9); a project's jobs start at `POST /projects/{id}/jobs` |
 | `GET /jobs`, `GET /jobs/{id}` | list and state of jobs with the actor (`actor`), `project` filter; from v0.4 the list holds every job of the queue, and a job only of projects the session does not see shows its kind, store, actor, state and progress counts only (`hidden: true`); such a job at its own address → `404` |
 | `GET /jobs/{id}/events` | SSE of a visible job (`progress`, `notice`, `state`), resumption via `Last-Event-ID`; ends after the final state, about a second after its session ends or its account is disabled or removed (as for `…/file`, from v0.4), or once the session no longer sees the job |
-| `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`; a project's download or repin: `project.write` and `store.write`; from v0.4 a store's scan, outlines or link check and the scan of every project's folder: `store.scan`; the scan of one project's folder: the limits of a person's scans, `429`) (ADR-038, ADR-040) |
+| `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`, with `pin` also `project.write`; a project's re-pin or restore: `project.write` and `store.write`; from v0.4 a store's scan, outlines or link check and the scan of every project's folder: `store.scan`; the scan of one project's folder: the limits of a person's scans, `429`) (ADR-038, A-ADR-049) |
 | `GET /jobs/{id}/log` | the end of the job log (the last MiB), for a session that sees the whole job (ADR-038) |
-| `GET /projects`, `POST /projects` | list (each project, one per directory, with `manifests`: each producer's manifest with its `store`, `status`, `problem` and `scanned_at`, Kartograf's first; `store` lists the projects with a manifest naming the store); a new project of a producer (`producer`, `path`: absolute, a project directory of the settings or at most four levels below one where a scan finds it; `store`: the configured store whose directory of the producer the manifest names, relative to the project directory when the store has path aliases, never the default root; one member for both producers: Kartograf's `root`, IMGWTools' `store_dir` underneath) → the producer's `init_project`, `201` with the card; a directory with the other producer's manifest stays one project with its key; an existing project is found by the scan of the project directories; from v0.4 any signed-in person creates a project where none is yet and becomes its owner (visibility `default_project_visibility`; logged as `project.create`), and adding a manifest to an existing project needs `project.write` (a directory with an access entry, an indexed project or any producer's manifest, scanned or not, is one) (A-ADR-039 erratum 3) |
-| `GET /projects/{id}` | the manifests, project jobs of both producers (`producer` field), pins (`producer` field), state from the index, problems (a job name in both manifests: `duplicate_task`); this card and each item of `GET /projects` say whether the session may change the project (`project_write`: its owner or an administrator, read on every request; the interface shows a change it may not make disabled with its reason) |
-| `GET /projects/{id}/status` | each manifest's producer's `get_project_status` (no network, fast): `manifests` with the state of each task; while a manifest's store is unavailable, its last scan's state (`stale`) |
-| `POST /projects/{id}/tasks` | the producer's `add_project_task` (`name`, `command`, `options`, optionally `producer`: the manifest's producer, the project's only manifest by default, required for a project of both manifests (`producer_required`); validation without the network; the project's owner or an administrator; IMGW: IMGW-14; ADR-039) |
-| `DELETE /projects/{id}/tasks/{name}` | `remove_project_task` of the producer of the manifest (`?producer=`, as for adding a task) (files stay in the store; the project's owner or an administrator; ADR-039) |
-| `POST /projects/{id}/jobs` | a job of the tasks of the project's manifest (`kind`: `download` — download and pin what is not pinned yet, restore missing pinned versions; `repin` — one task anew to the source's newer versions; `check` — the pins against the source; `verify` — the pinned files in the store, no network; `tasks` optional, exactly one for a repin; `producer` optional, as for adding a task) → `202` with the job; a download and a repin need `project.write` and `store.write`, a check and a verification only visibility; one job per project (`409`); the manifest's store must be configured (`409 unknown_store`); a retry asks the same (ADR-040) |
-| `POST /projects/{id}/sets`, `GET /projects/{id}/sets` | set for QGIS (`export` job), list of sets |
+| `GET /projects`, `POST /projects` | list (each project, one per directory with `archiwista-project.json`: `name`, `description`, `state` (`ok`, `invalid`, `unsupported_schema`) with its problem, `stores` (each producer's root as written and the configured store it matches, `null` when none), `area` (path, state, `area_id`), counts of groups, pins and missing pins, `scanned_at`; `store` lists the projects whose store entry matches the store); a new project (`path`: absolute, a project directory of the settings or at most four levels below one where a scan finds it, made when missing; `name`, by default the directory's name; `description`; `area_id`, an area of the index written into `obszary/`) → Archiwista writes `archiwista-project.json`, `201` with the card; a directory holding the file already is `409 project_exists`; any signed-in person creates a project and becomes its owner (visibility `default_project_visibility`; logged as `project.create`), and a directory with an access entry but no file needs `project.write` (A-ADR-039 erratum 3, kept by A-ADR-049) |
+| `GET /projects/{id}` | the card: the project of the list with its directory, its groups (name, origin: the producer's calls of `plan` or the selections of `local`) and their pins (producer, version, `sha256`, `content_sha256`, size, unit, label, who pinned and when, the state from the index: `ok`, `missing`, `sha256_mismatch`, `unknown`; for a local pin whether its command can be rebuilt: `rebuildable`, `not_rebuildable` with the producer's text, `unknown`), problems (an invalid project file, an unknown store, missing pins, a changed area); this card and each item of `GET /projects` say whether the session may change the project (`project_write`: its owner or an administrator, read on every request; the interface shows a change it may not make disabled with its reason) |
+| `PATCH /projects/{id}`, `PUT /projects/{id}/area`, `PUT /projects/{id}/stores/{producer}` | the owner or an administrator changes the name and description (`project.update`), sets or clears the area (`area_id` or `null`; `project.area`), or moves a producer's store entry to another configured store (`store`; `project.store`); each answers the card; the project file is changed under its lock (`409 project_locked`, `invalid_project_file`, `unsupported_project_schema`) (A-ADR-049) |
+| `POST /projects/{id}/groups`, `POST /projects/{id}/groups/{group}/pins` | the owner or an administrator pins versions the store holds, without the network, into a new group (`name`) or a group of origin `local`: `from` (`local_state`, `catalog`, `file`) and either `versions` (store and version path) or `query` (the filters of `GET /slots`, every page); a version not present or without `sha256` is skipped with its reason, one pinned already is counted; above 10,000 pins `400 too_many_pins`; a version of another store than the project's for its producer `409 other_store`; a plan group `409 group_origin_plan`; answers the card and what was pinned and skipped (`project.pin`) |
+| `POST /projects/{id}/groups/{group}/unpin`, `DELETE /projects/{id}/groups/{group}` | removes the named pins of a group (`pins`: producer and version) or the whole group; the files stay in the store (`project.unpin`) |
+| `POST /projects/{id}/jobs` | a job over the project's groups (`kind`: `verify` — the pinned files hashed in the store, no network; `check` — the pins against the source; `repin` — exactly one group anew in the producer's update mode, its pins replaced after the whole run succeeded; `restore` — missing pinned versions downloaded again and kept by `sha256` or `content_sha256`; `groups` optional, every group by default) → `202` with the job; a re-pin and a restore need `project.write` and `store.write`, a check and a verification only visibility; one job per project (`409`); a group whose producer has no commands is `422 no_commands`, one whose versions have no command is refused for a re-pin (`422 command_not_rebuildable`); the store must be configured (`409 unknown_store`); a retry asks the same (A-ADR-049) |
+| `GET /projects/{id}/activity` | whoever sees the project: its entries of the action log newest first, with a cursor — the project's changes (`project.*`) and its jobs (`job.start`, `job.retry`, `job.cancel`), with who, when, the outcome and the details, without the client address or session (D7, A-ADR-049) |
+| `POST /projects/{id}/exports`, `GET /projects/{id}/exports` | the owner or an administrator writes `zestawy/<name>/` with `pliki.txt` and `ATRYBUCJE.txt` from the pins of every group or of `groups` (`project.export`; a pin left out is counted); the list of exports says when the project changed after an export; the QGIS set from v1.1 (8.4) |
 | `POST /assistant/conversations`, `GET …`, `DELETE …/{id}` | conversations |
 | `POST /assistant/conversations/{id}/messages` | message → SSE stream (text, tool calls, proposals, effects in the interface) |
 | `GET /assistant/proposals/{id}` | proposal |
@@ -3394,7 +3453,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
       },
       "versions_count": 1,
       "crs": {"horizontal": "EPSG:2180", "vertical": "EPSG:9651"},
-      "pinned_by": [{"project": "raba", "task": "teren"}]
+      "pinned_by": [{"project": "raba", "group": "NMT 2023"}]
     }
   ],
   "next_cursor": null
@@ -3438,7 +3497,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
                          "sheet_system": "1992", "resolution": "1m",
                          "vertical_crs": "EVRF2007", "year": 2023}}],
   "update": null,
-  "project_task": {"project": "raba", "name": "teren-2023"}
+  "pin": {"project": "raba", "group": "NMT 2023"}
 }
 ```
 
@@ -3853,17 +3912,17 @@ over TLS.
   read is resolved (`realpath`) and must lie in the root of a
   configured store or the project directory; symbolic links
   leading outside the root are rejected. The same applies to checking links
-  and project state in jobs. A project manifest that is a symbolic
+  and project state in jobs. A project file that is a symbolic
   link outside the configured projects directory is not read:
   the project appears as invalid with the message `path_outside_root`.
 - **Writing:** Archiwista has no code that writes to the store (in none
   of the producer directories); it writes
   only the index, the preview cache and logs (locally) and — at the
-  user's command — in the project directory: snapshots of own data
-  in `<data folder>/.wersje/` (4.7.1, from v0.2), a geometry file
-  in `<project directory>/obszary/` when adding a project job with an area
-  drawn or loaded from a file (a recommendation of the manifest spec: geometry
-  in the project directory moves together with it) and the set directory (from v1.1).
+  user's command — in the project directory: the project file
+  `archiwista-project.json` under its lock (4.7, A-ADR-049), snapshots of own data
+  in `<data folder>/.wersje/` (4.7.1, from v0.2), the area's geometry file
+  in `<project directory>/obszary/` (GeoJSON from an area of the index, so it moves with the
+  project directory) and the exports in `zestawy/` (8.4).
 - **Geometry files from the user:** content ≤ 50 MB; an archive is rejected
   before unpacking when the declared unpacked size exceeds
   200 MB or a member leaves the directory; reading in a worker process
@@ -3986,10 +4045,10 @@ over TLS.
 - **Roles:** a regular "user" (without roles: browsing the store, previews, projects
   visible to them, creating projects (from v0.4: the creator owns the project), changes to and
   sharing of their own projects with their data folder, snapshots in them;
-  from v1.1 sets, from v1.2 conversations with the assistant; executing a proposal requires
+  exports of their projects (the QGIS set from v1.1), from v1.2 conversations with the assistant; executing a proposal requires
   the permissions of the given action), "write to the store" (`store_writer`: actions
-  that write to the central store through the producers' API — download, project
-  download, synchronization and IMGW series, from v0.6 merging; checked from v0.3),
+  that write to the central store through the producers' API — download, a project's re-pin
+  and restore (A-ADR-049), synchronization and IMGW series, from v0.6 merging; checked from v0.3),
   "administrator" (`admin`; administrator of the Archiwista system, not of the server:
   settings, stores and their scans, accounts, groups, permissions, all projects, the action
   log; from v1.2 the assistant provider). The `store_write_for_all` setting grants write access to the
@@ -4015,7 +4074,8 @@ over TLS.
 - **Action log (A-ADR-047):** who signed in (and how), signed out or failed to sign in,
   changed a password, ended sessions, issued or revoked agent tokens; who changed accounts,
   roles, temporary passwords, groups, a project's access, owner or data folder, created a
-  project or changed its tasks, changed settings; who started, cancelled or retried a job (not
+  project or changed it (its name and description, area, stores, pins and groups, exports:
+  A-ADR-049), changed settings; who started, cancelled or retried a job (not
   the scheduler), downloaded a file, was refused an action (`403`), exported the log; from
   v1.2 who approved a proposal. Each entry: when (UTC), who (`actor`, `actor_kind`, the
   session's label), from where (the client address), what (`action`, `target`), the outcome
@@ -4024,7 +4084,8 @@ over TLS.
   changes or deletes an entry; entries older than `action_log_retention_days` (365) are
   deleted by the server, which logs it. Administrators read it (`GET /log`, "Dziennik",
   `archiwista log list`) and export it (`GET /log/export`, `archiwista log export`: JSON Lines
-  or CSV with formula-safe cells).
+  or CSV with formula-safe cells); whoever sees a project reads its own entries, without the
+  client address (`GET /projects/{id}/activity`, A-ADR-049 decision 14).
 - **Shared queue (v0.4, A-ADR-047):** everyone sees every job of the queue (kind, store, who,
   state, progress); a job of projects the person does not see shows no more (`hidden`) and
   answers `404` at its own address. A planned download (`plan_job`) claims the positions it
@@ -4051,12 +4112,12 @@ over TLS.
   settings and the browser, and the path aliases of the person's computer (a prefix on the
   server and the same share on that computer, e.g. `/mnt/nas/` → `Y:\`), applied only to paths
   shown and copied ("Kopiuj ścieżkę", `CopyPath.personal`), never to the server's access to
-  files; the store's path aliases of the settings stay for matching manifests (4.6), and the
+  files; the store's path aliases of the settings stay for matching project files' store roots (4.6), and the
   widths of panels stay in the browser.
 - Writes to the shared store still only through the producers (Kartograf,
   IMGWTools) in the server's worker processes; parallel use of the CLI by
   team members is safe thanks to the producers' guarantees (exclusive write
-  of a version, Kartograf's manifest lock).
+  of a version) and Archiwista's lock of a project file (4.7).
 
 ### 10.3 Threats and protection
 
@@ -4069,7 +4130,7 @@ over TLS.
 | Command injection into the assistant | unwanted actions | no executing tools, human confirmation (7.9) |
 | API key leak | costs, abuse | key only in the server environment |
 | Accidental mass download | gigabytes, load on sources | "Okno planu" (Plan window), additional confirmation thresholds, Kartograf's limits |
-| Interruption during a write | corrupted store or manifest | atomic writes by the producers (Kartograf; IMGWTools — IMGW-2); recognition of a leftover manifest lock (5.6) |
+| Interruption during a write | corrupted store or project file | atomic writes by the producers (Kartograf; IMGWTools — IMGW-2) and by Archiwista (the project file replaced whole under its lock); recognition of a leftover lock with instructions (4.7, 5.6) |
 | Disclosure of the area of interest (basemaps, model provider) | project confidentiality | offline mode, local model, notice on first use |
 | Unusual or corrupted IMGW archive (encoding, ZIP) | crash or hang of the parser | parsing only in IMGWTools in a worker process, size and time limits, job error with IMGWTools text |
 | Guessing or reused passwords (team mode) | another person's account | Argon2id hashes, 12 characters and a list of common passwords, a growing wait per account name and per address, one answer and the same work for every failure, every failure in the action log (10.2) |
@@ -4101,12 +4162,10 @@ over TLS.
   archive versions (including `relabeled`), two versions of a dataset's series (current
   and outdated), a station catalog (a station without a location, `0,0`, coordinates
   with two decimal places) and edge cases (`.incoming/`,
-  unknown contract version, unreadable sidecar, file without a sidecar) as well as a
-  project directory with `imgw-project.json` next to `kartograf-project.json`
-  (a pinned and not downloaded job, an invalid manifest, a leftover
-  lock). Contract test: IMGWTools' `iter_store` and `open_project`
-  (IMGW-10, IMGW-14) on this catalog return the expected list — the catalog conforms
-  to the IMGWTools format, not to Archiwista's idea of it.
+  unknown contract version, unreadable sidecar, file without a sidecar). Contract test:
+  IMGWTools' `iter_store` (IMGW-10) on this catalog returns the expected list — the catalog
+  conforms to the IMGWTools format, not to Archiwista's idea of it — and its
+  `command_for_version` (IMGW-21) answers a call or its coded refusal.
 - **Unit and integration tests:** index (full scan, incremental,
   disappearances, store unavailable, hard links on a "share" without inodes);
   coverage labels (6.4) on recorded availability reports, including the
@@ -4152,7 +4211,7 @@ over TLS.
   (from v0.1 also a test with a mock second adapter); a parity test —
   a download through the Archiwista API and by the same CLI command on recorded
   source responses yields the same store (versions, `sha256`, sidecars
-  with a frozen clock) and the same pins in the manifest (model: Kartograf's
+  with a frozen clock), and a group pinned from that download names exactly those versions (model: Kartograf's
   compliance tests, ADR-037 Z7), and from v0.5 likewise synchronisation
   and IMGW series against the `imgw …` commands; supported version ranges
   of Kartograf (required dependency) and IMGWTools (extra `[imgw]`)
@@ -4165,7 +4224,7 @@ over TLS.
   the import test ensures that Archiwista starts without the `imgwtools` package.
   With `[imgw]`: tests of the IMGW adapter and of the contract on a catalog built by
   IMGWTools. The check of versions and schemas (`kartograf-meta/1`,
-  `kartograf-project/1`, `imgw-meta/1`, `imgw-project/…`) has tests
+  `kartograf-store/1`, `imgw-meta/1`) has tests
   of compatibility and incompatibility with a message, and the plugin registry — a test
   with a mock second adapter registered through an entry point and a test of a
   broken plugin (an exception on loading does not bring the server down).
@@ -4251,7 +4310,7 @@ kept in ADR-041 and ADR-044) — unchanged.
 | KB-3 | `validate_command(command, options) -> None` — validation without network (the same as `add_project_task`); `ValidationError` with the name of the option concerned | errors at the right form field | v0.3 |
 | KB-4 | `format_command(command, options) -> str` — the `kartograf …` text | "Polecenie Kartografa" (Kartograf command), `polecenia.sh`, assistant proposals | v0.3 |
 | KB-5 | `run_command(command, options, *, root, update=None, plan=None, …)` and `check_command(…)` — invocation by command name; Kartograf returns the envelope `kartograf-result/1` (the report of the family, or the plan, in `result`) and has no `cancel` yet (request KC-1) | worker process without a switch over Kartograf functions | v0.3 |
-| KB-6 | `command_for_file(sidecar) -> CommandCall` — the command that selects this file (from `request`, `dataset`, variant and year) | "Polecenie Kartografa" (Kartograf command) and "Dodaj do projektu" (Add to project) from the file card | v1.1 |
+| KB-6 | `command_for_file(sidecar) -> CommandCall` — the command that selects this file (from `request`, `dataset`, variant and year), offline; where the sidecar does not rebuild the call (land cover and collections chosen by a box, CZ collections by a box, the derived `soil hsg`) a refusal with `code` `unsupported` and `details.reason` `command_not_rebuildable` | the check, re-pin and restore of a version pinned from the store (4.7, A-ADR-049); "Polecenie Kartografa" (Kartograf command) of the file card; `polecenia.sh` of an export (8.4, v1.1) | projects (released with v0.3 and v0.4, D2) |
 | KB-7 | `find_admin_units(query, *, country, level) -> list[AdminUnit]` (code, name, level, envelope) — PRG and RUIAN, by name or code | choosing an area by municipality or county name; assistant tool | v0.3 (without KB-7: codes only) |
 
 ### 12.3 KC — long-running operations
@@ -4279,12 +4338,15 @@ kept in ADR-041 and ADR-044) — unchanged.
 | KF | `build_cross_border` / `check_cross_border` (+ `kartograf elevation cross-border`) — R6 from the backlog: common grid, EVRF2007 on both sides, seam rule, seam report | mode 2, merged surface (8.3) | v0.6 |
 | KG | `compare_versions` / `check_compare` (+ `kartograf elevation compare`): difference model with statistics and a significance threshold; later `compare_vector_versions` | mode 4, level 3 (8.5) | v1.3 |
 
-### 12.6 KH — projects
+### 12.6 KH — projects (withdrawn)
+
+Withdrawn on 2026-10-31 (ECO-054, A-ADR-049): Kartograf keeps no projects, so Archiwista
+asks it for none of these; Archiwista writes its own project file.
 
 | ID | API (proposal) | Purpose | Version |
 |---|---|---|---|
-| KH-1 | `set_project_root(project_dir, *, root)` — changing a project's store with validation (atomic write under a lock like other manifest changes) | moving the store or a different share path without manually editing JSON (4.6) | v0.3 |
-| KH-2 | (optional) `download_project(..., offline=True)` — pinning local versions only, without requests; a unit that requires the network = job error | "Dodaj do projektu" (Add to project) without network (UC-02) | — |
+| KH-1 | withdrawn: `set_project_root(project_dir, *, root)` | moving a project's store is Archiwista's own change of its file (`PUT /projects/{id}/stores/{producer}`, 4.6, 4.7) | — |
+| KH-2 | withdrawn: `download_project(..., offline=True)` | pinning what the store holds needs no producer: Archiwista pins from its index (4.7) | — |
 
 ### 12.7 IMGW — requirements for IMGWTools
 
@@ -4357,13 +4419,14 @@ did not repeat them.
 | IMGW-11 | **Command catalog and CLI = API** (the counterpart of KB): `data_commands()` (commands, options, allowed values, descriptions in Polish), `validate_command`, `format_command` → `imgw …`, `run_command` and `check_command` with `on_progress`, `on_notice` (level, code, text — also the information about the purpose of data use, 4.8.5) and `cancel` checked between files; the CLI calls the same functions (in 2.1.1 `imgw fetch` downloaded with its own `download_file`, `IMGWTools/src/imgwtools/cli/fetch.py:12-67`); exceptions from the `IMGWError` hierarchy | forms, the "Okno planu" (Plan window), a command to copy, cancellation without killing the process | v0.5 |
 | IMGW-12 | **Series export**: `export_series(version=None, /, *, root=None, dataset=None, station, variables=None, start=None, end=None, year_type=None, format="csv", path=None, …) -> Path \| Iterator[str]` (`station` and `path` named only; `path=None` = row stream) — UTF-8, separator `,`, decimal point, ISO dates, one header row with units, a year column in the chosen convention (`year_type`: `hydrological` or `calendar`, for hydro and meteo, P15; `None` = the numbering convention of the dataset's archives, i.e. the `year_type` of the `series.json` index), empty cell = missing, a flag column, formulas in the columns `attribution_source` and `attribution_processed` of the first data row; all days of the station's continuous calendar, also those with gaps (P14) | set (8.4) for Excel, QGIS and Hydrolog (`daily_values`, `dates`), consumed by Archiwista from v1.1 | v0.5 (IMGWTools) |
 | IMGW-13 | **Schema versioning**: `imgw-store/1`, `imgw-meta/1`, `imgw-series/1`, `imgw-project/1` (3.0.0 adds among others `imgw-plan/1` and `imgw-observation/1`) — within `/1` only additive changes, an incompatible change = `/2` and a reader of both versions in a transition period; read API version policy; offline contract tests on archive fixtures (CP1250, UTF-8 with BOM, quotes, both layouts of daily hydro files) | Archiwista declares the supported versions and does not read unknown ones instead of guessing | v0.5 |
-| IMGW-14 | **IMGW project manifest** (`imgw-project/1`, P18, A-ADR-023): the file `imgw-project.json` in the project directory next to `kartograf-project.json` (each file has one owner; a project can have one or both); fields: `schema`, `store_dir` (the IMGW directory; relative and absolute paths as in the Kartograf manifest), optional `extensions`, `tasks[]` — `name` (Kartograf's name rules), `command` (an IMGW command from IMGW-11, e.g. `series select`), `options` (dataset — a job concerns one dataset, so one provider; stations as an explicit list of codes — a selection by area saved after resolution, with the area file in `options.geometry`; variables, years and `year_type`), `geometry_sha256` (a job field: map path → SHA-256, only for selection by area), `pinned_at`, `imgwtools_version`, `files[]` (`role`: `series`, `station_series`, `catalog`, `input`; `path` — version path relative to `store_dir`; `sha256`; `station_code` for station files; for the canonical form of ČHMÚ also `content_sha256` and `content_form`); API = CLI (`imgw project init/add/remove/set-store/download/check/status/verify`): `init_project`, `open_project` (full validation, errors in Polish), `add_project_task` (validation as `validate_command`), `remove_project_task`, `set_project_store`, `download_project` (synchronization of the needed archives, series `unchanged`, pinning; restoring with identical `sha256` or — ČHMÚ — explicitly by content, IMGW-19), the twin `check_project` (`imgw-plan/1`), `verify_project`, `get_project_status` (no network); task states `unpinned`, `current`, `content_match`, `missing`, `changed`, `upgraded`, `failed`, `cancelled`; atomic write (`os.replace`) under the lock `.imgw-project.lock` (`mkdir`, owner, no takeover) and per-task merging | IMGW data as project tasks and pins in v1.0: "Dodaj do projektu" (Add to project) for stations, status, verification, restoring on a colleague's machine, a set from pins (4.7, 8.4) | v0.5 |
+| IMGW-14 | **Withdrawn (2026-10-31, ECO-054, A-ADR-049):** the IMGW project manifest `imgw-project/1` and the project functions (`imgw project …`); IMGWTools removes its projects and IMGW versions are pinned in Archiwista's project file `archiwista-project/1`; the command of a stored version is IMGW-21. The text of the requirement is in the history of this file | — | — |
 | IMGW-15 | **Provider in the contract**: every dataset, sidecar, station catalog entry and project job carries a provider (`dataset` `cz.chmi.<dataset>`, `country` `CZ`, `provider` `CHMI` — machine identifier; display name "ČHMÚ" from the provider descriptor); station identity = provider + identifier (WIGOS for ČHMÚ); `store_info` lists the supported providers (identifier, display name, datasets, license); `provider` filter (`IMGW-PIB` \| `CHMI`) in `iter_store`, `read_catalog` and the command catalog; ČHMÚ archive slot = file path on the server (as in IMGW-4); change only additive in `/1` or `/2` with a reader of both (IMGW-13) | one adapter and one index for PL and CZ stations, without code collisions; the "ČHMÚ" badge without translation in Archiwista's code | v0.6 |
 | IMGW-16 | **ČHMÚ archives, freshness and synchronization**: the datasets from 4.8.6 as 1:1 archives with an `imgw-meta/1` sidecar (written as in IMGW-1..IMGW-3); `check_store`/`sync_store` for `cz.chmi.*` with a required `stations` (the unit of publication is the station — no "whole country"; `years` optional for hydro, not allowed for meteo; no combining with `pl.imgw.*` in one call), signal from the server directory listing, statuses as in IMGW-5; a file not published by the source = `unverifiable` with `error` `"nieopublikowany"` (synchronization: `unchanged` without a version; flat download: `not_published`), distinct from `missing` (file published, absent locally), without a job error; the same bytes under a new signal = `relabeled`, different bytes of the same canonical content (`content_sha256`, form `chmi-json/1`) = `unchanged` with the message `content_unchanged` and a signal observation (`observations/`, `imgw-observation/1`); an `imgw-plan/1` plan with the number of requests | freshness and "Pobierz nowsze" (Download newer) for ČHMÚ stations in the catchment; "nieopublikowany" (not published) as information, not a problem | v0.6 |
 | IMGW-17 | **ČHMÚ station catalog**: a separate version of the provider's station catalog (slot `catalog:cz.chmi.stations`, `stations/versions/chmi_stations/`; hydro from `meta1.json`, `meta3.json` and the station list archive, meteo from `meta1-<YYYYMMDD>.json` and the station list archive) with the fields and validation of 4.8.1 (WGS84 position with source and uncertainty; outside CZ or `0,0` = no position, the entry stays); name, river, catchment hierarchy code (`HLGP4`) as text in `hydrographic_code`; SPA thresholds in the `thresholds` object | ČHMÚ stations on the map, in the "Katalog" (Catalog) and in the catchment | v0.6 |
 | IMGW-18 | **ČHMÚ series and coverage**: `build_series` for `cz.chmi.*` (`imgw-series/1`: the same columns, `null` → missing with a flag, `hydro_year` XI–X for hydro and meteo; `year_type` of the listing `calendar`; station periods `stations[<code>].periods`, so a year without a station file is unknown, not a gap; meteo also `<V>_quality` and `<V>_source_flag`); `summarize_coverage` separately for each variable (IMGW-8) written in `series.json`; `read_series`, `read_series_index` and `export_series` with unchanged signatures | coverage labels, chart and set for ČHMÚ stations the same as for IMGW | v0.6 |
 | IMGW-19 | **ČHMÚ commands, project and license**: ČHMÚ synchronization and series commands in `data_commands()` with `format_command` → `imgw …` (CLI = API, `cancel`); an `imgw-project/1` project with jobs of both providers (a job = one dataset, so one provider); restoring ČHMÚ pins with identical bytes or explicitly by content (`restored_by_content`, job state `content_match`); `license` CC BY 4.0 (`id` `CC-BY-4.0`, `terms_url`) with ČHMÚ attribution in archive sidecars, the catalog and series, and in the CSV export (in processed form with a note about the processing); `on_notice` messages in Polish | the "Okno planu" (Plan window), a command to copy, project jobs and attributions without Archiwista's knowledge of ČHMÚ | v0.6 |
 | IMGW-20 | **Dataset key convention** (4.2.1): dataset key = `dataset` of the `imgw-meta/1` sidecar and of the `series.json` listing in the form `<country>.<provider>.<dataset>[_<variant>]` (lowercase, dots between parts, underscores within: `pl.imgw.hydro_daily`, `cz.chmi.meteo_daily`); unchanged from the first release with the store; renaming only through the IMGWTools alias table — raw `dataset` in the sidecar unchanged, normalized `dataset_key` from `read_meta` (`None` for an unknown key, not an empty string; 3.0.0: `DATASET_KEY_ALIASES`, `resolve_dataset_key`; model: `_DEV_DATASETS` of Kartograf); the provider only in the `provider` field (`IMGW-PIB`, `CHMI`), and the key prefix (`imgw`, `chmi`) is not its identifier (IMGW-15) | index, filters and pins based on the key without parsing the key; the same key contract as in Kartograf (KA-8); old sidecars readable after renaming | v0.5 |
+| IMGW-21 | **The command of a stored version** (added 2026-10-31, ECO-054; the counterpart of KB-6): `command_for_version(version, *, root=None) -> CommandCall` for a stored archive or series version (a path relative to the store), offline and read-only; where the metadata does not rebuild the call, a refusal of its error class with `code` `unsupported` and `details["reason"]` `command_not_rebuildable` | the check, re-pin and restore of an IMGW version pinned from the store, the command shown for a version, `polecenia.sh` (4.7, 8.4, A-ADR-049) | projects (released with v0.3 and v0.4, D2) |
 
 ### 12.8 IMGW format contract (recommendation, A-ADR-020)
 
@@ -4501,11 +4564,11 @@ reports it (UC-13).
 
 ### 12.9 What we do not require
 
-- No Archiwista fields in sidecars or in the manifest; no Archiwista file
+- No Archiwista fields in sidecars; no Archiwista file
   in the store (store identifier, index, locks).
 - No interface logic in Kartograf: coverage labels, preview styles
   and the QGIS project belong to Archiwista.
-- No changes to the formats `kartograf-meta/1`, `kartograf-project/1`
+- No changes to the formats `kartograf-meta/1`
   and `kartograf-plan/1` beyond the listed extensions (new fields
   are additive; derived products use the HSG shape).
 - From IMGWTools — likewise: no Archiwista fields or files
@@ -4515,18 +4578,19 @@ reports it (UC-13).
 
 ## 13. Roadmap (v0.1 → v1.0 MVP → v1.x)
 
-MVP = v1.0 (user decision 2026-10-17, A-ADR-025; v0.6 "PL + CZ" is in the MVP — erratum 3, 2026-10-18). The order and scope of releases are defined by `docs/SCOPE.md`; this section keeps the scope details of the individual versions and the acceptance criteria. First come the functions that do not require new Kartograf functions, and later the modes that depend on its releases. IMGW data (v0.5) waits for an IMGWTools release with the contract (12.7), and v0.6 — for KF in Kartograf and the ČHMÚ stations in IMGWTools (IMGW-15..IMGW-19); the source interface and the plugin mechanism are created in v0.1 (A-ADR-024), so the IMGW adapter (extra `archiwista[imgw]`) requires no rebuild.
+MVP = v1.0 (user decision 2026-10-17, A-ADR-025; v0.6 "PL + CZ" is in the MVP — erratum 3, 2026-10-18). The order and scope of releases are defined by `docs/SCOPE.md`; this section keeps the scope details of the individual versions and the acceptance criteria. First come the functions that do not require new Kartograf functions, and later the modes that depend on its releases. IMGW data (v0.5) waits for an IMGWTools release with the contract (12.7), and v0.6 — for KF in Kartograf and the ČHMÚ stations in IMGWTools (IMGW-15..IMGW-19); the source interface and the plugin mechanism are created in v0.1 (A-ADR-024), so the IMGW adapter (extra `archiwista[imgw]`) requires no rebuild. The release after v0.2 holds v0.3, v0.4 and the projects of A-ADR-049 together (the author's decision D2 of 2026-10-31); "Projects" below gives their scope and criteria.
 
 | Version | Scope | Requires from producers |
 |---|---|---|
 | v0.1 "Browser" | local, read-only: index, "Mapa" (Map), "Katalog" (Catalog), File card, Projects (preview), Store (state), local state of an area; source plugin mechanism with a dummy second adapter; permissions model (state database, `Principal`, project visibility, administrator API and CLI) | KA-1..KA-6, KA-8 |
 | v0.2 "Previews" | previews, the Fan and the Timeline for local data, metadata comparison and the curtain; project own data and snapshots | — |
-| v0.3 "Actions" | availability at the source with labels (PL and CZ heights, PL images, releases of single-unit products), Plan window, downloading, background jobs, freshness, project actions; preliminary preview building; the "write to store" permission checked during actions | KA-4 for plan items, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4, KH-1 |
+| v0.3 "Actions" | availability at the source with labels (PL and CZ heights, PL images, releases of single-unit products), Plan window, downloading, background jobs, freshness, project actions (since A-ADR-049 those of "Projects"); preliminary preview building; the "write to store" permission checked during actions | KA-4 for plan items, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4 |
 | v0.4 "Team" | server on the local network: sign-in (local accounts, optionally a reverse proxy), sessions, account and group management and the project sharing screen in the interface, TLS, action log, shared queue without double downloads, limits per person, file download, preferences and path aliases per person; groups from LDAP/AD deferred (A-ADR-046) | — |
-| v0.5 "IMGW stations" | extra `archiwista[imgw]` (IMGW adapter as a plugin); IMGW catalog: stations on the map and in the "Katalog" (Catalog) (also without a location), Summary and Station card with a chart, station comparison, series coverage labels separately for each variable, in both year types, freshness and archive synchronization, series, IMGW project jobs | IMGWTools: IMGW-1..IMGW-14 |
+| Projects (A-ADR-049; released with v0.3 and v0.4) | the project file `archiwista-project/1` of Archiwista: area, stores, groups of pins from "Stan lokalny", the "Katalog", the file card and the plan window; the jobs verify, check, re-pin and restore; the project card with its activity; the exports `pliki.txt` and `ATRYBUCJE.txt`; the command of a version on the file card | Kartograf: KB-6; IMGWTools: IMGW-21 |
+| v0.5 "IMGW stations" | extra `archiwista[imgw]` (IMGW adapter as a plugin); IMGW catalog: stations on the map and in the "Katalog" (Catalog) (also without a location), Summary and Station card with a chart, station comparison, series coverage labels separately for each variable, in both year types, freshness and archive synchronization, series, the check, re-pin and restore of pinned IMGW versions | IMGWTools: IMGW-1..IMGW-13 |
 | v0.6 "PL + CZ" | border area: PL + CZ summary without merging (the `parent_request` group, consistency check) and a merged border surface via Kartograf (mode 2, 8.3); ČHMÚ stations via IMGWTools in the v0.5 views (4.8.6) | Kartograf: KF; IMGWTools: IMGW-15..IMGW-19 |
 | v1.0 "Release (MVP)" | stable API, Linux and Windows installation, user documentation, audits; MVP scenarios | Kartograf and IMGWTools releases required for v0.6 |
-| v1.1 "Set" | QGIS set (including the IMGW and ČHMÚ station layer, CSV and formulas), PL + CZ export without merging to the set, command from the file card | KB-6; IMGW-12 |
+| v1.1 "Set" | the QGIS export of a project (including the IMGW and ČHMÚ station layer, CSV and formulas), PL + CZ export without merging | IMGW-12 |
 | v1.2 "Assistant" | chat with tools (also IMGW), proposals and confirmation; assistant budget per person | — |
 | v1.3 "Mosaic and comparison" | VRT/GeoTIFF mosaic, difference model, set with a copy of the data | KE, KG |
 
@@ -4601,9 +4665,8 @@ imagery — KD-3; releases of single-unit products, e.g. BDOT10k — KD-4; user
 decisions of 2026-10-18)
 and coverage labels (6.4); the "Okno planu" (Plan window); downloading from a form
 and from a pasted command; background jobs with progress and cancellation;
-checking for updates and "Pobierz nowsze" (Download newer); project actions (create,
-add and remove a project task, download, re-pin, check,
-verify); area selection by unit name; pre-building
+checking for updates and "Pobierz nowsze" (Download newer); project actions (since
+A-ADR-049 those of "Projects" below, released with v0.3); area selection by unit name; pre-building
 previews of current versions (5.7; user decision of 2026-10-19);
 checking the "write to store" permission (`store_writer`,
 `store_write_for_all`) before every action that writes to the store (10.2).
@@ -4611,15 +4674,15 @@ checking the "write to store" permission (`store_writer`,
 Criteria:
 
 1. Parity with the CLI: a download through Archiwista and by the same CLI command gives
-   the same versions, `sha256` and pins (sidecars with a frozen clock).
-2. Cancellation midway: no partial versions; `kartograf project
-   verify` and a scan without errors.
+   the same versions and `sha256` (sidecars with a frozen clock).
+2. Cancellation midway: no partial versions; the project's verification (`project_verify`)
+   and a scan without errors.
 3. Coverage labels for the "Kraków" area match a manual calculation
    from the index records.
 4. Every action involving the network or a write goes through the "Okno planu" (Plan window).
 5. Server restart during a job → "przerwane" (interrupted); a retry does not download
    finished units again.
-6. Live tests UC-01 and UC-06 with a report.
+6. Live tests UC-01 and UC-06 with a report (UC-06 as A-ADR-049 gives it: criterion 9 of "Projects").
 7. An action writing to the store without `store_writer` (and without
    `store_write_for_all`) → `403 permission_denied`, no background job.
 8. After pre-building, the first thumbnail of a prepared current version
@@ -4627,11 +4690,12 @@ Criteria:
    the target time for a preview from cache in 4.5 (without changing the thresholds).
 
 Status (2026-10-26): built on the branch `feature/kartograf-data-output` (plan
-`docs/plans/2026-10-25-archiwista-next.md`, Part 3), not released: the release 0.3.0 is
-the user's. Criteria 3, 5 and 7 are met, criterion 8 on a local disk (the first
+`docs/plans/2026-10-25-archiwista-next.md`, Part 3), not released: it is released together
+with v0.4 and the projects (D2 of 2026-10-31), when the author decides. Its project actions are
+rewritten by A-ADR-049. Criteria 3, 5 and 7 are met, criterion 8 on a local disk (the first
 thumbnail of a warmed version p95 4.1 ms), and criterion 4 for the downloads of the map
-and of a pasted command; whether the project card's download and repin need the window
-too is open (ADR-042). Criteria 1, 2 and 6 are the `live` test
+and of a pasted command; whether the project card's re-pin and restore need the window
+too is open (ADR-042, A-ADR-049). Criteria 1, 2 and 6 are the `live` test
 `tests/integration/test_live_actions.py` and criterion 8 on a share the `smb` run, both
 run by the user. Area selection by unit name waits for KB-7; the list of jobs with
 cancel, retry and the log ("Zadania", A12) came with v0.4 (plan T9). Evidence:
@@ -4671,7 +4735,62 @@ the three-person browser scenario (criteria 1 and 3), the action matrix with a c
 of every C9 route by each role, and the security checklist with its five deviations
 accepted for the LAN deployment (criteria 2 and 5). Missing: the live three-computer
 SMB/TLS scenario of `reports/v0.4-lan-runbook.md`, run by the author after the work
-is finished. No release has been made; v0.3 is released first.
+is finished. No release has been made; v0.3, v0.4 and the projects are released together (D2 of 2026-10-31).
+
+### Projects (A-ADR-049; released with v0.3 and v0.4)
+
+Scope (the author's decision of 2026-10-31, ECO-054, D1 to D7; plan
+`docs/plans/2026-10-31-archiwista-projects.md`, phases P2 to P6): the project file
+`archiwista-project.json` (`archiwista-project/1`) written by Archiwista under its lock and
+found by that file only, with its index tables; a project created with a name, description
+and area (written into `obszary/`), changed, and its producer's store moved; versions the
+store holds pinned from "Stan lokalny", the "Katalog" (Catalog) and the "Karta pliku" (File
+card), older ones too, and data downloaded through the plan window pinned with "Dodaj do
+projektu"; pins and groups removed; the project jobs `project_verify`, `project_check`,
+`project_repin` and `project_restore` over the producers' `check_command`, `run_command` and
+the command of a stored version (KB-6, IMGW-21), with D5 (a version whose command cannot be
+rebuilt is pinned, its check and restore disabled with the reason); the command of a version
+on the file card; the project card with its area on the map, groups and pins with their
+state, its actions and its activity from the action log; the exports `pliki.txt` and
+`ATRYBUCJE.txt` in `zestawy/<name>/` (the QGIS export is v1.1); the guide's slide on projects.
+The producers' manifests are not read and none is migrated (D4). The check, re-pin and
+restore of IMGW pins come with the IMGWTools actions of v0.5.
+
+Criteria:
+
+1. A project created in the interface and by `archiwista project-init` gives the same
+   `archiwista-project.json` (apart from times and authors), and a rebuilt index reads it
+   back; a file of `archiwista-project/2`, an invalid file and a directory holding only
+   `kartograf-project.json` are shown as A-ADR-049 decisions 2 and 5 say, and none is written
+   over.
+2. Two writers of one project never lose a change: the second waits for the lock or is
+   refused with `409 project_locked` and the lock's path; a writer killed between its
+   temporary file and the replace leaves the old file whole and its lock, which a person
+   removes.
+3. Pinning without the network: "Dodaj do projektu…" of "Stan lokalny", the "Katalog" and the
+   file card pins exactly the versions the index shows for the selection, with their
+   `sha256`, and no request leaves the computer; an older version chosen on the file card is
+   pinned.
+4. The plan window's "Dodaj do projektu": a download that succeeded pins every file of its
+   `files[]` and every position the store already held; one that ended `partial` pins
+   nothing; on the same recorded source responses the group names exactly the versions that
+   the same CLI command writes.
+5. `project_verify` finds a missing, a corrupt and a content-equal (ČHMÚ) pin without the
+   network; `project_check` reports `current`, `newer`, `removed`, `added` and
+   `not_checkable` by slot and `sha256` on recorded responses; `project_repin` replaces a
+   group's pins only after a whole run; `project_restore` brings the pinned versions back
+   into a colleague's empty store with identical `sha256` (for ČHMÚ by content, shown apart)
+   and never re-pins.
+6. A version whose command the producer cannot rebuild (`soil hsg`) is pinned, verified and
+   exported; its check, restore and re-pin are disabled in the card with the producer's
+   reason and refused by the API with it.
+7. A project's activity shows its creation, pins, unpins, exports and jobs with who and when
+   to whoever sees the project, never the client address; a hidden project's activity is
+   `404`.
+8. An export writes `pliki.txt` (each pinned version once; relative paths on a shared
+   directory, absolute otherwise) and `ATRYBUCJE.txt` (each attribution once).
+9. Live test UC-06 with a report: a project filled from the plan window and from "Stan
+   lokalny", verified, checked, and restored on another computer.
 
 ### v0.5 "IMGW stations"
 
@@ -4682,8 +4801,8 @@ the station "Zestawienie" (Overview) (Tabela (Table); the Oś czasu (Timeline) a
 separate for each variable (4.8.4, P16) and a year-type switch for hydro and meteo (P15); the "Karta
 stacji" (Station card) with a chart; station comparison; a check of archive currency
 (`ETag`, `Last-Modified`), synchronization and series as IMGWTools background jobs
-with the "Okno planu" (Plan window) and the `imgw …` command; IMGW project jobs
-with pins (`imgw-project.json`, IMGW-14, A-ADR-023); in a team, downloading is done by a person with the "zapis do magazynu" (write to store) permission, as for Kartograf.
+with the "Okno planu" (Plan window) and the `imgw …` command; the check, re-pin and restore of
+IMGW versions pinned in projects (A-ADR-049); in a team, downloading is done by a person with the "zapis do magazynu" (write to store) permission, as for Kartograf.
 
 Why v0.5: it uses the mechanisms of v0.3–v0.4 (background jobs, the "Okno
 planu", team mode), and IMGWTools needs time for the
@@ -4696,7 +4815,7 @@ The `archiwista[imgw]` extra (A-ADR-024): the IMGW adapter is a plugin, so v0.5
 uses the source interface and the plugin mechanism from v0.1; the version adds to the package
 the `[imgw]` extra (the IMGWTools version range is set at release), the
 entry point of the IMGW adapter, a check of the version and of the `imgw-meta/1`
-and `imgw-project/…` schemas, and a second CI configuration (with `[imgw]`). Without
+schema, and a second CI configuration (with `[imgw]`). Without
 IMGWTools the application works as in v0.4, and the IMGW views are
 hidden (5.8).
 
@@ -4727,11 +4846,9 @@ Acceptance criteria:
    in the data is a break in the line (test on a series with a gap — zero interpolation).
 8. IMGW formulas (§5 para. 3, for series also para. 4) in sidecars,
    the station card and the comparison.
-9. IMGW project job: "Dodaj do projektu…" (Add to project…) and the same
-   `imgw project add` command give the same `imgw-project.json`; `download_project`
-   pins versions, and on a colleague's empty IMGW directory restores them
-   with identical `sha256`; "Status" and "Weryfikuj" (Verify) work for jobs of both
-   producers in one project.
+9. IMGW versions in projects: an IMGW archive version and a series version pinned from the
+   "Katalog" are verified, checked against the source and restored on a colleague's empty IMGW
+   directory with identical `sha256` (A-ADR-049), in one project with Kartograf's pins.
 10. Live test (deliberate) with a report: currency of the 2023–2025 annual
     hydro daily files and synchronization of one year with series.
 
@@ -4743,11 +4860,11 @@ a check of consistency of coordinate systems, resolutions, vertical datum and da
 and "Łączenie › PL + CZ" (Merging › PL + CZ): a merged surface via KF of Kartograf with a
 `check_cross_border` plan in the "Okno planu", a background job,
 the `kartograf elevation cross-border` command and the result as a derived product
-in the store (L1–L8, 8.1), also as a project job; ČHMÚ stations (4.8.6)
+in the store (L1–L8, 8.1), pinned in a project like any version; ČHMÚ stations (4.8.6)
 via the IMGW adapter in the v0.5 views: map and "Katalog" with a provider badge,
 "Zestawienie" with coverage labels for each variable, "Karta stacji"
 with a chart, comparison of PL and CZ stations, currency and synchronization
-of selected stations, IMGW project jobs; in a team, merging and downloading
+of selected stations, ČHMÚ versions pinned in projects; in a team, merging and downloading
 require the "zapis do magazynu" permission (10.2).
 
 Why v0.6, before v1.0: the PL + CZ border area belongs to the MVP (user
@@ -4782,9 +4899,9 @@ Acceptance criteria:
    and `sha256` on recorded responses); cancelling with no partial
    versions.
 7. CC BY 4.0 attribution of ČHMÚ in the station card, the comparison and sidecars;
-   an IMGW project with jobs of both providers is restored with identical
+   a project with pins of both providers is restored with identical
    `sha256` or — for ČHMÚ, when the source gives different bytes of the same content —
-   explicitly by content (`restored_by_content`, job state `content_match`),
+   explicitly by content (`content_match` of `project_restore`, A-ADR-049),
    never by a silent re-pin.
 8. Live tests with a report: UC-09 (Olza catchment, merged surface)
    and UC-20 (currency and synchronization of several ČHMÚ stations).
@@ -4798,7 +4915,7 @@ performance measurement on a real SMB share.
 
 Criteria: the MVP scenarios UC-01..UC-07, UC-09, UC-13..UC-17, UC-19 and UC-20
 pass live and are described in the report. After the MVP: UC-08 from v1.3, UC-09
-in the set variant without merging and UC-10 from v1.1, UC-11 from v1.3
+in the set variant without merging and the QGIS set of UC-10 from v1.1, UC-11 from v1.3
 (difference model; the curtain is from v0.2), UC-12 and UC-18 from v1.2.
 Targets from 4.5 met on a real share; no known critical
 errors; CI green in both configurations (without and with `[imgw]`)
@@ -4808,18 +4925,19 @@ with current releases of Kartograf and IMGWTools.
 
 ### v1.1 "Set"
 
-Scope: mode 3 (8.4), export of a PL + CZ set without merging to a set
-(8.3), "Polecenie Kartografa" (Kartograf command) and "Dodaj do projektu" (Add to project) from the file card (KB-6),
-the "Katalog" as cards.
+Scope: mode 3 (8.4): the QGIS export of a project and the rest of the table of 8.4 beside
+`pliki.txt` and `ATRYBUCJE.txt`, export of a PL + CZ set without merging to a set
+(8.3), the "Katalog" as cards. "Polecenie Kartografa" and "Dodaj do projektu" of the file
+card (KB-6) came with the projects (A-ADR-049).
 
 Criteria: the `.qgz` opens in QGIS 3.34 LTR and 3.40 without coordinate system prompts;
 layers point to version files; sums in `pliki.csv` equal the pins;
-`ATRYBUCJE.txt` lists every provider of the set; a change of pins
-in the manifest marks the set as outdated; UC-09 (border area) live
-in the variant without merging. The IMGW set includes the station layer, CSV series
+`ATRYBUCJE.txt` lists every provider of the export; a change of pins
+in the project file marks the export as outdated (`zestaw.json`); UC-09 (border area) live
+in the variant without merging. The IMGW export includes the station layer, CSV series
 from the IMGWTools export (IMGW-12) and the IMGW formulas in `ATRYBUCJE.txt`;
-a set from IMGW pins takes versions from `imgw-project.json`, and after a series
-update a set with older versions is marked "nieaktualny" (outdated).
+an export of IMGW pins takes their versions, and after a series
+update an export with older versions is marked "nieaktualny" (outdated).
 
 ### v1.2 "Assistant"
 
@@ -4848,7 +4966,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | SMB semantics (attribute cache, inodes, directory times) | stale index | high | immutable versions, link sidecars as the truth, refreshing the view before answering, daily control scan, visible index state; KA-7 after measurements |
 | Large files (an ASC sheet of about 38 MB of text, national files up to 25 GB) | slow previews, disk space | high | on-demand previews, local COG, memory limit, no automatic previews above 2 GB |
 | Conversion for display with an approximate operation | CZ footprints about 100 m off | medium | KA-6, control point test at the junction |
-| Job interrupted while the manifest is being written | `.kartograf-project.lock` lock stays until removed manually | low | interrupt signal first, KC-1, state recognition and instructions in the interface |
+| A process killed while it writes a project file | `.archiwista-project.lock` stays until removed manually; the project cannot be changed meanwhile | low | the whole file replaced at once (`os.replace`), so the file is the old or the new one; the lock's owner and the instruction named in the refusal and in the interface; Archiwista never removes a lock (4.7, A-ADR-049) |
 | Breaking changes in Kartograf 0.x | failures after an update | medium | version range, contract tests, CI against Kartograf's `develop` |
 | Assistant: wrong proposals, costs | wrong actions, bills | medium | proposals from data, human confirmation, evaluation, monthly limit, disabled by default |
 | Scope creep toward a GIS program | slower work, less simplicity | medium | boundaries from 1.3; analyses in QGIS through the set |
@@ -4857,7 +4975,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | Load on public services | slowdowns, blocks on the source side | low | Kartograf's cache, assistant limits, 2 network jobs at a time |
 | UI without type checking (A-ADR-028: Preact + htm with no build step) | errors detected only at runtime | medium | browser tests (Playwright), JSDoc annotations, contract tests with OpenAPI; adding Vite and TypeScript later without rewriting components |
 | Data license terms on handover | attribution violation | low | attributions in the file card, the set and the data copy |
-| Dependence on IMGWTools (2.1.1, Beta, no store; IMGW-1..IMGW-14); optional from A-ADR-024 (extra `[imgw]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for IMGWTools; releases v0.1–v0.4 and an installation without IMGW do not need it | medium | IMGWTools is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by IMGWTools; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
+| Dependence on IMGWTools (2.1.1, Beta, no store; IMGW-1..IMGW-13, IMGW-21); optional from A-ADR-024 (extra `[imgw]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for IMGWTools; releases v0.1–v0.4 and an installation without IMGW do not need it | medium | IMGWTools is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by IMGWTools; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
 | ČHMÚ stations in IMGWTools (IMGW-15..IMGW-19; today the "Obserwator" draft with no code, a package rename is possible) | v0.6, and with it the MVP, waits for IMGWTools; a package rename or a separate package changes the adapter and the extra | medium | requirements reported before v0.5 (section 12.7), the same contracts with the supplier as an additive change, one IMGW adapter; adapter decision at the IMGWTools release (4.8.6, A-ADR-024) |
 | ČHMÚ archives per station (no country-wide archive) | hundreds of requests during synchronization, slow plans | medium | synchronization of selected stations only (area, project), plan with the number of requests, 2 network jobs at a time |
 | Version conflicts of scientific libraries between Kartograf and IMGWTools (numpy, pandas, GDAL/rasterio, pyarrow) | installation impossible or environment divergence with `[imgw]` | medium | one lock file for a consistent set, CI in two configurations (without and with `[imgw]`), contract tests against the producers' `develop` (5.8, 11, A-ADR-024) |
@@ -4870,7 +4988,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | IMGW terms (purpose of use, regulations §3 para. 2; formulas, §5 para. 3–4) | regulations violation | medium | formulas in sidecars, the station card and the set; IMGWTools message about the purpose of use in the plan; assumption: private or research use (4.8.5) |
 | Growth of series versions (full dataset snapshot after each archive change) | IMGW catalog size (on the order of 0.1 GB per dataset snapshot — an estimate) | medium | `unchanged` for the same inputs, synchronization only on request, measurement in v0.5 |
 | Archiwista's assistant vs. Retman | duplication, unclear division | low | Archiwista only prepares data, calculations in Hydrolog and Retman (P17, user decision of 2026-10-17); the shared language is the producers' commands |
-| Two manifests in one project (Kartograf and IMGWTools) | inconsistent picture of the project (e.g. the same job name at both producers, one manifest invalid) | low | project view with a producer column, warning about a repeated name, an error in one manifest does not hide the other, `zestaw.json` with the sums of both; a shared producer manifest — when a third producer arrives (A-ADR-023) |
+| One project file written by two versions of Archiwista or by hand | a lost change or a file Archiwista cannot read | low | every change under the lock, after reading the file again; members a reader does not know are kept; a newer schema or an invalid file is shown with its problem and never written over (4.7, A-ADR-049) |
 | Visibility filter skipped in a new route or query (search, "Przypięta w:" (Pinned in:), previews of own data) | leak of names and data of private projects | medium | model from v0.1 (A-ADR-029): `Principal` in every service, one place of decision (`can`, `visible_projects`) in services and queries, not in routes; visibility matrix in the v0.1 gate (11) |
 | Loss of the state database (accounts, groups, project visibility) — it cannot be rebuilt from disk | projects return to default visibility | low | database local only, migrations instead of rebuilding, `archiwista state export` / `state import` in the backup documentation (4.3) |
 
@@ -4886,7 +5004,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | P6 | Online basemaps (OSM, WMS GUGiK and CUZK) reveal the area of interest to external servers — acceptable? | **Resolved 2026-10-17 (A-ADR-016):** the basemap is a monochrome (grey) version of OSM, **online by default**, with an offline mode (the "Tryb offline" (Offline mode) switch); in a team the administrator decides |
 | P7 | Default model provider for the assistant? | **None** (assistant disabled) until a deliberate choice; for confidential projects a local model |
 | P8 | Archiwista's license? | ~~MIT, like Kartograf~~ **Resolved 2026-10-17: MIT (file `LICENSE`); contributions with a CLA as in Hydrolog — A-ADR-026.** |
-| P9 | Pinning in a project any older version selected in the browser? Kartograf's job model selects a version only through options (e.g. `year`), and for products with a download-date label an older version cannot be indicated | **Not in v1.0;** we pin through project jobs (KB-6 suggests the options); older versions — comparison and an ad hoc set |
+| P9 | Pinning in a project any older version selected in the browser? Kartograf's job model selects a version only through options (e.g. `year`), and for products with a download-date label an older version cannot be indicated | ~~Not in v1.0; we pin through project jobs~~ **Resolved 2026-10-31 (the author's decision, ECO-054, A-ADR-049):** a pin names a stored version and its `sha256`, so "Dodaj do projektu…" of the file card pins any version of its timeline, older ones too, without the network; its check and restore use the version's command (KB-6), disabled with the reason where the producer cannot rebuild it |
 | P10 | Platforms | **Linux and Windows** from v1.0; macOS without guarantees |
 | P11 | UI framework | ~~Svelte~~ **Resolved 2026-10-18 (user decision, A-ADR-028):** Preact + htm without a build step, like the mockup |
 | P12 | "Stos" (the Stack): slabs with footprints (MapLibre) or with preview textures (additionally deck.gl)? The selected year must be fully visible; the layout variant (a fan like a stack in the macOS dock?) to be confirmed after the mockup | ~~Footprints in v0.2; textures only if the mockup shows clear value; fan layout — open~~ **Resolved 2026-10-17 (user decision, A-ADR-018 erratum 1):** "Wachlarz" (the Fan) completely replaces "Stos" (the Stack) — year thumbnails on an arc, each in full, the selected one enlarged; sheet footprints in coverage colours, and sheets in the store with a light preview (5.4, 6.5 c); the isometric view, `fill-extrusion` and textures in deck.gl are dropped |
@@ -4895,7 +5013,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | P15 | Hydrological or calendar year in the UI? | **Resolved 2026-10-17 (user decision, A-ADR-021 erratum 1):** both kinds of year for **both** kinds of data (hydro and meteo) with a switch; by default hydro — hydrological, meteo — calendar; the choice is remembered separately for hydro and meteo in the user settings, `year_type` in the URL takes precedence; IMGW half-year and annual characteristics only in hydrological years, the switch does not apply to them — confirmed (4.8.2, 6.7) |
 | P16 | Q and H separately? | **Resolved 2026-10-17 (user decision, A-ADR-021 erratum 2):** coverage labels **separately for each quantity**, not one per station — hydro: H, Q, T; meteo: precipitation, temperature and other dataset variables. The station panel, the "Zestawienie" (Summary), the "Katalog" (Catalog) and the station card show them together; coverage filters apply to the indicated variable; the API returns `coverage` per variable (4.8.4, 6.7, 6.8, 9) |
 | P17 | Should the assistant only prepare data, while calculations (characteristic flows, frequency analysis, low flows) are done by Hydrolog and Retman? | **Resolved 2026-10-17 (user decision):** yes — the assistant only prepares data and commands, may point to a Hydrolog input (CSV: `daily_values`, `dates`), but calculates nothing; calculations in Hydrolog and Retman (1.3, 7.1, 7.11) |
-| P18 | IMGW data in projects: the manifest `kartograf-project/1` accepts only Kartograf commands | ~~Not in v1.0: rebuildability through immutable versions and a set~~ **Resolved 2026-10-17 (user decision, A-ADR-023):** IMGW data **is in the project manifest in v1.0** — in the IMGWTools manifest `imgw-project.json` (`imgw-project/1`) next to `kartograf-project.json`; an IMGW job gets into a project only through the IMGWTools API (`add_project_task`, `download_project`; CLI `imgw project …`) — new requirement IMGW-14 (v0.5); two manifest files (`kartograf-project.json` and `imgw-project.json`) — confirmed; the Kartograf manifest format is unchanged (4.7, 8.4, 12.7) |
+| P18 | IMGW data in projects: the manifest `kartograf-project/1` accepts only Kartograf commands | ~~Not in v1.0: rebuildability through immutable versions and a set~~ ~~Resolved 2026-10-17 (user decision, A-ADR-023): IMGW data in the IMGWTools manifest `imgw-project.json`~~ **Resolved anew 2026-10-31 (the author's decision, ECO-054, A-ADR-049):** IMGW data is in projects in v1.0 as pins of IMGW archive and series versions in Archiwista's own project file `archiwista-project/1`; IMGWTools keeps no projects (IMGW-14 withdrawn) and gives the command of a stored version (IMGW-21) |
 | P19 | Hydrographic code as a "river basin" filter (prefix: Raba `2138`, Mszanka `21382`, Stradomka `21388`)? | **Resolved 2026-10-17 (user decision):** yes — as one of many filters: "exactly this river" or "with tributaries" (code prefix); it works on attributes, so it also covers stations without a location; the prefix rule is checked by a test on the IMGW list (6.6, 6.8, IMGW-9) |
 
 ## 16. Mockup

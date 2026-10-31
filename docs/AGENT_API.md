@@ -358,6 +358,14 @@ cursor is safe in a URL).
   `GET …/versions/{version}/sidecar`.
 - `GET /requests/{parent_request}`: the files of one producer request (for
   example both sides of the PL/CZ border).
+- **Changing (A-ADR-049):** the project routes and commands below that name the
+  producers' manifests (`manifests`, `tasks`, `project-add`, `project-remove`,
+  `project-status`, `project-download`, `producer`) belong to the current build and go
+  without an alias when Archiwista keeps projects in its own `archiwista-project.json`
+  (`groups`, `pins`, `project-pin`, `project-unpin`, `project-restore`, `/activity`,
+  `/exports`; SPEC 9.2). They are replaced here phase by phase as
+  [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
+  lands; an agent written now should not depend on `manifests` or `tasks`.
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
   `GET /projects/{project}`: the projects visible to the actor; a hidden project
   answers like a missing one (`404`). A project is its directory, which holds

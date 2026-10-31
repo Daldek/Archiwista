@@ -22,13 +22,13 @@ the MVP by user decision 2026-10-18). It has six areas:
 4. **Team mode:** a server on the local network with sign-in, roles and
    project sharing.
 5. **IMGW data:** stations, coverage of series, station card, freshness and
-   synchronisation of archives, IMGW project tasks.
+   synchronisation of archives, IMGW versions pinned in projects.
 6. **PL + CZ:** a combined view of border data without merging, a merged border
    surface produced by Kartograf, and ČHMÚ stations through IMGWTools in the
    station views.
 
-The QGIS set, the assistant, the mosaic and version comparison with a
-difference model come **after the MVP** (v1.1 to v1.3).
+The QGIS export of a project, the assistant, the mosaic and version comparison
+with a difference model come **after the MVP** (v1.1 to v1.3).
 
 ## In scope of the MVP
 
@@ -50,7 +50,9 @@ difference model come **after the MVP** (v1.1 to v1.3).
 - The "Catalog" with filters, search by identifiers and a group of data without
   location.
 - The "File card": version timeline, metadata in plain words, licence and
-  attribution, pins in projects, version paths.
+  attribution, pins in projects, version paths, the producer's command of a
+  version (KB-6) and "Add to project…" ("Dodaj do projektu…", any version, older
+  ones too).
 - The "Store": usage and problems with a repair command; a report of unused and
   non-current versions (nothing is deleted).
 - Previews with content-addressed memory, the "Fan", the "Timeline", metadata
@@ -64,8 +66,14 @@ difference model come **after the MVP** (v1.1 to v1.3).
 - The "plan window", downloads from a form and from a pasted command,
   background jobs with progress and cancellation, freshness and "download
   newer".
-- Projects: preview, status, verification, actions (project tasks, download,
-  re-pinning, update check).
+- Projects (A-ADR-049; the author's decision of 2026-10-31, ECO-054): Archiwista's
+  own project file `archiwista-project.json` with a name, a description, an area
+  (`obszary/`), the stores of its producers and groups of pinned versions; pinning
+  what the store holds from "Stan lokalny", the "Catalog" and the file card,
+  without the network, and new data from the plan window ("Dodaj do projektu");
+  verification, update check, re-pinning and restoring of missing versions; the
+  project's activity from the action log; exports `pliki.txt` and `ATRYBUCJE.txt`
+  (`zestawy/<name>/`). The producers keep no projects.
 - Local mode with protection (`127.0.0.1` only, CSRF, DNS rebinding, paths).
 - Team mode: sign-in (local accounts or a reverse proxy), account and group management and
   the project sharing screen in the interface, TLS, an action log, a shared queue,
@@ -74,11 +82,11 @@ difference model come **after the MVP** (v1.1 to v1.3).
 - IMGW data: stations on the map and in the "Catalog", the "summary" with the
   coverage of series for each variable and both year types, the "station card"
   with a chart, station comparison, freshness and synchronisation of archives,
-  series, IMGW project tasks.
+  series, IMGW versions pinned in projects.
 - The PL + CZ border: files of both countries grouped by task with a
   consistency check (systems, vertical datum, resolution) and a hint for the
   missing download; a merged DEM surface on a common grid with a seam report
-  (Kartograf, KF) as a background job and a project task; ČHMÚ stations (daily
+  (Kartograf, KF) as a background job, pinned in a project like any version; ČHMÚ stations (daily
   hydro and meteo) in the same views as IMGW stations (IMGWTools, IMGW-15 to
   IMGW-19).
 - Installation on Linux and Windows, user documentation, a WCAG 2.1 AA audit, a
@@ -88,12 +96,11 @@ difference model come **after the MVP** (v1.1 to v1.3).
 
 | Item | Status | Reason |
 | --- | --- | --- |
-| A project and QGIS set (`.qgz`, paths, attributions; also with IMGW and ČHMÚ data), PL + CZ export without merging as a set | v1.1 | decision on the MVP scope |
-| "Kartograf command" and "Add to project" from the file card (KB-6), the "Catalog" as cards | v1.1 | user decision 2026-10-18: in the MVP data is added to a project from an availability result |
+| The QGIS export of a project (`.qgz`, `pliki.csv`, `polecenia.sh`, VRT wrappers, `zestaw.json`; also with IMGW and ČHMÚ data), PL + CZ export without merging | v1.1 | decision on the MVP scope; the exports `pliki.txt` and `ATRYBUCJE.txt` are in the release with v0.3 and v0.4 (the author's decision D6 of 2026-10-31, A-ADR-049) |
+| The "Catalog" as cards | v1.1 | user decision 2026-10-18 ("Kartograf command" and "Add to project" from the file card moved into the release with v0.3 and v0.4: D2 of 2026-10-31, KB-6) |
 | The assistant (an LLM agent), also IMGW tools and the assistant budget per person | v1.2 | decision on the MVP scope |
 | Sheet mosaic, version difference model, a set with a copy of the data | v1.3 | needs KE and KG in Kartograf |
 | Deleting versions from the store | out of scope | only a report of candidates; deleting, if ever, belongs to Kartograf (SPEC 15 P4) |
-| Pinning any older version chosen in the browser | not in v1.0 | the project task model picks the version with options (SPEC 15 P9) |
 | 3D preview of LAZ point clouds | after v1.0 | the header and a 2D image are enough to recognise a file (SPEC 15 P5) |
 | Direct sign-in through LDAP, groups from LDAP/AD | later | the MVP has local accounts or a reverse proxy (a path to SSO and AD); groups from LDAP/AD are deferred from v0.4 (A-ADR-046): they need a directory client and its credentials on the server, while a team keeps a few groups by hand |
 | macOS | no guarantee | priority is Linux and Windows (SPEC 15 P10) |
@@ -106,7 +113,7 @@ difference model come **after the MVP** (v1.1 to v1.3).
 | A cap on a person's parallel sessions (ASVS 7.1.2) | later | v0.4 accepts unlimited parallel sessions for a small LAN team: a person and an administrator list and end them (`docs/reports/v0.4-security-checklist.md`, delegated approval 2026-10-29) |
 | A tamper-evident or remote copy of the action log (ASVS 16.4.2) | later | v0.4 keeps the log in the local state database (private directory, read by administrators through the API); an account with access to the server's files can still change it (`docs/reports/v0.4-security-checklist.md`, delegated approval 2026-10-29) |
 | Editing data and the history of single objects | out of scope | Archiwista is not an editor; snapshots are of whole files |
-| Own data in the project manifest (pins, restoring at a colleague's, "Verify") | out of scope | only the producer writes the manifest; snapshots lie in the project directory and move with it |
+| Own data in a project's pins (restoring at a colleague's, "Verify") | out of scope | a pin names a store version (A-ADR-049); own data has its own versions, the snapshots, which lie in the project directory and move with it |
 | Deleting snapshots by Archiwista | out of scope | only growth; delete by hand outside Archiwista |
 | File rights on the server and share | out of scope | Archiwista enforces permissions only in its interface, API, CLI, agent tokens and preview memory; file system access is the server administrator's responsibility (A-ADR-029) |
 
@@ -156,7 +163,9 @@ Full acceptance criteria: SPEC 13.
      preview from memory (SPEC 4.5).
    - Status (2026-10-26): built, not released; criteria 3, 5, 7 and 8 (local disk)
      met, the live criteria written for the user to run. Evidence and conditions:
-     [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md).
+     [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md). Released together
+     with v0.4 and the projects (stage 6; D2 of 2026-10-31); its project actions are
+     rewritten by A-ADR-049.
 5. **v0.4 "Team".** A server on the local network: sign-in, account management
    and project sharing in the interface, TLS, an action log, a shared queue, limits per
    person, file download, preferences (A-ADR-046, A-ADR-047; LDAP/AD groups deferred).
@@ -170,21 +179,34 @@ Full acceptance criteria: SPEC 13.
      (delegated approval). The full gate remains; the LAN runbook
      (`reports/v0.4-lan-runbook.md`) is run on three computers by the author after
      the work is finished; release approval remains the author's decision.
-6. **v0.5 "IMGW stations".** The IMGW add-on, stations, coverage of series,
-   station card, freshness and synchronisation of archives, IMGW project tasks.
+6. **Projects (A-ADR-049)**, released together with v0.3 and v0.4 as one release (the
+   author's decisions of 2026-10-31: option B of the Nogat plan, ECO-054, D2 and D6).
+   Archiwista's own project file `archiwista-project/1`, pins of stored versions from
+   "Stan lokalny", the "Catalog" and the file card, and of new data from the plan window;
+   verification, update check, re-pinning and restoring; the project card with its area
+   and activity; the exports `pliki.txt` and `ATRYBUCJE.txt`. Plan:
+   [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
+   (phases P2 to P6, after Kartograf and IMGWTools remove their projects).
+   - Gate: SPEC 13 "Projects" (the file written and read back, two writers, pinning
+     offline, the plan window's pins, the four jobs, D5, the activity, the exports, UC-06
+     live).
+   - Status (2026-10-31): P1 (A-ADR-049, SPEC, SCOPE, the plan) done; P2 to P6 open.
+7. **v0.5 "IMGW stations".** The IMGW add-on, stations, coverage of series,
+   station card, freshness and synchronisation of archives, the check, re-pin and
+   restore of IMGW versions pinned in projects.
    - Gate: the IMGW catalog index agrees with the IMGWTools API; parity with
      the `imgw` CLI; coverage labels agree with the table of edge cases.
-7. **v0.6 "PL + CZ".** A PL + CZ view without merging, the merged border
+8. **v0.6 "PL + CZ".** A PL + CZ view without merging, the merged border
    surface by Kartograf (KF), ČHMÚ stations through IMGWTools in the v0.5
    views.
    - Gate: a surface at the border (Cieszyn) in EPSG:2180 and 5514 with a seam
      report, no zeros where `nodata` is, parity with the CLI; the ČHMÚ data index
      agrees with the IMGWTools API, the coverage labels of ČHMÚ stations agree
      with the table of edge cases; UC-09 and UC-20 live.
-8. **v1.0 "Release" (MVP).** A stable API, installation on Linux and Windows,
+9. **v1.0 "Release" (MVP).** A stable API, installation on Linux and Windows,
    user documentation, audits, measurement on a real SMB share.
    - Gate: the MVP success criteria of the PRD.
-9. **After the MVP:** v1.1 "Set", v1.2 "Assistant", v1.3 "Mosaic and
+10. **After the MVP:** v1.1 "Set", v1.2 "Assistant", v1.3 "Mosaic and
    comparison".
 
 ## Dependencies
@@ -195,12 +217,13 @@ Full acceptance criteria: SPEC 13.
 | --- | --- |
 | v0.1 | Kartograf: KA-1 to KA-6 (store read), KA-8 (dataset key convention: Kartograf 0.8.0 meets it in code, the rule is to be written in its ARCH) |
 | v0.2 | none |
-| v0.3 | Kartograf: KA-4 for plan items, KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4, KH-1 |
+| v0.3 | Kartograf: KA-4 for plan items, KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4 |
 | v0.4 | none |
-| v0.5 | IMGWTools: IMGW-1 to IMGW-14, IMGW-20 (dataset key convention) |
+| projects (released with v0.3 and v0.4) | Kartograf: KB-6 (`command_for_file`); IMGWTools: IMGW-21 (`command_for_version`); both producers without projects (ECO-054) |
+| v0.5 | IMGWTools: IMGW-1 to IMGW-13, IMGW-20 (dataset key convention); IMGW-14 is withdrawn (A-ADR-049) |
 | v0.6 | Kartograf: KF (merged PL + CZ surface); IMGWTools: IMGW-15 to IMGW-19 (ČHMÚ stations) |
 | v1.0 | releases of Kartograf and IMGWTools with all of the above |
-| v1.1 | Kartograf: KB-6 |
+| v1.1 | IMGWTools: IMGW-12 (series export for the QGIS export) |
 | v1.3 | Kartograf: KE, KG |
 
 **Data in the store and its terms** (Archiwista shows the attributions and does
@@ -225,7 +248,7 @@ The full list: SPEC 14.
 
 | Risk | Effect | Countermeasure |
 | --- | --- | --- |
-| The MVP depends on an IMGWTools release with a store (today Beta, IMGW-1 to IMGW-14) | v1.0 waits for IMGWTools | requirements agreed early; v0.1 to v0.4 without IMGWTools; the IMGW source is an add-on |
+| The MVP depends on an IMGWTools release with a store (today Beta, IMGW-1 to IMGW-13, IMGW-21) | v1.0 waits for IMGWTools | requirements agreed early; v0.1 to v0.4 without IMGWTools; the IMGW source is an add-on |
 | The MVP depends on ČHMÚ stations in IMGWTools (IMGW-15 to IMGW-19; today the "Observer" sketch without code) | v0.6, and with it v1.0, waits for IMGWTools; a package rename or a separate package changes the adapter | requirements reported early (SPEC 12.7); the same contracts with the supplier as an additive change; one IMGW adapter, the adapter decision at the IMGWTools release |
 | Dependence on Kartograf releases (KA to KH); KF (merged surface, today R6 in the backlog) blocks the MVP | stages wait, v0.6 and v1.0 wait for KF | KA small and first; KF reported as an MVP requirement; a common schedule with the Kartograf roadmap |
 | Team mode in the MVP widens the security scope | a longer way to v1.0 | v0.4 before the IMGW data; a security review in the v1.0 gate |
@@ -233,8 +256,9 @@ The full list: SPEC 14.
 | SMB semantics | a stale index | immutable versions, view refresh, a visible index state |
 | Coverage labels misunderstood | a wrong choice of year | mockup, definitions in tooltips, a test with a user |
 | Scope growing into a GIS program | less simplicity | the PRD boundaries; analyses in QGIS |
-| No QGIS set in the MVP | loading data into QGIS by hand | copying version paths and CLI commands in the MVP; the set in v1.1 |
+| No QGIS export in the MVP | loading data into QGIS by hand | a project's `pliki.txt` and `ATRYBUCJE.txt`, copying version paths and CLI commands in the MVP; the QGIS export in v1.1 |
 | A snapshot of a file being edited (GeoPackage in QGIS, Shapefile) | an inconsistent copy | an SQLite backup copy for GeoPackage, the whole set of files for multi-file formats, a test in the v0.2 gate |
 | Snapshots grow in the project directory | no disk space | the size in the snapshot plan, usage in the project view |
 | The visibility filter missed in a new route or query (search, "Pinned in:", previews of own data) | a leak of names and data of private projects | the model from v0.1: a `Principal` in every service, one place of decision, the visibility matrix in the v0.1 gate (A-ADR-029) |
 | Loss of the state database (accounts, groups, project visibility): it cannot be rebuilt from disk | projects return to default visibility | the database only local, migrations instead of rebuilding, `archiwista state export` / `state import` in the backup documentation |
+| Projects move from the producers to Archiwista while the producers' releases are prepared (ECO-054) | Archiwista's build breaks when it is re-pinned to producers without projects | Archiwista keeps its producer pins until the phase that replaces the adapter calls (P4 of `plans/2026-10-31-archiwista-projects.md`); its own project file needs no producer |
