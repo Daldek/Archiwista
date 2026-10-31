@@ -80,6 +80,8 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .store-chip.unknown .dot { background: var(--warn); }
 .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
 .session-chip { color: var(--text-2); font-size: 12px; white-space: nowrap; }
+/* the top bar's link to the user guide (shell.js GuideLink); on a phone the icon alone */
+.btn.guide-link { color: var(--text-2); }
 /* the account of a team session (shell.js AccountMenu) */
 .account { position: relative; flex: none; }
 .account-toggle { max-width: 240px; }
@@ -408,7 +410,8 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 @media (max-width: 860px) {
   .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px minmax(0, 1fr) 58px; }
   .topbar { gap: 10px; padding: 0 10px; }
-  .crumbs, .env-tag, .session-chip { display: none; }
+  .crumbs, .env-tag, .session-chip, .guide-link-text { display: none; }
+  .btn.sm.guide-link { width: 32px; padding: 0; }
   .shell-main { grid-column: 1; grid-row: 2; }
   .rail { grid-row: 3; grid-column: 1; flex-direction: row; justify-content: space-around; padding: 0 4px; background: var(--panel); border-top: 1px solid var(--line); z-index: 35; }
   .rail-item { flex: 1 1 0; min-width: 0; width: auto; color: var(--text-2); font-size: 10px; }

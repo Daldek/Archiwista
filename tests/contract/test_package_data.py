@@ -70,6 +70,23 @@ def test_files_the_page_loads_are_shipped_and_readable() -> None:
         assert web.joinpath(name).read_bytes(), name
 
 
+def test_files_the_user_guide_loads_are_shipped_and_readable() -> None:
+    """The guide of ``/instrukcja``, its styles and pictures ship as package data."""
+    # Arrange
+    web = resources.files("archiwista.web")
+    guide = web.joinpath("guide").joinpath("index.html").read_text(encoding="utf-8")
+
+    # Act
+    loaded = set(re.findall(r'(?:src|href)="/static/([^"]+)"', guide))
+
+    # Assert
+    assert {"styles.css", "guide/guide.css"} <= loaded
+    assert [name for name in loaded if name.endswith(".webp")]
+    assert loaded | {"guide/index.html"} <= shipped("archiwista.web")
+    for name in loaded:
+        assert web.joinpath(name).read_bytes(), name
+
+
 def test_vendored_interface_libraries_are_shipped_and_readable() -> None:
     """Preact, htm, MapLibre and the glyphs ship with their licenses."""
     # Arrange

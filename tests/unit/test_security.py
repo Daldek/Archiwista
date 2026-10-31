@@ -59,6 +59,8 @@ PORT = 8090
 BASE_URL = f"http://127.0.0.1:{PORT}"
 OPENFREEMAP = "https://tiles.openfreemap.org"
 START = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
+# The user guide of the interface files the tests serve (app.py GUIDE_PATH).
+GUIDE_HTML = "<!doctype html><title>Instrukcja</title>"
 
 
 class Clock:
@@ -105,14 +107,16 @@ def cookies(session_id: str, csrf: str | None = None) -> dict[str, str]:
 
 @pytest.fixture
 def api(tmp_path: Path) -> Iterator[Api]:
-    """Serve the application with an empty index and two interface files."""
+    """Serve the application with an empty index and three interface files."""
     index_path = tmp_path / "data" / "index.sqlite"
     initialize(index_path)
     config = ConfigStore(tmp_path / "config" / "config.toml")
     settings = SettingsService(config, NoSources())
     web_dir = tmp_path / "web"
     (web_dir / "src").mkdir(parents=True)
+    (web_dir / "guide").mkdir()
     (web_dir / "index.html").write_text("<!doctype html><title>A</title>", "utf-8")
+    (web_dir / "guide" / "index.html").write_text(GUIDE_HTML, "utf-8")
     (web_dir / "src" / "main.js").write_text("export {};\n", "utf-8")
     clock = Clock(START)
     app = create_app(
@@ -666,15 +670,16 @@ def test_security_cross_site_read_rejected(api: Api, site: str) -> None:
 
 @pytest.mark.parametrize("site", ["cross-site", "same-site"])
 @pytest.mark.parametrize("dest", ["document", None])
+@pytest.mark.parametrize("path", ["/?view=catalog", "/instrukcja"])
 def test_security_top_level_navigation_from_another_site_opens_the_page(
-    api: Api, site: str, dest: str | None
+    api: Api, site: str, dest: str | None, path: str
 ) -> None:
-    """A link elsewhere or a sign-in proxy's redirect opens the interface."""
+    """A link elsewhere or a sign-in proxy's redirect opens a page or the guide."""
     navigation = {"sec-fetch-site": site, "sec-fetch-mode": "navigate"}
     if dest is not None:
         navigation["sec-fetch-dest"] = dest
 
-    page = api.client.get("/?view=catalog", headers=navigation)
+    page = api.client.get(path, headers=navigation)
     # The page then loads its modules itself: same-origin.
     module = api.client.get(
         "/static/src/main.js",
@@ -825,14 +830,17 @@ def test_security_no_cors_headers(api: Api) -> None:
 
 
 def test_security_interface_files_need_no_session(api: Api) -> None:
-    """The page and its modules load without a session, with security headers."""
+    """The page, the user guide and the modules load without a session, secured."""
     page = api.client.get("/")
+    guide = api.client.get("/instrukcja")
     module = api.client.get("/static/src/main.js")
 
     assert page.status_code == 200
+    assert guide.status_code == 200
+    assert guide.text == GUIDE_HTML
     assert module.status_code == 200
     assert "javascript" in module.headers["content-type"]
-    for response in (page, module):
+    for response in (page, guide, module):
         assert response.headers["content-security-policy"] == csp_header(AppSettings())
         assert response.headers["referrer-policy"] == "no-referrer"
         assert response.headers["x-content-type-options"] == "nosniff"
@@ -844,7 +852,7 @@ def test_security_interface_files_are_revalidated(api: Api) -> None:
     A browser reusing them by heuristic freshness kept the interface of the
     previous version after an upgrade.
     """
-    for path in ("/", "/static/src/main.js"):
+    for path in ("/", "/instrukcja", "/static/src/main.js"):
         first = api.client.get(path)
         again = api.client.get(path, headers={"if-none-match": first.headers["etag"]})
 

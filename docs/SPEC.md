@@ -1792,6 +1792,7 @@ and the mockup.
 | "Ustawienia" (Settings) | stores and path aliases, project directories, base maps and offline mode, limits, preview cache, assistant |
 | "Konta", "Grupy", "Dziennik" (Accounts, Groups, Action log) | for administrators only, at the bottom of the navigation (from v0.4): accounts with roles, temporary passwords, sessions; groups and members; the action log with filters and export (6.5 p, q, s; 10.2) |
 | Account menu | in team mode at the right of the top bar (from v0.4): the person, "Zmień hasło…", "Sesje…", "Token dla agenta…", "Moje ścieżki…", "Wyloguj" (6.5 o) |
+| "Instrukcja" (Guide) | at the right of the top bar in both modes, its icon alone on a phone: the user guide in Polish, slides with pictures of the interface, at `/instrukcja` in a new tab; readable without a session and printable one slide a page (A-ADR-048) |
 | "Asystent" (Assistant) | chat available from every view: on a computer a pinned side panel (the map narrows), on a phone a drawer (section 7.5, A-ADR-018) |
 | "Karta pliku" (File card) | opened over the current view (with its own URL) from the list, map, the Fan, the Catalog and search |
 | "Karta stacji" (Station card) | an IMGW station: metadata, position or the reason for its absence, coverage, chart, versions (6.5 k, 6.7); opened like the "Karta pliku" from the map, the "Zestawienie", the "Katalog", search and comparison |
@@ -3798,7 +3799,8 @@ over TLS.
   a file link included, from another site stay rejected (Fetch Metadata resource
   isolation policy). A client without `Origin` and `Sec-Fetch-*` (curl,
   an agent script) passes only with a session and the CSRF header — also
-  for reads. UI files do not require a session, `/api/*` (except the
+  for reads. UI files (the page `/`, the user guide `/instrukcja` of A-ADR-048 and
+  `/static/…`) do not require a session, `/api/*` (except the
   token exchange, and from v0.4 `GET /session/methods` and the two sign-in routes of 10.2)
   does.
 - **Further sessions (external agent):** a single-use token valid for 5 min

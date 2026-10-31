@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Archiwista — krótki przewodnik</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/guide/guide.css">
+</head>
+<body class="g-body">
+<main class="g-deck">
+
+<section class="g-slide g-dark" aria-label="Slajd 1 z 12: wersja rozwojowa">
+  <p class="g-kicker">Krótki przewodnik po aplikacji</p>
+  <h1 class="g-title">
+    <span class="brand-mark g-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round" focusable="false">
+        <path d="M4 15.5 12 20l8-4.5M4 11.5 12 16l8-4.5M12 3l8 4.5-8 4.5-8-4.5L12 3Z" />
+      </svg>
+    </span>
+    Archiwista
+  </h1>
+  <span class="g-dev">WERSJA ROZWOJOWA</span>
+  <div class="g-rule"></div>
+  <p class="g-lead">Mapa, katalog i projekty danych przestrzennych z magazynów Kartografa — poznaj podstawy obsługi i powiedz nam, co warto poprawić.</p>
+  <p class="g-minor">Wygląd i funkcje mogą się jeszcze zmieniać. Zrzuty pochodzą z magazynów testowych, więc nazwy i liczby są przykładowe, a lokalne ścieżki zakrywa szary pasek. Liczymy na Wasze uwagi, żeby dopasować Archiwistę do potrzeb użytkowników!</p>
+  <div class="g-footer"><span>ARCHIWISTA · PRZEWODNIK UŻYTKOWNIKA</span><span>01 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 2 z 12: orientacja">
+  <p class="g-kicker">01 · Orientacja</p>
+  <h2>Jak poruszać się po Archiwiście?</h2>
+  <div class="g-grid g-wide">
+    <a class="g-zoom" href="/static/guide/01-mapa.webp" target="_blank" rel="noopener">
+      <img class="g-shot" src="/static/guide/01-mapa.webp" width="1440" height="900" alt="Cały ekran Archiwisty: u góry pasek z nazwą magazynu, przyciskami Szukaj i Instrukcja oraz sesją; po lewej nawigacja z widokami; obok panel Wybór z krokami Obszar, Produkt i filtry oraz Stan lokalny; w środku mapa z zaznaczonym obszarem, przyciskami lat i legendą.">
+    </a>
+    <div class="g-column">
+      <div class="g-card"><span class="g-label">Górny pasek</span><p>Magazyny z kropką stanu, „Szukaj” (<span class="g-key">Ctrl K</span> albo <span class="g-key">/</span>), „Instrukcja” i sesja, a na serwerze zespołu menu konta.</p></div>
+      <div class="g-card"><span class="g-label">Nawigacja</span><p>„Mapa”, „Katalog”, „Projekty”, „Zadania”, „Magazyn”, na dole „Ustawienia”. Na telefonie ten sam pasek jest na dole ekranu.</p></div>
+      <div class="g-card"><span class="g-label">Widok</span><p>Środek ekranu przełączasz: „Mapa”, „Wachlarz”, „Katalog”. Adres strony pamięta widok i filtry — można go zapisać albo wysłać.</p></div>
+    </div>
+  </div>
+  <div class="g-footer"><span>WIDOKI · GÓRNY PASEK · ADRES STRONY</span><span>02 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 3 z 12: obszar i stan lokalny">
+  <p class="g-kicker">02 · Obszar i stan lokalny</p>
+  <h2>Co z obszaru jest już w magazynie?</h2>
+  <div class="g-grid g-tall">
+    <a class="g-zoom" href="/static/guide/02-wybor.webp" target="_blank" rel="noopener">
+      <img class="g-shot" src="/static/guide/02-wybor.webp" width="318" height="810" alt="Panel Wybór: krok Obszar z przyciskami Prostokąt, Wielokąt, Widok mapy, Plik… i Siatka godeł; krok Produkt i filtry z wybranym produktem NMT; krok Stan lokalny z plakietką lokalnie 42% obszaru i przyciskiem Pokaż pliki obszaru w Katalogu.">
+    </a>
+    <div class="g-column">
+      <ol class="g-steps g-column">
+        <li class="g-step"><span class="g-num" aria-hidden="true">1</span><strong>Obszar</strong><p>„Prostokąt”, „Wielokąt”, „Widok mapy”, godło arkusza (wpisane albo kliknięte w „Siatka godeł”) albo „Plik…” z GeoJSON, GeoPackage lub ZIP z jednym Shapefile.</p></li>
+        <li class="g-step"><span class="g-num" aria-hidden="true">2</span><strong>Produkt i filtry</strong><p>Produkt z listy i filtry: magazyn, kraj, lata danych, wersje. Aktywne filtry stoją nad mapą i można je usunąć jednym kliknięciem.</p></li>
+        <li class="g-step"><span class="g-num" aria-hidden="true">3</span><strong>Stan lokalny</strong><p>Ile obszaru pokrywają bieżące wersje w magazynie, np. „lokalnie 42% obszaru”. „Pokaż pliki obszaru w Katalogu” otwiera ich listę.</p></li>
+      </ol>
+      <p class="g-note">Kliknij obrys pliku na mapie, aby otworzyć jego kartę. Obrysy i stan lokalny pochodzą z lokalnego indeksu, więc działają także bez sieci.</p>
+    </div>
+  </div>
+  <div class="g-footer"><span>OBSZAR → PRODUKT → STAN LOKALNY</span><span>03 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 4 z 12: katalog i karta pliku">
+  <p class="g-kicker">03 · Katalog i karta pliku</p>
+  <h2>Znajdź plik i obejrzyj jego wersje</h2>
+  <div class="g-grid g-tall">
+    <a class="g-zoom" href="/static/guide/03-karta-pliku.webp" target="_blank" rel="noopener">
+      <img class="g-shot" src="/static/guide/03-karta-pliku.webp" width="518" height="848" alt="Karta pliku: nazwa pliku, produkt i jednostka, oś wersji z wersją bieżącą, przyciski Porównaj z… i Pobierz plik oraz zakładka Podgląd z podglądem rastra w hipsometrii.">
+    </a>
+    <div class="g-grid g-cols-2 g-cards">
+      <div class="g-card"><span class="g-label">Katalog</span><p>Wszystkie pliki z filtrami jako „Lista” albo „Oś czasu”. „Szukaj” znajdzie godło, TERYT, etykietę wersji albo początek sumy SHA-256.</p></div>
+      <div class="g-card"><span class="g-label">Karta pliku</span><p>Otwiera się z obrysu na mapie albo z wiersza Katalogu (<span class="g-key">Enter</span>). „Oś wersji”: najnowsza na górze, z oznaczeniami „bieżąca” i „pełny arkusz”.</p></div>
+      <div class="g-card"><span class="g-label">Podgląd</span><p>Zakładka „Podgląd”; duży plik może wymagać przycisku „Zbuduj podgląd”. Gdy podglądu nie ma, karta mówi, dlaczego i co zrobić.</p></div>
+      <div class="g-card"><span class="g-label">Ścieżki i plik</span><p>„Kopiuj ścieżkę wersji” daje stałą ścieżkę do projektów i analiz, a „Pobierz plik” zapisuje plik na tym komputerze.</p></div>
+    </div>
+  </div>
+  <div class="g-footer"><span>KATALOG · KARTA PLIKU · PODGLĄD</span><span>04 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 5 z 12: dostępność u źródła">
+  <p class="g-kicker">04 · Dostępność u źródła</p>
+  <h2>Sprawdź, co źródło ma dla obszaru</h2>
+  <div class="g-grid g-tall">
+    <a class="g-zoom" href="/static/guide/04-u-zrodla.webp" target="_blank" rel="noopener">
+      <img class="g-shot" src="/static/guide/04-u-zrodla.webp" width="318" height="848" alt="Krok U źródła: produkt u źródła, magazyn docelowy, data raportu i wiersze lat z etykietami pełne, pełne · 2 kampanie i częściowe · 40%, z plakietkami pobrane, pobrane 1/3 i niepobrane oraz przyciskami Pobierz…; nad nim krok Stan lokalny z plakietką lokalnie 76% obszaru.">
+    </a>
+    <div class="g-column">
+      <ol class="g-steps g-column">
+        <li class="g-step"><span class="g-num" aria-hidden="true">1</span><strong>Sprawdź u źródła</strong><p>W kroku „U źródła” wybierz „Produkt u źródła”; pliki trafią do magazynu docelowego. Raport młodszy niż 7 dni wraca z datą, a „Sprawdź ponownie” pyta źródło jeszcze raz.</p></li>
+        <li class="g-step"><span class="g-num" aria-hidden="true">2</span><strong>Przeczytaj wiersze</strong><p>Rok i etykieta pokrycia („pełne”, „częściowe · 40%”), najlepszy wariant z formatami, rozmiar i stan w magazynie: „niepobrane”, „pobrane 1/3”, „pobrane”.</p></li>
+        <li class="g-step"><span class="g-num" aria-hidden="true">3</span><strong>Pobierz…</strong><p>Otwiera okno planu „Pobrać?” dla wybranego wariantu. Nic nie zapisuje się w magazynie przed potwierdzeniem.</p></li>
+      </ol>
+      <p class="g-note">Bez uprawnienia „zapis do magazynu” plan widać, a pobieranie jest wyłączone z podanym powodem. W trybie offline zostaje ostatni raport.</p>
+    </div>
+  </div>
+  <div class="g-footer"><span>RAPORT ŹRÓDŁA · ETYKIETY · STAN W MAGAZYNIE</span><span>05 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 6 z 12: okno planu">
+  <p class="g-kicker">05 · Okno planu</p>
+  <h2>Najpierw plan, potem pobieranie</h2>
+  <div class="g-grid g-cols-2">
+    <a class="g-zoom" href="/static/guide/05-okno-planu.webp" target="_blank" rel="noopener">
+      <img class="g-shot" src="/static/guide/05-okno-planu.webp" width="760" height="684" alt="Okno planu Pobrać?: format, magazyn, liczba pozycji według stanu, do pobrania 2 pozycje z rozmiarem, tabela pozycji ze stanami aktualne, nowsze u źródła, brak w magazynie i nie do sprawdzenia, zakryte polecenie producenta, pole Dodaj jako zadanie projektu i przycisk Pobierz 2 pozycje.">
+    </a>
+    <div class="g-column">
+      <div class="g-card"><span class="g-label">Pozycje planu</span><p>Każdy plik ma stan: „aktualne”, „nowsze u źródła”, „brak w magazynie” albo „nie do sprawdzenia”. „Do pobrania” podaje liczbę pozycji i rozmiar.</p></div>
+      <div class="g-card"><span class="g-label">Polecenie producenta</span><p>To samo pobranie jako wiersz polecenia producenta, do skopiowania (na zrzucie zakryte, bo zawiera ścieżkę).</p></div>
+      <div class="g-card"><span class="g-label">Potwierdzenie</span><p>Pobiera dopiero przycisk z liczbą pozycji, np. „Pobierz 2 pozycje”. Ponad 5 GB albo 500 pozycji trzeba też zaznaczyć „Rozumiem…”.</p></div>
+    </div>
+  </div>
+  <div class="g-footer"><span>NIC NIE ZAPISUJE SIĘ PRZED POTWIERDZENIEM</span><span>06 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 7 z 12: pobieranie w tle">
+  <p class="g-kicker">06 · Pobieranie w tle</p>
+  <h2>Pracuj dalej, gdy dane się pobierają</h2>
+  <div class="g-grid g-cols-2">
+    <a class="g-zoom" href="/static/guide/06-pobrania-w-tle.webp" target="_blank" rel="noopener">
+      <img class="g-shot" src="/static/guide/06-pobrania-w-tle.webp" width="610" height="525" alt="Górny pasek z przyciskiem Pobieranie 0/3 · 22% i otwarta lista Pobrania w tle: trzy pobrania z paskami postępu i przyciskami Anuluj pobieranie.">
+    </a>
+    <div class="g-column">
+      <div class="g-card"><span class="g-label">Okno planu</span><p>Po starcie „Zwiń” albo „Zamknij” (<span class="g-key">Esc</span>) chowa okno: pobieranie trwa dalej, a mapa i inne widoki działają.</p></div>
+      <div class="g-card"><span class="g-label">Górny pasek</span><p>„Pobieranie 0/3 · 22%” zbiera pobrania tej sesji, także po przeładowaniu strony, i otwiera listę „Pobrania w tle”.</p></div>
+      <div class="g-card"><span class="g-label">Lista pobrań</span><p>Postęp, pliki albo powód błędu, „Anuluj pobieranie” i „Pokaż okno planu”. Koniec pobrania ogłasza komunikat, np. „Pobrano: …”, z przyciskiem „Pokaż wynik”.</p></div>
+    </div>
+  </div>
+  <div class="g-footer"><span>POBIERANIE NIE BLOKUJE PRACY</span><span>07 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 8 z 12: zadania">
+  <p class="g-kicker">07 · Zadania</p>
+  <h2>Kolejka i historia zadań w tle</h2>
+  <div class="g-grid g-wide">
+    <a class="g-zoom" href="/static/guide/07-zadania.webp" target="_blank" rel="noopener">
+      <img class="g-shot" src="/static/guide/07-zadania.webp" width="1086" height="588" alt="Widok Zadania w tle: filtry Wszystkie, Trwa, Błędy i Moje; pobrania, plan pobrania i skany ze stanem, osobą, która je uruchomiła, postępem i przyciskami Anuluj, Szczegóły i Dziennik.">
+    </a>
+    <div class="g-column">
+      <div class="g-card"><span class="g-label">Filtry</span><p>„Wszystkie”, „Trwa”, „Błędy”, „Moje”. Liczba przy „Zadania” w nawigacji mówi, ile zadań trwa.</p></div>
+      <div class="g-card"><span class="g-label">Kto i co</span><p>Skany, plany, pobrania i zadania projektów, przy każdym ten, kto je uruchomił: „Ty”, imię osoby albo „harmonogram”.</p></div>
+      <div class="g-card"><span class="g-label">Działania</span><p>„Anuluj” zatrzymuje zadanie (zrobione zostaje), „Ponów” uruchamia nieudane jeszcze raz, „Szczegóły” i „Dziennik” pokazują postęp, komunikaty i log.</p></div>
+    </div>
+  </div>
+  <div class="g-footer"><span>W ZESPOLE WIDAĆ ZADANIA WSZYSTKICH OSÓB</span><span>08 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 9 z 12: projekty">
+  <p class="g-kicker">08 · Projekty</p>
+  <h2>Projekt: zadania, przypięte wersje, dane własne</h2>
+  <div class="g-grid g-tall">
+    <a class="g-zoom" href="/static/guide/08-projekt.webp" target="_blank" rel="noopener">
+      <img class="g-shot" src="/static/guide/08-projekt.webp" width="380" height="848" alt="Karta projektu raba: producent, magazyn, stan przy skanie i stan teraz, przyciski Weryfikuj, Sprawdź aktualizacje, Pobierz, Zadanie i Udostępnij…, wynik weryfikacji, zadania z poleceniami producenta i przypiętymi wersjami, przyciski Przepnij i Usuń oraz sekcja Dane własne.">
+    </a>
+    <div class="g-column">
+      <div class="g-grid g-cols-2 g-cards">
+        <div class="g-card"><span class="g-label">Lista projektów</span><p>Projekty z katalogów projektów z ustawień, z producentem i magazynem. „Nowy projekt…” zakłada nowy projekt producenta.</p></div>
+        <div class="g-card"><span class="g-label">Działania</span><p>„Weryfikuj” (sumy SHA-256, bez sieci), „Sprawdź aktualizacje”, „Pobierz” i przy zadaniu „Przepnij” wykonuje producent jako zadanie w tle.</p></div>
+        <div class="g-card"><span class="g-label">Zadania projektu</span><p>„Zadanie” dodaje polecenie producenta (także „Dodaj jako zadanie projektu” w oknie planu), a „Usuń” zdejmuje je z manifestu — pliki zostają w magazynie.</p></div>
+        <div class="g-card"><span class="g-label">Dane własne</span><p>„Odśwież” czyta folder danych projektu, a „Zrób migawkę…” na karcie pliku zapisuje wersję pliku roboczego.</p></div>
+      </div>
+      <p class="g-note">Projekt zmienia jego właściciel albo administrator. Przycisk, którego nie możesz użyć, jest wyłączony, a karta mówi dlaczego.</p>
+    </div>
+  </div>
+  <div class="g-footer"><span>DZIAŁANIA WYKONUJE PRODUCENT</span><span>09 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 10 z 12: praca w zespole">
+  <p class="g-kicker">09 · Praca w zespole</p>
+  <h2>Logowanie i menu konta</h2>
+  <div class="g-grid g-wide">
+    <div class="g-shots">
+      <a class="g-zoom" href="/static/guide/09-logowanie.webp" target="_blank" rel="noopener">
+        <img class="g-shot" src="/static/guide/09-logowanie.webp" width="460" height="372" alt="Strona Logowanie: pola Konto i Hasło z przyciskiem Pokaż, przycisk Zaloguj i podpowiedź, że hasło tymczasowe ustawia administrator.">
+      </a>
+      <a class="g-zoom" href="/static/guide/10-menu-konta.webp" target="_blank" rel="noopener">
+        <img class="g-shot" src="/static/guide/10-menu-konta.webp" width="390" height="300" alt="Górny pasek z przyciskami Szukaj i Instrukcja oraz otwarte menu konta Kasia Wrona: role i grupy, Zmień hasło…, Sesje (1)…, Token dla agenta…, Moje ścieżki… i Wyloguj.">
+      </a>
+    </div>
+    <div class="g-column">
+      <div class="g-card"><span class="g-label">Logowanie</span><p>Serwer zespołu otwiera stronę „Logowanie”: „Konto”, „Hasło”, „Zaloguj”. Hasło tymczasowe od administratora zmieniasz od razu („Zmień hasło tymczasowe”).</p></div>
+      <div class="g-card"><span class="g-label">Menu konta</span><p>Twoje imię po prawej stronie górnego paska: role i grupy, „Zmień hasło…”, „Sesje…”, „Token dla agenta…”, „Moje ścieżki…”, „Wyloguj”.</p></div>
+      <div class="g-card"><span class="g-label">Uprawnienia</span><p>Pobieranie zapisuje magazyn, więc wymaga uprawnienia „zapis do magazynu”. Sesja kończy się po 8 godzinach bez użycia — wtedy wracasz do logowania.</p></div>
+    </div>
+  </div>
+  <div class="g-footer"><span>SERWER ZESPOŁU W SIECI LOKALNEJ</span><span>10 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 11 z 12: udostępnianie i dziennik">
+  <p class="g-kicker">10 · Wspólne projekty</p>
+  <h2>Udostępnianie projektu i dziennik działań</h2>
+  <div class="g-grid g-wide">
+    <div class="g-shots">
+      <a class="g-zoom" href="/static/guide/11-udostepnianie.webp" target="_blank" rel="noopener">
+        <img class="g-shot" src="/static/guide/11-udostepnianie.webp" width="620" height="438" alt="Okno Udostępnianie · projekt raba: właściciel z przyciskiem Przekaż…, wybór, kto widzi projekt (wszyscy, wybrane osoby, wybrane grupy, tylko właściciel) z grupą Dział hydrologii, folder danych własnych i przyciski Anuluj oraz Zapisz.">
+      </a>
+      <a class="g-zoom" href="/static/guide/12-dziennik.webp" target="_blank" rel="noopener">
+        <img class="g-shot" src="/static/guide/12-dziennik.webp" width="1276" height="588" alt="Widok Dziennik działań: filtry Kto, Działanie, Wynik, Od dnia i Do dnia, przyciski Eksportuj CSV i Eksportuj JSON Lines oraz tabela wpisów z czasem, osobą, działaniem, obiektem, wynikiem i adresem.">
+      </a>
+    </div>
+    <div class="g-column">
+      <div class="g-card"><span class="g-label">Udostępnij…</span><p>Na karcie projektu, dla właściciela i administratora: „wszyscy”, „wybrane osoby” („+ osoba”), „wybrane grupy” („+ grupa”) albo „tylko właściciel”; „Przekaż…” zmienia właściciela.</p></div>
+      <div class="g-card"><span class="g-label">Dla administratorów</span><p>Na dole nawigacji „Konta” (role, „Hasło tymczasowe…”), „Grupy” (członkowie) i „Dziennik”.</p></div>
+      <div class="g-card"><span class="g-label">Dziennik</span><p>Kto, co, kiedy i skąd: filtry „Kto”, „Działanie”, „Wynik”, „Od dnia”, „Do dnia” oraz „Eksportuj CSV” i „Eksportuj JSON Lines”.</p></div>
+    </div>
+  </div>
+  <div class="g-footer"><span>ADMINISTRATORZY WIDZĄ KAŻDY PROJEKT</span><span>11 / 12</span></div>
+</section>
+
+<section class="g-slide" aria-label="Slajd 12 z 12: uwagi i problemy">
+  <p class="g-kicker">11 · Pomóż nam ulepszać aplikację</p>
+  <h2>Jak zgłosić uwagę albo problem?</h2>
+  <div class="g-grid g-cols-2">
+    <ol class="g-steps g-column">
+      <li class="g-step"><span class="g-num" aria-hidden="true">1</span><strong>Zanotuj, co się stało</strong><p>Widok i kolejne kroki, oczekiwany i faktyczny wynik oraz wersję z górnego paska, np. „wersja 0.3.0.dev0”.</p></li>
+      <li class="g-step"><span class="g-num" aria-hidden="true">2</span><strong>Dołącz szczegóły</strong><p>Treść komunikatu i wartości techniczne spod ikony <span class="g-key">&lt;/&gt;</span>; przy zadaniu jego „Szczegóły” i „Dziennik” z widoku „Zadania”. Bez haseł i tokenów.</p></li>
+      <li class="g-step"><span class="g-num" aria-hidden="true">3</span><strong>Zgłoś w repozytorium</strong><p>Nowe zgłoszenie (issue) na <a href="https://github.com/Daldek/Archiwista/issues" target="_blank" rel="noopener noreferrer">github.com/Daldek/Archiwista</a>: kroki, oczekiwany i faktyczny wynik, system oraz wersje Archiwisty, Kartografa i IMGWTools.</p></li>
+    </ol>
+    <div class="g-column">
+      <div class="g-card"><span class="g-label">Bezpieczeństwo</span><p>Luki w zabezpieczeniach nie zgłaszaj publicznie: w repozytorium otwórz zakładkę Security i wybierz Report a vulnerability.</p></div>
+      <div class="g-card"><span class="g-label">Konto i hasło</span><p>Na serwerze zespołu hasło tymczasowe ustawia administrator: „Nie pamiętasz hasła? Administrator ustawi hasło tymczasowe.”</p></div>
+      <div class="g-card"><span class="g-label">Instalacja</span><p>Polecenie <code class="g-key">archiwista doctor</code> sprawdza instalację, magazyny i port, a przy każdym problemie podaje, jak go naprawić.</p></div>
+    </div>
+  </div>
+  <div class="g-footer"><span>TWOJE UWAGI POMAGAJĄ ROZWIJAĆ WERSJĘ ROZWOJOWĄ</span><span>12 / 12</span></div>
+</section>
+
+</main>
+</body>
+</html>

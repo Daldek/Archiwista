@@ -1,12 +1,12 @@
 /**
  * The shell around the views (mockup layout): the top bar with the stores,
- * the downloads in the background and the session — on a team server the
- * account menu (`AccountMenu`) —, the navigation (a rail on a computer, a bar
- * at the bottom of a phone), the index state banner, the current view of the
- * address and the overlays opened over it, and over all of them the plan
- * windows, the list of downloads and their toasts (downloads.js). Views and
- * overlays come from `routes.js`; the first run, without any store, opens the
- * wizard.
+ * the downloads in the background, the link to the user guide and the
+ * session — on a team server the account menu (`AccountMenu`) —, the
+ * navigation (a rail on a computer, a bar at the bottom of a phone), the
+ * index state banner, the current view of the address and the overlays
+ * opened over it, and over all of them the plan windows, the list of
+ * downloads and their toasts (downloads.js). Views and overlays come from
+ * `routes.js`; the first run, without any store, opens the wizard.
  */
 
 import { endSession, endSessionLabel, issueToken, listSessions, readSession } from "./api.js";
@@ -45,6 +45,8 @@ import { PasswordChange } from "./views/login.js";
 const L = T.shell;
 const loaded = new Map();
 const ACCOUNT_PANEL = "account-panel";
+/** The user guide, a page of its own beside the interface (app.py `GUIDE_PATH`). */
+const GUIDE = "/instrukcja";
 /** Most path aliases a person keeps (the server's `MAX_PATH_ALIASES`). */
 const MAX_PATH_ALIASES = 20;
 // The key of the last row of „Moje ścieżki”.
@@ -181,6 +183,7 @@ function TopBar({ onSessionChange, onSignOut }) {
     <div class="top-actions">
       <${DownloadsIndicator} />
       <${SearchButton} />
+      <${GuideLink} />
       ${session.team
         ? html`<${AccountMenu} session=${session} onSessionChange=${onSessionChange} onSignOut=${onSignOut} />`
         : html`<span class="session-chip" title=${t(L.session_expires, { expires_at: stamp(session.expires_at) })}>
@@ -188,6 +191,17 @@ function TopBar({ onSessionChange, onSignOut }) {
           </span>`}
     </div>
   </header>`;
+}
+
+/**
+ * „Instrukcja”: the user guide in a new tab, so the work in this one stays as
+ * it is; on a phone the icon alone, like the search.
+ */
+function GuideLink() {
+  return html`<a class="btn sm guide-link" href=${GUIDE} target="_blank" rel="noopener noreferrer"
+    title=${L.guide_title} aria-label=${L.guide}>
+    <${Icon} name="help" size=${15} /><span class="guide-link-text">${L.guide}</span>
+  </a>`;
 }
 
 /**

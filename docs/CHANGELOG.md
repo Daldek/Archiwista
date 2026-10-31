@@ -9,6 +9,17 @@ command-line interface may change.
 
 ### Added
 
+- The user guide (A-ADR-048): "Instrukcja" in the top bar, its icon alone on a phone,
+  opens `/instrukcja` in a new tab, a short guide in Polish of twelve slides with
+  pictures of this interface: the window and its views, an area and what the store
+  holds, the Catalog and the file card, the availability at the source and the plan
+  window, downloads in the background and "Zadania", projects, a team server
+  (sign-in, account menu, sharing, "Dziennik") and how to report a problem. The slides
+  fit a computer's window at 16:9, become one column on a phone and print one a page
+  (13.333 × 7.5 in). Like the interface page, the guide and its pictures need no
+  session in either mode, so a team server shows it before a sign-in; every other
+  rule of a request and the CSP stay as they are.
+
 - The v0.4 acceptance materials: a three-person browser scenario, role/route
   permission matrix, OWASP ASVS evidence checklist and the LAN runbook for
   separate computers and an SMB store. The live LAN run has not yet occurred;

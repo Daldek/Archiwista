@@ -6,8 +6,9 @@ its texts from ``Accept-Language``), outermost, and ``SecurityMiddleware``
 session cookie and CSRF token rules, body limits, CSP and other headers),
 answers errors with RFC 9457 problems, mounts the routers under ``/api/v1``
 (with the OpenAPI document, and ``/api/docs`` in local mode only) and serves
-the build-free interface from ``archiwista/web`` (``/`` and ``/static/…``,
-revalidated on every use: ``InterfaceFiles``), which needs no session.
+the build-free interface from ``archiwista/web`` (``/``, the user guide at
+``/instrukcja`` and ``/static/…``, revalidated on every use:
+``InterfaceFiles``), which needs no session.
 Routers reach the shared objects through ``request.app.state``: ``settings``
 (``SettingsService``), ``transport`` (``Transport``: local or team mode, built
 once from the settings the server started with), ``sessions``
@@ -92,6 +93,10 @@ from archiwista.sources.registry import APP_DISTRIBUTION, PluginRegistry
 from archiwista.state import StateStore
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
+# The user guide for people (Polish, like the interface): a page of its own
+# beside the interface, its stylesheet and pictures under /static/guide/.
+GUIDE_PATH = "/instrukcja"
+GUIDE_PAGE = Path("guide") / "index.html"
 
 
 class InterfaceFiles(StaticFiles):
@@ -157,8 +162,8 @@ def create_app(
     login_throttle : LoginThrottle or None, optional
         The wait after failed sign-ins; a new one when omitted.
     web_dir : Path, optional
-        Interface files: ``index.html`` at ``/`` and every file under
-        ``/static/``.
+        Interface files: ``index.html`` at ``/``, ``guide/index.html`` at
+        ``/instrukcja`` and every file under ``/static/``.
     jobs : JobSupervisor or None, optional
         The started supervisor of background jobs (``app.state.jobs``);
         without it the routes of jobs are left out.
@@ -252,15 +257,21 @@ def create_app(
         install_docs(app)
 
     index_page = web_dir / "index.html"
+    guide_page = web_dir / GUIDE_PAGE
     interface_files = InterfaceFiles(directory=web_dir)
+
+    def page(file: Path, request: Request) -> Response:
+        if not file.is_file():
+            raise ApiError("not_found", message("api.interface_missing"))
+        return interface_files.file_response(file, file.stat(), request.scope)
 
     @app.get("/", include_in_schema=False)
     def interface(request: Request) -> Response:
-        if not index_page.is_file():
-            raise ApiError("not_found", message("api.interface_missing"))
-        return interface_files.file_response(
-            index_page, index_page.stat(), request.scope
-        )
+        return page(index_page, request)
+
+    @app.get(GUIDE_PATH, include_in_schema=False)
+    def guide(request: Request) -> Response:
+        return page(guide_page, request)
 
     app.mount("/static", interface_files, name="static")
     app.add_middleware(

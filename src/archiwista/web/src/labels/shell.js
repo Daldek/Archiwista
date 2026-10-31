@@ -1,8 +1,8 @@
 /**
- * Texts of the shell: navigation, the session screen, the index state
- * banner and the view host. `nav` names every view by its route id
- * (routes.js) — also one outside the navigation, for the page title — so
- * a view's route line needs no text of its own.
+ * Texts of the shell: navigation, the top bar's link to the user guide, the
+ * session screen, the index state banner and the view host. `nav` names every
+ * view by its route id (routes.js) — also one outside the navigation, for the
+ * page title — so a view's route line needs no text of its own.
  */
 
 export const shell = {
@@ -25,6 +25,9 @@ export const shell = {
   /** After a view's name in the navigation, for screen readers: the running jobs. */
   nav_count: "trwa: {count}",
   stores_label: "Magazyny",
+  /** The top bar's link to the user guide (/instrukcja), opened in a new tab. */
+  guide: "Instrukcja",
+  guide_title: "Instrukcja obsługi Archiwisty (otwiera się w nowej karcie)",
   store_title: "Magazyn „{name}” ({id}): {status}",
   session_label: "Sesja: {actor}",
   session_expires: "Sesja wygasa po 24 godzinach bez użycia (obecnie {expires_at}).",

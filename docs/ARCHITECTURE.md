@@ -791,7 +791,7 @@ of the code):
    a state change only from `same-origin`
    and with `Origin` → otherwise `403 csrf_rejected`. A client without these headers
    (curl, an agent script) passes on.
-4. Paths outside `/api` (`/`, `/static/…`) and public requests
+4. Paths outside `/api` (`/`, `/instrukcja`, `/static/…`) and public requests
    (`POST /api/v1/session`, the `/api/docs` files) end the session check here.
 5. **Session:** the `archiwista_session` cookie (`__Host-archiwista_session` in team
    mode) in `SessionStore` → otherwise `401 session_required`.
@@ -1280,14 +1280,17 @@ with the unchanged message (`<producer>_error`).
 
 Preact + htm with no build step (A-ADR-028): the browser loads ES modules
 directly from the Python package, without Node.js or a CDN. `app.py` serves
-`web/index.html` at `/` and every `web/` file under `/static/…` — without a session,
-but behind a `Host` and `Origin` check. Each of them carries `Cache-Control: no-cache`
-with its `ETag`: the browser asks again before every reuse (`304` when unchanged), so
-after an upgrade it never keeps the modules of the previous version.
+`web/index.html` at `/`, the user guide `web/guide/index.html` at `/instrukcja`
+(`GUIDE_PATH`, A-ADR-048) and every `web/` file under `/static/…` — without a
+session, but behind a `Host` and `Origin` check. Each of them carries `Cache-Control:
+no-cache` with its `ETag`: the browser asks again before every reuse (`304` when
+unchanged), so after an upgrade it never keeps the modules of the previous version.
 
 **Files.** `index.html` (no inline scripts: a `<link>` to
 `/static/styles.css` and `<script type="module" src="/static/src/main.js">`),
-`styles.css` (tokens, shell, shared components), `favicon.svg`,
+`styles.css` (tokens, shell, shared components), `favicon.svg`, `guide/` (the user
+guide in Polish: `index.html`, a page of slides without a script, `guide.css` over the
+tokens of `styles.css`, and its WebP pictures; "Instrukcja" in the top bar opens it),
 `vendor/` with pinned libraries: Preact 10.29.8 (MIT), htm 3.1.1
 (Apache-2.0), MapLibre GL JS 6.14.0 (BSD-3-Clause, ESM release), glyphs of Noto
 Sans Regular from openmaptiles/fonts 2.0 (OFL-1.1; ranges U+0000–U+02FF,
@@ -1307,7 +1310,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | `types.js` | JSDoc types of the API models (no code) |
 | `router.js` | state in the address `/?view=<view>&…`: `readRoute`, `href`, `navigate`, `setParams`, `useRoute`, `Link` |
 | `routes.js` | registry of views `VIEWS` and overlays `OVERLAYS`, `startView`, `findView`; a view's `count` (the number next to its name in the navigation) and `admin` (in the navigation of an administrator only) |
-| `shell.js` | shell: bar, navigation, banner, `ViewHost` (lazy loading of a view), `OverlayHost`, the downloads (`DownloadsProvider`) with the plan windows, the list and the toasts over the views; with no store in the settings it opens the wizard; in team mode the `AccountMenu` (the person, "Zmień hasło…", "Sesje…", "Token dla agenta…", "Moje ścieżki…" (`PathsDialog`: the person's path aliases, at most 20, saved with `savePreferences`), "Wyloguj") instead of the session chip |
+| `shell.js` | shell: bar (with `GuideLink`, "Instrukcja": the user guide `/instrukcja` in a new tab, its icon alone on a phone), navigation, banner, `ViewHost` (lazy loading of a view), `OverlayHost`, the downloads (`DownloadsProvider`) with the plan windows, the list and the toasts over the views; with no store in the settings it opens the wizard; in team mode the `AccountMenu` (the person, "Zmień hasło…", "Sesje…", "Token dla agenta…", "Moje ścieżki…" (`PathsDialog`: the person's path aliases, at most 20, saved with `savePreferences`), "Wyloguj") instead of the session chip |
 | `downloads.js` | the session's downloads in the background (ADR-043): a store outside Preact in one context (each reader subscribes), an event stream for each running download and at most two queued ones (the others looked up in `GET /jobs?state=queued` every 2 s), the list kept in `sessionStorage`; `useDownloads`, `useDownloadActions` (`track`, `openPlan`, `cancel`), `useDownloadEnd`, the top bar's `DownloadsIndicator`, `DownloadsPanel`, `DownloadToasts` and `PlanWindows` (the plan windows hosted by the shell) |
 | `queue.js` | `useRunningJobs`: the number of the queue's running jobs next to "Zadania" (`GET /jobs?state=running` every 5 s while the page is visible; everyone's jobs, hidden ones too, ADR-047) |
 | `context.js` | `AppContext`, `useApp`, `useAppState`: session, settings, the session's own preferences (`GET /preferences` read once; `savePreferences` sends one `PUT /preferences` after the other, each onto the last answer), `/health` every 2 s during a scan or with a waiting store, otherwise every 15 s |

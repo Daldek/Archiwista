@@ -58,7 +58,13 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
   see "Team server") and the action log ("Dziennik"). Saving the settings
   replaces all of them at once; a new or moved store is scanned from scratch.
 - **Top bar:** the stores with a state dot, "Szukaj" (search; `Ctrl+K` or `/`
-  in every view) and the current session (on a team server the account menu).
+  in every view), "Instrukcja" (the guide) and the current session (on a team
+  server the account menu).
+- **The guide:** "Instrukcja" (its icon alone on a phone) opens a short guide in
+  Polish at `/instrukcja` in a new tab: twelve slides with pictures of this
+  interface, from the window and its views to a team server and how to report a
+  problem. It needs no session, so on a team server it can be read before signing
+  in, it is one column on a phone and it prints one slide a page.
 - **The index status bar** under the top bar reports a scan in progress, a
   failed scan and an unavailable store (for example a disconnected share); the
   views then show the state of the index with its time, which does not prove
