@@ -174,7 +174,9 @@ def probe_warp(request: dict[str, Any]) -> dict[str, Any]:
 
     def reprojected(path: Path, *, overview: int | None = None, **warp: Any) -> Any:
         def read() -> Any:
-            opening = {} if overview is None else {"OVERVIEW_LEVEL": overview}
+            opening: dict[str, Any] = (
+                {} if overview is None else {"OVERVIEW_LEVEL": overview}
+            )
             with open_raster(path, file_format(path), **opening) as src:
                 tile = np.zeros((TILE_PX, TILE_PX), dtype="uint8")
                 reproject(

@@ -2030,6 +2030,8 @@
  *   (`job` builds it), `unavailable` (nothing to show: `reason`) or `failed` (a time
  *   or memory limit: try again later).
  * @property {PreviewKind} kind
+ * @property {string} format - Format of the file; of a ZIP holding one raster the
+ *   raster's with the archive's, e.g. `XYZ (ZIP)`.
  * @property {PreviewReasonInfo|null} reason - Why something is missing (no map, no
  *   preview).
  * @property {StyleName[]} styles - Styles of the thumbnail and tiles; empty without

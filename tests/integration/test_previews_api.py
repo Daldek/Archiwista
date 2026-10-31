@@ -92,6 +92,7 @@ def test_routes_answer_each_kind_of_file(served: PreviewApi) -> None:
     assert collection["type"] == "FeatureCollection" and collection["features"]
     assert {"number_matched", "truncated", "simplified"} <= set(collection)
     assert (archive_info["state"], archive_info["kind"]) == ("ready", "archive")
+    assert (info["format"], archive_info["format"]) == ("GeoTIFF", "ZIP")
     assert members.status_code == 200, members.text
     listing = members.json()
     assert listing["ref"] == archive_info["ref"]
@@ -181,6 +182,33 @@ def test_tiles_not_ready_until_build_then_ready(tmp_path: Path) -> None:
     assert (after["state"], after["job"]) == ("ready", None)
     assert shown.status_code == 200, shown.text
     assert decoded_png(shown.content).shape[1:] == (256, 256)
+
+
+def test_zip_of_one_xyz_previewed_as_xyz_after_build(tmp_path: Path) -> None:
+    """An ASCII-NMT ZIP of one XYZ grid: a raster ``XYZ (ZIP)`` with map tiles."""
+    with preview_api(tmp_path) as served:
+        # Arrange
+        path = entry_of(served.store, "zip_ascii_nmt").path
+        before = _info(served, path)
+
+        # Act
+        posted = served.post(version_url(path), {"force": False})
+        served.wait(posted.json()["id"])
+        after = _info(served, path)
+        thumbnail = served.get(f"{after['thumbnail_url']}?size=256")
+        tile = served.get(center_tile_url(after))
+
+    # Assert
+    assert (before["kind"], before["format"], before["state"]) == (
+        "raster",
+        "XYZ (ZIP)",
+        "needs_build",
+    )
+    assert (after["state"], after["default_style"]) == ("ready", "hillshade")
+    assert after["members_url"] is None
+    assert thumbnail.status_code == 200, thumbnail.text
+    assert tile.status_code == 200, tile.text
+    assert decoded_png(tile.content).shape[1:] == (256, 256)
 
 
 def test_etag_answers_304_without_rendering(served: PreviewApi) -> None:

@@ -301,6 +301,25 @@ def test_card_builds_asc_preview_with_progress(
     tab.assert_clean()
 
 
+def test_card_previews_zip_of_one_xyz_as_xyz(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """An ASCII-NMT ZIP of one XYZ grid: a raster named „XYZ (ZIP)”, built, drawn."""
+    store, served = served_store(serve, tab, tmp_path)
+    page = tab.page
+
+    pane = open_preview(page, served, store, "zip_ascii_nmt")
+
+    expect(fact(pane, "Rodzaj pliku")).to_have_text("raster")
+    expect(fact(pane, "Format")).to_have_text("XYZ (ZIP)")
+    expect(fact(pane, "Stan podglądu")).to_contain_text(
+        "gotowy", timeout=BUILD_TIMEOUT_MS
+    )
+    assert_blob_image(thumbnail(pane))
+    expect(pane.locator(".pv-members")).to_have_count(0)
+    tab.assert_clean()
+
+
 def test_card_reads_again_a_file_kept_as_unreadable(
     serve: Serve, tab: Tab, tmp_path: Path
 ) -> None:

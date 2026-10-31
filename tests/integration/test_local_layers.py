@@ -244,11 +244,16 @@ def test_two_formats_of_one_variant_make_one_layer(
 ) -> None:
     """ASC and ASCII-NMT of one product, CRSs and resolution: one layer, two badges.
 
-    The sheet in both formats counts once; the archive has no map preview,
-    so the layer's previews do not count it either.
+    The sheet in both formats counts once. The ASCII-NMT archive holds one
+    XYZ grid: once probed it is previewed as that raster and its badge, also
+    without an area, names it (``XYZ (ZIP)``).
     """
+    # Arrange
+    _wait_for_builds(served.api, _layers(served.api, area))
+
     # Act
     answer = _layers(served.api, area)
+    whole = _layers(served.api)
 
     # Assert
     layer = _layer(answer, "2023")
@@ -258,20 +263,22 @@ def test_two_formats_of_one_variant_make_one_layer(
         "resolution": "1m",
         "vertical_crs": "EPSG:9651",
         "segments": [NMT, NMT_ASCII],
-        "formats": ["ASCII Grid", "ZIP"],
+        "formats": ["ASCII Grid", "XYZ (ZIP)"],
     }
     assert (layer["versions_count"], layer["units_count"]) == (4, 2)
-    assert layer["preview"]["total"] == 3
+    assert (layer["preview"]["ready"], layer["preview"]["total"]) == (4, 4)
     archive = served.store.version(SHEET_NW, "82710", NMT_ASCII).path
     states = {
         _path(item["ref"]): item["preview"]["state"] for item in layer["versions"]
     }
-    assert states[archive] == "unavailable"
+    assert states[archive] == "ready"
     assert [
         other["key"]
         for other in answer["layers"]
         if NMT_ASCII in other["variant"]["segments"]
     ] == [layer["key"]]
+    in_store = next(item for item in whole["layers"] if item["key"] == layer["key"])
+    assert in_store["variant"]["formats"] == ["ASCII Grid", "XYZ (ZIP)"]
 
 
 def test_variant_falls_back_to_segment_without_metadata(

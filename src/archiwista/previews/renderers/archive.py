@@ -1,9 +1,14 @@
 """Renderer of ZIP archives: their members listed, never unpacked (plan v0.2).
 
-An archive has no thumbnail and no map tiles (``archive_members_only``);
-its preview is the list of its members with their sizes and formats.
-``zipfile`` is never used: it reads the whole central directory into
-memory first, whatever it declares. Instead (SPEC 10.1, decision 5):
+An archive that holds exactly one file, a raster GDAL reads (an XYZ grid
+of GUGiK's NMT, an ASC, a GeoTIFF), is previewed as that raster: GDAL
+reads the member through ``/vsizip/`` (``archiwista.formats.open_raster``)
+and the raster renderer probes, draws and builds its local COG, with the
+CRS of the index for a grid without one. Any other archive has no
+thumbnail and no map tiles (``archive_members_only``); its preview is the
+list of its members with their sizes and formats. ``zipfile`` is never
+used: it reads the whole central directory into memory first, whatever it
+declares. Instead (SPEC 10.1, decision 5):
 
 1. the end of central directory record is found in the file's last 64 KiB,
    with its ZIP64 record when it has one; more than ``MAX_ENTRIES`` entries
@@ -19,11 +24,12 @@ memory first, whatever it declares. Instead (SPEC 10.1, decision 5):
 import struct
 from collections.abc import Iterator
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
 from archiwista.errors import PreviewUnavailableError
 from archiwista.formats import file_format
+from archiwista.previews.renderers.raster import RasterRenderer, probe_raster
 from archiwista.previews.types import (
     Extent,
     JsonObject,
@@ -31,6 +37,7 @@ from archiwista.previews.types import (
     PreviewProbe,
     PreviewReason,
     PreviewSource,
+    RasterFile,
 )
 
 # Limits of decision 5: past them the archive is not listed at all.
@@ -74,27 +81,47 @@ class CentralDirectory:
     offset: int
 
 
-class ArchiveRenderer:
-    """ZIP archives: the number of members, then the list of the first ones."""
+class ArchiveRenderer(RasterRenderer):
+    """ZIP archives: their one raster, else the number and list of members.
 
-    @property
-    def kinds(self) -> frozenset[PreviewKind]:
-        """Archives."""
-        return frozenset({"archive"})
+    The images of an archive holding one raster are the raster renderer's,
+    read from the member (``raster_file``).
+    """
+
+    kinds: frozenset[PreviewKind] = frozenset({"archive"})
+
+    def raster_file(self, source: PreviewSource) -> RasterFile:
+        """Return the one raster member of the archive.
+
+        Raises
+        ------
+        PreviewUnavailableError
+            ``archive_members_only``: the archive holds no single raster.
+        """
+        path = source.paths[0]
+        member = raster_member(path)
+        if member is None:
+            raise PreviewUnavailableError("archive_members_only", "no single raster")
+        return RasterFile(path, file_format(member), member)
 
     def probe(self, source: PreviewSource) -> PreviewProbe:
-        """Read the end records: the number of members, or ``too_large``.
+        """Probe the one raster, else read the number of members.
 
         Raises
         ------
         ValueError
             Not a ZIP archive, or a damaged one (``unreadable``).
+        PreviewUnavailableError
+            ``unsupported_format``: the one raster is an XYZ of no grid.
         """
-        with source.paths[0].open("rb") as stream:
+        path = source.paths[0]
+        with path.open("rb") as stream:
             directory = read_central_directory(stream)
-        reason: PreviewReason = (
-            "too_large" if _too_large(directory) else "archive_members_only"
-        )
+            large = _too_large(directory)
+            member = None if large else _raster(stream, directory)
+        if member is not None:
+            return probe_raster(source, RasterFile(path, file_format(member), member))
+        reason: PreviewReason = "too_large" if large else "archive_members_only"
         return PreviewProbe(
             kind="archive", driver="ZIP", members=directory.entries, reason=reason
         )
@@ -140,14 +167,16 @@ class ArchiveRenderer:
         size: int,
         frame: Extent | None,
     ) -> bytes:
-        """Refuse: an archive has no thumbnail, only its list of members.
+        """Return the thumbnail of the one raster; refuse any other archive.
 
         Raises
         ------
         PreviewUnavailableError
-            Always, with the probe's reason.
+            An archive of no single raster, with the probe's reason.
         """
-        raise PreviewUnavailableError(probe.reason or "archive_members_only")
+        if probe.kind == "archive":
+            raise PreviewUnavailableError(probe.reason or "archive_members_only")
+        return super().thumbnail(source, probe, style, size, frame)
 
     def tile(
         self,
@@ -159,14 +188,44 @@ class ArchiveRenderer:
         y: int,
         params: JsonObject,
     ) -> bytes:
-        """Refuse: an archive has no map tiles.
+        """Return a map tile of the one raster; refuse any other archive.
 
         Raises
         ------
         PreviewUnavailableError
-            Always, with the probe's reason.
+            An archive of no single raster, with the probe's reason.
         """
-        raise PreviewUnavailableError(probe.reason or "archive_members_only")
+        if probe.kind == "archive":
+            raise PreviewUnavailableError(probe.reason or "archive_members_only")
+        return super().tile(source, probe, style, z, x, y, params)
+
+
+def raster_member(path: Path) -> str | None:
+    """Return the name of the one raster a ZIP archive holds, if it holds one.
+
+    ``None`` for an archive of more files, of no raster, or past the limits.
+
+    Raises
+    ------
+    ValueError
+        Not a ZIP archive, or a damaged one.
+    """
+    with path.open("rb") as stream:
+        directory = read_central_directory(stream)
+        return None if _too_large(directory) else _raster(stream, directory)
+
+
+def _raster(stream: BinaryIO, directory: CentralDirectory) -> str | None:
+    """Return the archive's only file when it is a raster GDAL reads."""
+    files: list[JsonObject] = []
+    for entry in _entries(stream, directory, directory.entries):
+        if not entry["directory"]:
+            files.append(entry)
+            if len(files) > 1:
+                return None
+    if len(files) != 1 or files[0]["kind"] != "raster":
+        return None
+    return str(files[0]["name"])
 
 
 def read_central_directory(stream: BinaryIO) -> CentralDirectory:

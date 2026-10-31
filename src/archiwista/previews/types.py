@@ -23,7 +23,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Literal, Protocol, cast, get_args
 
-from archiwista.formats import FORMATS, FileFormat, FormatKind, file_format
+from archiwista.formats import FORMATS, FileFormat, FormatKind, file_format, packed_name
 from archiwista.owndata.content import CONTENT_METHODS, ContentMethod
 
 type PreviewKind = FormatKind
@@ -102,6 +102,9 @@ COG_NAME = "cog.tif"
 SOURCE_GPKG_NAME = "source.gpkg"
 
 _FORMAT_BY_NAME = {found.name: found for found in FORMATS}
+_RASTER_BY_DRIVER = {
+    found.driver: found for found in FORMATS if found.kind == "raster" and found.driver
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,6 +291,31 @@ class PreviewSource:
             )
         except (KeyError, TypeError) as error:
             raise ValueError(f"invalid preview source: {error}") from error
+
+
+@dataclass(frozen=True, slots=True)
+class RasterFile:
+    """What GDAL reads of a source's raster (``archiwista.formats.open_raster``).
+
+    Parameters
+    ----------
+    path : Path
+        The source's main file.
+    format : FileFormat
+        Format of the raster read: the file's, or its member's.
+    member : str or None, optional
+        Name of the one raster in the ZIP archive ``path``; ``None``: the
+        file itself.
+    """
+
+    path: Path
+    format: FileFormat
+    member: str | None = None
+
+    @classmethod
+    def of(cls, source: PreviewSource) -> "RasterFile":
+        """Return a source's main file as its raster."""
+        return cls(source.paths[0], source.format)
 
 
 @dataclass(frozen=True, slots=True)
@@ -559,6 +587,19 @@ def auto_build(source: PreviewSource, probe: PreviewProbe | None) -> bool:
         return False
     unpacked = probe.unpacked_bytes
     return unpacked is None or unpacked <= AUTO_BUILD_MAX_UNPACKED_BYTES
+
+
+def format_name(fmt: FileFormat, probe: PreviewProbe | None) -> str:
+    """Return a file's format for people: of a ZIP, the raster it holds.
+
+    ``XYZ (ZIP)`` for an archive whose one raster its probe read; the
+    file's own format otherwise (``ZIP`` before the probe).
+    """
+    if fmt.kind == "archive" and probe is not None and probe.kind != "archive":
+        inner = _RASTER_BY_DRIVER.get(probe.driver or "")
+        if inner is not None:
+            return packed_name(inner, fmt)
+    return fmt.name
 
 
 def _stat_json(stat: SourceStat) -> JsonObject:

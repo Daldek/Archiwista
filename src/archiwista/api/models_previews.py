@@ -47,6 +47,7 @@ _INFO_EXAMPLE: dict[str, Any] = {
     "ref": _REF,
     "state": "ready",
     "kind": "raster",
+    "format": "ASCII Grid",
     "reason": None,
     "styles": ["hillshade", "hypsometry"],
     "default_style": "hillshade",
@@ -178,6 +179,13 @@ class PreviewInfo(BaseModel):
         description=(
             "`raster`, `image`, `vector`, `points`, `archive`, `document`,"
             " `auxiliary` or `unknown`."
+        )
+    )
+    format: str = Field(
+        description=(
+            "Format of the file, e.g. `GeoTIFF`; of a ZIP holding one raster"
+            " the raster's with the archive's, e.g. `XYZ (ZIP)` (`kind` is"
+            " then the raster's)."
         )
     )
     reason: PreviewReasonInfo | None = Field(

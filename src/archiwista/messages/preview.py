@@ -49,8 +49,10 @@ MESSAGES = {
         "Podgląd jest przy pliku, któremu ten służy.",
     ),
     "reason_archive_members_only": Text(
-        "ZIP archive: only the list of files inside is shown.",
-        "Archiwum ZIP: widać tylko listę plików w środku.",
+        "ZIP archive of more files than one raster: only the list of files"
+        " inside is shown.",
+        "Archiwum ZIP z innymi plikami niż jeden raster: widać tylko listę"
+        " plików w środku.",
     ),
     "fix_archive_members_only": Text(
         "Extract the archive to view its files in QGIS.",

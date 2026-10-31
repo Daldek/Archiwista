@@ -35,7 +35,7 @@ from rasterio.transform import Affine, from_bounds
 from archiwista.errors import PreviewUnavailableError
 from archiwista.formats import open_raster
 from archiwista.previews.tiles import raster_view
-from archiwista.previews.types import PreviewProbe, PreviewSource
+from archiwista.previews.types import PreviewProbe, PreviewSource, RasterFile
 
 # Longest side of a local COG (decision 6).
 MAX_SIDE_PX = 8192
@@ -43,7 +43,12 @@ BLOCK_SIZE_PX = 512
 JPEG_QUALITY = 90
 
 
-def build_cog(source: PreviewSource, probe: PreviewProbe, out_path: Path) -> None:
+def build_cog(
+    source: PreviewSource,
+    probe: PreviewProbe,
+    out_path: Path,
+    raster: RasterFile | None = None,
+) -> None:
     """Write the local COG of a raster file (``Renderer.build``).
 
     Parameters
@@ -54,15 +59,19 @@ def build_cog(source: PreviewSource, probe: PreviewProbe, out_path: Path) -> Non
         Its probe: the georeference used, nodata, palette, class table.
     out_path : Path
         Where to write the COG (the job's ``.incoming`` directory).
+    raster : RasterFile or None, optional
+        What GDAL reads: the source's main file by default, or the one
+        raster member of its ZIP archive.
 
     Raises
     ------
     PreviewUnavailableError
         ``no_georeference`` / ``no_crs``: nothing to put on the map.
     """
+    raster = RasterFile.of(source) if raster is None else raster
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", NotGeoreferencedWarning)  # an image
-        dataset = open_raster(source.paths[0], source.format)
+        dataset = open_raster(raster.path, raster.format, member=raster.member)
     with dataset:
         transform = (
             None

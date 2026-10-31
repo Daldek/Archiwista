@@ -708,7 +708,9 @@ visibility of the project. An invisible project gives `404`, a missing right to
 a snapshot `403`.
 
 `GET /stores/{store}/versions/{version}/preview` returns `PreviewInfo`: `state`
-(`ready`, `needs_build`, `building`, `unavailable`), `kind`, `reason` (`code`,
+(`ready`, `needs_build`, `building`, `unavailable`), `kind`, `format` (e.g.
+`GeoTIFF`; a ZIP holding exactly one raster is previewed as that raster:
+`kind` `raster`, `format` `XYZ (ZIP)`), `reason` (`code`,
 a `message` and a `fix` in the language of the request), `styles`,
 `default_style` and the addresses
 `thumbnail_url`, `tiles_url`, `features_url`, `members_url`. For `needs_build`

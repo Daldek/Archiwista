@@ -8,7 +8,9 @@ sandbox (``archiwista.sandbox``):
 
 - a raster opens with ``driver=``: content of another format under the
   file's name (VRT XML in ``a.tif``) is refused by GDAL, also after a
-  ``WarpedVRT`` registered the VRT driver again in the process;
+  ``WarpedVRT`` registered the VRT driver again in the process; the one
+  raster of a ZIP archive opens the same way through ``/vsizip/``, its
+  member's name a plain relative one (no ``..``, backslash or braces);
 - a vector opens with its driver's prefix (``GPKG:``, ``GeoJSON:``) or,
   where GDAL has none (Shapefile, FlatGeobuf, MapInfo TAB), after its
   signature is checked: a Shapefile starts with the file code 9994, a
@@ -116,15 +118,22 @@ def file_format(path: PurePath | str) -> FileFormat:
     return _BY_EXTENSION.get(PurePath(path).suffix.lower(), UNKNOWN_FORMAT)
 
 
-def open_raster(path: Path, fmt: FileFormat, **options: Any) -> "DatasetReader":
+def open_raster(
+    path: Path, fmt: FileFormat, *, member: str | None = None, **options: Any
+) -> "DatasetReader":
     """Open a raster or image file with its format's driver only.
 
     Parameters
     ----------
     path : Path
-        Absolute path of the file (passed to GDAL as it is).
+        Absolute path of the file (passed to GDAL as it is); with ``member``
+        the ZIP archive holding it.
     fmt : FileFormat
-        Its format (``file_format``), of kind ``raster`` or ``image``.
+        Its format (``file_format``), of kind ``raster`` or ``image``; with
+        ``member`` the member's format.
+    member : str or None, optional
+        Name of the raster in the ZIP archive ``path``: GDAL reads it
+        through ``/vsizip/``, without unpacking it to a disk.
     **options : Any
         GDAL open options, e.g. ``OVERVIEW_LEVEL=0``.
 
@@ -136,7 +145,8 @@ def open_raster(path: Path, fmt: FileFormat, **options: Any) -> "DatasetReader":
     Raises
     ------
     FormatRefusedError
-        The format is not a raster one, or the path is not a plain one.
+        The format is not a raster one, the path is not a plain one, or the
+        member is not a plain name in a ZIP archive.
     rasterio.errors.RasterioIOError
         The file is not of that format (GDAL refuses it).
     """
@@ -145,7 +155,15 @@ def open_raster(path: Path, fmt: FileFormat, **options: Any) -> "DatasetReader":
     _require_plain(path)
     import rasterio  # GDAL only in the processes that read files
 
-    return rasterio.open(path, driver=fmt.driver, **options)
+    if member is None:
+        return rasterio.open(path, driver=fmt.driver, **options)
+    _require_member(path, member)
+    return rasterio.open(f"/vsizip/{{{path}}}/{member}", driver=fmt.driver, **options)
+
+
+def packed_name(inner: FileFormat, outer: FileFormat) -> str:
+    """Return the name of a format packed in another one, e.g. ``XYZ (ZIP)``."""
+    return f"{inner.name} ({outer.name})"
 
 
 def vector_source(path: Path, fmt: FileFormat) -> str:
@@ -198,6 +216,16 @@ def _require_plain(path: Path) -> None:
     """Refuse a relative path or a GDAL virtual file system name."""
     if not path.is_absolute() or path.as_posix().startswith("/vsi"):
         raise FormatRefusedError("not a plain absolute path")
+
+
+def _require_member(path: Path, member: str) -> None:
+    """Refuse a member of no ZIP archive, or a name that is no plain one."""
+    if file_format(path).kind != "archive":
+        raise FormatRefusedError("a member of no ZIP archive")
+    if any(char in member for char in "\x00\\{}") or any(
+        part in ("", ".", "..") for part in member.split("/")
+    ):
+        raise FormatRefusedError("not a plain name of a member")
 
 
 def _require_signature(path: Path, signature: bytes, fmt: FileFormat) -> None:

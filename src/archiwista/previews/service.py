@@ -61,7 +61,7 @@ from archiwista.errors import (
     PreviewUnavailableError,
     SourceUnavailableError,
 )
-from archiwista.formats import file_format
+from archiwista.formats import FileFormat, file_format
 from archiwista.index import MAX_PAGE_LIMIT, own_file_id
 from archiwista.jobs import JobRecord, JobSupervisor
 from archiwista.messages import message
@@ -72,13 +72,13 @@ from archiwista.previews.types import (
     PREVIEW_REASONS,
     UNRENDERABLE_REASONS,
     JsonObject,
-    PreviewKind,
     PreviewProbe,
     PreviewReason,
     PreviewSource,
     PreviewState,
     auto_build,
     build_product,
+    format_name,
 )
 from archiwista.previews.worker import OPERATIONS
 from archiwista.refs import (
@@ -197,25 +197,27 @@ class PreviewService:
         try:
             located = await self._locate(parsed, principal)
         except SourceUnavailableError:
-            return _unavailable(text, _kind(parsed), "store_unavailable")
+            return _unavailable(text, _format(parsed), "store_unavailable")
         except OwnFileChangedError:
-            return _unavailable(text, _kind(parsed), "changed_since_scan")
+            return _unavailable(text, _format(parsed), "changed_since_scan")
         except PreviewUnavailableError as error:
             return _unavailable(
-                text, _kind(parsed), _reason(error.reason), error.detail
+                text, _format(parsed), _reason(error.reason), error.detail
             )
         source = located.source
         try:
             probe, detail = await self._probe(located, principal)
         except SourceUnavailableError:
-            return _unavailable(text, source.kind, "store_unavailable", source=source)
+            return _unavailable(text, source.format, "store_unavailable", source=source)
         except PreviewTimeoutError:
-            return _unavailable(text, source.kind, "timeout", source=source)
+            return _unavailable(text, source.format, "timeout", source=source)
         except OwnFileChangedError:
-            return _unavailable(text, source.kind, "changed_since_scan", source=source)
+            return _unavailable(
+                text, source.format, "changed_since_scan", source=source
+            )
         except PreviewUnavailableError as error:
             code = _reason(error.reason)
-            return _unavailable(text, source.kind, code, error.detail, source=source)
+            return _unavailable(text, source.format, code, error.detail, source=source)
         return await self._described(located, probe, detail, principal)
 
     async def thumbnail(
@@ -595,6 +597,7 @@ class PreviewService:
             ref=located.text,
             state=state,
             kind=probe.kind,
+            format=format_name(source.format, probe),
             reason=None
             if probe.reason is None
             else PreviewReasonInfo.of(probe.reason, detail),
@@ -847,14 +850,14 @@ def _reason(code: str) -> PreviewReason:
     return code if code in PREVIEW_REASONS else "unreadable"
 
 
-def _kind(ref: ObjectRef) -> PreviewKind:
-    """Return the kind of an object's file by its name."""
-    return file_format(ref.path).kind
+def _format(ref: ObjectRef) -> FileFormat:
+    """Return the format of an object's file by its name."""
+    return file_format(ref.path)
 
 
 def _unavailable(
     ref: str,
-    kind: PreviewKind,
+    fmt: FileFormat,
     code: PreviewReason,
     detail: str | None = None,
     *,
@@ -864,7 +867,8 @@ def _unavailable(
     return PreviewInfo(
         ref=ref,
         state="failed" if code in FAILURES else "unavailable",
-        kind=kind,
+        kind=fmt.kind,
+        format=fmt.name,
         reason=PreviewReasonInfo.of(code, detail),
         styles=[],
         default_style=None,

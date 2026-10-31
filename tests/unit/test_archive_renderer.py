@@ -1,23 +1,34 @@
 """ZIP archives: members listed from the central directory, never unpacked.
 
 ``zipfile`` is replaced by a trap in every test: the renderer reads the end
-records and the central directory itself (SPEC 10.1, decision 5).
+records and the central directory itself (SPEC 10.1, decision 5). An
+archive of exactly one raster (GUGiK's NMT as an XYZ grid in a ZIP) is
+previewed as that raster, read by GDAL through ``/vsizip/``.
 """
 
+import warnings
 import zipfile
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 import pytest
+import rasterio
+from rasterio.errors import NotGeoreferencedWarning
+from rasterio.io import MemoryFile
 
-from archiwista.errors import PreviewUnavailableError
+from archiwista.errors import FormatRefusedError, PreviewUnavailableError
 from archiwista.messages import message
 from archiwista.previews.renderers import archive
 from archiwista.previews.renderers.archive import ArchiveRenderer
-from archiwista.previews.types import PreviewSource
+from archiwista.previews.types import PreviewSource, build_product, format_name
 from tests.fixtures.hostile_files import ZIP_DECLARED_ENTRIES, hostile_files
-from tests.fixtures.store_files import zip_members
+from tests.fixtures.store_files import xyz_grid, zip_members
 
 _KEY = "a" * 64
+# An NMT sheet's corner in EPSG:2180, 16 cells of 5 m a side.
+_BOUNDS = (214_620.0, 690_440.0, 214_700.0, 690_520.0)
+_SIDE = 16
 
 
 @pytest.fixture(autouse=True)
@@ -166,3 +177,133 @@ def test_archive_has_no_thumbnail_or_tile(tmp_path: Path) -> None:
         renderer.tile(_source(path), probe, "rgb", 3, 1, 1, {})
 
     assert thumbnail.value.reason == tile.value.reason == "archive_members_only"
+
+
+def _nmt_source(path: Path) -> PreviewSource:
+    """Return a ``pl.gugik.nmt_xyz_5m`` version as the index gives it (sidecar CRS)."""
+    return PreviewSource(
+        f"version:zespol:{path.name}",
+        _KEY,
+        (path,),
+        crs="EPSG:2180",
+        product="nmt",
+        dataset_key="pl.gugik.nmt_xyz_5m",
+    )
+
+
+def _decoded(png: bytes) -> np.ndarray[Any, Any]:
+    with warnings.catch_warnings(), MemoryFile(png) as memory:
+        warnings.simplefilter("ignore", NotGeoreferencedWarning)
+        with memory.open(driver="PNG") as image:
+            return np.asarray(image.read())
+
+
+def _rows_from_the_south(grid: bytes) -> bytes:
+    """Return the same grid as GUGiK writes it: rows by rising Y."""
+    lines = grid.decode("ascii").splitlines()
+    rows = [lines[start : start + _SIDE] for start in range(0, len(lines), _SIDE)]
+    return ("\n".join(line for row in reversed(rows) for line in row) + "\n").encode()
+
+
+def test_zip_of_one_xyz_is_previewed_as_its_grid(tmp_path: Path) -> None:
+    """One XYZ in a ZIP: its size, the index's CRS, NMT styles and a COG."""
+    # Arrange
+    path = _write_zip(
+        tmp_path / "N-33-66-C-d-3-3.zip",
+        [("73843_1035511_NMT-N3366Cd33.xyz", xyz_grid(_BOUNDS, 7, size=_SIDE))],
+    )
+    source = _nmt_source(path)
+    renderer = ArchiveRenderer()
+
+    # Act
+    probe = renderer.probe(source)
+    renderer.build(source, probe, tmp_path / "cog.tif")
+    thumbnail = _decoded(renderer.thumbnail(source, probe, "hillshade", 256, None))
+
+    # Assert
+    assert (probe.kind, probe.driver, probe.reason) == ("raster", "XYZ", None)
+    assert (probe.width, probe.height, probe.crs) == (_SIDE, _SIDE, "EPSG:2180")
+    assert probe.bbox_native == pytest.approx(_BOUNDS)
+    assert probe.default_style == "hillshade" and probe.unit == "m"
+    assert build_product(probe) == "cog.tif"
+    assert format_name(source.format, probe) == "XYZ (ZIP)"
+    with rasterio.open(tmp_path / "cog.tif", driver="GTiff") as cog:
+        assert cog.crs.to_epsg() == 2180
+        assert (cog.width, cog.height) == (_SIDE, _SIDE)
+        assert tuple(cog.bounds) == pytest.approx(_BOUNDS)
+    assert thumbnail.shape == (4, _SIDE, _SIDE)
+    assert thumbnail[3].all()
+
+
+def test_xyz_rows_from_the_south_thumbnail_north_up(tmp_path: Path) -> None:
+    """GUGiK's rows by rising Y give the same thumbnail as rows from the north."""
+    # Arrange
+    grid = xyz_grid(_BOUNDS, 7, size=_SIDE)
+    renderer = ArchiveRenderer()
+    sources = [
+        _nmt_source(_write_zip(tmp_path / f"{name}.zip", [(f"{name}.xyz", data)]))
+        for name, data in (("north", grid), ("south", _rows_from_the_south(grid)))
+    ]
+
+    # Act
+    north, south = (
+        _decoded(renderer.thumbnail(item, probe, "hypsometry", 256, None))
+        for item in sources
+        for probe in [renderer.probe(item)]
+    )
+
+    # Assert
+    assert not np.array_equal(north, north[:, ::-1, :])
+    assert np.array_equal(north, south)
+
+
+def test_zip_of_unsorted_xyz_has_no_preview(tmp_path: Path) -> None:
+    """Points that are no grid (Y changing direction): ``unsupported_format``."""
+    # Arrange
+    points = b"0 10 1\n10 0 2\n5 5 3\n0 0 4\n10 10 5\n"
+    path = _write_zip(tmp_path / "punkty.zip", [("punkty.xyz", points)])
+
+    # Act
+    with pytest.raises(PreviewUnavailableError) as refused:
+        ArchiveRenderer().probe(_nmt_source(path))
+
+    # Assert
+    assert refused.value.reason == "unsupported_format"
+
+
+@pytest.mark.parametrize(
+    "entries",
+    [
+        [("arkusz.xyz", b"0 0 1\n"), ("opis.txt", b"NMT")],
+        [("a.xyz", b"0 0 1\n"), ("b.xyz", b"0 0 1\n")],
+        [("opis.txt", b"NMT")],
+    ],
+    ids=["raster_and_text", "two_rasters", "no_raster"],
+)
+def test_zip_of_no_single_raster_lists_members(
+    tmp_path: Path, entries: list[tuple[str, bytes]]
+) -> None:
+    """More files than one raster, or none: the list of members, no image."""
+    # Arrange
+    path = _write_zip(tmp_path / "arkusze.zip", entries)
+    renderer = ArchiveRenderer()
+    source = _nmt_source(path)
+
+    # Act
+    probe = renderer.probe(source)
+
+    # Assert
+    assert (probe.kind, probe.reason) == ("archive", "archive_members_only")
+    assert format_name(source.format, probe) == "ZIP"
+    with pytest.raises(PreviewUnavailableError):
+        renderer.thumbnail(source, probe, "hillshade", 256, None)
+
+
+def test_zip_raster_member_outside_is_never_opened(tmp_path: Path) -> None:
+    """A single raster named ``../x.xyz`` is refused before GDAL reads it."""
+    # Arrange
+    path = _write_zip(tmp_path / "zly.zip", [("../x.xyz", b"0 0 1\n")])
+
+    # Act / Assert
+    with pytest.raises(FormatRefusedError):
+        ArchiveRenderer().probe(_nmt_source(path))

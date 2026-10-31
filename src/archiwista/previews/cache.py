@@ -97,7 +97,7 @@ RENDERER_VERSIONS: Mapping[RendererName, int] = {
     "raster": 2,
     "vector": 2,
     "points": 2,
-    "archive": 2,
+    "archive": 3,
     "document": 2,
     "composite": 2,
 }

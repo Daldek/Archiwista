@@ -360,6 +360,8 @@ function Facts({ info, state }) {
   return html`<dl class="kv pv-facts">
     <dt>${L.facts.kind}</dt>
     <dd><${Tech} value=${[["kind", info.kind]]}>${L.kind[info.kind] ?? info.kind}</${Tech}></dd>
+    <dt>${L.facts.format}</dt>
+    <dd>${info.format}</dd>
     <dt>${L.facts.state}</dt>
     <dd><${Badge} level=${STATE_LEVEL[state] ?? "plain"}>
       <${Tech} value=${[["state", state]]}>${L.state[state] ?? state}</${Tech}>

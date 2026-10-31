@@ -198,10 +198,13 @@ def test_timeline_bar_height_is_local_coverage(
 def test_two_formats_one_timeline_row(
     layers_server: ServedLayerStore, tab: Tab
 ) -> None:
-    """One variant in two formats is one row and one cell, formats as badges."""
+    """One variant in two formats is one row and one cell, formats as badges.
+
+    The ASCII-NMT archive holds one XYZ grid: once built, its badge names it.
+    """
     page, _, layers = open_timeline(tab, layers_server)
-    both = next(layer for layer in layers if "ZIP" in layer["variant"]["formats"])
-    assert both["variant"]["formats"] == ["ASCII Grid", "ZIP"]
+    both = next(layer for layer in layers if len(layer["variant"]["formats"]) == 2)
+    assert both["variant"]["formats"] == ["ASCII Grid", "XYZ (ZIP)"]
     assert len(both["variant"]["segments"]) == 2
 
     inside = page.locator(f'[data-layer="{both["key"]}"]')
@@ -211,13 +214,13 @@ def test_two_formats_one_timeline_row(
     expect(head).to_contain_text("1 m · EVRF2007")
     for name in both["variant"]["formats"]:
         expect(
-            head.locator(".fmt").filter(has_text=re.compile(f"^{name}$"))
+            head.locator(".fmt").filter(has_text=re.compile(f"^{re.escape(name)}$"))
         ).to_have_count(1)
     # The same variant's other years share the row; the formats one cell.
     same = [layer["key"] for layer in layers if variant(layer) == variant(both)]
     expect(rows.locator("[data-layer]")).to_have_count(len(same))
     expect(cell(page, both["key"])).to_have_attribute(
-        "title", re.compile("ASCII Grid, ZIP")
+        "title", re.compile(re.escape("ASCII Grid, XYZ (ZIP)"))
     )
 
     # The panel counts the sheet in both formats once.

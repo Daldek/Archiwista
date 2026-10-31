@@ -1324,6 +1324,21 @@ command-line interface may change.
 
 ### Fixed
 
+- A version stored as a ZIP that holds exactly one raster GDAL reads (GUGiK's NMT of
+  2020, `pl.gugik.nmt_xyz_5m`: one XYZ grid per sheet; also one ASC or GeoTIFF) had no
+  preview, only the list of its members, and the Wachlarz and the Katalog called it
+  "ZIP". The archive renderer now previews it as that raster, read through `/vsizip/`
+  without unpacking (`archiwista.formats.open_raster(..., member=)`, the member's name
+  checked first): thumbnails, map tiles, the fan's layers and the local COG, styled as
+  an NMT ASC, with the CRS of the version's metadata for a grid without one; the
+  renderer's cache version rises (`archive` 3), so archives are probed again. Its
+  format is "XYZ (ZIP)" in the fan's and the Katalog's badges and in the preview's
+  facts (`PreviewInfo.format`, new; `kind` is `raster`) once the archive was probed.
+  A ZIP of several files or of no raster keeps the list of members
+  (`archive_members_only`, now "ZIP archive of more files than one raster"); an XYZ of
+  points that are no grid has no preview (`unsupported_format`).
+- A raster whose rows run from the south (an XYZ grid sorted by rising Y, as GUGiK
+  writes them) had its thumbnail upside down; it is drawn north up.
 - The plan window of a set with a line per sheet (Kartograf gives one when the grid of
   the area holds sheets without data, as at sea around the island of Wolin: about 116) sent
   every line's `POST /commands/parse` at once: over HTTP/2 (a team server behind a

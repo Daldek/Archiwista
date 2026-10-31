@@ -185,6 +185,16 @@ reason, in Polish, why it has none, with an instruction on what to do. A file
 that "cannot be read" is remembered as such; "Sprawdź ponownie" (check again) in
 its preview reads it again.
 
+Previews read GeoTIFF, ASCII Grid (ASC), XYZ grids, JPEG and PNG, GeoPackage,
+Shapefile, GeoJSON, FlatGeobuf, MapInfo TAB and LAS/LAZ. A ZIP that holds exactly
+one raster file (GUGiK's NMT of 2020 as an XYZ grid in a ZIP, also one ASC or
+GeoTIFF) is previewed as that raster, read inside the archive without unpacking it:
+the same hillshade and colour ramp as an ASC sheet, the coordinate system from the
+version's metadata when the grid has none. The file card's preview, the Wachlarz and
+the Katalog name its format „XYZ (ZIP)” once Archiwista has read the archive (before
+that „ZIP”). An XYZ of points that are no regular grid has no preview („unsupported
+format”); a ZIP of several files or of no raster shows the list of its files.
+
 The first look at a file on an HDD or a share is slow; it can be prepared
 ahead: `archiwista preview-warm` (filters `--store`,
 `--product`, `--segment`, `--project`, `--area-id`; `--json`) or `POST

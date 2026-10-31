@@ -52,6 +52,7 @@ export const previews = {
   },
   facts: {
     kind: "Rodzaj pliku",
+    format: "Format",
     state: "Stan podglądu",
     map: "Na mapie",
     map_tiles: "tak, powiększenia {minzoom}–{maxzoom}",

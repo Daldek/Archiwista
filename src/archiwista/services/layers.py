@@ -134,6 +134,7 @@ from archiwista.previews.types import (
     PreviewState,
     auto_build,
     build_product,
+    format_name,
 )
 from archiwista.previews.worker import OPERATIONS
 from archiwista.refs import (
@@ -154,8 +155,8 @@ SHEET_MIN_PX = 32
 # Seconds and layers ``LayerMemo`` keeps.
 LAYER_MEMORY_S = 60.0
 LAYER_MEMORY_SIZE = 256
-# Kinds of files a layer's images can draw.
-_DRAWN_KINDS = frozenset({"raster", "image", "vector", "points"})
+# Kinds of files a layer's images can draw (an archive: the raster it holds).
+_DRAWN_KINDS = frozenset({"raster", "image", "vector", "points", "archive"})
 _VARIANT_CHARS = 12
 _DIGEST_CHARS = 16
 # Planar coordinates of the outlines and of an own file's frame: centimetres.
@@ -683,7 +684,9 @@ def _collect(
             layers[key] = layer
         ref = version_ref(query.store, item.path)
         version = _Version(item, ref)
-        if record is not None:
+        # An archive's probe names the raster it holds: its badge, also
+        # without an area (``XYZ (ZIP)``).
+        if record is not None or file_format(item.path).kind == "archive":
             version = _version(query.store, item, ref, cache, resolver)
         layer.versions.append(version)
     for layer in layers.values():
@@ -825,7 +828,9 @@ def _model(
             resolution=_common(item.resolution for item in items),
             vertical_crs=_common(item.vertical_crs for item in items),
             segments=sorted(name for name in segments if name),
-            formats=sorted({_format(item.path) for item in items}),
+            formats=sorted(
+                {_format(version.item.path, version.probe) for version in versions}
+            ),
         ),
         kind=layer.kind,
         year=layer.year,
@@ -1395,12 +1400,16 @@ def _common(values: Any) -> str | None:
     return found.pop() if len(found) == 1 else None
 
 
-def _format(path: str) -> str:
-    """Return the name of a file's format, a badge of its layer."""
+def _format(path: str, probe: PreviewProbe | None = None) -> str:
+    """Return the name of a file's format, a badge of its layer.
+
+    An archive whose probe read the one raster it holds names that raster
+    (``XYZ (ZIP)``).
+    """
     found = file_format(path)
     if found is UNKNOWN_FORMAT:
         return Path(path).suffix.lstrip(".").upper() or found.name
-    return found.name
+    return format_name(found, probe)
 
 
 def _digest(contents: Any) -> str:

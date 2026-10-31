@@ -35,8 +35,9 @@ renderers with a COG of their own (a point cloud's 2D image).
 import contextlib
 import math
 import warnings
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -67,6 +68,7 @@ from archiwista.previews.types import (
     PreviewProbe,
     PreviewReason,
     PreviewSource,
+    RasterFile,
     StyleName,
     auto_build,
 )
@@ -103,9 +105,13 @@ class RasterRenderer:
 
     kinds: frozenset[PreviewKind] = frozenset({"raster", "image"})
 
+    def raster_file(self, source: PreviewSource) -> RasterFile:
+        """Return what GDAL reads of a source: its main file."""
+        return RasterFile.of(source)
+
     def probe(self, source: PreviewSource) -> PreviewProbe:
         """Recognise a raster or image file (see the module)."""
-        return probe_raster(source)
+        return probe_raster(source, self.raster_file(source))
 
     def thumbnail(
         self,
@@ -116,7 +122,7 @@ class RasterRenderer:
         frame: Extent | None,
     ) -> bytes:
         """Return a PNG of the file at most ``size`` pixels a side."""
-        with _opened(source, probe) as dataset:
+        with _opened(source, probe, self.raster_file) as dataset:
             return render_thumbnail(dataset, probe, style, size, frame)
 
     def tile(
@@ -132,14 +138,21 @@ class RasterRenderer:
         """Return the PNG map tile ``z/x/y`` of the file."""
         if probe.reason is not None:
             raise PreviewUnavailableError(probe.reason)
-        with _opened(source, probe) as dataset:
+        with _opened(source, probe, self.raster_file) as dataset:
             return render_tile(dataset, probe, style, z, x, y, params)
 
-    build = staticmethod(build_cog)
+    def build(self, source: PreviewSource, probe: PreviewProbe, out_path: Path) -> None:
+        """Write the local COG of the file (``archiwista.previews.cog``)."""
+        build_cog(source, probe, out_path, self.raster_file(source))
 
 
-def probe_raster(source: PreviewSource) -> PreviewProbe:
+def probe_raster(
+    source: PreviewSource, raster: RasterFile | None = None
+) -> PreviewProbe:
     """Recognise a raster or image file.
+
+    ``raster`` is what GDAL reads (the source's main file by default; the
+    one raster member of a ZIP archive for ``ArchiveRenderer``).
 
     Raises
     ------
@@ -148,7 +161,9 @@ def probe_raster(source: PreviewSource) -> PreviewProbe:
     FormatRefusedError
         The file is not of its format (the format table).
     """
-    with _open_source(source) as dataset:
+    raster = RasterFile.of(source) if raster is None else raster
+    kind = raster.format.kind
+    with _open_source(raster) as dataset:
         own = not dataset.transform.is_identity
         georeference = None if own else source.georeference
         view = tiles.raster_view(
@@ -166,16 +181,14 @@ def probe_raster(source: PreviewSource) -> PreviewProbe:
         tiled = dataset.block_shapes[0][1] != width
         file_palette = _file_palette(dataset)
         class_table = (
-            None
-            if source.kind == "image"
-            else TABLE_OF_PRODUCT.get(source.product or "")
+            None if kind == "image" else TABLE_OF_PRODUCT.get(source.product or "")
         )
         sample = _sample(view, overviews)
         palette: tuple[PaletteEntry, ...] = ()
         if file_palette is not None or class_table is not None:
             palette = _palette(sample, file_palette, class_table)
         styles, default = _styles(
-            source.kind,
+            kind,
             len(bands),
             dtype,
             file_palette is not None,
@@ -208,7 +221,7 @@ def probe_raster(source: PreviewSource) -> PreviewProbe:
             )
         )
         return PreviewProbe(
-            kind=source.kind,
+            kind=kind,
             driver=str(dataset.driver),
             width=width,
             height=height,
@@ -354,12 +367,17 @@ def render_thumbnail(
         values = tiles.read_values(
             view, bands, shape=(rows, columns), resampling=look.reading(probe)
         )
+        transform = view.transform
+        if transform is not None and transform.e > 0:
+            # Rows from the south (an XYZ grid sorted by rising Y): north up.
+            values = values[:, ::-1, :]
+            transform = transform @ Affine(1, 0, 0, 0, -1, dataset.height)
         if margin:
             values = _padded(values, margin)
         grid = (
             Affine.scale(dataset.width / columns, dataset.height / rows)
-            if view.transform is None
-            else view.transform
+            if transform is None
+            else transform
             @ Affine.scale(dataset.width / columns, dataset.height / rows)
         ) @ Affine.translation(-margin, -margin)
         across, down = tiles.pixel_metres(
@@ -431,8 +449,12 @@ def _rows_of(metres: Metres, start: int, stop: int) -> Metres:
 
 
 @contextlib.contextmanager
-def _opened(source: PreviewSource, probe: PreviewProbe) -> Iterator["DatasetReader"]:
-    """Open what a preview of a source reads: its local COG, else the file.
+def _opened(
+    source: PreviewSource,
+    probe: PreviewProbe,
+    locate: Callable[[PreviewSource], RasterFile],
+) -> Iterator["DatasetReader"]:
+    """Open what a preview of a source reads: its local COG, else its raster.
 
     A file over the auto-build limits without overviews and without its
     COG is not read whole for a preview (``too_large``: "Zbuduj podgląd").
@@ -444,17 +466,17 @@ def _opened(source: PreviewSource, probe: PreviewProbe) -> Iterator["DatasetRead
                 return
         if not probe.overviews and not auto_build(source, probe):
             raise PreviewUnavailableError("too_large", "the local COG is not built")
-    with _open_source(source) as dataset:
+    with _open_source(locate(source)) as dataset:
         yield dataset
 
 
 @contextlib.contextmanager
-def _open_source(source: PreviewSource) -> Iterator["DatasetReader"]:
-    """Open a source's main file with its driver; an ungridded XYZ is refused."""
+def _open_source(raster: RasterFile) -> Iterator["DatasetReader"]:
+    """Open a raster with its driver; an ungridded XYZ is refused."""
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", NotGeoreferencedWarning)
-            dataset = open_raster(source.paths[0], source.format)
+            dataset = open_raster(raster.path, raster.format, member=raster.member)
     except RasterioIOError as error:
         if _UNGRIDDED in str(error).lower():
             raise PreviewUnavailableError("unsupported_format", str(error)) from error
