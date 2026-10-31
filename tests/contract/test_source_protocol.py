@@ -8,6 +8,7 @@ from archiwista.sources import (
     CurrentVersionAdapter,
     DefaultRootAdapter,
     EntryMeta,
+    ExportFolderAdapter,
     Footprint,
     GeoAdapter,
     LinkCheckAdapter,
@@ -75,5 +76,6 @@ def test_source_protocol_does_not_require_optional_capabilities() -> None:
         LinkCheckAdapter,
         DefaultRootAdapter,
         SheetGridAdapter,
+        ExportFolderAdapter,
     ):
         assert not isinstance(adapter, capability)

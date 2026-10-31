@@ -16,10 +16,11 @@ printing ``PinOutcome``) and ``project-unpin PROJEKT GRUPA [--pin
 PRODUCENT:WERSJA …]`` removes pins or the whole group (``POST
 …/groups/{group}/unpin``, ``DELETE …/groups/{group}``): the others print the
 project's card as the index holds it right after the change (``ProjectCard``).
-``project-export PROJEKT NAZWA [--group GRUPA …]`` writes an export
-``zestawy/NAZWA/`` from the pins (``POST /projects/{project}/exports``,
-``ProjectExport``) and ``project-exports PROJEKT`` lists them (``GET
-…/exports``, ``ProjectExports``); ``project-activity PROJEKT [--limit N]
+``project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`` writes an
+export ``eksport/NAZWA/`` (with ``--zip`` also ``eksport/NAZWA.zip``) from
+the pins (``POST /projects/{project}/exports``, ``ProjectExport``) and
+``project-exports PROJEKT`` lists them (``GET …/exports``,
+``ProjectExports``); ``project-activity PROJEKT [--limit N]
 [--cursor ID]`` pages what was done to the project and its jobs (``GET
 …/activity``, ``ProjectActivity``). They call
 ``archiwista.services.projects`` and ``archiwista.api.projects`` without
@@ -197,6 +198,11 @@ def add_commands(commands: Commands) -> None:
         dest="groups",
         metavar=message("metavar.group"),
         help=message("cli.project_export_group_help"),
+    )
+    exported.add_argument(
+        "--zip",
+        action="store_true",
+        help=message("cli.project_export_zip_help"),
     )
     listed = add_parser(commands, "project-exports", "cli.project_exports_help")
     _project(listed)
@@ -379,10 +385,14 @@ def _changed(place: _Place, key: str) -> _Output:
 
 def _export(args: argparse.Namespace, place: _Place) -> _Output:
     """Write an export as ``POST /projects/{project}/exports`` does."""
-    body = _body(ExportRequest, {"name": args.name, **_given(args, "groups")})
+    body = _body(
+        ExportRequest,
+        {"name": args.name, "zip": args.zip, **_given(args, "groups")},
+    )
     answer = export_answer(
         place.settings,
         place.queries,
+        place.registry,
         place.decisions,
         place.preferences(),
         args.project,
@@ -407,7 +417,7 @@ def _exports(args: argparse.Namespace, place: _Place) -> _Output:
 
 def _export_text(project: str, answer: ProjectExport) -> str:
     """Return what ``project-export`` prints for people."""
-    return message(
+    text: str = message(
         "cli.project_exported",
         name=answer.name,
         project=project,
@@ -416,6 +426,11 @@ def _export_text(project: str, answer: ProjectExport) -> str:
         no_store=answer.skipped.no_store,
         missing=answer.skipped.missing,
     )
+    if answer.zip:
+        text += "\n" + message(
+            "cli.project_export_zip_line", path=f"{answer.path.local}.zip"
+        )
+    return text
 
 
 def _exports_text(answer: ProjectExports) -> str:
@@ -429,10 +444,16 @@ def _exports_text(answer: ProjectExports) -> str:
                 "cli.project_export_line",
                 name=item.name,
                 written_at=item.written_at.isoformat(timespec="seconds"),
-                files=", ".join(item.files),
+                folders=", ".join(
+                    dict.fromkeys(file.split("/")[0] for file in item.files)
+                ),
             )
         )
         lines.append(message("cli.project_path_line", path=item.path.local))
+        if item.zip:
+            lines.append(
+                message("cli.project_export_zip_line", path=f"{item.path.local}.zip")
+            )
         if item.changed_since:
             lines.append(message("cli.project_export_changed"))
     return "\n".join(lines)

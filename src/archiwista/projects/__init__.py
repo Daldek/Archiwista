@@ -4,7 +4,7 @@ A project is a directory holding ``archiwista-project.json``, written only
 by Archiwista on a person's command: its name, description, area, the store
 of each producer and groups of pinned versions. ``document`` gives its
 members and rules, ``files`` reads it and changes it under its lock, with
-its area files, and ``exports`` writes its exports in ``zestawy/``. Who sees
+its area files, and ``exports`` writes its exports in ``eksport/``. Who sees
 and changes a project is the state database's (A-ADR-029); the index reads
 the file (``archiwista.index.projects``).
 """

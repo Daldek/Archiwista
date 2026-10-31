@@ -97,7 +97,6 @@ _DATA = frozenset(
         ("index/writer.py", "Ł"),
         ("index/writer.py", "projekt"),
         ("projects/document.py", "obszary"),
-        ("projects/exports.py", "pliki.txt"),
     }
 )
 

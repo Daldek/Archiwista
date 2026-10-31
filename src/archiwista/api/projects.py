@@ -15,8 +15,9 @@ lock and answers the project's card as the index holds it right after the
 change. They translate only: ``archiwista.services.projects`` does the work,
 and ``archiwista project-init``, ``project-edit``, ``project-area`` and
 ``project-store`` call the same functions. ``POST /projects/{project}/exports``
-writes an export ``zestawy/<name>/`` from the pins (``project.write``) and
-``GET /projects/{project}/exports`` lists them to whoever sees the project
+writes an export ``eksport/<name>/`` (and its zip) from the pins
+(``project.write``), ``GET /projects/{project}/exports`` lists them and ``GET
+…/exports/{name}/zip`` sends an export's zip to whoever sees the project
 (``project-export``, ``project-exports``). ``GET
 /projects/{project}/activity`` pages the project's entries of the action log
 to whoever sees it (A-ADR-049 decision 14, ``project-activity``).
@@ -31,6 +32,7 @@ from pathlib import Path as FilePath
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query, Response
+from fastapi.responses import FileResponse
 
 from archiwista.api import API_PREFIX
 from archiwista.api.areas import index_path
@@ -398,6 +400,7 @@ def set_project_store(
 def export_answer(
     settings: AppSettings,
     queries: IndexQueries,
+    registry: PluginRegistry,
     decisions: Authorizer,
     preferences: Preferences,
     key: str,
@@ -410,10 +413,12 @@ def export_answer(
     done = project_service.export_project(
         settings,
         queries,
+        registry,
         decisions,
         key,
         name=body.name,
         groups=body.groups,
+        with_zip=body.zip,
         actor=actor,
         visible=visible,
     )
@@ -520,24 +525,32 @@ def export_project(
     settings: _Settings,
     preferences: _Preferences,
     queries: _Queries,
+    registry: _Registry,
 ) -> ProjectExport:
-    """Write the export `zestawy/<name>/` of a project from its pins (`project.export`).
+    """Write the export `eksport/<name>/` of a project from its pins (`project.export`).
 
-    `pliki.txt` lists each pinned version's file once, in the order of the
-    groups and their pins, relative to the export when both lie on one
-    share, else absolute; `ATRYBUCJE.txt` each attribution the sources require
-    once. Both UTF-8 with LF, each replaced whole when written again. A pin
+    Each pinned version once, copied (never linked) under its original name
+    into the folder of its category (`NMT`, `BDOT`, `ORTO`…, by its
+    producer), with the companion files the store holds beside it (`.prj`,
+    `.tfw`, `.aux.xml`, the parts of a Shapefile; never a `*.meta.json`);
+    two files of one name in a folder both get their version's label before
+    the extension. `README.txt` (Polish) describes every file (product,
+    year and label, coordinate and height systems, size, SHA-256, the groups
+    that pin it) and lists each data source's attribution once. With `zip`
+    the folder's content is also `eksport/<name>.zip`. An export of that
+    name is replaced whole, its ZIP too (removed when `zip` is false). A pin
     whose store is not configured, or whose version is not present, is left
     out and counted in `skipped`. Needs the project's owner or an
     administrator (`403 permission_denied`). Refused: an unknown group
     (`404`), a project file Archiwista cannot read (`409`,
     `invalid_project_file`, `unsupported_project_schema`) and a file that
-    cannot be written (`500`, `io_error`). Offline; the project file is not
-    written.
+    cannot be copied or written (`500`, `io_error`; the old export stays).
+    Offline; the project file is not written.
     """
     return export_answer(
         settings.get(),
         queries,
+        registry,
         decisions,
         preferences,
         project,
@@ -562,12 +575,46 @@ def list_project_exports(
     """List a project's exports, each saying whether the project changed after it.
 
     `changed_since`: the project file was written after the export, so the
-    export may no longer show its pins; write it again. For whoever sees the
-    project.
+    export may no longer show its pins; write it again. `zip`: the export
+    has its ZIP (`GET …/exports/{name}/zip`). For whoever sees the project.
     """
     return exports_answer(
         settings.get(), queries, preferences, project, visible=visible
     )
+
+
+@router.get(
+    "/{project}/exports/{name}/zip",
+    response_class=FileResponse,
+    responses={
+        200: {
+            "description": (
+                "The export's ZIP, `Content-Disposition: attachment` as"
+                " `<name>.zip`: its folders and `README.txt`."
+            ),
+            "content": {"application/zip": {}},
+        },
+        **problem_responses(403, 404),
+    },
+)
+def get_project_export_zip(
+    project: _Project,
+    name: Annotated[
+        str, Path(description="The export's name.", examples=["raba-2024"])
+    ],
+    visible: _Visible,
+    settings: _Settings,
+    queries: _Queries,
+) -> FileResponse:
+    """Send the ZIP of a project's export, written with `zip` (`eksport/<name>.zip`).
+
+    For whoever sees the project; `404 not_found` for an export without
+    one.
+    """
+    found = project_service.project_export_zip(
+        settings.get(), queries, project, name, visible=visible
+    )
+    return FileResponse(found, media_type="application/zip", filename=found.name)
 
 
 @router.get(

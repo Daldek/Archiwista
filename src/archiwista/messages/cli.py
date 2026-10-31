@@ -1989,29 +1989,36 @@ MESSAGES = {
     ),
     "project_export_help": Text(
         (
-            "Writes the export zestawy/NAME/ of a project from its pins: pliki.txt"
-            " and ATRYBUCJE.txt (--json: the ProjectExport model of POST"
+            "Writes the export eksport/NAME/ of a project from its pins: a folder"
+            " per category (NMT, BDOT, ORTO…) with copies of the pinned files and"
+            " README.txt (--json: the ProjectExport model of POST"
             " /api/v1/projects/{{project}}/exports)."
         ),
         (
-            "Zapisuje zestaw zestawy/NAZWA/ projektu z jego przypięć: pliki.txt i"
-            " ATRYBUCJE.txt (--json: model ProjectExport z POST"
+            "Zapisuje eksport eksport/NAZWA/ projektu z jego przypięć: folder na"
+            " kategorię (NMT, BDOT, ORTO…) z kopiami przypiętych plików i"
+            " README.txt (--json: model ProjectExport z POST"
             " /api/v1/projects/{{project}}/exports)."
         ),
     ),
     "project_export_name_help": Text(
         (
             "The export's name: 1 to 64 letters, digits, '.', '_' and '-', not"
-            " starting with '.'; an export of that name is written again."
+            " starting with '.'; an export of that name is written anew."
         ),
         (
-            "Nazwa zestawu: od 1 do 64 liter, cyfr, '.', '_' i '-', nie od '.';"
-            " zestaw o tej nazwie zostanie zapisany ponownie."
+            "Nazwa eksportu: od 1 do 64 liter, cyfr, '.', '_' i '-', nie od '.';"
+            " eksport o tej nazwie zostanie zapisany od nowa."
         ),
     ),
     "project_export_group_help": Text(
-        "Only this group's pins (repeatable); by default every group's.",
-        "Tylko przypięcia tej grupy (można powtórzyć); domyślnie wszystkich grup.",
+        "Only this set's pins (repeatable); by default every set's.",
+        "Tylko przypięcia tego zestawu (można powtórzyć); domyślnie wszystkich"
+        " zestawów.",
+    ),
+    "project_export_zip_help": Text(
+        "Also write the export as one ZIP file, eksport/NAME.zip.",
+        "Zapisz eksport także jako jeden plik ZIP, eksport/NAZWA.zip.",
     ),
     "project_exports_help": Text(
         (
@@ -2020,7 +2027,7 @@ MESSAGES = {
             " /api/v1/projects/{{project}}/exports)."
         ),
         (
-            "Wypisuje zestawy projektu i czy projekt zmienił się po każdym z nich"
+            "Wypisuje eksporty projektu i czy projekt zmienił się po każdym z nich"
             " (--json: model ProjectExports z GET"
             " /api/v1/projects/{{project}}/exports)."
         ),
@@ -2032,13 +2039,14 @@ MESSAGES = {
             " {missing}."
         ),
         (
-            "Zapisano zestaw {name} projektu {project} w {path}: wersje {versions};"
+            "Zapisano eksport {name} projektu {project} w {path}: wersje {versions};"
             " pominięte: bez magazynu z ustawień {no_store}, brakujące {missing}."
         ),
     ),
+    "project_export_zip_line": Text("  ZIP file: {path}", "  plik ZIP: {path}"),
     "project_export_line": Text(
-        "{name} — written {written_at}: {files}",
-        "{name} — zapisany {written_at}: {files}",
+        "{name} — written {written_at}: {folders}",
+        "{name} — zapisany {written_at}: {folders}",
     ),
     "project_export_changed": Text(
         "  the project changed after the export: write it again",
@@ -2046,7 +2054,7 @@ MESSAGES = {
     ),
     "no_project_exports": Text(
         "The project has no exports.",
-        "Projekt nie ma zestawów.",
+        "Projekt nie ma eksportów.",
     ),
     "project_activity_help": Text(
         (

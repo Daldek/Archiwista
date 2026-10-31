@@ -10,7 +10,7 @@ groups cannot be verified, a derived file's pin shows the producer's reason
 (D5) and disables its group's jobs, a group with nothing missing cannot be
 restored, and the check and the re-pin of a group mark its pins. The
 computer's owner writes an export of a fixture project with „Eksportuj…” and
-finds ``pliki.txt`` and ``ATRYBUCJE.txt`` on the disk; once the project file
+finds its category folders and ``README.txt`` on the disk; once the project file
 changes, the list says „projekt zmieniony po eksporcie — wygeneruj ponownie”
 and the export is written again from the form opened on its name. A person
 the project is shared with sees the exports and „Eksportuj…” disabled with
@@ -109,19 +109,16 @@ def test_an_export_is_written_and_written_again_after_a_change(
     )
     expect(listed).to_have_count(1)
     expect(listed).to_contain_text("hydrograf")
-    target = directory / "zestawy" / "hydrograf"
+    target = directory / "eksport" / "hydrograf"
     expect(listed).to_contain_text(str(target))
     expect(listed).not_to_contain_text(CHANGED)
-    pins = [
-        pin.version
-        for group in project.groups
-        if group.name != "archiwum"
-        for pin in group.pins
+    assert sorted(path.name for path in target.iterdir()) == [
+        "BDOT",
+        "NMT",
+        "README.txt",
     ]
-    assert (target / "pliki.txt").read_text(encoding="utf-8") == "".join(
-        f"../../../../data/{version}\n" for version in pins
-    )
-    assert (target / "ATRYBUCJE.txt").read_text(encoding="utf-8") == ATTRIBUTION
+    readme = (target / "README.txt").read_text(encoding="utf-8")
+    assert readme.endswith(f"\n- {ATTRIBUTION}")
 
     # Act: the project file changes after the export; the card is read again.
     def describe(data: dict[str, Any]) -> None:
@@ -145,7 +142,7 @@ def test_an_export_is_written_and_written_again_after_a_change(
         "Zapisano zestaw „hydrograf”: wersje 3."
     )
     expect(item).not_to_contain_text(CHANGED)
-    assert len((target / "pliki.txt").read_text(encoding="utf-8").splitlines()) == 3
+    assert len(list((target / "NMT").iterdir())) == 2
     tab.assert_clean()
 
 
@@ -159,7 +156,7 @@ def test_a_person_who_may_not_change_the_project_sees_its_exports_only(
     state = StateStore(served.paths.state_file)
     add_people(state)
     share(state, access_key(directory), "users")
-    old = directory / "zestawy" / "stary" / "pliki.txt"
+    old = directory / "eksport" / "stary" / "README.txt"
     old.parent.mkdir(parents=True)
     old.write_text("", encoding="utf-8")
     os.utime(old, (1_600_000_000, 1_600_000_000))  # before the project file

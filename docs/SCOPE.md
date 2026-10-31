@@ -72,8 +72,8 @@ with a difference model come **after the MVP** (v1.1 to v1.3).
   what the store holds from "Stan lokalny", the "Catalog" and the file card,
   without the network, and new data from the plan window ("Dodaj do projektu");
   verification, update check, re-pinning and restoring of missing versions; the
-  project's activity from the action log; exports `pliki.txt` and `ATRYBUCJE.txt`
-  (`zestawy/<name>/`). The producers keep no projects.
+  project's activity from the action log; exports of copies in category folders with
+  `README.txt` (`eksport/<name>/`, optionally a ZIP). The producers keep no projects.
 - Local mode with protection (`127.0.0.1` only, CSRF, DNS rebinding, paths).
 - Team mode: sign-in (local accounts or a reverse proxy), account and group management and
   the project sharing screen in the interface, TLS, an action log, a shared queue,
@@ -96,7 +96,7 @@ with a difference model come **after the MVP** (v1.1 to v1.3).
 
 | Item | Status | Reason |
 | --- | --- | --- |
-| The QGIS export of a project (`.qgz`, `pliki.csv`, `polecenia.sh`, VRT wrappers, `zestaw.json`; also with IMGW and ČHMÚ data), PL + CZ export without merging | v1.1 | decision on the MVP scope; the exports `pliki.txt` and `ATRYBUCJE.txt` are in the release with v0.3 and v0.4 (the author's decision D6 of 2026-10-31, A-ADR-049) |
+| The QGIS export of a project (`.qgz`, VRT wrappers, `zestaw.json`; also with IMGW and ČHMÚ data), PL + CZ export without merging | v1.1 | decision on the MVP scope; the exports of copies with `README.txt` are in the release with v0.3 and v0.4 (the author's decision D6 of 2026-10-31, A-ADR-049) |
 | The "Catalog" as cards | v1.1 | user decision 2026-10-18 ("Kartograf command" and "Add to project" from the file card moved into the release with v0.3 and v0.4: D2 of 2026-10-31, KB-6) |
 | The assistant (an LLM agent), also IMGW tools and the assistant budget per person | v1.2 | decision on the MVP scope |
 | Sheet mosaic, version difference model, a set with a copy of the data | v1.3 | needs KE and KG in Kartograf |
@@ -184,7 +184,7 @@ Full acceptance criteria: SPEC 13.
    Archiwista's own project file `archiwista-project/1`, pins of stored versions from
    "Stan lokalny", the "Catalog" and the file card, and of new data from the plan window;
    verification, update check, re-pinning and restoring; the project card with its area
-   and activity; the exports `pliki.txt` and `ATRYBUCJE.txt`. Plan:
+   and activity; the exports of copies with `README.txt`. Plan:
    [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
    (phases P2 to P6, after Kartograf and IMGWTools remove their projects).
    - Gate: SPEC 13 "Projects" (the file written and read back, two writers, pinning
@@ -256,7 +256,7 @@ The full list: SPEC 14.
 | SMB semantics | a stale index | immutable versions, view refresh, a visible index state |
 | Coverage labels misunderstood | a wrong choice of year | mockup, definitions in tooltips, a test with a user |
 | Scope growing into a GIS program | less simplicity | the PRD boundaries; analyses in QGIS |
-| No QGIS export in the MVP | loading data into QGIS by hand | a project's `pliki.txt` and `ATRYBUCJE.txt`, copying version paths and CLI commands in the MVP; the QGIS export in v1.1 |
+| No QGIS export in the MVP | loading data into QGIS by hand | a project's export of copies in category folders (and its ZIP), copying version paths and CLI commands in the MVP; the QGIS export in v1.1 |
 | A snapshot of a file being edited (GeoPackage in QGIS, Shapefile) | an inconsistent copy | an SQLite backup copy for GeoPackage, the whole set of files for multi-file formats, a test in the v0.2 gate |
 | Snapshots grow in the project directory | no disk space | the size in the snapshot plan, usage in the project view |
 | The visibility filter missed in a new route or query (search, "Pinned in:", previews of own data) | a leak of names and data of private projects | the model from v0.1: a `Principal` in every service, one place of decision, the visibility matrix in the v0.1 gate (A-ADR-029) |

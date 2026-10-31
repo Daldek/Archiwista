@@ -152,8 +152,9 @@ class ImgwAdapter:
     (a slot has no link), ``StationCatalogAdapter`` (each provider's station
     catalog), ``SeriesIndexAdapter`` (the index of each dataset's series),
     ``SeriesValuesAdapter`` (a station's values), ``DefaultRootAdapter``
-    (``store_root()``) and ``VersionCommandAdapter`` (``command_for_version``);
-    no other optional capability.
+    (``store_root()``), ``VersionCommandAdapter`` (``command_for_version``) and
+    ``ExportFolderAdapter`` (every version under ``IMGW``); no other optional
+    capability.
     All methods may run in several threads at once; one iterator of
     ``iter_entries`` belongs to one thread.
     """
@@ -636,6 +637,10 @@ class ImgwAdapter:
             return Footprint(location="country", source="country")
         reason = "unreadable" if entry.kind == "problem" else "no_source"
         return Footprint(location="none", reason=reason)
+
+    def export_folder(self, product: str | None, dataset_key: str | None) -> str:
+        """Return the export folder of every IMGW version: ``IMGW``."""
+        return "IMGW"
 
     def command_for_version(self, version: str, *, root: Path) -> CommandCall:
         """Return the call that selects a stored version again (IMGWTools').

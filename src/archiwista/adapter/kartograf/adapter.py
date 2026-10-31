@@ -76,6 +76,40 @@ _MARKER = STORE_MARKERS[PRODUCER]
 _WGS84 = "EPSG:4326"
 # Problems of a whole segment: they have no slot.
 _SEGMENT_PROBLEMS = frozenset({"unknown_segment", "legacy_campaigns", "stale_incoming"})
+# The folder of a product's versions in a project's export (A-ADR-049
+# decision 13): plain upper-case names for people; another product is its
+# upper-cased id.
+_EXPORT_FOLDERS = {
+    "nmt": "NMT",
+    "nmpt": "NMPT",
+    "laz": "LAZ",
+    "orto": "ORTO",
+    "true-orto": "TRUE_ORTO",
+    "oblique-orto": "ORTO_SKOSNE",
+    "intensity": "INTENSYWNOSC",
+    "bdot10k": "BDOT",
+    "bdoo": "BDOO",
+    "corine": "CORINE",
+    "zabaged": "ZABAGED",
+    "soil": "SOILGRIDS",
+    "hsg": "HSG",
+    "contours": "WARSTWICE",
+    "admin": "GRANICE",
+    "addresses": "ADRESY",
+    "special": "PRG_SPECJALNE",
+    "geomorphology": "GEOMORFOLOGIA",
+    "map": "EWIDENCJA",
+    "prices": "RCN",
+    "buildings": "BUDYNKI",
+    "mesh": "SIATKA_3D",
+    "trees": "DRZEWA",
+    "network": "HYDRO",
+    "geographic": "NAZWY",
+    "world": "NAZWY_SWIAT",
+    "topographic": "MAPY",
+    "control": "OSNOWA",
+    "geoid": "GEOIDA",
+}
 
 
 class KartografAdapter:
@@ -96,8 +130,8 @@ class KartografAdapter:
     ``SegmentedAdapter``, ``PartitionedAdapter``, ``GeoAdapter``,
     ``LinkCheckAdapter``, ``SheetGridAdapter``, ``DefaultRootAdapter``,
     ``ActionAdapter`` (Kartograf's commands and ``check_availability``,
-    ``actions.py``) and ``VersionCommandAdapter`` (``command_for_file``,
-    ``actions.py``). All methods
+    ``actions.py``), ``VersionCommandAdapter`` (``command_for_file``,
+    ``actions.py``) and ``ExportFolderAdapter``. All methods
     may run in several threads at once; one iterator of ``iter_entries``
     belongs to one thread.
     """
@@ -543,6 +577,10 @@ class KartografAdapter:
     def command_for_version(self, version: str, *, root: Path) -> CommandCall:
         """Return the call of a stored version (its sidecar, ``command_for_file``)."""
         return actions.command_for_version(version, root=root)
+
+    def export_folder(self, product: str | None, dataset_key: str | None) -> str | None:
+        """Return the export folder of a product's versions (``NMT``, ``BDOT``…)."""
+        return None if product is None else _EXPORT_FOLDERS.get(product)
 
     def _state(
         self,

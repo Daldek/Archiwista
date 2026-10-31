@@ -6,9 +6,9 @@ factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 version of a slot, station catalogs, the series indexes of stations, the
 values of a station's series, their parts, coordinate operations, link
 confirmation, sheet grids, the default store root, the producer's commands
-with the availability at the source, and the command of a stored version are
-optional capabilities: a producer without them still satisfies
-``SourceAdapter``.
+with the availability at the source, the command of a stored version and
+the folder of a version in a project's export are optional capabilities: a
+producer without them still satisfies ``SourceAdapter``.
 """
 
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
@@ -544,5 +544,24 @@ class VersionCommandAdapter(Protocol):
         ProducerError
             The producer refused otherwise: no such version or sidecar, an
             invalid sidecar, a path that is no version.
+        """
+        ...
+
+
+@runtime_checkable
+class ExportFolderAdapter(Protocol):
+    """Optional capability: the category folder of a version in an export.
+
+    A project's export (A-ADR-049 decision 13) puts each version's file into
+    a folder named for people after its category (``NMT``, ``BDOT``,
+    ``ORTO``…); without the capability, or without an answer, the folder is
+    the upper-cased product id, else the producer's id.
+    """
+
+    def export_folder(self, product: str | None, dataset_key: str | None) -> str | None:
+        """Return the folder of a version of ``product`` and ``dataset_key``.
+
+        Plain upper case, no path separators; ``None`` leaves the default.
+        Offline, no disk access.
         """
         ...

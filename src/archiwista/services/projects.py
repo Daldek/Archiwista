@@ -14,9 +14,10 @@ their agent), and an account that creates one (a ``user``, or an ``agent``
 of one) owns it (A-ADR-049 decision 6). Each change is logged
 (``project.create``, ``project.update``, ``project.area``,
 ``project.store``, A-ADR-047). ``export_project`` writes an export
-``zestawy/<name>/`` from the pins, a change of the project too
-(``project.export``), and ``project_exports`` lists the exports to whoever
-sees the project (A-ADR-049 decision 13). A new project lies where a scan
+``eksport/<name>/`` (and its zip) from the pins, a change of the project too
+(``project.export``); ``project_exports`` lists the exports and
+``project_export_zip`` finds an export's zip for whoever sees the project
+(A-ADR-049 decision 13). A new project lies where a scan
 finds it, below a configured project directory. None of them uses the
 network or writes a store. ``project_directory`` gives a project's
 directory, refused when it or its file left the project directories.
@@ -56,7 +57,7 @@ from archiwista.index import (
 )
 from archiwista.index.projects import MAX_PROJECT_DEPTH, record_project
 from archiwista.messages import message
-from archiwista.paths import indexed_path, resolve_indexed_path
+from archiwista.paths import resolve_indexed_path
 from archiwista.projects import (
     PROJECT_FILE,
     ProjectDocument,
@@ -68,15 +69,17 @@ from archiwista.projects import (
     write_area_file,
 )
 from archiwista.projects.exports import (
+    ExportItem,
     ExportListing,
     ExportResult,
-    ExportRow,
+    export_zip,
+    folder_name,
     list_exports,
     write_export,
 )
 from archiwista.services.problems import Problem, explain
 from archiwista.services.project_jobs import chosen_groups
-from archiwista.sources import GeoAdapter
+from archiwista.sources import ExportFolderAdapter, GeoAdapter
 from archiwista.sources.registry import PluginRegistry
 
 
@@ -505,7 +508,7 @@ class ProjectExportDone:
     Attributes
     ----------
     export : ExportResult
-        Its directory, files, the versions listed and when.
+        Its directory, files, zip, the versions copied and when.
     no_store : int
         Pins whose producer's store in the project matches no configured
         store.
@@ -522,23 +525,26 @@ class ProjectExportDone:
 def export_project(
     settings: AppSettings,
     queries: IndexQueries,
+    registry: PluginRegistry,
     authorizer: Authorizer,
     key: str,
     *,
     name: str,
     groups: Sequence[str] | None,
+    with_zip: bool,
     actor: Principal,
     visible: ProjectVisibility,
 ) -> ProjectExportDone:
-    """Write the export ``zestawy/<name>/`` of a project from its pins.
+    """Write the export ``eksport/<name>/`` of a project from its pins.
 
-    The pins of the chosen groups (every group when ``groups`` is ``None``),
-    in the file's order of groups and pins, each version once; each pinned
-    file resolved in its configured store (A-ADR-049 decision 13). A pin
-    whose store is not configured, or whose version is not present, is left
-    out and counted. An export is a change of the project: it needs
-    ``project.write`` and is logged as ``project.export`` (its name and the
-    versions listed). The project file is not written.
+    The pinned versions of the chosen groups (every group when ``groups``
+    is ``None``), each once, copied into the folder of its category (the
+    producer's ``ExportFolderAdapter``) with ``README.txt``; with
+    ``with_zip`` also ``eksport/<name>.zip`` (A-ADR-049 decision 13 and its
+    erratum 1). A pin whose store is not configured, or whose version is not
+    present, is left out and counted. An export is a change of the project:
+    it needs ``project.write`` and is logged as ``project.export`` (its name
+    and the versions copied). The project file is not written.
 
     Raises
     ------
@@ -547,12 +553,12 @@ def export_project(
     PermissionDeniedError
         ``actor`` may not change the project.
     PathOutsideRootError
-        The project's directory, its file or ``zestawy/`` leaves the project
+        The project's directory, its file or ``eksport/`` leaves the project
         directories.
     ProjectFileError
         The project file is invalid or of a newer format.
     ProjectFileWriteError
-        An export file cannot be written; the one there stays as it was.
+        A file cannot be copied or written; the export there stays as it was.
     """
     record = queries.project(key, visible=visible)
     if record is None:
@@ -562,8 +568,10 @@ def export_project(
     directory = project_directory(project, settings)
     read_project_file(directory)
     chosen = chosen_groups(record, groups)
-    rows, no_store, missing = _export_rows(settings, queries, chosen)
-    export = write_export(directory, name, rows)
+    items, no_store, missing = _export_items(settings, queries, registry, chosen)
+    export = write_export(
+        directory, name, items, project=project.name, with_zip=with_zip
+    )
     authorizer.state.record(
         actor,
         "project.export",
@@ -589,13 +597,10 @@ def project_exports(
     NotFoundError
         No project ``key`` the principal sees.
     PathOutsideRootError
-        The project's directory, its file or ``zestawy/`` leaves the project
+        The project's directory, its file or ``eksport/`` leaves the project
         directories.
     """
-    record = queries.project(key, visible=visible)
-    if record is None:
-        raise NotFoundError(message("project.not_found", project=key))
-    directory = project_directory(record.project, settings)
+    directory = _seen_directory(settings, queries, key, visible=visible)
     try:
         changed = (directory / PROJECT_FILE).stat().st_mtime
     except OSError:  # gone since the scan: nothing to compare with
@@ -603,48 +608,137 @@ def project_exports(
     return list_exports(directory, changed)
 
 
-def _export_rows(
-    settings: AppSettings, queries: IndexQueries, groups: Sequence[PinGroupRef]
-) -> tuple[list[ExportRow], int, int]:
+def project_export_zip(
+    settings: AppSettings,
+    queries: IndexQueries,
+    key: str,
+    name: str,
+    *,
+    visible: ProjectVisibility,
+) -> Path:
+    """Return the file ``eksport/<name>.zip`` of a project, for whoever sees it.
+
+    Raises
+    ------
+    NotFoundError
+        No project ``key`` the principal sees, or it has no such zip.
+    PathOutsideRootError
+        The project's directory, its file or ``eksport/`` leaves the project
+        directories.
+    """
+    directory = _seen_directory(settings, queries, key, visible=visible)
+    found = export_zip(directory, name)
+    if found is None:
+        raise NotFoundError(message("export.zip_missing", name=name))
+    return found
+
+
+def _seen_directory(
+    settings: AppSettings,
+    queries: IndexQueries,
+    key: str,
+    *,
+    visible: ProjectVisibility,
+) -> Path:
+    """Return the directory of a project the principal sees, else refuse it."""
+    record = queries.project(key, visible=visible)
+    if record is None:
+        raise NotFoundError(message("project.not_found", project=key))
+    return project_directory(record.project, settings)
+
+
+def _export_items(
+    settings: AppSettings,
+    queries: IndexQueries,
+    registry: PluginRegistry,
+    groups: Sequence[PinGroupRef],
+) -> tuple[list[ExportItem], int, int]:
     """Return the exported versions of ``groups`` and the pins without store, missing.
 
-    Each version once, in the order of the groups and their pins.
+    Each version once, in the order of the groups and their pins, with the
+    names of the groups that pin it and what the index knows of it.
     """
     pins: dict[tuple[str, str | None, str], ProjectPinRef] = {}
+    sets: dict[tuple[str, str | None, str], list[str]] = {}
     for group in groups:
         for pin in group.pins:
-            pins.setdefault((pin.producer, pin.store, pin.version), pin)
-    roots: dict[tuple[str, str | None, str], Path] = {}
+            identity = (pin.producer, pin.store, pin.version)
+            pins.setdefault(identity, pin)
+            names = sets.setdefault(identity, [])
+            if group.name not in names:
+                names.append(group.name)
+    folders = _ExportFolders(registry)
+    items: list[ExportItem] = []
     no_store = missing = 0
     for identity, pin in pins.items():
         config = None if pin.store is None else settings.store(pin.store)
         root = None if config is None else config.roots().get(pin.producer)
-        if pin.state == "unknown" or root is None:
+        if pin.store is None or pin.state == "unknown" or root is None:
             no_store += 1
-        elif pin.state == "missing":
-            missing += 1
-        else:
-            try:
-                resolve_indexed_path(root, pin.version)
-            except (OSError, PathOutsideRootError):
-                missing += 1
-            else:
-                roots[identity] = root
-    stores: dict[str, list[str]] = {}
-    for _, store, version in roots:
-        stores.setdefault(str(store), []).append(version)
-    attributions = {
-        store: queries.attributions(store, versions)
-        for store, versions in stores.items()
-    }
-    rows = [
-        ExportRow(
-            file=indexed_path(root, version),
-            attribution=attributions[str(store)].get(version),
+            continue
+        detail = (
+            None
+            if pin.state == "missing"
+            else queries.version(pin.store, pin.version, visible=ProjectVisibility())
         )
-        for (_, store, version), root in roots.items()
-    ]
-    return rows, no_store, missing
+        try:
+            file = resolve_indexed_path(root, pin.version)
+        except (OSError, PathOutsideRootError):
+            detail = None
+        if detail is None or not file.is_file():
+            missing += 1
+            continue
+        summary = detail.segment
+        product = detail.product or summary.product
+        version = detail.summary
+        items.append(
+            ExportItem(
+                file=file,
+                folder=folders.folder(pin.producer, product, detail.dataset_key),
+                label=version.label or pin.label,
+                sha256=version.sha256 or pin.sha256,
+                sets=tuple(sets[identity]),
+                product=_product_text(product, summary.name),
+                year=version.data_year,
+                crs=version.horizontal_crs or detail.native_crs,
+                vertical_crs=version.vertical_crs,
+                attribution=detail.attribution,
+            )
+        )
+    return items, no_store, missing
+
+
+class _ExportFolders:
+    """The category folder of each version, by its producer's adapter."""
+
+    def __init__(self, registry: PluginRegistry) -> None:
+        self._registry = registry
+        self._adapters: dict[str, ExportFolderAdapter | None] = {}
+
+    def folder(
+        self, producer: str, product: str | None, dataset_key: str | None
+    ) -> str:
+        """Return the folder: the adapter's, else the product's or producer's id."""
+        if producer not in self._adapters:
+            try:
+                found = self._registry.adapter(producer)
+            except SourceStateError:
+                found = None
+            self._adapters[producer] = (
+                found if isinstance(found, ExportFolderAdapter) else None
+            )
+        adapter = self._adapters[producer]
+        named = None if adapter is None else adapter.export_folder(product, dataset_key)
+        return folder_name(named or product, producer)
+
+
+def _product_text(product: str | None, name: str | None) -> str | None:
+    """Return a product as ``README.txt`` names it: its id and name for people."""
+    if product is None:
+        return name
+    if name is None or name == product:
+        return product
+    return f"{product} ({name})"
 
 
 def written_root(store_root: Path, directory: Path, *, relative: bool) -> str:

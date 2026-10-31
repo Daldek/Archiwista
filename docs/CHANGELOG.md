@@ -51,18 +51,29 @@ command-line interface may change.
   and "Usuń grupę" on the project's card, and the plan window's option "Dodaj do
   projektu" with the pin's outcome in the download's result.
 
-- A project's exports (A-ADR-049 decision 13): "Eksportuj…" in the section "Zestawy" of
-  the project's card, `archiwista project-export PROJEKT NAZWA [--group GRUPA …]` and
-  `POST /projects/{project}/exports` write `zestawy/<name>/` in the project directory
-  from the pins of every group or of the chosen ones: `pliki.txt`, each pinned
-  version's file once, one per line (relative to the export on one share, else
-  absolute; for Hydrograf), and `ATRYBUCJE.txt`, each attribution the sources require
-  once; UTF-8 with LF, each file replaced whole when written again, never removed. Pins
-  whose store is not configured or whose version is not present are left out and
-  counted. Writing needs the owner or an administrator and is logged as
-  `project.export`. The card's list, `archiwista project-exports PROJEKT` and `GET
-  /projects/{project}/exports` say when the project changed after an export
-  ("projekt zmieniony po eksporcie — wygeneruj ponownie"). The QGIS project stays v1.1.
+- A project's exports (A-ADR-049 decision 13 and its erratum 1): "Eksportuj…" on the
+  project's card, `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`
+  and `POST /projects/{project}/exports` (`{name, groups?, zip?}`) write
+  `eksport/<name>/` in the project directory, a complete set of input data to hand over
+  (to QGIS, a model, a colleague) with a flat layout: one folder per category (`NMT`,
+  `NMPT`, `LAZ`, `ORTO`, `BDOT`, `HSG`, `CORINE`, `SOILGRIDS`, `WARSTWICE`…, `IMGW`)
+  holding a copy of each pinned version of every set or of the chosen ones under its
+  original name and format (never a link into the store), with the companion files the
+  store holds beside it (`.prj`, `.tfw`, `.aux.xml`, the parts of a Shapefile; never a
+  `*.meta.json`); the same sheet of two sets gets each version's label before the
+  extension (`M-33-44-A-d-2-2_2025-06-13.asc`). `README.txt` (Polish) describes every
+  file (product, year and label, coordinate and height systems, size, SHA-256, the
+  sets that pin it) and ends with "Źródła danych", each attribution the licences
+  require once. With `zip` the same tree is also `eksport/<name>.zip`, downloaded with
+  `GET /projects/{project}/exports/{name}/zip`. An export of an existing name is
+  replaced whole, its ZIP too; a failed one leaves the old export. Pins whose store is
+  not configured or whose version is not present are left out and counted. Writing
+  needs the owner or an administrator and is logged as `project.export`. The card's
+  list, `archiwista project-exports PROJEKT` and `GET /projects/{project}/exports` say
+  whether an export has a ZIP and when the project changed after it ("projekt
+  zmieniony po eksporcie — wygeneruj ponownie"). The source interface gains
+  `ExportFolderAdapter` (`export_folder(product, dataset_key)`), the category folder of
+  a producer's versions. The QGIS project stays v1.1.
 
 - A project's activity (A-ADR-049 decision 14, plan P5): "Aktywność" at the end of the
   project's card, `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` and
@@ -985,8 +996,8 @@ command-line interface may change.
   without the network from "Stan lokalny", the Catalog and the file card ("Dodaj do
   projektu…"), and the plan window's "Dodaj jako zadanie projektu" becomes "Dodaj do
   projektu"; the project jobs become verify, check, re-pin and restore; the card gets the
-  project's activity from the action log, and exports write `pliki.txt` and
-  `ATRYBUCJE.txt` (the QGIS export stays v1.1). Kartograf and IMGWTools remove their project
+  project's activity from the action log, and exports of the pinned data (the QGIS
+  export stays v1.1). Kartograf and IMGWTools remove their project
   manifests (`kartograf-project.json`, `imgw-project.json`), which Archiwista will no longer
   read or migrate. SPEC (4.7, 8.4, 9.2, 13 "Projects"), SCOPE and PRD describe it, A-ADR-039
   and A-ADR-040 are superseded, and `docs/plans/2026-10-31-archiwista-projects.md` builds it

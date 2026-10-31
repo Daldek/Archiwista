@@ -154,7 +154,7 @@ each requirement: the SPEC section named.
 - F8.1 A project of Archiwista (A-ADR-049; the producers keep none): a file in the project directory with a name, a description, an area and groups of pinned versions; the project card with the area on the map, groups and pins with their state, and the usage index ("Pinned in: Raba (NMT 2023)"). (v0.1 for the usage index; the rest: projects)
 - F8.2 Pinning what the store holds, without the network, from "Stan lokalny", the "Catalog" and the file card (any version, older ones too), and pinning new data from the plan window ("Add to project"). (projects)
 - F8.3 Project jobs: verification of sums without the network, update check, re-pinning and restoring missing versions through the producers' commands; a version whose command the producer cannot rebuild is pinned, and its check and restore are disabled with the reason. (projects)
-- F8.4 A project's activity from the action log, and its exports `pliki.txt` and `ATRYBUCJE.txt` in `zestawy/<name>/`. (projects)
+- F8.4 A project's activity from the action log, and its exports in `eksport/<name>/` (optionally a ZIP): copies of the pinned files in category folders with `README.txt`. (projects)
 
 **F9. Store health** (SPEC UC-13)
 
@@ -197,7 +197,7 @@ each requirement: the SPEC section named.
 
 **After the MVP** (details: SCOPE, "Out of the MVP")
 
-- F12 The QGIS export of a project: `.qgz`, a list of paths with their attributes, VRT wrappers and the commands that rebuild the pins, also IMGW and ČHMÚ data and a PL + CZ export without merging (SPEC 8.4; `pliki.txt` and `ATRYBUCJE.txt` are F8.4). (v1.1)
+- F12 The QGIS export of a project: `.qgz`, VRT wrappers and a description of the export, also IMGW and ČHMÚ data and a PL + CZ export without merging (SPEC 8.4; the copies and `README.txt` are F8.4). (v1.1)
 - F13 The assistant (an LLM agent): plans data preparation, executes only after "Approve and run"; off by default (SPEC 7). (v1.2)
 - F14 Combining: mosaic, version comparison with a difference model; the processing is done in Kartograf (SPEC 8). (v1.3)
 

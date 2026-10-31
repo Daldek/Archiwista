@@ -22,6 +22,7 @@ from archiwista.sources import (
     CurrentVersionAdapter,
     DefaultRoot,
     DefaultRootAdapter,
+    ExportFolderAdapter,
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
@@ -94,6 +95,7 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
             LinkCheckAdapter,
             SheetGridAdapter,
             DefaultRootAdapter,
+            ExportFolderAdapter,
         )
     )
     assert registry.probe("external", store) == replace(EXTERNAL, store=str(store))

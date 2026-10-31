@@ -30,7 +30,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
 | stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
-| a project's exports from its pins, `pliki.txt` and `ATRYBUCJE.txt` in `zestawy/NAZWA/` (A-ADR-049), and their list | `archiwista project-export PROJEKT NAZWA [--group GRUPA …]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports` |
+| a project's exports from its pins: copies in category folders with `README.txt` in `eksport/NAZWA/`, optionally a ZIP (A-ADR-049), their list and the ZIP | `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports`, `GET /projects/{project}/exports/{name}/zip` |
 | a project's activity from the action log: its changes and its jobs, newest first, without the client address (A-ADR-049) | `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
 | pin versions the store holds into a project's group (offline, from the index), remove pins or a group (A-ADR-049) | `archiwista project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add]`, `project-unpin PROJEKT GRUPA [--pin PRODUCENT:WERSJA …]` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}` |
 | jobs over a project's groups (A-ADR-049): the pinned files hashed in the store (offline), the pins compared with the source, one group pinned anew to the source's newer versions, the missing pins downloaded again; in the foreground, exit 0, 10, 11 or 130 | `archiwista project-verify PROJEKT [GRUPA …]`, `project-check PROJEKT [GRUPA …]`, `project-repin PROJEKT GRUPA`, `project-restore PROJEKT [GRUPA …]` | `POST /projects/{project}/jobs` |
@@ -434,26 +434,40 @@ cursor is safe in a URL).
   of a newer format is not changed (`409 invalid_project_file`,
   `unsupported_project_schema`), and a directory that cannot be written is
   `500 io_error` (`project_file_write_failed`).
-- `archiwista project-export PROJEKT NAZWA [--group GRUPA …]` / `POST
-  /projects/{project}/exports` (`{"name", "groups"?}`; `name` of 1 to 64 letters,
-  digits, `.`, `_` and `-`, not starting with `.`, else `400 validation_error`; an
-  unknown group is `404`): writes `zestawy/<name>/` in the project directory,
-  `pliki.txt` (each pinned version's file once, one per line, in the order of the
-  file's groups and pins; relative to the export directory when both lie below one
-  directory under the root or drive, else absolute as the server reads it) and
-  `ATRYBUCJE.txt` (each attribution text once, in the order of first use), UTF-8 with
-  LF, each file replaced whole. The answer `201 ProjectExport` has `name`, `path`
-  (the export directory as a copy path), `files`, `pins` (the versions listed) and
-  `skipped` (`no_store`: pins whose store matches no configured one; `missing`: pins
-  whose version is not present in the index or on the disk) and `written_at`. It
-  needs `project.write` like a change (`403 permission_denied`, `404` for a hidden
-  project; `409 invalid_project_file`, `unsupported_project_schema`; `500 io_error`)
-  and is logged as `project.export` (`details`: `name`, `pins`); the project file is
-  not written. `archiwista project-exports PROJEKT` / `GET
+- `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]` / `POST
+  /projects/{project}/exports` (`{"name", "groups"?, "zip"?}`; `name` of 1 to 64
+  letters, digits, `.`, `_` and `-`, not starting with `.`, else `400
+  validation_error`; an unknown group is `404`; `zip` false by default): writes
+  `eksport/<name>/` in the project directory, a flat set of input data for another
+  tool: one folder per category (`NMT`, `NMPT`, `LAZ`, `ORTO`, `BDOT`, `HSG`,
+  `CORINE`, `SOILGRIDS`, `WARSTWICE`…, `IMGW`; the producer's adapter names it, else
+  the upper-cased product id) holding each pinned version of the chosen groups once,
+  copied (never hard-linked) under its original name, with the companion files the
+  store holds beside it (`.prj`, `.tfw`, `.aux.xml`, the parts of a Shapefile; never
+  a `*.meta.json`); two files of one name in a folder both get the version's label
+  before the extension (`M-33-44-A-d-2-2_2025-06-13.asc`; equal labels add the
+  SHA-256 prefix). `README.txt` (Polish, UTF-8, LF) describes every file (folder and
+  name, product, year, label, coordinate and height systems when known, size,
+  SHA-256, the groups that pin it) and ends with "Źródła danych", each attribution
+  once. With `zip` the folder's content is also `eksport/<name>.zip`. An export of
+  that name is replaced whole, written in a hidden sibling directory and swapped in;
+  without `zip` its old ZIP is removed. The answer `201 ProjectExport` has `name`,
+  `path` (the export directory as a copy path), `files` (every file written,
+  relative and `/`-separated, the category folders' files by name and `README.txt`
+  last), `pins` (the versions copied), `skipped` (`no_store`: pins whose store
+  matches no configured one; `missing`: pins whose version is not present in the
+  index or on the disk), `zip` and `written_at`. It needs `project.write` like a
+  change (`403 permission_denied`, `404` for a hidden project; `409
+  invalid_project_file`, `unsupported_project_schema`; `500 io_error`, the old
+  export kept) and is logged as `project.export` (`details`: `name`, `pins`); the
+  project file is not written. `archiwista project-exports PROJEKT` / `GET
   /projects/{project}/exports` (whoever sees the project) answers `ProjectExports
-  {items}`: each export of `zestawy/` with `name`, `path`, `files`, `written_at` and
-  `changed_since` (the project file changed after it: write it again). Archiwista
-  never removes an export.
+  {items}`: each export of `eksport/` (a directory with `README.txt`) with `name`,
+  `path`, `files`, `zip`, `written_at` (of its `README.txt`) and `changed_since` (the
+  project file changed after it: write it again). `GET
+  /projects/{project}/exports/{name}/zip` (whoever sees the project) sends
+  `eksport/<name>.zip` as an attachment (`application/zip`), `404 not_found` when
+  the export has none.
 - `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` / `GET
   /projects/{project}/activity` (`?limit=` 1 to 100, by default 20; `?cursor=`
   the `next_cursor` of the page before; another parameter is `400
