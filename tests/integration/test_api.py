@@ -26,9 +26,9 @@ from archiwista.errors import (
     ProducerError,
     SourceUnavailableError,
 )
-from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, MapQuery
+from archiwista.index import IndexQueries, IndexWriter, MapQuery
 from archiwista.security import CSRF_HEADER
-from archiwista.sources import ProjectInfo, SourceAdapter, SourceState
+from archiwista.sources import SourceAdapter, SourceState
 from archiwista.sources.registry import source_error
 from tests.fixtures.api_session import assert_problem, running_api
 from tests.fixtures.api_store import ALIAS, STORE, ServedStore, served_store
@@ -55,7 +55,9 @@ ROUTES = {
     ("get", "/api/v1/map/sheets"),
     ("get", "/api/v1/projects"),
     ("get", "/api/v1/projects/{project}"),
-    ("get", "/api/v1/projects/{project}/status"),
+    ("patch", "/api/v1/projects/{project}"),
+    ("put", "/api/v1/projects/{project}/area"),
+    ("put", "/api/v1/projects/{project}/stores/{producer}"),
     ("get", "/api/v1/settings"),
     ("put", "/api/v1/settings"),
     ("get", "/api/v1/preferences"),
@@ -143,7 +145,7 @@ def test_api_every_read_route_answers_from_the_index(served: ServedStore) -> Non
     assert footprints["aggregated"] and footprints["total"] > 1
     assert sheets["status"] == "available" and sheets["items"][0]["geometry"]
     assert sheets["items"][0]["zone"] is None  # PL-1992 has no zones
-    assert project["tasks"] and project["project"] == projects["items"][0]["project"]
+    assert project["groups"] and project["project"] == projects["items"][0]["project"]
     producers = {item["producer"]: item["status"] for item in sources["items"]}
     assert list(producers) == ["imgw", "kartograf"]
     assert producers["kartograf"] == "available"
@@ -291,8 +293,6 @@ def test_source_states_map_to_503(
     with running_api(paths, registry) as api:
         with IndexWriter(paths.index_file) as writer:
             writer.sync_stores({STORE: {"kartograf": str(tmp_path / "data")}})
-            info = ProjectInfo("kartograf", str(tmp_path), tmp_path / "raba", "raba")
-            writer.write_project(info, store=STORE, stamp=ManifestStamp(1, 1))
         owner = api.session(LOCAL_OWNER)
 
         # Act
@@ -301,7 +301,6 @@ def test_source_states_map_to_503(
                 "GET", f"/map/sheets?bbox={KRAKOW}&system=1992&scale=1:10000"
             ),
             owner.request("GET", f"/slots?bbox={KRAKOW}"),
-            owner.request("GET", "/projects/raba/status"),
         ]
         listed = owner.request("GET", "/slots")
 
@@ -316,33 +315,23 @@ def test_source_states_map_to_503(
 
 
 def test_api_disconnected_store_answers_stale(tmp_path: Path) -> None:
-    """Lists stay 200 from the index; the live project check falls back or 503."""
+    """Lists stay 200 from the index, marked stale with the store's detail."""
     with served_store(tmp_path) as served:
         # Arrange
         paths = served.api.paths
-        project = _get(served, "/projects")["items"][0]["project"]
         with IndexWriter(paths.index_file) as writer:
             writer.set_store_status(STORE, "unavailable", detail="udział odłączony")
-            info = ProjectInfo("kartograf", "x", tmp_path / "nowy", "nowy")
-            writer.write_project(info, store=STORE, stamp=ManifestStamp(1, 1))
 
         # Act
         page = _get(served, "/slots?limit=5")
         footprints = _get(served, "/map/footprints?bbox=14,49,24.2,55")
         stores = _get(served, "/stores")
-        status = _get(served, f"/projects/{project}/status")
-        unchecked = served.owner.request("GET", "/projects/nowy/status")
 
     # Assert
     assert page["items"] and page["stale"] and footprints["stale"]
     assert page["stale_stores"][0]["store"] == STORE
     assert page["stale_stores"][0]["detail"] == "udział odłączony"
     assert stores["items"][0]["state"]["stale"]
-    assert [
-        (manifest["producer"], manifest["stale"], manifest["stale_reason"])
-        for manifest in status["manifests"]
-    ] == [("kartograf", True, "store_unavailable")]
-    assert_problem(unchecked, 503, "store_unavailable", "store_unreadable")
 
 
 def test_api_settings_change_checked_saved_and_in_csp(tmp_path: Path) -> None:

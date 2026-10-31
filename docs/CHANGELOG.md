@@ -905,10 +905,36 @@ command-line interface may change.
   project's activity from the action log, and exports write `pliki.txt` and
   `ATRYBUCJE.txt` (the QGIS export stays v1.1). Kartograf and IMGWTools remove their project
   manifests (`kartograf-project.json`, `imgw-project.json`), which Archiwista will no longer
-  read or migrate. Nothing changes in this build yet: SPEC (4.7, 8.4, 9.2, 13 "Projects"),
-  SCOPE and PRD describe it, A-ADR-039 and A-ADR-040 are superseded, and
-  `docs/plans/2026-10-31-archiwista-projects.md` builds it in the phases P2 to P6, released
-  together with v0.3 and v0.4.
+  read or migrate. SPEC (4.7, 8.4, 9.2, 13 "Projects"), SCOPE and PRD describe it, A-ADR-039
+  and A-ADR-040 are superseded, and `docs/plans/2026-10-31-archiwista-projects.md` builds it
+  in the phases P2 to P6, released together with v0.3 and v0.4.
+
+- **Breaking:** projects are Archiwista's own file (A-ADR-049, plan P2): a project is a
+  directory holding `archiwista-project.json`, and the producers' manifests
+  (`kartograf-project.json`, `imgw-project.json`) are no longer read; a directory with only
+  such a manifest is no project. `archiwista project-init KATALOG [--name NAZWA]
+  [--description TEKST] [--area-id OBSZAR]` / `POST /projects` (`{"path", "name"?,
+  "description"?, "area_id"?}`) write the file (no `producer` and `store` any more: a store
+  of a producer is named with `archiwista project-store PROJEKT PRODUCENT --store MAGAZYN` /
+  `PUT /projects/{project}/stores/{producer}`); new are `archiwista project-edit` / `PATCH
+  /projects/{project}` (name, description) and `archiwista project-area` / `PUT
+  /projects/{project}/area` (an area written into `obszary/`, or cleared). Removed: the
+  tasks (`project-add`, `project-remove`, `POST`/`DELETE /projects/{project}/tasks`), the
+  producers' status (`project-status`, `GET /projects/{project}/status`) and the project
+  jobs (`project-download`, `project-repin`, `project-check`, `project-verify`, `POST
+  /projects/{project}/jobs`, the job kinds `project_*`). A project and its card carry
+  `description`, `state` and `problem` (an invalid file or one of a newer format stays
+  listed), `stores`, `area` (its state: `ok`, `missing`, `changed`, `invalid`) and `groups`
+  of pinned versions with their pins, instead of `manifests`, `tasks` and `producers`; a
+  pin of a slot names its `group` instead of `task`, as does a problem. A change takes the
+  lock `.archiwista-project.lock` (`409 project_locked` after 5 s), refuses an invalid or
+  newer file (`409 invalid_project_file`, `unsupported_project_schema`), and a directory
+  that cannot be written is `500 io_error` (`project_file_write_failed`). The action log
+  has `project.update`, `project.area` and `project.store` instead of `project.task_add`
+  and `project.task_remove`, and `project.create` names the project's `name` instead of
+  the producer. The local index is rebuilt (schema 15): its project files are read again
+  by the next scan. `archiwista doctor` no longer names `kartograf-project/1`. The
+  interface shows the new projects in a later step.
 
 - **Breaking:** the year types are each person's preference (v0.4, ADR-047 erratum 1):
   `year_types` left `GET` and `PUT /api/v1/settings`, and `PUT

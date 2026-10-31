@@ -21,15 +21,14 @@ from rasterio.windows import Window
 
 from archiwista.auth import LOCAL_OWNER
 from archiwista.cli import main
-from archiwista.index import IndexWriter, ManifestStamp, own_file_id
+from archiwista.index import IndexWriter, own_file_id
 from archiwista.reader import add_read_commands
 from archiwista.security import redeem_one_time_token
-from archiwista.sources import ProjectInfo
 from tests.fixtures import api_store
 from tests.fixtures.api_session import Api, Caller, running_api
 from tests.fixtures.api_store import ServedStore, served_store
 from tests.fixtures.cli_errors import assert_same_error, refusal
-from tests.fixtures.index_data import PRODUCER, ROOT, STORE
+from tests.fixtures.index_data import PRODUCER, ROOT, STORE, indexed_project
 from tests.fixtures.layer_store import (
     AREA_SHEET,
     PRODUCT,
@@ -59,8 +58,7 @@ def api(tmp_path: Path) -> Iterator[Api]:
     with running_api(paths) as served:
         with IndexWriter(paths.index_file) as writer:
             writer.sync_stores({STORE: {PRODUCER: ROOT}})
-            project = ProjectInfo(PRODUCER, ROOT, Path("/projekty/raba"), "Raba")
-            writer.write_project(project, store=STORE, stamp=ManifestStamp(1, 1))
+            indexed_project(writer, Path("/projekty/raba"), "Raba", store=STORE)
         yield served
 
 

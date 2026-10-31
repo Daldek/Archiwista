@@ -98,7 +98,7 @@ MAP_LIMIT = 5000
 GRID_COLUMNS = 25
 POLAND = (14.0, 49.0, 24.2, 54.9)
 SIDECAR = ".meta.json"
-MANIFEST = "kartograf-project.json"
+MANIFEST = "archiwista-project.json"
 FRAME_SECONDS = 4.0
 FRAMES_PER_S = 30.0
 # Every sample of ``/local-layers`` is another area of the same slots: one

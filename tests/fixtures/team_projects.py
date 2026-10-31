@@ -36,7 +36,6 @@ from tests.fixtures.api_session import Api, Caller, running_api
 from tests.fixtures.team_server import save_team
 
 STORE = "zespol"
-MANIFEST = "kartograf-project.json"
 ADMIN = "anna"
 OWNER = "kasia"
 OTHER = "marek"
@@ -62,9 +61,8 @@ class TeamPlace:
     imgw: Path
 
     def body(self, name: str) -> dict[str, str]:
-        """Return the body of ``POST /projects`` of a Kartograf project ``name``."""
-        directory = self.projects / name
-        return {"producer": "kartograf", "path": str(directory), "store": STORE}
+        """Return the body of ``POST /projects`` of a project ``name``."""
+        return {"path": str(self.projects / name)}
 
 
 @dataclass(frozen=True)

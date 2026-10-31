@@ -38,7 +38,6 @@ from archiwista.index import IndexWriter, initialize
 from archiwista.index.projects import record_project
 from archiwista.jobs import JobSupervisor
 from archiwista.security import fragment_url, issue_one_time_token
-from archiwista.sources.registry import load_registry
 from archiwista.state import StateStore
 from tests.fixtures.actions import ACTION_WORKER, standin_in_settings
 from tests.fixtures.availability import register_standin
@@ -119,10 +118,9 @@ def serve_team(serve: Serve, tmp_path: Path) -> Team:
     )
     paths = local_paths(tmp_path)
     initialize(paths.index_file)
-    adapter = load_registry(cache_dir=paths.cache_dir).adapter("kartograf")
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({TEAM: config.roots()})
-        key = record_project(adapter, writer, directory, stores=settings.stores)
+        key = record_project(writer, directory, stores=settings.stores, geo=None)
     return Team(serve(settings), directory, key)
 
 

@@ -121,9 +121,9 @@ def query(page: Page) -> dict[str, str]:
 
 
 def archive_pin(store: StoreManifest) -> ExpectedPin:
-    """Return the pin of an older version: task ``archiwum`` of ``projekt-01``."""
-    tasks = store.project("projekt-01").tasks
-    return next(task for task in tasks if task.name == "archiwum").pins[0]
+    """Return the pin of an older version: group ``archiwum`` of ``projekt-01``."""
+    groups = store.project("projekt-01").groups
+    return next(group for group in groups if group.name == "archiwum").pins[0]
 
 
 def link_of(store: StoreManifest, slot: str) -> ExpectedEntry:
@@ -202,11 +202,11 @@ def test_pinned_old_version_visible(serve: Serve, tab: Tab, tmp_path: Path) -> N
     store, served, page = served_store(serve, tab, tmp_path)
     pin = archive_pin(store)
     pins = [
-        (project.name, task.name, task_pin)
+        (project.name, group.name, task_pin)
         for project in store.projects
         if project.valid
-        for task in project.tasks
-        for task_pin in task.pins
+        for group in project.groups
+        for task_pin in group.pins
         if task_pin.path == pin.path and task_pin.present
     ]
     assert not pin.current and len(pins) > 1
@@ -285,7 +285,7 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
 def test_manifest_error_visible(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     """An invalid manifest shows Kartograf's own message and how to fix it."""
     store, served, page = served_store(serve, tab, tmp_path)
-    broken = next(p for p in store.projects if p.case == "invalid_manifest")
+    broken = next(p for p in store.projects if p.case == "invalid_project_file")
     try:
         open_project(store.base / broken.path)
     except ValidationError as error:

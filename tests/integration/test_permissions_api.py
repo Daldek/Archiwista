@@ -23,15 +23,14 @@ import rasterio
 from rasterio.transform import from_bounds
 
 from archiwista.auth import LOCAL_OWNER, access_key
-from archiwista.index import MAX_PAGE_LIMIT, IndexWriter, ManifestStamp
+from archiwista.index import MAX_PAGE_LIMIT, IndexWriter
 from archiwista.refs import version_ref
 from archiwista.security import issue_one_time_token
 from archiwista.services import owndata as own_service
-from archiwista.sources import ProjectInfo
 from archiwista.state import ActionEntry, StateSnapshot, Visibility
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
 from tests.fixtures.api_store import STORE as GENERATED_STORE
-from tests.fixtures.index_data import PRODUCER, ROOT, STORE
+from tests.fixtures.index_data import PRODUCER, ROOT, STORE, indexed_project
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.own_data_api import OwnDataApi, own_data_api
 from tests.fixtures.permissions import (
@@ -95,8 +94,7 @@ def api(tmp_path: Path) -> Iterator[Api]:
     with running_api(paths) as served:
         with IndexWriter(paths.index_file) as writer:
             writer.sync_stores({STORE: {PRODUCER: ROOT}})
-            project = ProjectInfo(PRODUCER, ROOT, PROJECT_DIR, "Raba")
-            writer.write_project(project, store=STORE, stamp=ManifestStamp(1, 1))
+            indexed_project(writer, PROJECT_DIR, "Raba", store=STORE)
         add_people(served.state)
         yield served
 
@@ -140,7 +138,7 @@ def test_project_access_follows_visibility_matrix(
 def test_project_routes_follow_visibility_matrix(
     api: Api, visibility: Visibility, who: Who
 ) -> None:
-    """/projects lists, and its detail and status show, only visible projects."""
+    """/projects lists, and its detail shows, only visible projects."""
     # Arrange
     share(api.state, KEY, visibility)
     caller = api.session(principal(api.state, who))
@@ -148,18 +146,14 @@ def test_project_routes_follow_visibility_matrix(
     # Act
     listed = caller.request("GET", "/projects").json()["items"]
     detail = caller.request("GET", "/projects/raba")
-    status = caller.request("GET", "/projects/raba/status")
 
     # Assert
     if who in SEES[visibility]:
         assert [item["project"] for item in listed] == ["raba"]
         assert detail.status_code == 200 and detail.json()["name"] == "Raba"
-        # Visible: the producer is asked, and this server has none.
-        assert_problem(status, 503, "missing_dependency", "source_unavailable")
     else:
         assert listed == []
         assert_problem(detail, 404, "not_found")
-        assert_problem(status, 404, "not_found")
 
 
 def test_settings_change_needs_administrator(api: Api) -> None:

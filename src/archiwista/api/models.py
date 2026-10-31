@@ -21,7 +21,7 @@ import re
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import replace
 from datetime import date, datetime
-from typing import Annotated, Any, Literal, Self
+from typing import Any, Literal, Self
 
 from pydantic import (
     AwareDatetime,
@@ -67,14 +67,17 @@ from archiwista.index import (
     LocationRef,
     MapFootprint,
     MapQuery,
+    PinGroupRef,
     PinRef,
     PinState,
     ProductSummary,
     ProductUsage,
-    ProjectManifestRef,
+    ProjectAreaRef,
+    ProjectAreaState,
     ProjectPinRef,
     ProjectRef,
-    ProjectTaskRef,
+    ProjectState,
+    ProjectStoreRef,
     RowStatus,
     ScanMode,
     SegmentRef,
@@ -97,10 +100,16 @@ from archiwista.index.geometry import polygon_bounds
 from archiwista.jobs import JobKind, JobPage, JobRecord, JobState, LogTail, ScanHistory
 from archiwista.messages import current_language, message, with_detail
 from archiwista.previews.cache import CacheUsage
+from archiwista.projects import (
+    AREAS_DIR,
+    MAX_DESCRIPTION_CHARS,
+    MAX_NAME_CHARS,
+    OriginKind,
+    SelectionSource,
+)
 from archiwista.refs import version_ref
 from archiwista.services import Problem, ProjectDetail, StoreSummary
 from archiwista.services.log import ExportFormat, LogPage, entry_document
-from archiwista.services.project_jobs import ProjectJobKind
 from archiwista.sources import (
     DefaultRoot,
     DefaultRootSource,
@@ -154,7 +163,7 @@ _LOCATION_EXAMPLE = {"kind": "footprint", "reason": None, "source": "sheet"}
 _PIN_EXAMPLE = {
     "project": "raba",
     "name": "Raba",
-    "task": "teren",
+    "group": "NMT 2023",
     "sha256": _SHA256,
     "state": "ok",
 }
@@ -324,34 +333,36 @@ _LISTED_SOURCE_EXAMPLE = {
     "default_root": _DEFAULT_ROOT_EXAMPLE,
     "availability": ["nmt", "nmpt", "laz"],
 }
-_MANIFEST_EXAMPLE = {
+_PROJECT_STORE_EXAMPLE = {
     "producer": "kartograf",
+    "root": "../../kartograf/data",
     "store": _STORE,
-    "status": "ok",
-    "problem": None,
-    "scanned_at": "2026-10-18T12:02:30Z",
 }
-_IMGW_MANIFEST_EXAMPLE = {
-    "producer": "imgw",
-    "store": _STORE,
-    "status": "not_downloaded",
-    "problem": None,
-    "scanned_at": "2026-10-18T12:02:31Z",
+_PROJECT_AREA_EXAMPLE = {
+    "path": f"{AREAS_DIR}/5f2b9c0e7d41a3b6.geojson",
+    "sha256": _SHA256,
+    "state": "ok",
+    "area_id": "5f2b9c0e7d41a3b6",
 }
 _PROJECT_EXAMPLE = {
     "project": "raba",
     "name": "Raba",
-    "manifests": [_MANIFEST_EXAMPLE, _IMGW_MANIFEST_EXAMPLE],
-    "tasks": 2,
+    "description": "Zlewnia Raby do Dobczyc",
+    "state": "ok",
+    "problem": None,
+    "stores": [_PROJECT_STORE_EXAMPLE],
+    "area": _PROJECT_AREA_EXAMPLE,
+    "groups": 2,
     "pins": 14,
     "missing_pins": 0,
+    "scanned_at": "2026-10-18T12:02:30Z",
     "project_write": True,
 }
 _PROJECT_WRITE = (
     "Whether the session's principal may change the project now (`project.write`:"
-    " its owner or an administrator), read at each request: add and remove its"
-    " tasks, and download and repin it with `store_write` of `GET /session`."
-    " Without it those requests are `403 permission_denied`."
+    " its owner or an administrator), read at each request: its name,"
+    " description, area and stores. Without it those requests are `403"
+    " permission_denied`."
 )
 _ISSUE_EXAMPLE = {
     "code": "missing_sidecar",
@@ -365,7 +376,7 @@ _ISSUE_EXAMPLE = {
     "segment": _SEGMENT,
     "slot": _SLOT,
     "project": None,
-    "task": None,
+    "group": None,
     "origin": "scan",
     "first_seen_at": "2026-10-18T12:02:30Z",
 }
@@ -452,34 +463,35 @@ _INDEX_EXAMPLE = {
     "created_at": "2026-10-18T11:58:02Z",
     "size_bytes": 214958080,
 }
-_TASK_EXAMPLE = {
-    "producer": "kartograf",
-    "task": "teren",
-    "command": "elevation download",
-    "options": {"product": "nmt", "sheet": ["N-34-130-D-d-2-4"]},
-    "status": "ok",
-}
-_IMGW_TASK_EXAMPLE = {
-    "producer": "imgw",
-    "task": "przeplywy",
-    "command": "series select",
-    "options": {
-        "dataset": "pl.imgw.hydro_daily",
-        "stations": ["149190310"],
-        "years": [2024],
-    },
-    "status": "not_downloaded",
-}
 _PROJECT_PIN_EXAMPLE = {
     "producer": "kartograf",
-    "task": "teren",
+    "store": _STORE,
     "version": _OLDER,
     "sha256": _SHA256,
+    "content_sha256": None,
+    "size_bytes": 37001234,
+    "unit": "N-34-130-D-d-2-4",
+    "label": "2019-07-12_41022",
+    "pinned_at": "2026-10-18T12:20:03Z",
+    "pinned_by": "kasia",
     "state": "ok",
     "slot": _SLOT,
-    "label": "2019-07-12_41022",
-    "size_bytes": 37001234,
     "is_current": False,
+}
+_PIN_GROUP_EXAMPLE = {
+    "name": "NMT 2023",
+    "origin": {
+        "kind": "plan",
+        "producer": "kartograf",
+        "calls": [
+            {
+                "command": "elevation download",
+                "options": {"product": "nmt", "sheet": ["N-34-130-D-d-2-4"]},
+            }
+        ],
+        "selections": None,
+    },
+    "pins": [_PROJECT_PIN_EXAMPLE],
 }
 _STORE_SETTINGS_EXAMPLE = {
     "id": _STORE,
@@ -995,14 +1007,14 @@ class Crs(BaseModel):
 
 
 class Pin(BaseModel):
-    """A project task pinning a version (``Przypięta w: Raba (teren)``)."""
+    """A group of a project pinning a version (``Przypięta w: Raba (NMT 2023)``)."""
 
     model_config = _examples(_PIN_EXAMPLE)
 
     project: str = Field(description="Project id, as in /projects/{project}.")
     name: str = Field(description="Project name.")
-    task: str | None = Field(description="Task of the project.")
-    sha256: str | None = Field(description="Content the project pinned.")
+    group: str = Field(description="Group of the project that pins the version.")
+    sha256: str = Field(description="Content the project pinned.")
     state: PinState = Field(
         description=(
             "`ok`; `missing` (not in the store); `sha256_mismatch` (other"
@@ -1016,7 +1028,7 @@ class Pin(BaseModel):
         return cls(
             project=pin.project_key,
             name=pin.project,
-            task=pin.task,
+            group=pin.group,
             sha256=pin.sha256,
             state=pin.state,
         )
@@ -1203,7 +1215,9 @@ class Issue(BaseModel):
         description=(
             "Stable code: missing_sidecar, invalid_sidecar, unknown_segment,"
             " legacy_campaigns, stale_incoming, link_mismatch, orphan_sidecar,"
-            " missing_pin, pin_sha256_mismatch, invalid_manifest, unknown_store…"
+            " missing_pin, pin_sha256_mismatch, invalid_project_file,"
+            " unsupported_project_schema, unknown_store, area_missing,"
+            " area_changed, area_invalid…"
         )
     )
     message: str = Field(description="What is wrong.")
@@ -1212,7 +1226,7 @@ class Issue(BaseModel):
     segment: str | None
     slot: str | None
     project: str | None = Field(description="Project id of a project problem.")
-    task: str | None
+    group: str | None = Field(description="Group of a project's pin problem.")
     origin: Literal["scan", "check"] | None = Field(
         description="Found by a scan or by a check job."
     )
@@ -1229,7 +1243,7 @@ class Issue(BaseModel):
             segment=problem.segment,
             slot=problem.slot,
             project=problem.project,
-            task=problem.task,
+            group=problem.group,
             origin=problem.origin,
             first_seen_at=problem.first_seen_at,
         )
@@ -2423,50 +2437,53 @@ class Unused(BaseModel):
         )
 
 
-class ProjectManifest(BaseModel):
-    """One producer's manifest in a project directory, as the last scan read it."""
+class ProjectStore(BaseModel):
+    """The store of one producer's pins as the project file writes it."""
 
-    model_config = _examples(_MANIFEST_EXAMPLE)
+    model_config = _examples(_PROJECT_STORE_EXAMPLE)
 
-    producer: str = Field(
+    producer: str
+    root: str = Field(
         description=(
-            "Producer whose manifest it is: `kartograf` (`kartograf-project.json`)"
-            " or `imgw` (`imgw-project.json`)."
+            "The producer's directory of the store as the file writes it: relative"
+            " to the project directory or absolute."
         )
     )
     store: str | None = Field(
-        description="Configured store the manifest names; null when none matches."
-    )
-    status: str | None = Field(
         description=(
-            "Producer's status when the manifest was read: `ok`, `not_downloaded`,"
-            " `missing` or `corrupt`; null when not checked."
+            "The configured store `root` matches (by path or alias); null when"
+            " none does (`unknown_store`)."
         )
     )
-    problem: str | None = Field(
-        description=(
-            "Producer's message for an invalid manifest, whose tasks and pins are"
-            " not read; the other manifest is read all the same."
-        )
-    )
-    scanned_at: datetime = Field(description="When the manifest was read.")
 
     @classmethod
-    def of(cls, manifest: ProjectManifestRef) -> Self:
-        """Return the model of a project's manifest."""
-        return cls(
-            producer=manifest.producer,
-            store=manifest.store,
-            status=manifest.status,
-            problem=manifest.problem,
-            scanned_at=manifest.scanned_at,
+    def of(cls, store: ProjectStoreRef) -> Self:
+        """Return the model of a project's store."""
+        return cls(producer=store.producer, root=store.root, store=store.store)
+
+
+class ProjectArea(BaseModel):
+    """A project's area file and what the index made of it."""
+
+    model_config = _examples(_PROJECT_AREA_EXAMPLE)
+
+    path: str = Field(description="The area file, relative to the project directory.")
+    sha256: str = Field(description="SHA-256 of the file as the project records it.")
+    state: ProjectAreaState | None = Field(
+        description=(
+            "`ok` (kept as the area `area_id`), `missing`, `changed` (other bytes:"
+            " not used) or `invalid`; null while it was not read (no producer with"
+            " coordinate operations)."
         )
+    )
+    area_id: str | None = Field(description="The area of `/areas` it was read into.")
 
-
-_MANIFESTS = (
-    "The producers' manifests the project directory holds, Kartograf's first: a"
-    " project has one or both (SPEC 4.7), each with its store, state and problem."
-)
+    @classmethod
+    def of(cls, area: ProjectAreaRef) -> Self:
+        """Return the model of a project's area."""
+        return cls(
+            path=area.path, sha256=area.sha256, state=area.state, area_id=area.area_id
+        )
 
 
 class ProjectItem(BaseModel):
@@ -2475,25 +2492,53 @@ class ProjectItem(BaseModel):
     model_config = _examples(_PROJECT_EXAMPLE)
 
     project: str = Field(description="Project id: /projects/{project}.")
-    name: str
-    manifests: list[ProjectManifest] = Field(description=_MANIFESTS)
-    tasks: int = Field(description="Tasks of every manifest.")
-    pins: int = Field(description="Pins of every manifest.")
+    name: str = Field(
+        description="The file's name; the directory's when the file is invalid."
+    )
+    description: str
+    state: ProjectState = Field(
+        description=(
+            "`ok`; `invalid` (the file breaks a rule: nothing of it is used);"
+            " `unsupported_schema` (a newer format: its groups are not read)."
+        )
+    )
+    problem: str | None = Field(
+        description=(
+            "`invalid_project_file` or `unsupported_project_schema`; the card's"
+            " `problems` say where and how to fix it."
+        )
+    )
+    stores: list[ProjectStore] = Field(description="The store of each producer.")
+    area: ProjectArea | None
+    groups: int = Field(description="Groups of pinned versions.")
+    pins: int = Field(description="Pins of every group.")
     missing_pins: int = Field(description="Pins missing from the store or other.")
+    scanned_at: datetime = Field(description="When the project file was read.")
     project_write: bool = Field(description=_PROJECT_WRITE)
 
     @classmethod
     def of(cls, project: ProjectRef, *, writable: WritableProjects) -> Self:
         """Return the model of a listed project (``writable``: ``project.write``)."""
-        return cls(
-            project=project.key,
-            name=project.name,
-            manifests=[ProjectManifest.of(item) for item in project.manifests],
-            tasks=project.tasks,
-            pins=project.pins,
-            missing_pins=project.missing_pins,
-            project_write=writable(project.access_key),
-        )
+        return cls(**_project_fields(project, writable=writable), groups=project.groups)
+
+
+def _project_fields(
+    project: ProjectRef, *, writable: WritableProjects
+) -> dict[str, Any]:
+    """Return what a listed project and its card share."""
+    return {
+        "project": project.key,
+        "name": project.name,
+        "description": project.description,
+        "state": project.state,
+        "problem": project.problem,
+        "stores": [ProjectStore.of(item) for item in project.stores],
+        "area": None if project.area is None else ProjectArea.of(project.area),
+        "pins": project.pins,
+        "missing_pins": project.missing_pins,
+        "scanned_at": project.scanned_at,
+        "project_write": writable(project.access_key),
+    }
 
 
 class StoreDetail(BaseModel):
@@ -2687,49 +2732,39 @@ class ProjectList(IndexAnswer):
     items: list[ProjectItem]
 
 
-class ProjectTask(BaseModel):
-    """A task of a project's manifest with its existing command and options."""
-
-    model_config = _examples(_TASK_EXAMPLE, _IMGW_TASK_EXAMPLE)
-
-    producer: str = Field(description="Producer of the manifest holding the task.")
-    task: str
-    command: str = Field(description="Producer command as in the manifest.")
-    options: dict[str, Any] = Field(description="Options as in the manifest.")
-    status: str | None
-
-    @classmethod
-    def of(cls, task: ProjectTaskRef) -> Self:
-        """Return the model of a project task."""
-        return cls(
-            producer=task.producer,
-            task=task.task_id,
-            command=task.command,
-            options=dict(task.options),
-            status=task.status,
-        )
-
-
 class ProjectPin(BaseModel):
-    """A version a project task pinned (older versions too)."""
+    """A version a group of the project pins, joined with the index."""
 
     model_config = _examples(_PROJECT_PIN_EXAMPLE)
 
     producer: str = Field(
+        description="The producer in whose directory of the store the version lies."
+    )
+    store: str | None = Field(
         description=(
-            "Producer of the manifest that pins it: the version lies in that"
-            " producer's directory of the store."
+            "The configured store of the project's entry of `producer`; null"
+            " without one (`state` `unknown`)."
         )
     )
-    task: str | None
     version: str = Field(
         description="Pinned version path, relative to the producer's directory."
     )
-    sha256: str | None
-    state: PinState
-    slot: str | None
+    sha256: str
+    content_sha256: str | None = Field(
+        description="SHA-256 of the canonical content, when the version records one."
+    )
+    size_bytes: int
+    unit: str | None
     label: str | None
-    size_bytes: int | None
+    pinned_at: datetime
+    pinned_by: str = Field(description="The account that pinned it; `local`.")
+    state: PinState = Field(
+        description=(
+            "`ok`; `missing` (not in the store); `sha256_mismatch` (other"
+            " content); `unknown` (the project's store is not configured)."
+        )
+    )
+    slot: str | None = Field(description="Standard path of the version's slot.")
     is_current: bool
 
     @classmethod
@@ -2737,47 +2772,139 @@ class ProjectPin(BaseModel):
         """Return the model of a project's pin."""
         return cls(
             producer=pin.producer,
-            task=pin.task,
+            store=pin.store,
             version=pin.version,
             sha256=pin.sha256,
+            content_sha256=pin.content_sha256,
+            size_bytes=pin.size_bytes,
+            unit=pin.unit,
+            label=pin.label,
+            pinned_at=pin.pinned_at,
+            pinned_by=pin.pinned_by,
             state=pin.state,
             slot=pin.slot,
-            label=pin.label,
-            size_bytes=pin.size_bytes,
             is_current=pin.is_current,
         )
 
 
+class GroupCall(BaseModel):
+    """A producer's call of a plan group, as the plan window ran it."""
+
+    command: str
+    options: dict[str, Any] = Field(
+        description="Its options in the JSON form of the producer's catalog."
+    )
+
+
+class GroupSelection(BaseModel):
+    """A request that added pins to a local group (a record, never run again)."""
+
+    source: SelectionSource = Field(
+        description=(
+            "Where the versions were chosen (`from` of the file): `local_state`,"
+            " `catalog` or `file`."
+        )
+    )
+    query: dict[str, Any] | None = Field(
+        description="The parameters of `GET /slots` that chose them."
+    )
+
+
+class GroupOrigin(BaseModel):
+    """Where a group's versions came from."""
+
+    kind: OriginKind = Field(
+        description=(
+            "`plan`: downloaded in the plan window by `calls`; `local`: what the"
+            " store held, chosen by `selections`."
+        )
+    )
+    producer: str | None = Field(description="The producer of a plan group.")
+    calls: list[GroupCall] | None = Field(description="The calls of a plan group.")
+    selections: list[GroupSelection] | None = Field(
+        description="The requests of a local group."
+    )
+
+
+class ProjectGroup(BaseModel):
+    """A group of pinned versions, in the file's order."""
+
+    model_config = _examples(_PIN_GROUP_EXAMPLE)
+
+    name: str
+    origin: GroupOrigin
+    pins: list[ProjectPin]
+
+    @classmethod
+    def of(cls, group: PinGroupRef) -> Self:
+        """Return the model of a project's group."""
+        plan = group.origin == "plan"
+        calls = [
+            GroupCall(command=call.command, options=dict(call.options))
+            for call in group.calls
+        ]
+        selections = [
+            GroupSelection(
+                source=item.source,
+                query=None if item.query is None else dict(item.query),
+            )
+            for item in group.selections
+        ]
+        return cls(
+            name=group.name,
+            origin=GroupOrigin(
+                kind=group.origin,
+                producer=group.producer,
+                calls=calls if plan else None,
+                selections=None if plan else selections,
+            ),
+            pins=[ProjectPin.of(pin) for pin in group.pins],
+        )
+
+
 class ProjectCard(IndexAnswer):
-    """A project: tasks with their commands, pinned versions and problems."""
+    """A project: its file's members, groups with their pins, and problems."""
 
     model_config = _examples(
         {
-            **{
-                key: value
-                for key, value in _PROJECT_EXAMPLE.items()
-                if key not in ("tasks", "pins")
-            },
-            "tasks": [_TASK_EXAMPLE, _IMGW_TASK_EXAMPLE],
-            "pins": [_PROJECT_PIN_EXAMPLE],
+            **_PROJECT_EXAMPLE,
+            "path": _COPY_PATH_EXAMPLE,
+            "created_at": "2026-10-18T12:04:11Z",
+            "created_by": "kasia",
+            "groups": [_PIN_GROUP_EXAMPLE],
             "problems": [],
             **_FRESH,
         }
     )
 
     project: str = Field(description="Project id: /projects/{project}.")
-    name: str
-    manifests: list[ProjectManifest] = Field(description=_MANIFESTS)
-    missing_pins: int = Field(description="Pins missing from the store or other.")
-    project_write: bool = Field(description=_PROJECT_WRITE)
-    tasks: list[ProjectTask] = Field(
-        description="Tasks of each manifest in its order, manifest after manifest."
+    name: str = Field(
+        description="The file's name; the directory's when the file is invalid."
     )
-    pins: list[ProjectPin] = Field(description="Pinned versions, older ones too.")
+    description: str
+    state: ProjectState = Field(
+        description=(
+            "`ok`; `invalid` (the file breaks a rule: nothing of it is used);"
+            " `unsupported_schema` (a newer format: its groups are not read)."
+        )
+    )
+    problem: str | None = Field(
+        description="`invalid_project_file` or `unsupported_project_schema`."
+    )
+    path: CopyPath = Field(description="The project directory.")
+    created_at: datetime | None
+    created_by: str | None
+    stores: list[ProjectStore] = Field(description="The store of each producer.")
+    area: ProjectArea | None
+    groups: list[ProjectGroup] = Field(description="Groups in the file's order.")
+    pins: int = Field(description="Pins of every group.")
+    missing_pins: int = Field(description="Pins missing from the store or other.")
+    scanned_at: datetime = Field(description="When the project file was read.")
+    project_write: bool = Field(description=_PROJECT_WRITE)
     problems: list[Issue] = Field(
         description=(
-            "Invalid manifest, unknown store, a task name in the manifests of"
-            " several producers (`duplicate_task`), missing or other pinned files."
+            "An invalid or newer file, a store that matches no configured one, an"
+            " area file not used, missing or other pinned versions."
         )
     )
 
@@ -2785,6 +2912,7 @@ class ProjectCard(IndexAnswer):
     def of(
         cls,
         detail: ProjectDetail,
+        path: CopyPath,
         freshness: dict[str, Any],
         *,
         writable: WritableProjects,
@@ -2792,92 +2920,29 @@ class ProjectCard(IndexAnswer):
         """Return the model of a project's detail (``writable``: ``project.write``)."""
         project = detail.project
         return cls(
-            project=project.key,
-            name=project.name,
-            manifests=[ProjectManifest.of(item) for item in project.manifests],
-            missing_pins=project.missing_pins,
-            project_write=writable(project.access_key),
-            tasks=[ProjectTask.of(task) for task in detail.tasks],
-            pins=[ProjectPin.of(pin) for pin in detail.pins],
+            **_project_fields(project, writable=writable),
+            path=path,
+            created_at=project.created_at,
+            created_by=project.created_by,
+            groups=[ProjectGroup.of(group) for group in detail.groups],
             problems=[Issue.of(problem) for problem in detail.problems],
             **freshness,
         )
 
 
-class TaskStatus(BaseModel):
-    """A task's state as the producer checked it."""
-
-    model_config = _examples({"task": "teren", "status": "ok"})
-
-    task: str
-    status: str | None = Field(
-        description="`ok`, `not_downloaded`, `missing` or `corrupt` (worst file)."
-    )
-
-
-_MANIFEST_STATUS_EXAMPLE = {
-    "producer": "kartograf",
-    "status": "ok",
-    "checked_at": "2026-10-18T14:05:12Z",
-    "stale": False,
-    "stale_reason": None,
-    "tasks": [{"task": "teren", "status": "ok"}],
-}
-
-
-class ManifestStatus(BaseModel):
-    """A producer's check of its manifest of a project now."""
-
-    model_config = _examples(_MANIFEST_STATUS_EXAMPLE)
-
-    producer: str
-    status: str | None = Field(description="The worst task status.")
-    checked_at: datetime = Field(
-        description="When the producer checked: now, or the last scan when stale."
-    )
-    stale: bool = Field(
-        description="True: the store is unavailable, the scan's check is shown."
-    )
-    stale_reason: Literal["store_unavailable"] | None
-    tasks: list[TaskStatus]
-
-
-class ProjectStatus(BaseModel):
-    """The producers' checks of a project now (no network, no hashing)."""
+class ProjectRequest(BaseModel):
+    """A new project: Archiwista writes its file (`POST /projects`)."""
 
     model_config = _examples(
         {
-            "project": "raba",
-            "manifests": [
-                _MANIFEST_STATUS_EXAMPLE,
-                {
-                    **_MANIFEST_STATUS_EXAMPLE,
-                    "producer": "imgw",
-                    "status": "not_downloaded",
-                    "tasks": [{"task": "przeplywy", "status": "not_downloaded"}],
-                },
-            ],
-        }
-    )
-
-    project: str
-    manifests: list[ManifestStatus] = Field(
-        description="The check of each manifest of the project, in their order."
-    )
-
-
-class ProjectRequest(BaseModel):
-    """A new project of a producer bound to a configured store (`POST /projects`)."""
-
-    model_config = _examples(
-        {"producer": "kartograf", "path": f"{_PROJECT_DIRS}/raba", "store": _STORE},
+            "path": f"{_PROJECT_DIRS}/raba",
+            "name": "Raba",
+            "description": "Zlewnia Raby do Dobczyc",
+            "area_id": "5f2b9c0e7d41a3b6",
+        },
         closed=True,
     )
 
-    producer: str = Field(
-        min_length=1,
-        description="Producer that writes the project's manifest, e.g. `kartograf`.",
-    )
     path: str = Field(
         min_length=1,
         description=(
@@ -2886,103 +2951,82 @@ class ProjectRequest(BaseModel):
             " one, in no hidden directory and no store, where a scan finds it."
         ),
     )
-    store: str = Field(
+    name: str | None = Field(
+        default=None,
         min_length=1,
-        description=(
-            "Id of the configured store whose directory of the producer the"
-            " manifest names: relative to the project directory when the store has"
-            " path aliases, else absolute; never the producer's default root."
-        ),
+        max_length=MAX_NAME_CHARS,
+        description="The project's name; left out: the directory's name.",
+    )
+    description: str = Field(
+        default="",
+        max_length=MAX_DESCRIPTION_CHARS,
+        description="The project's description, at most 2,000 characters.",
+    )
+    area_id: str | None = Field(
+        default=None,
+        min_length=1,
+        description=f"An area of `/areas`, written into the project's `{AREAS_DIR}/`.",
     )
 
 
-class TaskRequest(BaseModel):
-    """A task added to a project by its producer (`POST /projects/{project}/tasks`)."""
+class ProjectChange(BaseModel):
+    """A project's new name or description (`PATCH /projects/{project}`)."""
 
     model_config = _examples(
-        {
-            "name": _TASK_EXAMPLE["task"],
-            "command": _TASK_EXAMPLE["command"],
-            "options": _TASK_EXAMPLE["options"],
-        },
-        closed=True,
+        {"name": "Raba", "description": "Zlewnia Raby"}, closed=True
     )
 
-    name: str = Field(
-        min_length=1, description="Name of the new task; the producer's rules apply."
-    )
-    command: str = Field(
-        min_length=1,
-        description="Data command of the producer's catalog (`GET /commands`).",
-    )
-    options: dict[str, Any] = Field(
-        default_factory=dict,
-        description=(
-            "Its options in the JSON form of the catalog, checked without the"
-            " network; no option that is a file path (`path_role`)."
-        ),
-    )
-    producer: str | None = Field(
+    name: str | None = Field(
         default=None,
         min_length=1,
+        max_length=MAX_NAME_CHARS,
         description=(
-            "The producer whose manifest gets the task; left out: the project's"
-            " only one. A project holding the manifests of several producers needs"
-            " it (`producer_required`); a producer without a manifest in the"
-            " project is refused (`other_producer`)."
+            "The project's name: 1 to 200 characters after NFC and trimming, no"
+            " control character."
         ),
     )
-
-
-class ProjectJobRequest(BaseModel):
-    """A job of a project's tasks (`POST /projects/{project}/jobs`)."""
-
-    model_config = _examples(
-        {"kind": "download"},
-        {"kind": "repin", "tasks": [_TASK_EXAMPLE["task"]]},
-        {"kind": "verify", "producer": "kartograf"},
-        closed=True,
-    )
-
-    kind: ProjectJobKind = Field(
-        description=(
-            "`download`: download and pin the tasks not downloaded yet and restore"
-            " missing pinned versions with the same SHA-256 (a task whose pins the"
-            " store holds is left as it is); `repin`: pin one task anew to the"
-            " source's newer versions. Both run over the network and write the"
-            " store and the manifest, so they need the project's owner or an"
-            " administrator and the role `store_writer` or the setting"
-            " `store_write_for_all`. `check`: compare the pins with the source, over"
-            " the network and without effects; `verify`: check the pinned files in"
-            " the store (SHA-256, size, sidecar), without the network. Both need"
-            " only to see the project."
-        )
-    )
-    tasks: list[Annotated[str, Field(min_length=1)]] | None = Field(
+    description: str | None = Field(
         default=None,
-        min_length=1,
-        description=(
-            "The tasks by name (`task` of /projects/{project}); left out or `null`:"
-            " every task of the project. A `repin` names exactly one; a name given"
-            " twice counts once."
-        ),
-    )
-    producer: str | None = Field(
-        default=None,
-        min_length=1,
-        description=(
-            "The producer whose manifest's tasks the job runs; left out: the"
-            " project's only one. A project holding the manifests of several"
-            " producers needs it (`producer_required`); a producer without a"
-            " manifest in the project is refused (`other_producer`)."
-        ),
+        max_length=MAX_DESCRIPTION_CHARS,
+        description="The project's description, at most 2,000 characters.",
     )
 
     @model_validator(mode="after")
-    def _a_repin_names_one_task(self) -> Self:
-        if self.kind == "repin" and len(set(self.tasks or ())) != 1:
-            raise ValueError("a repin names exactly one task")
+    def _one_at_least(self) -> Self:
+        if self.name is None and self.description is None:
+            raise ValueError("name or description is required")
         return self
+
+
+class AreaChoice(BaseModel):
+    """A project's area (`PUT /projects/{project}/area`)."""
+
+    model_config = _examples(
+        {"area_id": "5f2b9c0e7d41a3b6"}, {"area_id": None}, closed=True
+    )
+
+    area_id: str | None = Field(
+        min_length=1,
+        description=(
+            f"An area of `/areas`, written into the project's `{AREAS_DIR}/`; `null`"
+            " clears the project's area (its file stays)."
+        ),
+    )
+
+
+class StoreChoice(BaseModel):
+    """The store of a producer's pins (`PUT /projects/{project}/stores/{producer}`)."""
+
+    model_config = _examples({"store": _STORE}, closed=True)
+
+    store: str = Field(
+        min_length=1,
+        description=(
+            "Id of a configured store with a directory of the producer: written"
+            " relative to the project directory when the store has path aliases,"
+            " else absolute."
+        ),
+    )
 
 
 # Settings ------------------------------------------------------------------

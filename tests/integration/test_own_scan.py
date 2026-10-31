@@ -28,7 +28,6 @@ from archiwista.config import AppPaths, AppSettings, StoreConfig
 from archiwista.index import (
     IndexQueries,
     IndexWriter,
-    ManifestStamp,
     OwnFileDetail,
     OwnFolderRecord,
     TransformerFactory,
@@ -40,8 +39,8 @@ from archiwista.owndata.formats import fileset_members
 from archiwista.owndata.reader import OwnFileInfo, OwnReader
 from archiwista.owndata.scan import OwnScanSummary, scan_own_data
 from archiwista.services.owndata import own_problems
-from archiwista.sources import ProjectInfo
 from archiwista.sources.registry import load_registry
+from tests.fixtures.index_data import indexed_project
 from tests.fixtures.own_data import (
     GpkgEditor,
     SnapshotFixture,
@@ -74,10 +73,8 @@ class OwnEnv:
         """Index a project; return its key and its directory (created)."""
         place = directory or self.root / "projekty" / name.lower()
         place.mkdir(parents=True, exist_ok=True)
-        info = ProjectInfo("kartograf", str(self.root / "magazyn"), place, name)
-        key = self.writer.write_project(
-            info, store=None, stamp=ManifestStamp(None, None)
-        )
+        root = str(self.root / "magazyn")
+        key = indexed_project(self.writer, place, name, root=root)
         return key, place
 
     def scan(self, project: str | None = None, **options: object) -> OwnScanSummary:

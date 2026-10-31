@@ -20,11 +20,10 @@ other one as an unknown job (``404``, ``job.not_found``), for ``POST
   active (``job_active``). What the
   kind needs at its start is asked again: a ``download`` needs
   ``store.write``, a ``snapshot`` ``project.write`` of its project, a
-  ``project_download`` or ``project_repin`` both (``project_jobs.require``),
-  a ``scan``, ``footprints``, ``link_check`` or an ``own_scan`` of every
+  ``scan``, ``footprints``, ``link_check`` or an ``own_scan`` of every
   project ``store.scan``, and an ``own_scan`` of one project keeps to the
   limits of a person's scans (``scan_limits``); the project of a
-  ``snapshot`` or a ``project_*`` job must still be one the principal sees;
+  ``snapshot`` must still be one the principal sees;
   the supervisor checks the rest as for any new job (the store configured,
   offline mode, a conflict, a job it joins).
 - ``log`` returns the end of the job's log (its worker's standard error) to
@@ -42,7 +41,6 @@ from archiwista.errors import ConflictError, NotFoundError, PermissionDeniedErro
 from archiwista.index import IndexQueries
 from archiwista.jobs import (
     FINISHED_STATES,
-    PROJECT_KINDS,
     JobRecord,
     JobState,
     JobSupervisor,
@@ -50,7 +48,6 @@ from archiwista.jobs import (
 )
 from archiwista.jobs.supervisor import action_details
 from archiwista.messages import label, message
-from archiwista.services import project_jobs
 from archiwista.services.owndata import scan_limits
 
 # States of a job that a retry runs again: it did not succeed.
@@ -154,8 +151,7 @@ def retry(
         Decides what the kind of the job needs (``store.write``,
         ``project.write``, ``store.scan``).
     queries : IndexQueries
-        The local index: the project of a ``snapshot`` or a ``project_*``
-        job.
+        The local index: the project of a ``snapshot`` job.
     job_id : str
         The job to run again.
     actor : Principal
@@ -175,15 +171,13 @@ def retry(
     ------
     NotFoundError
         No job ``job_id`` that ``actor`` sees; the project of a ``snapshot``
-        or a ``project_*`` job is gone or hidden; the store is no longer
-        configured.
+        is gone or hidden; the store is no longer configured.
     ConflictError
         The job succeeded (reason ``job_succeeded``) or has not ended
         (``job_active``), with ``details.job``.
     PermissionDeniedError
         A ``download`` without ``store.write``, a ``snapshot`` without
-        ``project.write`` of its project, a ``project_download`` or
-        ``project_repin`` without either, a ``scan``, ``footprints``,
+        ``project.write`` of its project, a ``scan``, ``footprints``,
         ``link_check`` or an ``own_scan`` of every project without
         ``store.scan``.
     RateLimitedError
@@ -217,15 +211,12 @@ def retry(
             authorizer.require(actor, "store.scan")
         else:
             admit = scan_limits(jobs, actor, str(scanned))
-    if record.kind == "snapshot" or record.kind in PROJECT_KINDS:
+    if record.kind == "snapshot":
         project = str(record.params["project"])
         found = queries.project(project, visible=visible)
         if found is None:
             raise NotFoundError(message("project.not_found", project=project))
-        if record.kind == "snapshot":
-            authorizer.require(actor, "project.write", found.project.access_key)
-        else:
-            project_jobs.require(authorizer, actor, record.kind, found.project)
+        authorizer.require(actor, "project.write", found.project.access_key)
     submitted = jobs.submit(
         record.kind,
         store=record.store,

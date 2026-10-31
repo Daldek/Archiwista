@@ -20,7 +20,7 @@ KARTOGRAF = SourceState(
     status="available",
     package_version="0.8.0",
     supported_versions=">=0.8.0,<0.9",
-    schemas=("kartograf-meta/1", "kartograf-project/1", "kartograf-store/1"),
+    schemas=("kartograf-meta/1", "kartograf-store/1"),
 )
 
 

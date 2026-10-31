@@ -12,7 +12,6 @@ from archiwista.sources import (
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
-    ProjectInfo,
     ScanScope,
     SegmentDescriptionAdapter,
     SegmentedAdapter,
@@ -52,14 +51,6 @@ class MinimalSource:
     def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
         """Report unavailable location instead of inventing coordinates."""
         return Footprint(location="none", reason="no_source")
-
-    def read_project(self, path: Path) -> ProjectInfo:
-        """Read the producer's existing project."""
-        return ProjectInfo(producer=self.producer, store="demo", path=path, name="demo")
-
-    def project_status(self, path: Path) -> ProjectInfo:
-        """Read the existing project's status."""
-        return self.read_project(path)
 
 
 def load_minimal(context: SourceContext) -> SourceAdapter:

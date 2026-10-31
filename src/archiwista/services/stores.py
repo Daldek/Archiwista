@@ -139,7 +139,7 @@ def _pin(pin: PinRef) -> Problem:
         code,
         version=pin.version,
         project=pin.project,
-        task=pin.task,
+        group=pin.group,
         producer=pin.producer,
     )
     return Problem(
@@ -148,5 +148,5 @@ def _pin(pin: PinRef) -> Problem:
         instruction,
         path=pin.version,
         project=pin.project_key,
-        task=pin.task,
+        group=pin.group,
     )

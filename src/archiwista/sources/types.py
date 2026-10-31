@@ -487,50 +487,6 @@ class Footprint:
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectPin:
-    """Identify one exact project input version, including older versions.
-
-    ``version_path`` is relative to ``store``.
-    """
-
-    store: str
-    version_path: Path
-    sha256: str | None = None
-    task_id: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectTask:
-    """Describe an existing producer project task without running it.
-
-    ``status`` is ``None`` until checked (``project_status``): ``ok``,
-    ``not_downloaded``, ``missing`` or ``corrupt`` (the worst pinned file).
-    """
-
-    task_id: str
-    command: str
-    options: dict[str, object] = field(default_factory=dict)
-    status: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectInfo:
-    """Describe an existing producer project and its pinned inputs.
-
-    ``status`` is ``None`` until checked; otherwise the worst task status.
-    """
-
-    producer: str
-    store: str
-    path: Path
-    name: str
-    tasks: tuple[ProjectTask, ...] = ()
-    pins: tuple[ProjectPin, ...] = ()
-    status: str | None = None
-    problem: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class SheetGrid:
     """Report an optional grid capability or its unsupported state.
 

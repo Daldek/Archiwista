@@ -35,7 +35,6 @@ from archiwista.errors import (
 from archiwista.index import (
     IndexQueries,
     IndexWriter,
-    ManifestStamp,
     OwnFileDetail,
     TransformerFactory,
     own_file_id,
@@ -63,8 +62,8 @@ from archiwista.owndata.snapshots import (
     make_snapshot,
 )
 from archiwista.sandbox import process_owner, process_work_dir
-from archiwista.sources import ProjectInfo
 from archiwista.sources.registry import SourceRegistry, load_registry
+from tests.fixtures.index_data import indexed_project
 from tests.fixtures.job_worker import SNAPSHOT_FAULT_ENV
 from tests.fixtures.jobs import JOB_TIMEOUT_S, TEST_WORKER, worker_path
 from tests.fixtures.own_data import GpkgEditor, make_own_folder, project_inside_store
@@ -115,10 +114,8 @@ class SnapshotEnv:
         """Index a project; return its key and its directory (created)."""
         place = directory or self.root / "projekty" / name.lower()
         place.mkdir(parents=True, exist_ok=True)
-        info = ProjectInfo("kartograf", str(self.root / "magazyn"), place, name)
-        key = self.writer.write_project(
-            info, store=None, stamp=ManifestStamp(None, None)
-        )
+        root = str(self.root / "magazyn")
+        key = indexed_project(self.writer, place, name, root=root)
         return key, place
 
     def scan(self) -> None:

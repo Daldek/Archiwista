@@ -54,39 +54,54 @@ MESSAGES = {
     "missing_pin": Text(
         (
             "The pinned file does not exist in the store: {version} (project"
-            ' "{project}", job {task})'
+            ' "{project}", group {group})'
         ),
         (
             "Przypięty plik nie istnieje w magazynie: {version} (projekt „{project}”,"
-            " zadanie {task})"
+            " grupa {group})"
         ),
     ),
     "pin_sha256_mismatch": Text(
         (
             "The pinned version has different content in the store (SHA-256):"
-            ' {version} (project "{project}", job {task})'
+            ' {version} (project "{project}", group {group})'
         ),
         (
             "Przypięta wersja ma w magazynie inną treść (SHA-256): {version} (projekt"
-            " „{project}”, zadanie {task})"
+            " „{project}”, grupa {group})"
         ),
     ),
-    "invalid_manifest": Text(
-        "Invalid project manifest: {detail}",
-        "Niepoprawny manifest projektu: {detail}",
+    "invalid_project_file": Text(
+        "Invalid project file: {detail}",
+        "Niepoprawny plik projektu: {detail}",
+    ),
+    "unsupported_project_schema": Text(
+        "The project file is of a newer format ({schema}): {path}",
+        "Plik projektu ma nowszy format ({schema}): {path}",
     ),
     "unknown_store": Text(
-        "Unknown project store: {store_dir}",
-        "Magazyn projektu nieznany: {store_dir}",
+        "Unknown project store of {producer}: {store_dir}",
+        "Magazyn projektu nieznany ({producer}): {store_dir}",
     ),
-    "duplicate_task": Text(
+    "area_missing": Text(
+        "The project's area file does not exist: {path}",
+        "Plik obszaru projektu nie istnieje: {path}",
+    ),
+    "area_changed": Text(
         (
-            "The task name {task} is used in the manifests of several sources"
-            ' ({producers}) of project "{project}"'
+            "The project's area file holds other bytes than the project file"
+            " records: {path}"
+        ),
+        "Plik obszaru projektu ma inną treść, niż zapisano w pliku projektu: {path}",
+    ),
+    "area_invalid": Text(
+        (
+            "The project's area file is no polygon of GeoJSON in WGS84 within the"
+            " limits: {path}"
         ),
         (
-            "Nazwa zadania {task} występuje w manifestach kilku źródeł ({producers})"
-            " projektu „{project}”"
+            "Plik obszaru projektu nie jest wielokątem GeoJSON w WGS84 w granicach"
+            " limitów: {path}"
         ),
     ),
     "other": Text(

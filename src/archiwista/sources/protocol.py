@@ -30,7 +30,6 @@ from archiwista.sources.types import (
     Footprint,
     GeoJSONGeometry,
     ProjectCheck,
-    ProjectInfo,
     ProjectRun,
     ScanScope,
     SeriesListing,
@@ -80,14 +79,6 @@ class SourceAdapter(Protocol):
         Without ``network`` no request leaves the process; unit outlines
         then come only from the adapter's local cache.
         """
-        ...
-
-    def read_project(self, path: Path) -> ProjectInfo:
-        """Read an existing project without modifying its manifest."""
-        ...
-
-    def project_status(self, path: Path) -> ProjectInfo:
-        """Read the current status of an existing project."""
         ...
 
 

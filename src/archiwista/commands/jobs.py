@@ -71,8 +71,6 @@ from archiwista.sources import (
     FILE_STATUSES,
     PLAN_STATUSES,
     PLAN_TODO,
-    PROJECT_FILE_STATUSES,
-    TASK_OUTCOMES,
     PlanStatus,
 )
 from archiwista.sources.registry import PluginRegistry
@@ -490,31 +488,6 @@ def _job_text(detail: JobDetail) -> str:
         )
         lines += _taken_lines(result.get("taken", ()))
         lines += _call_lines(result["calls"])
-    if detail.kind in ("project_download", "project_repin"):
-        tasks: Mapping[str, int] = result["counts"]
-        named = ", ".join(
-            f"{label('job.task', outcome)} {tasks[outcome]}"
-            for outcome in TASK_OUTCOMES
-            if tasks[outcome]
-        )
-        lines.append(
-            message("cli.jobs_project_tasks", tasks=sum(tasks.values()), counts=named)
-        )
-    if detail.kind in ("project_check", "project_verify"):
-        states: Mapping[str, int] = result["counts"]
-        named = ", ".join(
-            f"{label('job.project_file', status)} {states[status]}"
-            for status in PROJECT_FILE_STATUSES
-            if states[status]
-        )
-        lines.append(
-            message(
-                "cli.jobs_project_files",
-                files=sum(states.values()),
-                counts=named,
-                not_downloaded=len(result["not_downloaded"]),
-            )
-        )
     if detail.kind == "preview_warm":
         lines.append(
             message(

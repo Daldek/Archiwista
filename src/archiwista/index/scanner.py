@@ -219,6 +219,7 @@ def scan_store(
     mode: ScanMode = "incremental",
     segment: str | None = None,
     on_event: ScanListener | None = None,
+    geo: GeoAdapter | None = None,
 ) -> ScanSummary:
     """Scan the adapter's directory of a configured store into the index.
 
@@ -226,7 +227,7 @@ def scan_store(
     producer splits them (``AppSettings.scan_threads``), those of a local
     store by one thread; batches are written by the calling thread and
     footprints computed without network. After a pass over the whole store,
-    the producer's projects are scanned too (``scan_projects``). A producer
+    the project files are read too (``scan_projects``). A producer
     that lists no segments but can describe them (``SegmentDescriptionAdapter``)
     is read whole, and the segments its entries named are described at the
     end of the pass. A producer that names the current version of a slot
@@ -261,6 +262,9 @@ def scan_store(
     on_event : callable, optional
         Receives ``ScanProgress`` and ``ScanNotice`` events in the calling
         thread.
+    geo : GeoAdapter or None, optional
+        A producer's countries and pinned operations, to read the areas of
+        the projects (``scan_projects``); ``None``: they are not read.
 
     Returns
     -------
@@ -357,10 +361,10 @@ def scan_store(
     projects = None
     if segment is None:
         projects = scan_projects(
-            adapter,
             writer,
             project_dirs=settings.project_dirs,
             stores=settings.stores,
+            geo=geo,
         )
         for directory in projects.unreadable_dirs:
             text = message("project.dir_unreadable", path=directory)

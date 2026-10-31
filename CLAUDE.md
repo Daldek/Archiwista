@@ -32,8 +32,9 @@ authoritative). Introduction: [README.md](README.md); specification:
 - The producer's store is read-only for Archiwista: writes only through the producer's
   API. No SQLite or Archiwista files on a network share or in the store; the index,
   the preview cache and the job history are local and rebuildable. The one exception
-  is user data written on the user's command in the project folder (own-data
-  snapshots, area files, sets; A-ADR-027): an open format, readable without Archiwista.
+  is user data written on the user's command in the project folder (the project file
+  `archiwista-project.json` with its area files in `obszary/`, A-ADR-049; own-data
+  snapshots, sets; A-ADR-027): an open format, readable without Archiwista.
 - Overriding product principle: layout, interface and API are simple, clear and
   convenient for people.
 - Data downloaded while working goes outside the repository and outside `/tmp`, into

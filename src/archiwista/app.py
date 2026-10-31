@@ -250,7 +250,6 @@ def create_app(
         app.include_router(owndata_routes.job_router, prefix=API_PREFIX)
         app.include_router(availability_routes.job_router, prefix=API_PREFIX)
         app.include_router(action_routes.router, prefix=API_PREFIX)
-        app.include_router(projects.job_router, prefix=API_PREFIX)
         app.include_router(preview_routes.job_router, prefix=API_PREFIX)
     install_openapi(app)
     if not transport.team:

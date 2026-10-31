@@ -696,29 +696,37 @@ MESSAGES = {
     ),
     "project_line": Text(
         (
-            "{project} — {name}; manifests: {manifests}; tasks {tasks}, pins {pins},"
+            "{project} — {name}; stores: {stores}; groups {groups}, pins {pins},"
             " missing {missing}."
         ),
         (
-            "{project} — {name}; manifesty: {manifests}; zadania {tasks}, przypięcia"
+            "{project} — {name}; magazyny: {stores}; grupy {groups}, przypięcia"
             " {pins}, brakujące {missing}."
         ),
     ),
-    "manifest_item": Text(
+    "project_store_item": Text(
         "{producer} (store {store})",
         "{producer} (magazyn {store})",
+    ),
+    "project_path_line": Text(
+        "  directory: {path}",
+        "  katalog: {path}",
+    ),
+    "project_area_line": Text(
+        "  area: {path} ({state})",
+        "  obszar: {path} ({state})",
     ),
     "no_projects": Text(
         "No visible projects.",
         "Brak widocznych projektów.",
     ),
-    "task_line": Text(
-        "  task {task} ({producer}): {command}; state: {status}",
-        "  zadanie {task} ({producer}): {command}; stan: {status}",
+    "project_group_line": Text(
+        "  group {group} ({origin}): {pins} pins",
+        "  grupa {group} ({origin}): przypięcia {pins}",
     ),
     "pin_line": Text(
-        "  pin {version} ({producer}, task {task}): {state}",
-        "  przypięcie {version} ({producer}, zadanie {task}): {state}",
+        "    pin {version} ({producer}): {state}",
+        "    przypięcie {version} ({producer}): {state}",
     ),
     "reindex_help": Text(
         (
@@ -1714,14 +1722,6 @@ MESSAGES = {
         "Files: {files} ({counts}); failed units: {failed}.",
         "Pliki: {files} ({counts}); jednostki z błędem: {failed}.",
     ),
-    "jobs_project_tasks": Text(
-        "Tasks: {tasks} ({counts}).",
-        "Zadania projektu: {tasks} ({counts}).",
-    ),
-    "jobs_project_files": Text(
-        "Files: {files} ({counts}); tasks without pins: {not_downloaded}.",
-        "Pliki: {files} ({counts}); zadania bez przypięć: {not_downloaded}.",
-    ),
     "jobs_warm": Text(
         (
             "Versions: {versions}, own files: {files}; prepared now {warmed},"
@@ -1863,12 +1863,12 @@ MESSAGES = {
     ),
     "project_init_help": Text(
         (
-            "Creates a project of a producer in a directory, bound to a configured"
-            " store (--json: the ProjectCard model of POST /api/v1/projects)."
+            "Creates a project: writes archiwista-project.json in a directory"
+            " (--json: the ProjectCard model of POST /api/v1/projects)."
         ),
         (
-            "Tworzy projekt producenta w katalogu, związany ze skonfigurowanym"
-            " magazynem (--json: model ProjectCard z POST /api/v1/projects)."
+            "Tworzy projekt: zapisuje archiwista-project.json w katalogu (--json:"
+            " model ProjectCard z POST /api/v1/projects)."
         ),
     ),
     "project_directory_help": Text(
@@ -1883,68 +1883,59 @@ MESSAGES = {
             " się od bieżącego katalogu."
         ),
     ),
+    "project_name_help": Text(
+        "The project's name; by default the directory's name.",
+        "Nazwa projektu; domyślnie nazwa katalogu.",
+    ),
+    "project_description_help": Text(
+        "The project's description, at most 2,000 characters.",
+        "Opis projektu, najwyżej 2000 znaków.",
+    ),
+    "project_area_id_help": Text(
+        "An area of the index (the id of POST /api/v1/areas).",
+        "Obszar z indeksu (id z POST /api/v1/areas).",
+    ),
+    "project_edit_help": Text(
+        (
+            "Changes a project's name or description (--json: the ProjectCard model"
+            " of PATCH /api/v1/projects/{{project}})."
+        ),
+        (
+            "Zmienia nazwę lub opis projektu (--json: model ProjectCard z PATCH"
+            " /api/v1/projects/{{project}})."
+        ),
+    ),
+    "project_area_help": Text(
+        (
+            "Sets a project's area, written into its obszary/ directory, or clears"
+            " it (--json: the ProjectCard model of PUT"
+            " /api/v1/projects/{{project}}/area)."
+        ),
+        (
+            "Ustawia obszar projektu, zapisany w jego katalogu obszary/, albo go"
+            " usuwa (--json: model ProjectCard z PUT"
+            " /api/v1/projects/{{project}}/area)."
+        ),
+    ),
+    "project_clear_help": Text(
+        "Clears the project's area; its file stays.",
+        "Usuwa obszar projektu; jego plik zostaje.",
+    ),
+    "project_store_cmd_help": Text(
+        (
+            "Sets the configured store of a producer's pins in a project (--json:"
+            " the ProjectCard model of PUT"
+            " /api/v1/projects/{{project}}/stores/{{producer}})."
+        ),
+        (
+            "Ustawia skonfigurowany magazyn przypięć producenta w projekcie"
+            " (--json: model ProjectCard z PUT"
+            " /api/v1/projects/{{project}}/stores/{{producer}})."
+        ),
+    ),
     "project_store_help": Text(
-        (
-            "Identifier of the configured store whose directory of the producer the"
-            " project's manifest names."
-        ),
-        (
-            "Identyfikator skonfigurowanego magazynu, którego katalog producenta"
-            " wskazuje manifest projektu."
-        ),
-    ),
-    "project_add_help": Text(
-        (
-            "Adds a task to a project through its producer: a command of the catalog"
-            " with its options, checked without the network (--json: the ProjectCard"
-            " model of POST /api/v1/projects/{{project}}/tasks)."
-        ),
-        (
-            "Dodaje zadanie do projektu przez jego producenta: polecenie z katalogu z"
-            " opcjami, sprawdzone bez sieci (--json: model ProjectCard z POST"
-            " /api/v1/projects/{{project}}/tasks)."
-        ),
-    ),
-    "project_task_help": Text(
-        "Task name; the producer's rules apply, e.g. teren.",
-        "Nazwa zadania; obowiązują zasady producenta, np. teren.",
-    ),
-    "project_command_help": Text(
-        'Data command of the producer\'s catalog, e.g. "elevation download".',
-        "Polecenie danych z katalogu producenta, np. „elevation download”.",
-    ),
-    "project_producer_help": Text(
-        (
-            "The producer whose manifest the command acts on; by default the"
-            " project's only one."
-        ),
-        (
-            "Producent, którego manifestu dotyczy polecenie; domyślnie jedyny"
-            " manifest projektu."
-        ),
-    ),
-    "project_remove_help": Text(
-        (
-            "Removes a task and its pins from a project through its producer; its"
-            " files stay in the store (--json: the ProjectCard model of DELETE"
-            " /api/v1/projects/{{project}}/tasks/{{name}})."
-        ),
-        (
-            "Usuwa zadanie i jego przypięcia z projektu przez jego producenta; pliki"
-            " zostają w magazynie (--json: model ProjectCard z DELETE"
-            " /api/v1/projects/{{project}}/tasks/{{name}})."
-        ),
-    ),
-    "project_status_help": Text(
-        (
-            "Asks the project's producer for its status now, without the network"
-            " (--json: the ProjectStatus model of GET"
-            " /api/v1/projects/{{project}}/status)."
-        ),
-        (
-            "Pyta producenta projektu o jego stan teraz, bez sieci (--json: model"
-            " ProjectStatus z GET /api/v1/projects/{{project}}/status)."
-        ),
+        "Identifier of a configured store with a directory of the producer.",
+        "Identyfikator skonfigurowanego magazynu z katalogiem producenta.",
     ),
     "project_failed": Text(
         "Cannot run the project command",
@@ -1954,96 +1945,9 @@ MESSAGES = {
         "Created the project {project} in {path}.",
         "Utworzono projekt {project} w {path}.",
     ),
-    "project_task_added": Text(
-        "Added the task {task} to the project {project}.",
-        "Dodano zadanie {task} do projektu {project}.",
-    ),
-    "project_task_removed": Text(
-        (
-            "Removed the task {task} from the project {project}; its files stay in"
-            " the store."
-        ),
-        (
-            "Usunięto zadanie {task} z projektu {project}; jego pliki zostają w"
-            " magazynie."
-        ),
-    ),
-    "project_status_line": Text(
-        "{project} ({producer}): {status}, checked {checked_at}",
-        "{project} ({producer}): {status}, sprawdzono {checked_at}",
-    ),
-    "project_status_task": Text(
-        "  task {task}: {status}",
-        "  zadanie {task}: {status}",
-    ),
-    "project_status_stale": Text(
-        (
-            "Note: the project's store is unavailable; this is the check of the last"
-            " scan."
-        ),
-        (
-            "Uwaga: magazyn projektu jest niedostępny; to sprawdzenie z ostatniego"
-            " skanu."
-        ),
-    ),
-    "project_download_help": Text(
-        (
-            "Downloads and pins the project's tasks not downloaded yet and restores"
-            " missing pinned versions into the configured store its manifest names,"
-            " and follows the job to its end (--json: the JobDetail model of the job"
-            " as it ended, as POST /api/v1/projects/{{project}}/jobs starts it)."
-        ),
-        (
-            "Pobiera i przypina jeszcze niepobrane zadania projektu i przywraca"
-            " brakujące przypięte wersje w skonfigurowanym magazynie, który wskazuje"
-            " manifest, i śledzi zadanie do końca (--json: model JobDetail zadania"
-            " po jego końcu, uruchomionego jak przez POST"
-            " /api/v1/projects/{{project}}/jobs)."
-        ),
-    ),
-    "project_repin_help": Text(
-        (
-            "Pins one task of the project anew to the source's newer versions and"
-            " follows the job to its end (--json: the JobDetail model of the job as"
-            " it ended)."
-        ),
-        (
-            "Przypina jedno zadanie projektu na nowo do nowszych wersji u źródła i"
-            " śledzi zadanie do końca (--json: model JobDetail zadania po jego"
-            " końcu)."
-        ),
-    ),
-    "project_check_help": Text(
-        (
-            "Compares the project's pins with what the source has now, without"
-            " effects, and follows the job to its end (--json: the JobDetail model of"
-            " the job as it ended)."
-        ),
-        (
-            "Porównuje przypięcia projektu z tym, co źródło ma teraz, bez skutków, i"
-            " śledzi zadanie do końca (--json: model JobDetail zadania po jego"
-            " końcu)."
-        ),
-    ),
-    "project_verify_help": Text(
-        (
-            "Verifies the project's pinned files in the store (SHA-256, size,"
-            " sidecar) without the network and follows the job to its end (--json:"
-            " the JobDetail model of the job as it ended)."
-        ),
-        (
-            "Weryfikuje przypięte pliki projektu w magazynie (SHA-256, rozmiar,"
-            " sidecar) bez sieci i śledzi zadanie do końca (--json: model JobDetail"
-            " zadania po jego końcu)."
-        ),
-    ),
-    "project_tasks_help": Text(
-        "Names of the project's tasks; none: every task.",
-        "Nazwy zadań projektu; bez nich: wszystkie zadania.",
-    ),
-    "project_repin_task_help": Text(
-        "Name of the task to pin anew.",
-        "Nazwa zadania do ponownego przypięcia.",
+    "project_changed": Text(
+        "Changed the project {project}.",
+        "Zmieniono projekt {project}.",
     ),
     "preview_warm_help": Text(
         (

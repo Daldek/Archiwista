@@ -21,9 +21,9 @@ PACKAGE = "imgwtools"
 # requirement on IMGWTools is a commit or tag (REL-5.3), so it cannot hold
 # the range.
 SUPPORTED_VERSIONS = ">=3.0.0,<4"
-# The contracts of the store: the marker, the sidecar, the series index and
-# the project manifest (IMGWTools ADR-007).
-SCHEMAS = ("imgw-store/1", "imgw-meta/1", "imgw-series/1", "imgw-project/1")
+# The contracts of the store: the marker, the sidecar and the series index
+# (IMGWTools ADR-007).
+SCHEMAS = ("imgw-store/1", "imgw-meta/1", "imgw-series/1")
 
 
 def load(context: SourceContext) -> SourceAdapter:

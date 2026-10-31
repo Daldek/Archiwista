@@ -97,9 +97,9 @@ def generate(tmp_path: Path) -> StoreManifest:
 
 
 def archive_pin(store: StoreManifest) -> ExpectedPin:
-    """Return the pin of an older version: task ``archiwum`` of ``projekt-01``."""
-    tasks = store.project("projekt-01").tasks
-    return next(task for task in tasks if task.name == "archiwum").pins[0]
+    """Return the pin of an older version: group ``archiwum`` of ``projekt-01``."""
+    groups = store.project("projekt-01").groups
+    return next(group for group in groups if group.name == "archiwum").pins[0]
 
 
 def link_of(store: StoreManifest, slot: str) -> ExpectedEntry:
@@ -363,7 +363,7 @@ def browse_every_view(page: Page, base: str, store: StoreManifest) -> None:
     expect(value(panel, "Stan teraz")).to_contain_text(
         "sprawdzono", timeout=READ_TIMEOUT_MS
     )
-    for task in project.tasks:
+    for task in project.groups:
         pins = panel.locator(".pc-task").filter(
             has=page.locator(".pc-task-head b").get_by_text(task.name, exact=True)
         )
@@ -501,7 +501,7 @@ def test_acceptance_first_run_to_every_view(
     expect(value(panel, "Stan teraz")).to_contain_text(
         "sprawdzono", timeout=READ_TIMEOUT_MS
     )
-    for task in project.tasks:
+    for task in project.groups:
         pins = panel.locator(".pc-task").filter(
             has=page.locator(".pc-task-head b").get_by_text(task.name, exact=True)
         )

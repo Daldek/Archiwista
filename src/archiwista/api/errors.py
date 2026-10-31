@@ -75,6 +75,7 @@ from archiwista.errors import (
     PreviewTimeoutError,
     PreviewUnavailableError,
     ProducerError,
+    ProjectFileWriteError,
     RateLimitedError,
     RendererStartError,
     SnapshotBlockedError,
@@ -105,6 +106,7 @@ ANSWERED: tuple[type[ArchiwistaError], ...] = (
     IndexQueryError,
     SettingsValidationError,
     ProducerError,
+    ProjectFileWriteError,
     CommandRequestError,
     UnsupportedError,
     InvalidRefError,
@@ -181,10 +183,13 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             " `details.job` names it), `offline_mode` (the job needs the"
             " network), `own_file_changed` (an own-data file changed since its"
             " scan: refresh the project's own data), `snapshot_blocked`"
-            " (`details.blocked_by`), `project_locked` (the lock of a"
-            " project's manifest stays, `details.lock`: remove it when no program"
-            " is changing the project), `unknown_store` (a project's manifest"
-            " names no configured store), `last_admin` (team mode: the last"
+            " (`details.blocked_by`), `project_locked` (another change holds the"
+            " project's lock, `details.lock`: remove it when no program is"
+            " changing the project), `invalid_project_file` and"
+            " `unsupported_project_schema` (Archiwista does not write a project"
+            " file it cannot read), `project_exists` (a new project's directory"
+            " holds a project file), `unknown_store` (a project's store matches"
+            " no configured store), `last_admin` (team mode: the last"
             " administrator who can sign in cannot be removed, disabled or lose"
             " the role), `local_mode` (no sign-in and no password in local mode) or"
             " `proxy_session` (a session of the reverse proxy changes no"
@@ -206,7 +211,9 @@ _DOCUMENTED: Mapping[int, tuple[str, str | None, str, str]] = MappingProxyType(
             "Data the server read is malformed (`details.reason`):"
             " `area_unreadable` (an area file; `details.layers` lists the layers"
             " to choose from) or `kartograf_error` (the producer refused, with"
-            " its own message in `details.kartograf`).",
+            " its own message in `details.kartograf`); `io_error`"
+            " (`project_file_write_failed`): a project file or an area file"
+            " could not be written.",
         ),
         503: (
             "missing_dependency",

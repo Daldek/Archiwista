@@ -1,8 +1,8 @@
 """Projects of every person in team mode (plan v0.4 T7, ADR-039 erratum 3).
 
-A person creates a project where none is and owns it; a directory that is a
-project already (an access entry, an indexed project or a manifest on disk)
-is changed only by whoever may change that project; the owner gives the
+A person creates a project where none is and owns it; a directory that was a
+project already (an access entry) is changed only by whoever may change
+that project, and a producer's own file there makes no project; the owner gives the
 project a data folder inside its directory, an administrator anywhere the
 rules allow (A-ADR-029 erratum 2); a person's scans of data folders keep to
 their limits (ADR-047 decision 4); ``GET /directory`` names whom a project
@@ -19,13 +19,13 @@ from archiwista.api.owndata import start_own_scan
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER, access_key
 from archiwista.config import ConfigStore, DefaultProjectVisibility
 from archiwista.index import IndexQueries
+from archiwista.projects import PROJECT_FILE
 from archiwista.services.owndata import SCAN_INTERVAL_S, SCAN_RUNNING_RETRY_S
 from archiwista.state import ActionQuery
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.permissions import last_entry, log_entries
 from tests.fixtures.team_projects import (
     ADMIN,
-    MANIFEST,
     OTHER,
     OWNER,
     TeamApi,
@@ -80,7 +80,7 @@ def test_a_person_creates_a_project_and_owns_it(
         "raba",
         True,
     )
-    assert (place.projects / "raba" / MANIFEST).is_file()
+    assert (place.projects / "raba" / PROJECT_FILE).is_file()
     assert access.json() == {
         "project": "raba",
         "owner": OWNER,
@@ -98,7 +98,7 @@ def test_a_person_creates_a_project_and_owns_it(
         key,
         "ok",
     )
-    assert entry.details == {"producer": "kartograf", "owner": OWNER}
+    assert entry.details == {"name": "raba", "owner": OWNER}
     assert entry.after == {
         "project": key,
         "owner": OWNER,
@@ -108,57 +108,60 @@ def test_a_person_creates_a_project_and_owns_it(
     }
 
 
-@pytest.mark.parametrize(
-    ("made", "refused", "allowed"),
-    [
-        # kasia's project, made with IMGWTools outside Archiwista.
-        ("owned_manifest", OTHER, ADMIN),
-        # An access entry of marek's, no manifest yet.
-        ("access_entry", OWNER, OTHER),
-        # A manifest made outside Archiwista and not scanned yet: nobody owns it.
-        ("unscanned_manifest", OWNER, ADMIN),
-    ],
-)
-def test_a_project_already_there_is_changed_only_by_who_may(
-    place: TeamPlace, made: str, refused: str, allowed: str
+def test_a_directory_with_an_access_entry_is_changed_only_by_who_may(
+    place: TeamPlace,
 ) -> None:
-    """Adding a manifest to a project needs ``project.write``, not ``project.create``.
+    """A project file where an access entry is needs ``project.write``.
 
-    The one refused (``403``) writes nothing; the owner or an administrator
-    adds the Kartograf manifest, the access entry stays as it was, and no
-    project is logged as created.
+    kasia, refused (``403``), writes nothing; marek, whose entry it is,
+    writes the file, and the access entry stays as it was.
     """
     directory = place.projects / "wisla"
     key = access_key(directory)
     with team_api(place) as served:
         # Arrange
-        if made != "access_entry":
-            imgwtools.init_project(directory, store_dir=place.imgw)
-        if made != "unscanned_manifest":
-            owner = OWNER if made == "owned_manifest" else OTHER
-            served.state.set_project_access(
-                key, owner=owner, visibility="public", actor=LOCAL_OWNER
-            )
+        served.state.set_project_access(
+            key, owner=OTHER, visibility="public", actor=LOCAL_OWNER
+        )
         before = served.state.project_access(key)
 
         # Act
-        denied = served.caller(refused).request(
+        denied = served.caller(OWNER).request(
             "POST", "/projects", json=place.body("wisla")
         )
-        written_after_denial = (directory / MANIFEST).exists()
-        accepted = served.caller(allowed).request(
+        written_after_denial = (directory / PROJECT_FILE).exists()
+        accepted = served.caller(OTHER).request(
             "POST", "/projects", json=place.body("wisla")
         )
         after = served.state.project_access(key)
-        created = served.state.actions(ActionQuery(action="project.create")).entries
 
     # Assert
     assert_problem(denied, 403, "forbidden", "permission_denied")
     assert not written_after_denial
     assert accepted.status_code == 201, accepted.text
-    assert (directory / MANIFEST).is_file()
+    assert (directory / PROJECT_FILE).is_file()
     assert after == before
-    assert created == ()
+
+
+def test_a_producers_project_file_alone_is_no_project(place: TeamPlace) -> None:
+    """A directory holding only ``imgw-project.json`` is new: kasia creates it."""
+    directory = place.projects / "wisla"
+    imgwtools.init_project(directory, store_dir=place.imgw)
+    with team_api(place) as served:
+        # Act
+        listed = served.caller(OWNER).request("GET", "/projects").json()["items"]
+        created = served.caller(OWNER).request(
+            "POST", "/projects", json=place.body("wisla")
+        )
+        access = served.state.project_access(access_key(directory))
+
+    # Assert
+    assert listed == []
+    assert created.status_code == 201, created.text
+    assert (directory / PROJECT_FILE).is_file()
+    assert (directory / "imgw-project.json").is_file()
+    assert access is not None
+    assert access.owner == OWNER
 
 
 def test_the_owner_sets_a_data_folder_inside_her_project_only(

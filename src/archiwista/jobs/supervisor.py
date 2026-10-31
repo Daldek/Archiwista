@@ -24,7 +24,7 @@ the scheduler as no one; a free network place goes to the oldest waiting job
 of the person with the fewest running ones, ADR-047), runs alone (one ``preview``
 at a time, one ``preview_warm``; the next ones wait in the queue), conflicts
 with active jobs (one job writing a store's index at a time, ``scan`` or
-``footprints``; one job of a project at a time, of the ``project_*`` kinds;
+``footprints``;
 another one is a ``JobConflictError``), joins one (a ``preview`` of contents
 an active build already has adds its refs to that job; an ``availability``
 check of an area and product that an active check already asks returns that
@@ -64,7 +64,7 @@ What a principal sees of the jobs follows their scope (plan v0.2 "Zadania"),
 read from ``store`` and ``params``: a store or versions (``version:`` refs)
 everyone sees, and so a job of no project (the ``own_scan`` of every
 project); a job of projects only (``params.project``, ``file:`` and
-``snapshot:`` refs; the ``project_*`` kinds) is seen by whoever sees one of
+``snapshot:`` refs) is seen by whoever sees one of
 them. ``get`` and ``events`` take the principal's ``visible`` projects
 (every project by default) and know no job the principal does not see;
 ``list`` gives every job of the queue, one the principal does not see marked
@@ -112,7 +112,6 @@ from archiwista.jobs.protocol import (
     CODE_INTERNAL_ERROR,
     INTERRUPTED_EXIT,
     JOB_KINDS,
-    PROJECT_KINDS,
     REASON_INTERRUPTED,
     REASON_WORKER_CRASHED,
     STOP_TIMEOUT_S,
@@ -475,7 +474,7 @@ def _running_keys(
 
 
 def _project_key(store: str | None, params: JsonObject) -> object:
-    """Return the key of a job of a project's manifest: the project."""
+    """Return the key of a job of a project: the project."""
     return params["project"]
 
 
@@ -548,8 +547,8 @@ _AVAILABILITY_JOIN = JobJoin(_join_availability, ACTIVE_STATES)
 _WARM_JOIN = JobJoin(_join_warm, ("queued",))
 # One snapshot of a file at a time; those of other files run side by side.
 _SNAPSHOT_CONFLICT = JobConflict("snapshot", _snapshot_key, "job.conflict_snapshot")
-# One job of a project at a time (SPEC 5.6): its producer writes the manifest
-# under a lock that a second one would wait for.
+# One job of a project at a time (A-ADR-049 decision 11): its jobs change the
+# project file under a lock that a second one would wait for.
 _PROJECT_CONFLICT = JobConflict("project", _project_key, "job.conflict_project")
 # A download of a call an active download of the store runs (SPEC 5.6).
 _DOWNLOAD_OVERLAP = JobOverlap(_call_keys, "job.overlapping")
@@ -564,10 +563,6 @@ JOB_RULES: Mapping[JobKind, JobRule] = {
     "availability": JobRule(store=False, network=True, join=_AVAILABILITY_JOIN),
     "check": JobRule(store=True, network=True),
     "download": JobRule(store=True, network=True, overlap=_DOWNLOAD_OVERLAP),
-    "project_download": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
-    "project_repin": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
-    "project_check": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
-    "project_verify": JobRule(store=False, conflict=_PROJECT_CONFLICT),
     "preview_warm": JobRule(store=False, exclusive=True, join=_WARM_JOIN),
 }
 
@@ -874,7 +869,7 @@ class JobSupervisor:
             Configured store id: required by a kind working on a store
             (``scan``, ``footprints``, ``link_check``, ``check``,
             ``download``), refused by one working on none (``preview``,
-            ``own_scan``, ``snapshot``, ``availability``, ``project_*``,
+            ``own_scan``, ``snapshot``, ``availability``,
             ``preview_warm``).
         params : Mapping or None, optional
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
@@ -893,12 +888,8 @@ class JobSupervisor:
             a JSON object of ``command``, a non-empty text, and ``options``,
             a JSON object, ``{}`` by default); ``download``: those of
             ``check`` and ``plan_job`` (the ``check`` job whose kept plans
-            the run runs, ``None`` by default); ``project_download``,
-            ``project_check``, ``project_verify``: ``project`` (its key),
-            ``tasks`` (a list of task names, ``None`` for every task, the
-            default) and, when given, ``producer`` (the manifest whose tasks
-            run; left out: the project's only one); ``project_repin``: those
-            with one task; ``preview_warm``: ``store``, ``product``, ``segment``,
+            the run runs, ``None`` by default); ``preview_warm``: ``store``,
+            ``product``, ``segment``,
             ``project``, ``area_id`` and ``since`` (``WARM_FILTERS``: each a
             non-empty text or ``None``, the default; ``since`` an ISO 8601
             time with its offset).
@@ -937,9 +928,8 @@ class JobSupervisor:
         OfflineModeError
             A network job while offline mode is on; nothing is recorded.
         JobConflictError
-            Another job writes the store's index (``scan``, ``footprints``),
-            or the project has an active job (``project_*``); it names that
-            job.
+            Another job writes the store's index (``scan``, ``footprints``);
+            it names that job.
         ValueError
             An unknown kind, a store missing or given against the kind's
             rule, or invalid parameters.
@@ -2053,8 +2043,6 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         return _check_params(params)
     if kind == "download":
         return _download_params(params)
-    if kind in PROJECT_KINDS:
-        return _project_params(kind, params)
     if kind == "preview_warm":
         return _warm_params(params)
     if params:
@@ -2093,39 +2081,6 @@ def _warm_params(params: Mapping[str, object]) -> JsonObject:
     since = checked["since"]
     if since is not None and datetime.fromisoformat(since).tzinfo is None:
         raise ValueError(f"preview_warm since {since!r} has no offset")
-    return checked
-
-
-def _project_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
-    """Check a project job's project, tasks and producer; a repin takes one task.
-
-    ``tasks`` is a list of task names, a name given twice kept once, or
-    ``None``, every task of the project. ``producer``, when given, names the
-    manifest whose tasks the job runs; left out, the project's only one.
-    """
-    project = params.get("project")
-    tasks = params.get("tasks")
-    producer = params.get("producer")
-    if (
-        set(params) - {"project", "tasks", "producer"}
-        or not (isinstance(project, str) and project)
-        or ("producer" in params and not (isinstance(producer, str) and producer))
-        or not (
-            (tasks is None and kind != "project_repin")
-            or (
-                isinstance(tasks, list | tuple)
-                and tasks
-                and all(isinstance(name, str) and name for name in tasks)
-            )
-        )
-    ):
-        raise ValueError(f"invalid {kind} parameters {dict(params)!r}"[:300])
-    names = None if tasks is None else list(dict.fromkeys(cast(list[str], tasks)))
-    if kind == "project_repin" and (names is None or len(names) != 1):
-        raise ValueError(f"a project_repin job takes one task, got {tasks!r}"[:300])
-    checked: JsonObject = {"project": project, "tasks": names}
-    if "producer" in params:
-        checked["producer"] = producer
     return checked
 
 
@@ -2638,9 +2593,9 @@ def _prune_jobs(db: sqlite3.Connection, *, now: datetime) -> None:
 
 
 # A scan's summary recording nothing changed: every count zero, no project
-# manifest read but those without a store (read again at every scan, see
-# ``IndexWriter.project_stamps``), none removed, no project directory
-# unreadable.
+# file read but invalid ones and those whose store matches none (read again
+# at every scan, see ``IndexWriter.project_stamps``), none removed, no
+# project directory unreadable.
 _UNCHANGED_SQL = " AND ".join(
     [
         *(f"json_extract(summary, '$.{name}') = 0" for name in _SCAN_CHANGES),

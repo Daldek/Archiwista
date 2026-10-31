@@ -23,9 +23,12 @@ KNOWN_PROBLEMS = frozenset(
         "orphan_sidecar",
         "missing_pin",
         "pin_sha256_mismatch",
-        "invalid_manifest",
+        "invalid_project_file",
+        "unsupported_project_schema",
         "unknown_store",
-        "duplicate_task",
+        "area_missing",
+        "area_changed",
+        "area_invalid",
         *OWN_PROBLEM_CODES,
     }
 )
@@ -53,8 +56,8 @@ class Problem:
         Store-relative path the problem is about.
     segment, slot : str or None
         Segment and slot of ``path`` when known.
-    project, task : str or None
-        Project key and task of a project problem.
+    project, group : str or None
+        Project key and group of a project problem.
     origin : {"scan", "check"} or None
         Who found a store problem: a scan or a check job.
     first_seen_at : datetime or None
@@ -68,7 +71,7 @@ class Problem:
     segment: str | None = None
     slot: str | None = None
     project: str | None = None
-    task: str | None = None
+    group: str | None = None
     origin: IssueOrigin | None = None
     first_seen_at: datetime | None = None
 

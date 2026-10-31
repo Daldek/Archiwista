@@ -5,17 +5,19 @@ from pathlib import Path
 
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
-from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, ProductUsage
+from archiwista.index import IndexQueries, IndexWriter, ProductUsage
 from archiwista.messages import language
 from archiwista.services import store_summary
-from archiwista.sources import ProjectInfo, ProjectPin, SourceSegment
+from archiwista.sources import SourceSegment
 from tests.fixtures.index_data import (
     NMT,
     ORTO,
     PRODUCER,
     ROOT,
     STORE,
+    indexed_project,
     link,
+    pin,
     problem,
     sha,
     slot_path,
@@ -95,12 +97,8 @@ def test_store_summary_reports_unused_versions_with_reclaimable_size(
             link(PHOTO, photo),
         ],
     )
-    pin = ProjectPin(ROOT, Path(version_path(SHEET_A, "2016-06-01_1", sha(3))))
-    writer.write_project(
-        ProjectInfo(PRODUCER, ROOT, Path("/projekty/Raba"), "Raba", pins=(pin,)),
-        store=STORE,
-        stamp=ManifestStamp(1, 1),
-    )
+    kept = pin(version_path(SHEET_A, "2016-06-01_1", sha(3)), sha(3))
+    indexed_project(writer, Path("/projekty/Raba"), "Raba", store=STORE, pins=[kept])
 
     # Act
     report = store_summary(queries, CONFIG, visible=ALL_PROJECTS).unused
@@ -139,16 +137,12 @@ def test_store_summary_problems_carry_fix_instructions(
         STORE, PRODUCER, path=SHEET_A, code="link_mismatch", segment=NMT, slot=SHEET_A
     )
     absent = version_path(SHEET_A, "2010-01-01_1", sha(9))
-    writer.write_project(
-        ProjectInfo(
-            PRODUCER,
-            ROOT,
-            Path("/projekty/Raba"),
-            "Raba",
-            pins=(ProjectPin(ROOT, Path(absent), sha(9), "teren"),),
-        ),
+    indexed_project(
+        writer,
+        Path("/projekty/Raba"),
+        "Raba",
         store=STORE,
-        stamp=ManifestStamp(1, 1),
+        pins=[pin(absent, sha(9))],
     )
 
     # Act
@@ -166,7 +160,8 @@ def test_store_summary_problems_carry_fix_instructions(
     assert by_code["link_mismatch"].origin == "check"
     assert gone.relative_path.as_posix() in by_code["orphan_sidecar"].message
     assert by_code["missing_pin"].project == "raba"
-    assert "project download teren" in by_code["missing_pin"].instruction
+    assert by_code["missing_pin"].group == "teren"
+    assert 'project "Raba" keeps the pin' in by_code["missing_pin"].instruction
     assert all(p.path and p.path in p.message and p.instruction for p in problems)
 
 
@@ -190,16 +185,14 @@ def test_store_summary_names_the_producer_each_problem_belongs_to(
     writer.write_entries([other])
     writer.finish_pass()
     absent = version_path(SHEET_A, "2010-01-01_1", sha(9))
-    writer.write_project(
-        ProjectInfo(
-            "imgw",
-            ROOT,
-            Path("/projekty/Wisla"),
-            "Wisła",
-            pins=(ProjectPin(ROOT, Path(absent), sha(9), "pomiary"),),
-        ),
+    indexed_project(
+        writer,
+        Path("/projekty/Wisla"),
+        "Wisła",
         store=STORE,
-        stamp=ManifestStamp(1, 1),
+        producer="imgw",
+        pins=[pin(absent, sha(9), producer="imgw")],
+        group="pomiary",
     )
     config = StoreConfig(
         id=STORE,
@@ -217,7 +210,7 @@ def test_store_summary_names_the_producer_each_problem_belongs_to(
     assert "kartograf" in by_path[stray].message
     assert "imgw" in by_path[other.relative_path.as_posix()].message
     assert "kartograf" not in by_path[other.relative_path.as_posix()].message
-    assert "imgw project download pomiary" in by_path[absent].instruction
+    assert "with the imgw command" in by_path[absent].instruction
 
 
 def test_store_summary_words_a_version_without_a_sidecar_for_its_producer(

@@ -18,15 +18,15 @@ import pytest
 import rasterio
 import shapely
 from kartograf import (
-    ValidationError,
     file_footprint,
     init_store,
     iter_store,
     link_target,
-    open_project,
 )
 from rasterio.enums import ColorInterp
 
+from archiwista.errors import ProjectFileError
+from archiwista.projects import PROJECT_FILE, read_project_file
 from tests.fixtures.make_store import (
     BDOT_GPKG,
     CZ_OUTLINE,
@@ -380,28 +380,31 @@ def test_store_fixture_standard_path_file_without_sha256(store: StoreManifest) -
 
 
 def test_store_fixture_projects_open_as_expected(store: StoreManifest) -> None:
-    """Valid manifests open with their pins; the invalid one is rejected."""
+    """Valid project files read with their pins; the invalid one is refused."""
     for project in store.projects:
         directory = store.base / project.path
         if not project.valid:
-            with pytest.raises(ValidationError):
-                open_project(directory)
+            with pytest.raises(ProjectFileError):
+                read_project_file(directory)
             continue
-        opened = open_project(directory)
+        opened = read_project_file(directory)
+        (root,) = opened.stores
         store_dir = (store.base / project.store).resolve()
-        assert opened.root.resolve() == store_dir
-        pins = {(task.name, pin.version) for task in opened.tasks for pin in task.files}
-        assert pins == {
-            (task.name, pin.version) for task in project.tasks for pin in task.pins
+        assert (directory / root.root).resolve() == store_dir
+        pins = {
+            (group.name, pin.version) for group in opened.groups for pin in group.pins
         }
-    every_pin = [pin for p in store.projects for t in p.tasks for pin in t.pins]
+        assert pins == {
+            (group.name, pin.version) for group in project.groups for pin in group.pins
+        }
+    every_pin = [pin for p in store.projects for g in p.groups for pin in g.pins]
     assert all((store.root / pin.version).is_file() == pin.present for pin in every_pin)
     assert any(pin.present and not pin.current for pin in every_pin)
     assert {p.case for p in store.projects} == {
         "regular",
         "missing_version",
         "other_store",
-        "invalid_manifest",
+        "invalid_project_file",
     }
 
 
@@ -428,13 +431,13 @@ def test_verify_store_rejects_store_kartograf_reads_differently(
         verify_store(manifest)
 
 
-def test_verify_store_rejects_accepted_invalid_manifest(tmp_path: Path) -> None:
-    """An invalid manifest that opens stops the generator's verification."""
+def test_verify_store_rejects_accepted_invalid_project_file(tmp_path: Path) -> None:
+    """An invalid project file that reads stops the generator's verification."""
     manifest = make_store(tmp_path / "store", slots=MIN_SLOTS, seed=2)
     invalid = next(p for p in manifest.projects if not p.valid)
-    path = manifest.base / invalid.path / "kartograf-project.json"
+    path = manifest.base / invalid.path / PROJECT_FILE
     doc = json.loads(path.read_text(encoding="utf-8"))
-    doc["tasks"][0]["command"] = "elevation download"
+    doc["groups"][0]["name"] = "teren"
     path.write_text(json.dumps(doc), encoding="utf-8")
 
     with pytest.raises(StoreFixtureError, match=invalid.name):

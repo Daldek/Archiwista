@@ -1,16 +1,18 @@
-"""Projects created and changed over HTTP and by commands (plan of 2026-10-25, A7).
+"""Projects created and changed over HTTP and by commands (A-ADR-049, plan P2).
 
-``POST /projects``, ``POST /projects/{project}/tasks`` and ``DELETE
-/projects/{project}/tasks/{name}`` with the real Kartograf adapter, offline,
-over a marked Kartograf store and a project directory; ``archiwista
-project-init``, ``project-add``, ``project-remove`` and ``project-status``
-print the routes' models and refuse with the routes' problems. The service
-behind both is ``tests/integration/test_project_changes.py``.
+``POST /projects``, ``PATCH /projects/{project}``, ``PUT …/area`` and ``PUT
+…/stores/{producer}`` write Archiwista's project file over a marked
+Kartograf store and a project directory; ``archiwista project-init``,
+``project-edit``, ``project-area`` and ``project-store`` print the routes'
+models and refuse with the routes' problems. Who may change a project
+follows its sharing; a lock another change holds is ``409 project_locked``.
 """
 
+import functools
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -21,35 +23,50 @@ from archiwista.auth import LOCAL_OWNER, access_key
 from archiwista.cli import main
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
 from archiwista.index import IndexWriter, initialize
+from archiwista.index.types import AreaRecord
 from archiwista.messages import message
+from archiwista.projects import (
+    LOCK_NAME,
+    LOCK_OWNER,
+    PROJECT_FILE,
+    change_project_file,
+)
+from archiwista.services import projects as project_service
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Api, assert_problem, running_api
-from tests.fixtures.availability import register_standin
 from tests.fixtures.cli_errors import assert_same_error, refusal
-from tests.fixtures.network import no_network
 from tests.fixtures.permissions import Who, add_people, principal, share
 
 STORE = "zespol"
-MANIFEST = "kartograf-project.json"
-TASK = "teren"
-COMMAND = "elevation download"
-# A box of 1 km² in PL-1992 cut into 1:10 000 sheets: checked without network.
-OPTIONS: dict[str, Any] = {
-    "product": "nmt",
-    "country": "pl",
-    "bbox": [500000, 250000, 501000, 251000],
-    "bbox_crs": "EPSG:2180",
-    "sheet_system": "1992",
-    "resolution": "1m",
-    "vertical_crs": "EVRF2007",
-    "year": 2023,
-}
-TASK_BODY: dict[str, Any] = {"name": TASK, "command": COMMAND, "options": OPTIONS}
+# About 7 km × 11 km near Kraków, an area of the index.
+AREA = AreaRecord(
+    id="0123456789abcdef",
+    source="drawn",
+    geometry={
+        "type": "Polygon",
+        "coordinates": [
+            [[19.0, 50.0], [19.1, 50.0], [19.1, 50.1], [19.0, 50.1], [19.0, 50.0]]
+        ],
+    },
+    created_at=datetime(2026, 10, 1, tzinfo=UTC),
+    area_km2=79.5,
+    countries=("PL",),
+    name="Kraków",
+)
+
+
+def _projects(tmp_path: Path) -> Path:
+    """Return the project directory of the settings."""
+    return tmp_path / "nas" / "projekty"
 
 
 @pytest.fixture
 def paths(tmp_path: Path) -> AppPaths:
-    """Return an installation with a marked Kartograf store and a project directory."""
+    """Return an installation with a marked Kartograf store and a project directory.
+
+    The settings also name a project directory that does not exist
+    (``brak``); the index keeps the area ``AREA``.
+    """
     root = tmp_path / "nas" / "kartograf"
     kartograf.init_store(root)
     _projects(tmp_path).mkdir()
@@ -58,17 +75,23 @@ def paths(tmp_path: Path) -> AppPaths:
     )
     store = StoreConfig(id=STORE, name="Zespół", kartograf=root, kind="share")
     ConfigStore(created.config_file).save(
-        AppSettings(stores=(store,), project_dirs=(_projects(tmp_path),))
+        AppSettings(
+            stores=(store,),
+            project_dirs=(_projects(tmp_path), tmp_path / "nas" / "brak"),
+        )
     )
     initialize(created.index_file)
     with IndexWriter(created.index_file) as writer:
         writer.sync_stores({STORE: store.roots()})
+        writer.write_area(AREA)
     return created
 
 
-def _projects(tmp_path: Path) -> Path:
-    """Return the project directory of the settings."""
-    return tmp_path / "nas" / "projekty"
+@pytest.fixture(autouse=True)
+def short_lock_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Wait 0.2 s for a held lock instead of 5 s."""
+    quick = functools.partial(change_project_file, wait_s=0.2)
+    monkeypatch.setattr(project_service, "change_project_file", quick)
 
 
 @contextmanager
@@ -93,55 +116,62 @@ def _cli(capsys: pytest.CaptureFixture[str], paths: AppPaths, *argv: str) -> Any
     return refusal(captured.out, captured.err, status)
 
 
-def _project_body(directory: Path, **changed: str) -> dict[str, str]:
-    """Return the body of ``POST /projects`` of a Kartograf project in ``directory``."""
-    return {"producer": "kartograf", "path": str(directory), "store": STORE, **changed}
+def _file(directory: Path) -> Any:
+    return json.loads((directory / PROJECT_FILE).read_text(encoding="utf-8"))
 
 
-def _manifest(directory: Path) -> Any:
-    return json.loads((directory / MANIFEST).read_text(encoding="utf-8"))
-
-
-def test_a_project_is_created_and_its_tasks_changed_over_http(
+def test_a_project_is_created_and_changed_over_http(
     paths: AppPaths, tmp_path: Path
 ) -> None:
-    """`201` with `Location`; every answer is the card the project then has.
-
-    Kartograf writes the manifest; nothing reaches the network.
-    """
+    """`201` with `Location`; every answer is the card the project then has."""
     directory = _projects(tmp_path) / "raba"
-    with _api(paths) as api, no_network() as attempts:
+    with _api(paths) as api:
         owner = api.session(LOCAL_OWNER)
 
         # Act
-        created = owner.request("POST", "/projects", json=_project_body(directory))
+        created = owner.request(
+            "POST",
+            "/projects",
+            json={"path": str(directory), "name": "Raba", "description": "Zlewnia"},
+        )
         key = created.json()["project"]
-        new = owner.request("GET", f"/projects/{key}").json()
-        added = owner.request("POST", f"/projects/{key}/tasks", json=TASK_BODY)
-        with_task = owner.request("GET", f"/projects/{key}").json()
-        written = _manifest(directory)
-        removed = owner.request("DELETE", f"/projects/{key}/tasks/{TASK}")
-        without = owner.request("GET", f"/projects/{key}").json()
+        edited = owner.request(
+            "PATCH", f"/projects/{key}", json={"description": "Zlewnia Raby"}
+        )
+        area = owner.request("PUT", f"/projects/{key}/area", json={"area_id": AREA.id})
+        store = owner.request(
+            "PUT", f"/projects/{key}/stores/kartograf", json={"store": STORE}
+        )
+        card = owner.request("GET", f"/projects/{key}").json()
+        cleared = owner.request("PUT", f"/projects/{key}/area", json={"area_id": None})
 
     # Assert
     assert created.status_code == 201, created.text
     assert created.headers["location"] == f"/api/v1/projects/{key}"
-    assert created.json() == new
-    assert [(m["producer"], m["store"]) for m in new["manifests"]] == [
-        ("kartograf", STORE)
+    assert (key, created.json()["name"], created.json()["stores"]) == (
+        "raba",
+        "Raba",
+        [],
+    )
+    assert edited.json()["description"] == "Zlewnia Raby"
+    chosen = area.json()["area"]
+    assert (chosen["path"], chosen["state"]) == (f"obszary/{AREA.id}.geojson", "ok")
+    # The file's copy is read back into an area of the index of its own.
+    assert chosen["area_id"] is not None
+    root = str(tmp_path / "nas" / "kartograf")
+    assert store.json()["stores"] == [
+        {"producer": "kartograf", "root": root, "store": STORE}
     ]
-    assert new["tasks"] == []
-    assert added.status_code == 201, added.text
-    assert added.json() == with_task
-    assert [
-        (task["producer"], task["task"], task["command"]) for task in with_task["tasks"]
-    ] == [("kartograf", TASK, COMMAND)]
-    assert with_task["tasks"][0]["options"] == written["tasks"][0]["options"]
-    assert removed.status_code == 200, removed.text
-    assert removed.json() == without
-    assert without["tasks"] == []
-    assert _manifest(directory)["tasks"] == []
-    assert attempts == []
+    assert store.json() == card
+    assert (cleared.status_code, cleared.json()["area"]) == (200, None)
+    assert (directory / "obszary" / f"{AREA.id}.geojson").is_file()
+    written = _file(directory)
+    assert (written["schema"], written["name"], written["description"]) == (
+        "archiwista-project/1",
+        "Raba",
+        "Zlewnia Raby",
+    )
+    assert written.get("area") is None
 
 
 def test_the_commands_print_what_the_routes_answer(
@@ -152,43 +182,27 @@ def test_the_commands_print_what_the_routes_answer(
 ) -> None:
     """`--json` is the route's model; a relative directory is the current one's."""
     monkeypatch.chdir(_projects(tmp_path))
-    with _api(paths) as api:
-        owner = api.session(LOCAL_OWNER)
 
-        # Act
-        created = _cli(
-            capsys, paths, "project-init", "kartograf", "raba", "--store", STORE
-        )
-        key = created["project"]
-        new = owner.request("GET", f"/projects/{key}").json()
-        options = json.dumps(OPTIONS)
-        added = _cli(
-            capsys, paths, "project-add", key, TASK, COMMAND, "--options", options
-        )
-        with_task = owner.request("GET", f"/projects/{key}").json()
-        status = _cli(capsys, paths, "project-status", key)
-        checked = owner.request("GET", f"/projects/{key}/status").json()
-        removed = _cli(capsys, paths, "project-remove", key, TASK)
-        without = owner.request("GET", f"/projects/{key}").json()
+    # Act
+    created = _cli(capsys, paths, "project-init", "raba", "--description", "Z")
+    key = created["project"]
+    edited = _cli(capsys, paths, "project-edit", key, "--name", "Raba")
+    area = _cli(capsys, paths, "project-area", key, "--area-id", AREA.id)
+    store = _cli(capsys, paths, "project-store", key, "kartograf", "--store", STORE)
+    with _api(paths) as api:
+        card = api.session(LOCAL_OWNER).request("GET", f"/projects/{key}").json()
+    cleared = _cli(capsys, paths, "project-area", key, "--clear")
 
     # Assert
-    assert (_projects(tmp_path) / "raba" / MANIFEST).is_file()
-    assert created == new
-    assert added == with_task
-    assert [task["task"] for task in added["tasks"]] == [TASK]
-    assert _unclocked(status) == _unclocked(checked)
-    assert [
-        (manifest["producer"], [task["task"] for task in manifest["tasks"]])
-        for manifest in status["manifests"]
-    ] == [("kartograf", [TASK])]
-    assert removed == without
-    assert removed["tasks"] == []
-
-
-def _unclocked(status: dict[str, Any]) -> dict[str, Any]:
-    """Return a project's status without the times its producers checked it."""
-    manifests = [{**item, "checked_at": None} for item in status["manifests"]]
-    return {**status, "manifests": manifests}
+    assert (key, created["path"]["local"]) == (
+        "raba",
+        str(_projects(tmp_path) / "raba"),
+    )
+    assert (created["description"], edited["name"]) == ("Z", "Raba")
+    assert area["area"]["path"] == f"obszary/{AREA.id}.geojson"
+    assert [item["store"] for item in store["stores"]] == [STORE]
+    assert store == card
+    assert cleared["area"] is None
 
 
 @pytest.mark.parametrize("token", ["startup", "agent"])
@@ -196,7 +210,7 @@ def _unclocked(status: dict[str, Any]) -> dict[str, Any]:
     ("who", "status"),
     [("owner", None), ("listed", 403), ("other", 404), ("admin", None)],
 )
-def test_a_task_is_changed_by_the_owner_or_an_administrator(
+def test_a_project_is_changed_by_the_owner_or_an_administrator(
     paths: AppPaths,
     tmp_path: Path,
     who: Who,
@@ -212,139 +226,176 @@ def test_a_task_is_changed_by_the_owner_or_an_administrator(
     directory = _projects(tmp_path) / "raba"
     with _api(paths) as api:
         owner = api.session(LOCAL_OWNER)
-        key = owner.request("POST", "/projects", json=_project_body(directory))
-        project = key.json()["project"]
-        owner.request("POST", f"/projects/{project}/tasks", json=TASK_BODY)
+        owner.request("POST", "/projects", json={"path": str(directory)})
         share(api.state, access_key(directory), "users")
         person = api.session(principal(api.state, who), token=token)
 
         # Act
-        added = person.request(
-            "POST", f"/projects/{project}/tasks", json={**TASK_BODY, "name": "drugi"}
-        )
-        removed = person.request("DELETE", f"/projects/{project}/tasks/{TASK}")
+        answers = [
+            person.request("PATCH", "/projects/raba", json={"description": "D"}),
+            person.request("PUT", "/projects/raba/area", json={"area_id": AREA.id}),
+            person.request(
+                "PUT", "/projects/raba/stores/kartograf", json={"store": STORE}
+            ),
+        ]
 
     # Assert
-    names = [task["name"] for task in _manifest(directory)["tasks"]]
+    written = _file(directory)
     if status is None:
-        assert (added.status_code, removed.status_code) == (201, 200), added.text
-        assert names == ["drugi"]
+        assert [answer.status_code for answer in answers] == [200, 200, 200]
+        assert (written["description"], len(written["stores"])) == ("D", 1)
         return
     code = {403: "forbidden", 404: "not_found"}[status]
-    assert_problem(added, status, code)
-    assert_problem(removed, status, code)
-    assert names == [TASK]
-
-
-def _refused(
-    case: str, tmp_path: Path, project: str
-) -> tuple[str, str, dict[str, Any] | None, list[str]]:
-    """Return a refused request: method, path, body, and the same command."""
-    projects = _projects(tmp_path)
-    created: dict[str, Callable[[Path], dict[str, str]]] = {
-        "outside": lambda place: _project_body(tmp_path / "obcy"),
-        "hidden": lambda place: _project_body(place / ".ukryty" / "raba"),
-        "unknown_store": lambda place: _project_body(place / "nowy", store="nieznany"),
-        "producer_without_projects": lambda place: _project_body(
-            place / "nowy", producer="standin"
-        ),
-    }
-    if case in created:
-        body = created[case](projects)
-        argv = [
-            "project-init",
-            body["producer"],
-            body["path"],
-            "--store",
-            body["store"],
-        ]
-        return "POST", "/projects", body, argv
-    tasks = {
-        "invalid_year": {
-            **TASK_BODY,
-            "name": "drugi",
-            "options": {**OPTIONS, "year": 1800},
-        },
-        "file_path": {
-            **TASK_BODY,
-            "name": "drugi",
-            "options": {**OPTIONS, "geometry": "/etc/obszar.gpkg"},
-        },
-        "empty_name": {**TASK_BODY, "name": ""},
-        "unknown_project": {**TASK_BODY, "name": "drugi"},
-    }
-    if case in tasks:
-        task = tasks[case]
-        key = "nieznany" if case == "unknown_project" else project
-        argv = ["project-add", key, task["name"], task["command"]]
-        argv += ["--options", json.dumps(task["options"])]
-        return "POST", f"/projects/{key}/tasks", task, argv
-    assert case == "unknown_task"
-    return (
-        "DELETE",
-        f"/projects/{project}/tasks/brak",
+    for answer in answers:
+        assert_problem(answer, status, code)
+    assert (written["description"], written.get("area"), written["stores"]) == (
+        "",
         None,
-        [
-            "project-remove",
-            project,
-            "brak",
-        ],
+        [],
     )
 
 
+def _hold_lock(directory: Path) -> None:
+    """Hold the project's lock as another computer's change would."""
+    lock = directory / LOCK_NAME
+    lock.mkdir()
+    (lock / LOCK_OWNER).write_text("nas_4242 2026-10-31T12:00:00Z\n", encoding="utf-8")
+
+
+def _break(directory: Path) -> None:
+    """Break a rule of the project file by hand."""
+    data = _file(directory)
+    data["name"] = ""
+    (directory / PROJECT_FILE).write_text(json.dumps(data), encoding="utf-8")
+
+
+# A refused request: method, path, body and the same command, by project key.
+_REFUSED: dict[str, tuple[str, str, dict[str, Any], list[str]]] = {
+    "outside": ("POST", "/projects", {"path": "{tmp}/obcy"}, ["project-init"]),
+    "hidden": (
+        "POST",
+        "/projects",
+        {"path": "{projects}/.ukryty/nowy"},
+        ["project-init"],
+    ),
+    "dir_missing": ("POST", "/projects", {"path": "{tmp}/nas/brak/nowy"}, []),
+    "unknown_area": (
+        "POST",
+        "/projects",
+        {"path": "{projects}/nowy", "area_id": "brak"},
+        [],
+    ),
+    "exists": ("POST", "/projects", {"path": "{projects}/raba"}, []),
+    "empty_name": ("PATCH", "/projects/raba", {"name": ""}, []),
+    "unknown_project": ("PATCH", "/projects/brak", {"description": "D"}, []),
+    "unknown_store": ("PUT", "/projects/raba/stores/kartograf", {"store": "brak"}, []),
+    "store_without_producer": (
+        "PUT",
+        "/projects/raba/stores/imgw",
+        {"store": STORE},
+        [],
+    ),
+    "locked": ("PATCH", "/projects/raba", {"description": "D"}, []),
+    "invalid_file": ("PATCH", "/projects/raba", {"description": "D"}, []),
+}
+
+
+def _argv(method: str, path: str, body: dict[str, Any]) -> list[str]:
+    """Return the command of a request of ``_REFUSED``."""
+    if method == "POST":
+        argv = ["project-init", body["path"]]
+        if "area_id" in body:
+            argv += ["--area-id", body["area_id"]]
+        return argv
+    key = path.split("/")[2]
+    if method == "PATCH":
+        options = [(f"--{name}", value) for name, value in body.items()]
+        return ["project-edit", key, *[item for pair in options for item in pair]]
+    producer = path.split("/")[-1]
+    return ["project-store", key, producer, "--store", body["store"]]
+
+
 @pytest.mark.parametrize(
-    ("case", "status", "code", "reason", "option"),
+    ("case", "status", "code", "reason"),
     [
-        ("outside", 403, "forbidden", "path_outside_root", "path"),
-        ("hidden", 400, "validation_error", "project_not_discoverable", "path"),
-        ("unknown_store", 404, "not_found", None, None),
-        ("producer_without_projects", 422, "unsupported", "no_project_actions", None),
-        ("invalid_year", 400, "validation_error", None, "year"),
-        ("file_path", 403, "forbidden", "path_outside_root", "geometry"),
-        ("empty_name", 400, "validation_error", "invalid_request", None),
-        ("unknown_project", 404, "not_found", None, None),
-        ("unknown_task", 400, "validation_error", None, "name"),
+        ("outside", 403, "forbidden", "path_outside_root"),
+        ("hidden", 400, "validation_error", "project_not_discoverable"),
+        ("dir_missing", 400, "validation_error", "project_dir_missing"),
+        ("unknown_area", 404, "not_found", None),
+        ("exists", 409, "conflict", "project_exists"),
+        ("empty_name", 400, "validation_error", "invalid_request"),
+        ("unknown_project", 404, "not_found", None),
+        ("unknown_store", 404, "not_found", None),
+        ("store_without_producer", 400, "validation_error", "store_without_producer"),
+        ("locked", 409, "conflict", "project_locked"),
+        ("invalid_file", 409, "conflict", "invalid_project_file"),
     ],
 )
 def test_a_refusal_is_the_same_by_the_api_and_the_command(
     paths: AppPaths,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
     case: str,
     status: int,
     code: str,
     reason: str | None,
-    option: str | None,
 ) -> None:
     """The command's error document says what the route's problem says.
 
-    Nothing is written: the project keeps its one task and no other directory
-    is made.
+    Nothing is written: the project file stays as it was and no other
+    directory is made.
     """
     # Arrange
-    register_standin(monkeypatch)
     directory = _projects(tmp_path) / "raba"
+    method, path, template, _ = _REFUSED[case]
+    places = {"tmp": str(tmp_path), "projects": str(_projects(tmp_path))}
+    body = {
+        name: value.format(**places) if isinstance(value, str) else value
+        for name, value in template.items()
+    }
     with _api(paths) as api:
         owner = api.session(LOCAL_OWNER)
-        project = owner.request("POST", "/projects", json=_project_body(directory))
-        key = project.json()["project"]
-        owner.request("POST", f"/projects/{key}/tasks", json=TASK_BODY)
-        before = _manifest(directory)
-        method, path, body, argv = _refused(case, tmp_path, key)
+        created = owner.request("POST", "/projects", json={"path": str(directory)})
+        assert created.status_code == 201, created.text
+        if case == "locked":
+            _hold_lock(directory)
+        if case == "invalid_file":
+            _break(directory)
+        before = (directory / PROJECT_FILE).read_bytes()
 
         # Act
         refused = owner.request(method, path, json=body)
-        printed = _cli(capsys, paths, *argv)
+        printed = _cli(capsys, paths, *_argv(method, path, body))
 
     # Assert
     assert_problem(refused, status, code, reason)
     assert_same_error(printed, refused.json())
-    if option is not None:
-        assert refused.json()["details"]["option"] == option
-    assert _manifest(directory) == before
-    assert sorted(path.name for path in _projects(tmp_path).iterdir()) == ["raba"]
+    assert (directory / PROJECT_FILE).read_bytes() == before
+    assert sorted(item.name for item in _projects(tmp_path).iterdir()) == ["raba"]
     assert not (tmp_path / "obcy").exists()
+    if case == "locked":
+        assert refused.json()["details"]["lock"] == str(directory / LOCK_NAME)
+        assert refused.json()["details"]["owner"] == "nas_4242"
+
+
+def test_a_project_directory_that_cannot_be_written_is_an_io_error(
+    paths: AppPaths, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`500 io_error` (`project_file_write_failed`) by the route and the command."""
+    projects = _projects(tmp_path)
+    body = {"path": str(projects / "raba")}
+    projects.chmod(0o555)
+    try:
+        with _api(paths) as api:
+            # Act
+            refused = api.session(LOCAL_OWNER).request("POST", "/projects", json=body)
+            printed = _cli(capsys, paths, "project-init", body["path"])
+    finally:
+        projects.chmod(0o755)
+
+    # Assert
+    assert_problem(refused, 500, "io_error", "project_file_write_failed")
+    assert_same_error(printed, refused.json())
 
 
 def test_a_refusal_is_explained_in_polish_on_request(
@@ -357,7 +408,7 @@ def test_a_refusal_is_explained_in_polish_on_request(
 
         # Act
         refused = owner.request(
-            "POST", "/projects", json=_project_body(directory), accept_language="pl"
+            "POST", "/projects", json={"path": str(directory)}, accept_language="pl"
         )
 
     # Assert
@@ -368,24 +419,26 @@ def test_a_refusal_is_explained_in_polish_on_request(
     )
 
 
-def test_openapi_documents_creating_a_project_and_changing_its_tasks(
-    paths: AppPaths,
-) -> None:
-    """The card is the answer of all three; refusals are problems, `422` too."""
+def test_openapi_documents_creating_and_changing_a_project(paths: AppPaths) -> None:
+    """The card answers all four; refusals are problems, `409` and `500` too."""
     with _api(paths) as api:
         document = api.session(LOCAL_OWNER).request("GET", "/openapi.json").json()
 
+    routes = document["paths"]
     operations = {
-        ("create_project", "201"): document["paths"]["/api/v1/projects"]["post"],
-        ("add_project_task", "201"): document["paths"][
-            "/api/v1/projects/{project}/tasks"
-        ]["post"],
-        ("remove_project_task", "200"): document["paths"][
-            "/api/v1/projects/{project}/tasks/{name}"
-        ]["delete"],
+        ("create_project", "201", "ProjectRequest"): routes["/api/v1/projects"]["post"],
+        ("update_project", "200", "ProjectChange"): routes[
+            "/api/v1/projects/{project}"
+        ]["patch"],
+        ("set_project_area", "200", "AreaChoice"): routes[
+            "/api/v1/projects/{project}/area"
+        ]["put"],
+        ("set_project_store", "200", "StoreChoice"): routes[
+            "/api/v1/projects/{project}/stores/{producer}"
+        ]["put"],
     }
     schemas = document["components"]["schemas"]
-    for (name, success), operation in operations.items():
+    for (name, success, model), operation in operations.items():
         responses = operation["responses"]
         assert operation["operationId"] == name
         assert responses[success]["content"]["application/json"]["schema"] == {
@@ -396,21 +449,16 @@ def test_openapi_documents_creating_a_project_and_changing_its_tasks(
             "401",
             "403",
             "404",
-            "422",
-            "503",
+            "409",
+            "500",
         }
         for status, response in responses.items():
             if int(status) >= 400:
                 assert list(response["content"]) == ["application/problem+json"]
-    bodies = [
-        operation["requestBody"]["content"]["application/json"]["schema"]["$ref"]
-        for (name, _), operation in operations.items()
-        if name != "remove_project_task"
-    ]
-    assert bodies == [
-        "#/components/schemas/ProjectRequest",
-        "#/components/schemas/TaskRequest",
-    ]
-    for model in ("ProjectRequest", "TaskRequest"):
+        body = operation["requestBody"]["content"]["application/json"]["schema"]
+        assert body == {"$ref": f"#/components/schemas/{model}"}
         assert schemas[model]["examples"]
         assert schemas[model]["additionalProperties"] is False
+    assert "project_locked" in str(
+        operations[("update_project", "200", "ProjectChange")]["responses"]["409"]
+    )

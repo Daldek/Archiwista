@@ -166,10 +166,11 @@ MESSAGES = {
     "action_project_data_dir": Text(
         "project data folder changed", "zmiana folderu danych projektu"
     ),
-    "action_project_task_add": Text("project task added", "dodanie zadania projektu"),
-    "action_project_task_remove": Text(
-        "project task removed", "usunięcie zadania projektu"
+    "action_project_update": Text(
+        "project name or description changed", "zmiana nazwy lub opisu projektu"
     ),
+    "action_project_area": Text("project area changed", "zmiana obszaru projektu"),
+    "action_project_store": Text("project store changed", "zmiana magazynu projektu"),
     "action_settings_update": Text("settings changed", "zmiana ustawień"),
     "action_job_start": Text("job started", "uruchomienie zadania"),
     "action_job_cancel": Text("job cancelled", "anulowanie zadania"),

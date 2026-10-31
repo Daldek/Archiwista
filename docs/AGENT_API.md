@@ -29,8 +29,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
 | stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
-| a new project, a task added or removed, the producers' status of a project (v0.3) | `archiwista project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA [--producer PRODUCENT]`, `project-status PROJEKT` | `POST /projects`, `POST /projects/{project}/tasks`, `DELETE /projects/{project}/tasks/{name}[?producer=…]`, `GET /projects/{project}/status` |
-| a job of a project's tasks: download and pin, repin one task, check against the source, verify in the store (v0.3) | `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT ZADANIE`, `project-check PROJEKT [ZADANIE ...]`, `project-verify PROJEKT [ZADANIE ...]`, each with `[--producer PRODUCENT]` (the job in the foreground, printed as it ended) | `POST /projects/{project}/jobs` |
+| a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
 | team mode (v0.4): how a session starts, signing in (with a password or through the company's reverse proxy), changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `POST /session/proxy`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
@@ -79,8 +78,7 @@ Without `--json` the commands print a short Polish text for people; an agent
 should always pass `--json`.
 
 The CLI downloads data and writes a store only through a job: a `download` (`jobs
-start download`), a project's download or repin (`project-download`,
-`project-repin`), or `jobs retry` of one of them. The commands `users`,
+start download`) or `jobs retry` of one. The commands `users`,
 `groups`, `share` and `state` (permission administration) are described by
 `archiwista --help`. For a team server (v0.4) `archiwista users password ID
 [--temporary] [--stdin]` sets an account's password at the server's terminal
@@ -358,76 +356,65 @@ cursor is safe in a URL).
   `GET …/versions/{version}/sidecar`.
 - `GET /requests/{parent_request}`: the files of one producer request (for
   example both sides of the PL/CZ border).
-- **Changing (A-ADR-049):** the project routes and commands below that name the
-  producers' manifests (`manifests`, `tasks`, `project-add`, `project-remove`,
-  `project-status`, `project-download`, `producer`) belong to the current build and go
-  without an alias when Archiwista keeps projects in its own `archiwista-project.json`
-  (`groups`, `pins`, `project-pin`, `project-unpin`, `project-restore`, `/activity`,
-  `/exports`; SPEC 9.2). They are replaced here phase by phase as
+- **Changing (A-ADR-049):** projects are kept in Archiwista's own
+  `archiwista-project.json`; the producers' manifests are no longer read, and
+  the routes and commands of their tasks, status and jobs are gone. Pinning
+  (`project-pin`, `project-unpin`, `project-restore`), `/activity` and `/exports`
+  (SPEC 9.2) are added here phase by phase as
   [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
-  lands; an agent written now should not depend on `manifests` or `tasks`.
+  lands.
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
   `GET /projects/{project}`: the projects visible to the actor; a hidden project
   answers like a missing one (`404`). A project is its directory, which holds
-  the manifest of Kartograf (`kartograf-project.json`), of IMGWTools
-  (`imgw-project.json`) or both: `manifests` lists each producer's manifest,
-  Kartograf's first, with the configured `store` it names (`null`: none),
-  its `status` when it was read, the producer's `problem` with an invalid one
-  (whose tasks are not read; the other manifest is) and `scanned_at`. Tasks and
-  pins carry the `producer` of their manifest; a task name in both manifests
-  is the problem `duplicate_task`. `--store` / `?store=` lists the projects
-  with a manifest naming the store. Each project says whether the actor may
-  change it now (`project_write`: its owner or an administrator; read at each
-  request), as the project's changes and jobs below decide it. `archiwista
-  project-status PROJEKT` / `GET /projects/{project}/status` asks each
-  manifest's producer for the state now (no network): `manifests` with each
-  task's state, `stale` with the last scan's state while that manifest's store
-  is unavailable; the first refusal of a producer is the answer.
-- `archiwista project-init PRODUCENT KATALOG --store MAGAZYN` / `POST /projects`
-  (`{"producer", "path", "store"}`), `archiwista project-add PROJEKT NAZWA
-  POLECENIE [--options JSON] [--producer PRODUCENT]` / `POST
-  /projects/{project}/tasks` (`{"name", "command", "options"}`, optionally
-  `"producer"`) and `archiwista project-remove PROJEKT NAZWA [--producer
-  PRODUCENT]` / `DELETE /projects/{project}/tasks/{name}` (optionally
-  `?producer=`) (v0.3, ADR-039): the producer writes its manifest, and the
-  answer is the project's card as the index holds it at once (`201` with
-  `Location` for a new project, `201` for a task, `200` for a removal). A new
-  project lies in a project directory of the settings or at most four levels
-  below one, outside hidden directories and stores (`400
-  project_not_discoverable`; elsewhere `403 path_outside_root`), and names a
-  configured store (`404`) with a directory of the producer (`400
-  store_without_producer`) that can be read now (`503 store_unavailable`).
-  Where no project is yet, any person or their agent creates one (v0.4) and
-  the account owns it, at the visibility of the setting
-  `default_project_visibility` (`project.create` in the action log); the
-  computer's owner (`project-init`, local mode) leaves it without an owner. A
-  directory that is a project already (an access entry, an indexed project,
-  or a manifest of any producer on the disk) is changed by its owner or an
-  administrator only (`403 permission_denied`): in a directory that holds the
-  other producer's manifest the new one is the second manifest of the same
-  project, with its key. A task is changed by the project's owner or an
+  `archiwista-project.json` (schema `archiwista-project/1`); a directory with
+  only a producer's manifest is no project. An item has `name`, `description`,
+  `state` (`ok`, `invalid`: the file breaks a rule, `unsupported_schema`: a
+  newer format) with its `problem` code, `stores` (each producer's `root` as the
+  file writes it and the configured `store` it matches, `null`: none),
+  `area` (`path`, `sha256`, `state` `ok`/`missing`/`changed`/`invalid`, and the
+  `area_id` of the index it was read into) or `null`, the counts `groups`,
+  `pins` and `missing_pins`, `scanned_at`, and whether the actor may change it
+  now (`project_write`: its owner or an administrator; read at each request).
+  The card adds `path`, `created_at`, `created_by`, `groups` (each `name`,
+  `origin` `{kind: "plan", producer, calls}` or `{kind: "local", selections}`,
+  and its `pins`, each with `producer`, `store`, `version`, `sha256`,
+  `content_sha256`, `size_bytes`, `unit`, `label`, `pinned_at`, `pinned_by`,
+  `state`, `slot`, `is_current`) and `problems` (`invalid_project_file`,
+  `unsupported_project_schema`, `unknown_store`, `area_missing`,
+  `area_changed`, `area_invalid`, `missing_pin`, `pin_sha256_mismatch`).
+  `--store` / `?store=` lists the projects with a store of that id.
+- `archiwista project-init KATALOG [--name NAZWA] [--description TEKST]
+  [--area-id OBSZAR]` / `POST /projects` (`{"path", "name"?, "description"?,
+  "area_id"?}`): Archiwista writes the project file (the directory made when
+  missing; the area, when given, into its `obszary/`); the answer is `201` with
+  `Location` and the card as the index holds it at once. The project names no
+  store until its first pin. It lies in a project directory of the settings or
+  at most four levels below one, outside hidden directories and stores (`400
+  project_not_discoverable`; elsewhere `403 path_outside_root`; a configured
+  project directory that is missing: `400 project_dir_missing`); an unknown area
+  is `404`; a directory that holds the file is `409 project_exists`. Where no
+  project was, any person or their agent creates one (v0.4) and the account
+  owns it, at the visibility of the setting `default_project_visibility`
+  (`project.create` in the action log); the computer's owner (`project-init`,
+  local mode) leaves it without an owner. A directory with an access entry is
+  changed by its owner or an administrator only (`403 permission_denied`).
+- `archiwista project-edit PROJEKT [--name NAZWA] [--description TEKST]` /
+  `PATCH /projects/{project}` (`{"name"?, "description"?}`, one at least;
+  `project.update`), `archiwista project-area PROJEKT (--area-id OBSZAR |
+  --clear)` / `PUT /projects/{project}/area` (`{"area_id": "…" | null}`; the
+  area file of a cleared area stays on the disk; `project.area`) and
+  `archiwista project-store PROJEKT PRODUCENT --store MAGAZYN` / `PUT
+  /projects/{project}/stores/{producer}` (`{"store"}`: a configured store, `404`
+  else, with a directory of the producer, `400 store_without_producer` else;
+  written relative to the project directory when the store has path aliases;
+  `project.store`) answer the card. They need the project's owner or an
   administrator (`404` for a hidden project, `403 permission_denied` for one
-  seen but not owned) in one manifest: the one of `producer`, else the
-  project's only one; a project of both manifests needs `producer` (`400
-  producer_required`), and a producer without a manifest in the project is
-  `400 other_producer` (both with `details.option` `producer`). Its command is
-  in the producer's catalog (`400 unknown_command`), its options are checked
-  without the network (`400` with the producer's text and `details.option`),
-  and an option that is a file path is `403`. Removing a task keeps its files
-  in the store. A producer that changes no projects answers `422 unsupported`
-  (`no_project_actions`): IMGWTools until v0.5.
-- `archiwista project-download PROJEKT [ZADANIE ...]`, `project-repin PROJEKT
-  ZADANIE`, `project-check PROJEKT [ZADANIE ...]` and `project-verify PROJEKT
-  [ZADANIE ...]`, each with `--producer PRODUCENT` / `POST
-  /projects/{project}/jobs` (`{"kind": "download"}`, `"repin"`, `"check"` or
-  `"verify"`, optionally `"tasks": ["…"]`: every task when left out, exactly
-  one for a repin, and `"producer"`; v0.3, ADR-040) start a job of the tasks of
-  one manifest of the project (section 9), named by `producer` as for a task
-  (`400 producer_required`, `400 other_producer`); the job's `params` keep a
-  named `producer`. A download and a repin write the store and the manifest
-  through the producer, so they need the project's owner or an administrator
-  and `store_writer` (or the setting `store_write_for_all`); a check and a
-  verification need only to see the project.
+  seen but not owned). Every change of the file takes the project's lock
+  `.archiwista-project.lock` and waits 5 s for another change (`409
+  project_locked`, `details.lock` and `details.owner`); an invalid file or one
+  of a newer format is not changed (`409 invalid_project_file`,
+  `unsupported_project_schema`), and a directory that cannot be written is
+  `500 io_error` (`project_file_write_failed`).
 - `archiwista status` / `GET /health`: versions, sources, the index and every
   store: `status` (`unknown` not scanned yet, `available`, `unavailable`),
   counters, `last_scan` with the actor, `running_job` with its progress,
@@ -838,16 +825,18 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 
 | Status | `code` | `details.reason` and what to do |
 |---|---|---|
-| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `producer_required`, `other_producer`: a change or a job of a project with the manifests of both producers that names no `producer`, or a `producer` without a manifest in the project (`details.option` `producer`); `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); `password_policy`: a new password breaks a rule, `details.rule` `too_short` (under 12 characters after NFKC), `too_long` (over 1,024), `account_name` (the account's id or name), `common` (a common password) or `same_as_current` (`PUT /session/password`: the current password, ignoring case); `password_mismatch` (`users password` only): the two typed passwords differ; no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
+| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `project_not_discoverable`, `project_dir_missing`: a new project where a scan would not find it, or below a configured project directory that is missing; `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); `password_policy`: a new password breaks a rule, `details.rule` `too_short` (under 12 characters after NFKC), `too_long` (over 1,024), `account_name` (the account's id or name), `common` (a common password) or `same_as_current` (`PUT /session/password`: the current password, ignoring case); `password_mismatch` (`users password` only): the two typed passwords differ; no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
 | 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token; on a team server also a token of the computer's owner (a startup token, or one `archiwista token` issued without `--user`), since a team has no local owner → a token of an account (`archiwista token --user ID`); `login_failed` (team mode): the account and password do not sign in, one answer for every cause, or the reverse proxy names no enabled account (`POST /session/proxy`); `password_expired`: a correct temporary password past its end, an administrator gives a new one |
 | 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>` (team mode: other than the host of `origin`); `tls_required`: team mode, a request not over HTTPS; `proxy_required`: team mode behind a reverse proxy, a request that did not come through it; `password_change_required`: the session's temporary password must be changed first (`PUT /session/password`); `wrong_password`: the current password given to `PUT /session/password` is wrong; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
 | 404 | `not_found` | an unknown resource, or a project invisible to the actor; `missing_file`: the file of a download (`…/file`) is gone from the disk, the next scan updates the index |
 | 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |
 | 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `file_unreadable`: a download (`…/file`) of a working file its last scan could not read, of a snapshot that is not valid, or from a data folder that cannot be read; `own_folder_invalid`: a download or a preview (its description, images, tiles, features, members or build) of an own file or a snapshot whose data folder breaks the rules of its scan now (it leads out of the project's directory, lies in a store), an administrator or the project's owner fixes the folder; `last_admin` (team mode): the change would leave no administrator who can sign in (enabled, with a password that has not expired or through the proxy), give the role `admin` to another such account first; `local_mode`: signing in and changing a password exist in team mode only; `proxy_session`: a session of the reverse proxy changes no password |
+| 409 | `conflict` | a change of a project file (section 5): `project_exists` (a new project where the file is), `project_locked` (another change holds `.archiwista-project.lock`: `details.lock`, `details.owner`, `details.owner_ended`; wait and try again, remove the directory only when no program changes the project), `invalid_project_file` or `unsupported_project_schema` (the file breaks a rule or is of a newer format: nothing is changed) |
 | 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks) |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
 | 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; `scan_running`: the person's scan of a data folder waits or runs; `scan_too_soon`: the project's folder was asked to be scanned less than a minute ago; `too_many_downloads`: the person streams two file downloads (`…/file`) already; wait for `Retry-After` (also `details.retry_after_s`) |
 | 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
+| 500 | `io_error` | `project_file_write_failed`: the project file, its directory or its area file cannot be written (permissions, a full disk); the hint names the directory |
 | 500 | `internal_error` | a defect of Archiwista: details in the server's log |
 | 503 | `missing_dependency` | `source_unavailable`: the producer plugin is missing; `source_incompatible`: it has an unsupported version or schema; `details.source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), the fix is in `hint` and at the end of `detail`; `renderer_not_started`: a preview route could not start a render process on the server (the cause is in the server's log; nothing is remembered about the file, ask again once it is fixed) |
 | 503 | `store_unavailable` | `store_unreadable`: the store cannot be read and the index has no answer |
@@ -904,7 +893,6 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 | `POST /stores/{store}/link-check` | `{"slot": "…"}` | confirmation of the target of a slot's link, an administrator's (v0.4); an unknown slot → `404` |
 | `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project; a waiting scan of the folder is joined; otherwise (v0.4) a person, with their agents, has one such scan waiting or running (`429 rate_limited`, `scan_running`) and a folder is asked for once a minute (`scan_too_soon`), with `Retry-After`; the computer's owner is not limited |
 | `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` or none | a snapshot, needs `project.write` |
-| `POST /projects/{project}/jobs` | `{"kind": "download"}`, `"repin"` (with `"tasks": ["…"]`, exactly one), `"check"` or `"verify"`; optionally `"tasks"` (every task when left out) and `"producer"` (the manifest whose tasks run, needed for a project with the manifests of both producers) | a job of the tasks of a project's manifest (v0.3, ADR-040): `project_download` downloads and pins the tasks not downloaded yet and restores missing pinned versions in the configured store the manifest names, `project_repin` pins one task anew to the source's newer versions, `project_check` compares the pins with the source without effects, `project_verify` checks the pinned files in the store (no network); the job has no `store`, its `params` are `project` and `tasks`, with `producer` when the request named it. A download and a repin need the project's owner or an administrator and `store_writer` (`403`); a hidden project is `404`; refused before a job: no `producer` for a project of both manifests (`400`, `producer_required`) or one without a manifest in it (`400`, `other_producer`), a manifest naming no configured store (`409`, `unknown_store`), a producer without project jobs (`422`, `no_project_actions`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409 offline_mode`). A lock of the manifest that stays fails the job (`conflict`, `project_locked`, `details.lock`) |
 | `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |
 | `POST /previews/warm` | none, or any of `{"store": "…", "product": "…", "segment": "…", "project": "…", "area_id": "…"}` | the first look at current versions prepared in the preview cache (v0.3, ADR-041): the job `preview_warm` has no `store`, its `params` are the filters (and `since`, set only by the scheduler's warm-up after a scan); any session may ask; a store that is not configured, a project the session does not see and an unknown area → `404` before a job; a request of the filters of a waiting warm-up returns that job |
 | `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"`, and `"store"`, `"horizontal"`, `"resolution"`, `"vertical_crs"` for the rows of a `200` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`); a store that is not configured → `404` before a job |
@@ -917,7 +905,7 @@ job instead of creating another.
 
 A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
 `link_check`, `preview`, `own_scan`, `snapshot`, `availability`, `check`, `download`,
-`project_download`, `project_repin`, `project_check`, `project_verify`, `preview_warm`), `state` (`queued`, `running`,
+`preview_warm`), `state` (`queued`, `running`,
 `succeeded`, `partial` (part of its units failed: `result` names them), `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
 `session`, `store`, `params`, `created_at`, `started_at`, `finished_at`,
 `progress`, `result`, `error` and `hidden` (v0.4: a job only of projects the
@@ -974,7 +962,7 @@ A job is controlled by (v0.3; ADR-038):
   as it ended). A download fetches only what the store still lacks. One that
   succeeded is `409`, reason `job_succeeded`; one that waits or runs
   `job_active`; a download needs `store_writer` again (`403`), a snapshot the
-  project's owner, a project's download or repin both; the new job is refused as
+  project's owner; the new job is refused as
   any job of its kind (`409` for a store whose index another job writes, offline
   mode).
 - `GET /jobs/{id}/log`: the end of the job's log, its worker's standard error in
@@ -1039,9 +1027,7 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `conflict` | `offline_mode` | the job needs the network and offline mode is on |
 | `conflict` | `snapshot_blocked` | the plan refuses the snapshot: `details.blocked_by` is `folder_invalid`, `read_only_folder`, `insufficient_space` or `file_missing` |
 | `conflict` | `inconsistent_copy`, `target_exists` | a snapshot: the file kept changing while it was copied, or another process published the label first; nothing was published, try again |
-| `conflict` | `project_locked` | a job of a project: the lock of its manifest stays (`details.lock`), left by a change that was interrupted while it wrote; remove the directory when no program is changing the project and try again (Archiwista never removes it) |
-| `conflict` | `unknown_store` | a project's download or repin: its manifest names no configured store; nothing was written |
-| the code of the first failure, e.g. `data_error` | `run_failed` | no unit of a run, or no task of a project's download, succeeded; `details.task` names a project's first failed task |
+| the code of the first failure, e.g. `data_error` | `run_failed` | no unit of a run succeeded |
 | `data_error` | `checksum_mismatch`, `integrity_failed` | a snapshot copy differs from its source or fails the SQLite integrity check; nothing was published |
 | `data_error` | `kartograf_error` (`<package>_error`) | the producer rejected the call: `details.kartograf` has `exception` and the unchanged `message` |
 | `forbidden` | `path_outside_root` | a path leaves the store or the project folder |
@@ -1054,9 +1040,8 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `internal_error` | none | a defect of Archiwista: details are in the job log |
 
 Jobs recorded by 0.2.0 are read with these codes too (their old job code is the
-reason). The CLI's job commands are `archiwista jobs start`, `jobs retry`, the
-project commands `project-download`, `project-repin`, `project-check` and
-`project-verify`, and `preview-warm` (a job in the foreground; they print the
+reason). The CLI's job commands are `archiwista jobs start`, `jobs retry`
+and `preview-warm` (a job in the foreground; they print the
 job's `JobDetail` as it ended and exit `0`, `10` for `partial`, `11` or `130`),
 and `jobs list`, `jobs show`, `jobs cancel`, `jobs plan` and `jobs log`, which
 exit `0`; `jobs cancel` also stops a

@@ -330,22 +330,6 @@ MESSAGES = {
             " jego koniec."
         ),
     ),
-    "kind_project_download": Text(
-        "project download",
-        "pobranie projektu",
-    ),
-    "kind_project_repin": Text(
-        "repin of a project task",
-        "ponowne przypięcie zadania projektu",
-    ),
-    "kind_project_check": Text(
-        "project check at the source",
-        "sprawdzenie projektu u źródła",
-    ),
-    "kind_project_verify": Text(
-        "project verification",
-        "weryfikacja projektu",
-    ),
     "kind_preview_warm": Text(
         "preview warm-up",
         "przygotowanie podglądów",
@@ -363,84 +347,6 @@ MESSAGES = {
             " przygotowanego podglądu. Aby je przygotować, podnieś limit pamięci"
             " podglądów ({limit} GB) w ustawieniach."
         ),
-    ),
-    "project_failed": Text(
-        "None of the {count} tasks of the project succeeded.",
-        "Żadne z {count} zadań projektu się nie powiodło.",
-    ),
-    "project_check_failed": Text(
-        "The source could be asked about none of the {count} pinned files.",
-        "Źródła nie udało się zapytać o żaden z {count} przypiętych plików.",
-    ),
-    "project_not_indexed": Text(
-        (
-            "The index does not show the project's new pins yet: the next scan of"
-            " the project directories reads them."
-        ),
-        (
-            "Indeks nie pokazuje jeszcze nowych przypięć projektu: odczyta je"
-            " najbliższy skan katalogów projektów."
-        ),
-    ),
-    "task_pinned": Text(
-        "pinned",
-        "przypięte",
-    ),
-    "task_unchanged": Text(
-        "unchanged",
-        "bez zmian",
-    ),
-    "task_restored": Text(
-        "restored",
-        "przywrócone",
-    ),
-    "task_updated": Text(
-        "pinned anew",
-        "przypięte na nowo",
-    ),
-    "task_failed": Text(
-        "failed",
-        "z błędem",
-    ),
-    "project_file_ok": Text(
-        "intact",
-        "nienaruszone",
-    ),
-    "project_file_missing": Text(
-        "missing from the store",
-        "brak w magazynie",
-    ),
-    "project_file_corrupt": Text(
-        "corrupt",
-        "uszkodzone",
-    ),
-    "project_file_current": Text(
-        "current",
-        "aktualne",
-    ),
-    "project_file_newer": Text(
-        "newer at the source",
-        "nowsze u źródła",
-    ),
-    "project_file_added": Text(
-        "new at the source",
-        "nowe u źródła",
-    ),
-    "project_file_removed": Text(
-        "gone from the source",
-        "usunięte u źródła",
-    ),
-    "project_file_unverifiable": Text(
-        "cannot be verified",
-        "nie do sprawdzenia",
-    ),
-    "project_file_check_failed": Text(
-        "not checked",
-        "niesprawdzone",
-    ),
-    "project_file_conflict": Text(
-        "write refused",
-        "zapis odmówiony",
     ),
     "cancel_finished": Text(
         'Job "{job}" has already ended ({state}); there is nothing to cancel.',

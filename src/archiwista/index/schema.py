@@ -11,7 +11,7 @@ Tables (v0.1): ``stores``, ``segments``, ``slots``, ``versions`` with the
 1:1 ``version_sidecars`` (raw sidecar) and ``version_shapes`` (outlines
 that are not plain boxes, native outlines), ``footprints`` (R*Tree of WGS84
 boxes, versions with a footprint only), ``search`` (FTS5, one row per
-slot), ``issues``, ``projects`` with ``manifests``, ``project_tasks`` and
+slot), ``issues``, ``projects`` with ``project_stores``, ``pin_groups`` and
 ``pins``, ``areas``, ``jobs`` with ``job_events``, ``session_tokens`` and
 ``index_info``.
 Public keys are a store's configured id (``stores.key``) and paths relative
@@ -72,6 +72,15 @@ come from; they go with it.
 Version 14 (v0.4, ADR-047): ``job_claims``, the positions an active
 ``download`` with a plan fetches (one claimant per store and path), so a
 download of another person leaves them out; a claim goes with its job.
+
+Version 15 (A-ADR-049): a project is Archiwista's own file
+``archiwista-project.json``. ``projects`` keeps what the file says (name,
+description, creator, area) with its state (``ok``, ``invalid``,
+``unsupported_schema``) and the file's stamp; ``project_stores`` the store of
+each producer as written and the configured store it matches;
+``pin_groups`` the groups with their origin; ``pins`` the pinned versions of
+each group. ``manifests`` and ``project_tasks`` go. ``versions`` gains
+``content_sha256`` (the producer's canonical content).
 """
 
 import sqlite3
@@ -83,7 +92,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -163,6 +172,8 @@ CREATE TABLE versions (
     label TEXT,
     label_source TEXT,
     sha256 TEXT,
+    -- The digest of the producer's canonical content (EntryMeta.content_sha256).
+    content_sha256 TEXT,
     size_bytes INTEGER,
     data_year INTEGER,
     data_date TEXT,
@@ -266,59 +277,70 @@ CREATE TABLE issues (
 CREATE INDEX issues_segment ON issues (segment_id);
 CREATE INDEX issues_slot ON issues (slot_id);
 
--- A project is its directory: one key whatever manifests it holds.
+-- A project is its directory holding archiwista-project.json (A-ADR-049).
 CREATE TABLE projects (
     id INTEGER PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
     path TEXT NOT NULL UNIQUE,
     -- Key of the project's access entry in the state database (realpath).
     access_key TEXT NOT NULL,
-    name TEXT NOT NULL
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    state TEXT NOT NULL CHECK (state IN ('ok', 'invalid', 'unsupported_schema')),
+    problem TEXT,
+    -- JSON: the pointer and rule of an invalid file, the schema of a newer one.
+    problem_detail TEXT,
+    created_at TEXT,
+    created_by TEXT,
+    area_path TEXT,
+    area_sha256 TEXT,
+    area_id TEXT REFERENCES areas(id) ON DELETE SET NULL,
+    area_state TEXT CHECK (area_state IN ('ok', 'missing', 'changed', 'invalid')),
+    file_mtime_ns INTEGER NOT NULL,
+    file_size INTEGER NOT NULL,
+    scanned_at TEXT NOT NULL
 );
 CREATE INDEX projects_access ON projects (access_key);
 
--- One producer's manifest in a project directory, as it was last read.
-CREATE TABLE manifests (
+-- The store of one producer's pins as the file writes it, and the configured
+-- store it matches (NULL: none).
+CREATE TABLE project_stores (
     project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     producer TEXT NOT NULL,
+    root TEXT NOT NULL,
     store_id INTEGER REFERENCES stores(id) ON DELETE SET NULL,
-    store_dir TEXT NOT NULL,
-    status TEXT,
-    problem TEXT,
-    manifest_mtime_ns INTEGER,
-    manifest_size INTEGER,
-    scanned_at TEXT NOT NULL,
     PRIMARY KEY (project_id, producer)
 ) WITHOUT ROWID;
-CREATE INDEX manifests_store ON manifests (store_id);
 
-CREATE TABLE project_tasks (
-    project_id INTEGER NOT NULL,
-    producer TEXT NOT NULL,
-    task_id TEXT NOT NULL,
+CREATE TABLE pin_groups (
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
-    command TEXT NOT NULL,
-    options TEXT NOT NULL DEFAULT '{}',
-    status TEXT,
-    PRIMARY KEY (project_id, producer, task_id),
-    FOREIGN KEY (project_id, producer)
-        REFERENCES manifests (project_id, producer) ON DELETE CASCADE
+    name TEXT NOT NULL,
+    origin TEXT NOT NULL CHECK (origin IN ('plan', 'local')),
+    producer TEXT,
+    -- JSON: the calls of a plan group, the selections of a local one.
+    calls TEXT,
+    selections TEXT,
+    PRIMARY KEY (project_id, position)
 ) WITHOUT ROWID;
 
 CREATE TABLE pins (
     id INTEGER PRIMARY KEY,
-    project_id INTEGER NOT NULL,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    group_position INTEGER NOT NULL,
     producer TEXT NOT NULL,
-    task_id TEXT,
     store_id INTEGER REFERENCES stores(id) ON DELETE SET NULL,
-    store_dir TEXT NOT NULL,
     version_path TEXT NOT NULL,
-    sha256 TEXT,
-    FOREIGN KEY (project_id, producer)
-        REFERENCES manifests (project_id, producer) ON DELETE CASCADE
+    sha256 TEXT NOT NULL,
+    content_sha256 TEXT,
+    size_bytes INTEGER NOT NULL,
+    unit TEXT,
+    label TEXT,
+    pinned_at TEXT NOT NULL,
+    pinned_by TEXT NOT NULL
 );
 CREATE INDEX pins_version ON pins (store_id, version_path);
-CREATE INDEX pins_project ON pins (project_id, producer);
+CREATE INDEX pins_project ON pins (project_id, group_position);
 
 CREATE TABLE areas (
     id TEXT PRIMARY KEY,

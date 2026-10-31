@@ -26,8 +26,6 @@ from imgwtools import (
     IMGWError,
     IMGWStoreConflictError,
     Meta,
-    add_project_task,
-    init_project,
     init_store,
     iter_store,
     open_store,
@@ -148,7 +146,7 @@ def test_installed_imgwtools_within_supported_range() -> None:
 
     assert supported.contains(Version(imgwtools.__version__), prereleases=True)
     assert (PRODUCER, PACKAGE) == ("imgw", "imgwtools")
-    assert SCHEMAS == ("imgw-store/1", "imgw-meta/1", "imgw-series/1", "imgw-project/1")
+    assert SCHEMAS == ("imgw-store/1", "imgw-meta/1", "imgw-series/1")
 
 
 def test_adapter_implements_the_source_interface_and_describes_its_datasets(
@@ -1077,91 +1075,6 @@ def test_a_directory_that_cannot_be_listed_is_an_error_not_a_verdict(
 
     assert [state.status for state in states] == ["error", "error"]
     assert all(state.detail and state.reason is None for state in states)
-
-
-def _project(root: Path, project: Path) -> None:
-    """Build a project with the producer's own writers: one unpinned task."""
-    init_project(project, store_dir=root)
-    add_project_task(
-        project,
-        name="raba",
-        command="series select",
-        options={"dataset": HYDRO, "stations": ["000000001"], "years": [2024]},
-    )
-
-
-def test_a_project_of_the_producers_writers_is_read(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
-) -> None:
-    """Tasks keep their command and options; the store is the project's."""
-    root = _copy(imgw_store, tmp_path / "store")
-    project = tmp_path / "project"
-    _project(root, project)
-
-    info = adapter.read_project(project)
-
-    assert (info.producer, info.store, info.path, info.name) == (
-        "imgw",
-        str(root),
-        project,
-        "project",
-    )
-    assert [(t.task_id, t.command) for t in info.tasks] == [("raba", "series select")]
-    assert info.tasks[0].options["dataset"] == HYDRO
-    assert (info.pins, info.status) == ((), None)
-    with pytest.raises(ProducerError) as missing:
-        adapter.read_project(tmp_path)
-    assert missing.value.package == "imgwtools"
-
-
-def test_project_status_follows_the_pins(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
-) -> None:
-    """An unpinned task is ``not_downloaded``; a pin is ok, changed or missing."""
-    root = _copy(imgw_store, tmp_path / "store")
-    project = tmp_path / "project"
-    _project(root, project)
-    series = next(
-        e
-        for e in _entries(adapter, root)
-        if e.slot_path == HYDRO_SERIES and e.meta and e.meta.sha256
-    )
-    assert series.meta is not None
-    unpinned = adapter.project_status(project)
-    manifest = project / "imgw-project.json"
-    document = json.loads(manifest.read_text(encoding="utf-8"))
-    pin = {
-        "role": "series",
-        "path": series.relative_path.as_posix(),
-        "sha256": series.meta.sha256,
-    }
-    document["tasks"][0].update(
-        pinned_at="2026-10-25T05:00:00Z",
-        imgwtools_version=imgwtools.__version__,
-        files=[pin],
-    )
-    manifest.write_text(json.dumps(document), encoding="utf-8")
-
-    pinned = adapter.project_status(project)
-    (root / series.relative_path).write_bytes(b"{}")
-    changed = adapter.project_status(project)
-    (root / series.relative_path).unlink()
-    missing = adapter.project_status(project)
-
-    assert (unpinned.status, [t.status for t in unpinned.tasks]) == (
-        "not_downloaded",
-        ["not_downloaded"],
-    )
-    assert [(p.store, p.version_path, p.sha256, p.task_id) for p in pinned.pins] == [
-        (str(root), series.relative_path, series.meta.sha256, "raba")
-    ]
-    assert [
-        (p.status, [t.status for t in p.tasks]) for p in (pinned, changed, missing)
-    ] == [
-        ("ok", ["ok"]),
-        ("corrupt", ["corrupt"]),
-        ("missing", ["missing"]),
-    ]
 
 
 def test_the_adapter_reads_a_store_without_pyarrow(

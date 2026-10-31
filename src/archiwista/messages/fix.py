@@ -226,54 +226,65 @@ MESSAGES = {
     ),
     "missing_pin": Text(
         (
-            'Restore the pinned files with the "{producer} project download {task}"'
-            ' command in the directory of project "{project}".'
+            "Restore the file from a backup or download it again with the {producer}"
+            ' command; project "{project}" keeps the pin.'
         ),
         (
-            "Odtwórz przypięte pliki poleceniem „{producer} project download {task}” w"
-            " katalogu projektu „{project}”."
+            "Przywróć plik z kopii albo pobierz go ponownie poleceniem {producer};"
+            " projekt „{project}” zachowuje przypięcie."
         ),
     ),
     "pin_sha256_mismatch": Text(
         (
-            'Check the project files with the "{producer} project verify" command in'
-            ' the directory of project "{project}".'
+            "The store holds other content at the pinned path: restore the pinned"
+            ' version from a backup, or pin the new one in project "{project}".'
         ),
         (
-            "Sprawdź pliki projektu poleceniem „{producer} project verify” w katalogu"
-            " projektu „{project}”."
+            "Magazyn ma pod przypiętą ścieżką inną treść: przywróć przypiętą wersję z"
+            " kopii albo przypnij nową w projekcie „{project}”."
         ),
     ),
-    "invalid_manifest": Text(
+    "invalid_project_file": Text(
         (
-            "Fix the manifest in the project directory {path} — the {producer} package"
-            " message shows where the error is."
+            "Fix archiwista-project.json in the project directory {path} where the"
+            " message points, or restore it from a backup; Archiwista does not"
+            " change the file until then."
         ),
         (
-            "Popraw manifest w katalogu projektu {path} — komunikat pakietu {producer}"
-            " wskazuje miejsce błędu."
+            "Popraw archiwista-project.json w katalogu projektu {path} w miejscu"
+            " wskazanym w komunikacie albo przywróć go z kopii; do tego czasu"
+            " Archiwista nie zmienia pliku."
         ),
     ),
     "unknown_store": Text(
         (
-            "Add the store in settings (directory {store_dir}) or correct the store"
-            " path in the project manifest."
+            "Add the store in settings (directory {store_dir}) or choose a"
+            " configured store for {producer} in the project."
         ),
         (
-            "Dodaj magazyn w ustawieniach (katalog {store_dir}) albo popraw ścieżkę"
-            " magazynu w manifeście projektu."
+            "Dodaj magazyn w ustawieniach (katalog {store_dir}) albo wybierz w"
+            " projekcie skonfigurowany magazyn dla {producer}."
         ),
     ),
-    "duplicate_task": Text(
+    "area_missing": Text(
+        "Choose the project's area again on the map.",
+        "Wybierz obszar projektu ponownie na mapie.",
+    ),
+    "area_changed": Text(
         (
-            "Give the task another name in one of the manifests: remove it and add it"
-            " again under a new name with that source's project commands, so that a"
-            " name means one task."
+            "Restore the area file from a backup or choose the project's area again"
+            " on the map."
         ),
         (
-            "Nadaj zadaniu inną nazwę w jednym z manifestów: usuń je i dodaj ponownie"
-            " pod nową nazwą poleceniami projektu tego źródła, aby nazwa oznaczała"
-            " jedno zadanie."
+            "Przywróć plik obszaru z kopii albo wybierz obszar projektu ponownie na"
+            " mapie."
+        ),
+    ),
+    "area_invalid": Text(
+        ("Choose the project's area again on the map; Archiwista writes a valid file."),
+        (
+            "Wybierz obszar projektu ponownie na mapie; Archiwista zapisze poprawny"
+            " plik."
         ),
     ),
     "other": Text(

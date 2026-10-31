@@ -10,8 +10,7 @@ answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
   and counts of the job's kind (a scan adds ``segment`` and ``entries``; a
   check counts its calls planned; a download counts the units of the call it
   runs and adds that ``call``, the job's number of ``calls``, and the
-  ``unit``, ``status`` and ``message`` of the producer's event, as a
-  project's download does without the calls);
+  ``unit``, ``status`` and ``message`` of the producer's event);
 - ``notice``: something the person should know: ``level`` (``info`` or
   ``warning``), a stable ``code`` and a ``message`` in Polish, the language of
   the texts a worker stores;
@@ -45,7 +44,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 11
+PROTOCOL_VERSION = 12
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -64,10 +63,6 @@ type JobKind = Literal[
     "availability",
     "check",
     "download",
-    "project_download",
-    "project_repin",
-    "project_check",
-    "project_verify",
     "preview_warm",
 ]
 type MessageType = Literal["progress", "notice", "result", "partial", "error"]
@@ -75,15 +70,6 @@ type NoticeLevel = Literal["info", "warning"]
 type JsonObject = dict[str, Any]
 
 JOB_KINDS: tuple[JobKind, ...] = get_args(JobKind.__value__)
-# The kinds of a job of a project's manifest (``params.project``, no store):
-# a download (pin or restore), a repin of one task, a check of the pins
-# against the source and a verification of the pinned files (ADR-040).
-PROJECT_KINDS: tuple[JobKind, ...] = (
-    "project_download",
-    "project_repin",
-    "project_check",
-    "project_verify",
-)
 # The filters of a ``preview_warm`` job (``archiwista.index.WarmQuery``), each
 # a text or ``None``: ``since`` (ISO 8601 with its offset) only from the
 # scheduler's warm-up after a scan.
@@ -141,8 +127,7 @@ class JobSpec:
     store : str or None
         Configured id of the store the job works on; ``None`` for a kind
         working on no store (``preview``, ``own_scan``, ``snapshot``,
-        ``availability``, the ``project_*`` kinds: a project's store is the
-        one its manifest names; ``preview_warm``: its filters name one).
+        ``availability``; ``preview_warm``: its filters name one).
     params : dict
         Parameters of the kind, validated by the supervisor (``scan``:
         ``mode`` and ``segment``; ``link_check``: ``slot``; ``preview``:
@@ -151,8 +136,7 @@ class JobSpec:
         ``availability``: ``area_id``, ``producer``, ``product`` and
         ``force``; ``check``: ``producer`` and ``calls``, each a ``command``
         and its ``options``; ``download``: those of ``check`` and
-        ``plan_job``; the ``project_*`` kinds: ``project`` and ``tasks``, one
-        task for ``project_repin``; ``preview_warm``: the ``WARM_FILTERS``).
+        ``plan_job``; ``preview_warm``: the ``WARM_FILTERS``).
     actor : str
         Who asked for the job (``Principal.id``).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}

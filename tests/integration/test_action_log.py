@@ -79,21 +79,12 @@ pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
 
 STORE = "zespol"
 CLIENT = "testclient"
-TASK = "teren"
-# A task Kartograf checks without the network: a box of 1 km² in PL-1992.
-TASK_BODY: dict[str, Any] = {
-    "name": TASK,
-    "command": "elevation download",
-    "options": {
-        "product": "nmt",
-        "country": "pl",
-        "bbox": [500000, 250000, 501000, 251000],
-        "bbox_crs": "EPSG:2180",
-        "sheet_system": "1992",
-        "resolution": "1m",
-        "vertical_crs": "EVRF2007",
-        "year": 2023,
-    },
+# A square of about 7 km × 11 km near Kraków, an area of a project.
+AREA: dict[str, Any] = {
+    "type": "Polygon",
+    "coordinates": [
+        [[19.0, 50.0], [19.1, 50.0], [19.1, 50.1], [19.0, 50.1], [19.0, 50.0]]
+    ],
 }
 ACTION_NAMES: tuple[str, ...] = get_args(ActionName.__value__)
 # The team server of the cases of signing in (plan v0.4 T3, T4): Kasia signs in
@@ -176,11 +167,7 @@ def world(tmp_path: Path) -> Iterator[World]:
         add_people(api.state)
         owner = api.session(LOCAL_OWNER)
         directory = projects / "raba"
-        created = owner.request(
-            "POST",
-            "/projects",
-            json={"producer": "kartograf", "path": str(directory), "store": STORE},
-        )
+        created = owner.request("POST", "/projects", json={"path": str(directory)})
         assert created.status_code == 201, created.text
         yield World(
             api,
@@ -463,7 +450,7 @@ def project_access(tmp_path: Path) -> Performed:
 def created_by_igor(made: World) -> tuple[str, Path]:
     """Create the project ``wisla`` as Igor; return its key and directory."""
     directory = made.directory.with_name("wisla")
-    body = {"producer": "kartograf", "path": str(directory), "store": STORE}
+    body = {"path": str(directory)}
     created = made.person.request("POST", "/projects", json=body)
     assert created.status_code == 201, created.text
     return str(created.json()["project"]), directory
@@ -474,7 +461,7 @@ def project_create(tmp_path: Path) -> Performed:
     with world(tmp_path) as made:
         since = last_entry(made.api.state)
         _, directory = created_by_igor(made)
-        details = {"producer": "kartograf", "owner": OTHER}
+        details = {"name": "wisla", "owner": OTHER}
         expected = as_person(made, access_key(directory), details=details)
         return Performed(made.api.state, since, expected)
 
@@ -501,32 +488,61 @@ def project_data_dir(tmp_path: Path) -> Performed:
         return Performed(made.api.state, since, expected)
 
 
-def project_task_add(tmp_path: Path) -> Performed:
-    """Add a task to the project as the owner."""
+def project_update(tmp_path: Path) -> Performed:
+    """Describe the project as the owner."""
     with world(tmp_path) as made:
         since = last_entry(made.api.state)
-        added = made.owner.request(
-            "POST", f"/projects/{made.project}/tasks", json=TASK_BODY
+        changed = made.owner.request(
+            "PATCH", f"/projects/{made.project}", json={"description": "Zlewnia"}
         )
-        assert added.status_code == 201, added.text
-        details = {"producer": "kartograf", "task": TASK}
-        key = access_key(made.directory)
-        return Performed(made.api.state, since, as_owner(made, key, details=details))
+        assert changed.status_code == 200, changed.text
+        expected = as_owner(
+            made,
+            access_key(made.directory),
+            before={"name": "raba", "description": ""},
+            after={"name": "raba", "description": "Zlewnia"},
+        )
+        return Performed(made.api.state, since, expected)
 
 
-def project_task_remove(tmp_path: Path) -> Performed:
-    """Remove a task the owner added before."""
+def project_area(tmp_path: Path) -> Performed:
+    """Give the project an area as the owner."""
     with world(tmp_path) as made:
-        added = made.owner.request(
-            "POST", f"/projects/{made.project}/tasks", json=TASK_BODY
-        )
-        assert added.status_code == 201, added.text
+        area = made.owner.request("POST", "/areas", json={"geometry": AREA})
+        assert area.status_code == 201, area.text
+        area_id = area.json()["id"]
         since = last_entry(made.api.state)
-        removed = made.owner.request("DELETE", f"/projects/{made.project}/tasks/{TASK}")
-        assert removed.status_code == 200, removed.text
-        details = {"producer": "kartograf", "task": TASK}
-        key = access_key(made.directory)
-        return Performed(made.api.state, since, as_owner(made, key, details=details))
+        chosen = made.owner.request(
+            "PUT", f"/projects/{made.project}/area", json={"area_id": area_id}
+        )
+        assert chosen.status_code == 200, chosen.text
+        expected = as_owner(
+            made,
+            access_key(made.directory),
+            details={"area_id": area_id},
+            before={"area": None},
+            after={"area": f"obszary/{area_id}.geojson"},
+        )
+        return Performed(made.api.state, since, expected)
+
+
+def project_store(tmp_path: Path) -> Performed:
+    """Name the store of the project's Kartograf pins as the owner."""
+    with world(tmp_path) as made:
+        since = last_entry(made.api.state)
+        chosen = made.owner.request(
+            "PUT", f"/projects/{made.project}/stores/kartograf", json={"store": STORE}
+        )
+        assert chosen.status_code == 200, chosen.text
+        root = made.settings.get().stores[0].kartograf
+        expected = as_owner(
+            made,
+            access_key(made.directory),
+            details={"store": STORE},
+            before=None,
+            after={"producer": "kartograf", "root": str(root)},
+        )
+        return Performed(made.api.state, since, expected)
 
 
 def settings_update(tmp_path: Path) -> Performed:
@@ -694,8 +710,9 @@ CASES: dict[str, Callable[[Path], Performed]] = {
     "project.access": project_access,
     "project.create": project_create,
     "project.data_dir": project_data_dir,
-    "project.task_add": project_task_add,
-    "project.task_remove": project_task_remove,
+    "project.update": project_update,
+    "project.area": project_area,
+    "project.store": project_store,
     "settings.update": settings_update,
     "job.start": job_start,
     "job.cancel": job_cancel,

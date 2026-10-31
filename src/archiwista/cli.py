@@ -25,7 +25,6 @@ from archiwista.commands import (
     preview_warm,
     previews,
     producer_commands,
-    project_jobs,
     projects,
     stations,
 )
@@ -56,7 +55,6 @@ COMMAND_MODULES: tuple[CommandModule, ...] = (
     availability,
     jobs,
     projects,
-    project_jobs,
     preview_warm,
     stations,
     log,

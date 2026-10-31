@@ -44,7 +44,6 @@ def test_read_only_store_scan_and_browse(tmp_path: Path) -> None:
                 "/map/sheets?bbox=19.9,50.0,20.0,50.05&system=1992&scale=1:10000",
                 "/projects",
                 f"/projects/{project}",
-                f"/projects/{project}/status",
                 "/settings",
             ]
 

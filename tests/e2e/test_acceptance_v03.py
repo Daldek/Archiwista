@@ -381,10 +381,9 @@ def test_uc06_a_project_is_verified_downloaded_and_given_a_year_by_its_owner(
     )
     paths = local_paths(tmp_path)
     initialize(paths.index_file)
-    adapter = load_registry(cache_dir=paths.cache_dir).adapter("kartograf")
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({TEAM: config.roots()})
-        key = record_project(adapter, writer, directory, stores=settings.stores)
+        key = record_project(writer, directory, stores=settings.stores, geo=None)
     served = serve(settings)
     state = StateStore(served.paths.state_file)
     add_people(state)

@@ -45,13 +45,14 @@ from archiwista.index.types import (
     CurrentVersionLookup,
     KeyedSlot,
     KnownOwnFile,
-    ManifestStamp,
     OwnFilesWritten,
     OwnFileWrite,
     OwnFolderState,
     OwnMissingResult,
     OwnProblem,
     PassSummary,
+    ProjectStamp,
+    ProjectWrite,
     ScanPass,
     SeriesCatalogRecord,
     SnapshotWrite,
@@ -61,12 +62,12 @@ from archiwista.index.types import (
     own_file_id,
 )
 from archiwista.messages import STORED_LANG, localize
+from archiwista.projects import PlanOrigin, ProjectDocument, format_time
 from archiwista.sources import (
     AvailabilityReport,
     DateRange,
     EntryMeta,
     Footprint,
-    ProjectInfo,
     SeriesListing,
     SourceEntry,
     SourceObservation,
@@ -81,6 +82,7 @@ _META_COLUMNS = (
     "label",
     "label_source",
     "sha256",
+    "content_sha256",
     "size_bytes",
     "data_year",
     "data_date",
@@ -256,6 +258,13 @@ WHERE id IN ({_IDS})
     AND NOT EXISTS (SELECT 1 FROM issues i WHERE i.slot_id = slots.id)
 """
 _PROJECT_KEY_FALLBACK = "projekt"
+# Columns of ``projects`` a write sets, in the order of ``write_project``.
+_PROJECT_COLUMNS = (
+    "access_key, name, description, state, problem, problem_detail, created_at,"
+    " created_by, area_path, area_sha256, area_id, area_state, file_mtime_ns,"
+    " file_size, scanned_at"
+)
+_PROJECT_PLACEHOLDERS = ", ".join("?" for _ in _PROJECT_COLUMNS.split(","))
 _UPSERT_OWN_FILE = """
 INSERT INTO own_files (
     folder_id, path, file_id, disk_path, stamp, kind, driver, members, size_bytes,
@@ -438,7 +447,7 @@ class _Batch:
 
 
 class IndexWriter:
-    """Write the local index from producer entries and project manifests.
+    """Write the local index from producer entries and project files.
 
     Parameters
     ----------
@@ -1397,163 +1406,112 @@ class IndexWriter:
 
     # Projects.
 
-    def project_stamps(self, producer: str) -> dict[str, ManifestStamp]:
-        """Return the directory of each indexed manifest of ``producer`` with its stamp.
+    def project_stamps(self) -> dict[str, ProjectStamp | None]:
+        """Return the directory of each indexed project with its file's stamp.
 
-        A manifest whose size and modification time equal the stamp need
-        not be read again. A manifest without a configured store (an invalid
-        manifest, an unknown or removed store) or without a status gets an
-        empty stamp, so it is read again until it matches and is checked.
+        A file whose size and modification time equal the stamp need not be
+        read again. A project whose store of a producer matches no configured
+        store, or whose area file was not used (not read, missing, changed,
+        invalid), has no stamp (``None``): it is read again on every pass
+        until it matches.
         """
         return {
-            str(path): ManifestStamp(mtime_ns, size)
-            for path, mtime_ns, size in self._connection.execute(
-                "SELECT pr.path,"
-                " iif(m.store_id IS NULL OR m.status IS NULL, NULL,"
-                " m.manifest_mtime_ns),"
-                " iif(m.store_id IS NULL OR m.status IS NULL, NULL, m.manifest_size)"
-                " FROM manifests m JOIN projects pr ON pr.id = m.project_id"
-                " WHERE m.producer = ?",
-                (producer,),
+            str(path): None if again else ProjectStamp(int(mtime_ns), int(size))
+            for path, mtime_ns, size, again in self._connection.execute(
+                "SELECT pr.path, pr.file_mtime_ns, pr.file_size,"
+                " pr.state = 'ok' AND (EXISTS (SELECT 1 FROM project_stores ps"
+                " WHERE ps.project_id = pr.id AND ps.store_id IS NULL)"
+                " OR (pr.area_path IS NOT NULL AND pr.area_state IS NOT 'ok'))"
+                " FROM projects pr"
             ).fetchall()
         }
 
-    def write_project(
-        self, info: ProjectInfo, *, store: str | None, stamp: ManifestStamp
-    ) -> str:
-        """Record a producer's manifest with its tasks and pinned versions.
+    def write_project(self, project: ProjectWrite) -> str:
+        """Record a project file with its stores, groups and pinned versions.
 
-        The project is its directory: the manifest joins the project the
-        directory already is, with the manifests of other producers and their
-        tasks left as they are, and only this producer's tasks and pins are
-        replaced.
+        The project is its directory: what the index held of it is replaced.
+        An invalid file or one of a newer format stays visible with its
+        problem and nothing else of it.
 
         Parameters
         ----------
-        info : ProjectInfo
-            ``read_project`` or ``project_status`` of the adapter; a manifest
-            with ``problem`` (an invalid one) stays visible.
-        store : str or None
-            Configured id of the store the manifest names (``info.store``)
-            and its pins refer to; ``None`` when no configured store matches.
-        stamp : ManifestStamp
-            Size and modification time of the manifest that was read.
+        project : ProjectWrite
+            The file as discovery read it.
 
         Returns
         -------
         str
             The project's key: its slugged name, made unique, kept while the
-            directory holds a manifest. The project's access key (its
+            directory holds a project file. The project's access key (its
             directory after ``realpath``) is recorded with it, so the state
             database's access entry applies.
         """
-        store_id = self._find_store_id(store) if store is not None else None
-        path = str(info.path)
-        key_of_access = access_key(info.path)
+        document = project.document
+        area = None if document is None else document.area
+        detail = project.problem_detail
+        values = (
+            access_key(project.path),
+            project.name,
+            "" if document is None else document.description,
+            project.state,
+            project.problem,
+            None if detail is None else json.dumps(detail, ensure_ascii=False),
+            None if document is None else format_time(document.created_at),
+            None if document is None else document.created_by,
+            None if area is None else area.path,
+            None if area is None else area.sha256,
+            project.area_id,
+            project.area_state,
+            project.stamp.mtime_ns,
+            project.stamp.size,
+            _now(),
+        )
+        stores = {
+            producer: None if store is None else self._find_store_id(store)
+            for producer, store in project.stores.items()
+        }
+        path = str(project.path)
         with self._transaction() as connection:
             row = connection.execute(
                 "SELECT id, key FROM projects WHERE path = ?", (path,)
             ).fetchone()
             if row is None:
-                key = _free_key(connection, info.name)
+                key = _free_key(connection, project.name)
                 (project_id,) = connection.execute(
-                    "INSERT INTO projects (key, path, access_key, name)"
-                    " VALUES (?, ?, ?, ?) RETURNING id",
-                    (key, path, key_of_access, info.name),
+                    f"INSERT INTO projects (key, path, {_PROJECT_COLUMNS})"
+                    f" VALUES (?, ?, {_PROJECT_PLACEHOLDERS}) RETURNING id",
+                    (key, path, *values),
                 ).fetchone()
             else:
                 project_id, key = int(row[0]), str(row[1])
                 connection.execute(
-                    "UPDATE projects SET access_key = ?, name = ? WHERE id = ?",
-                    (key_of_access, info.name, project_id),
+                    f"UPDATE projects SET ({_PROJECT_COLUMNS})"
+                    f" = ({_PROJECT_PLACEHOLDERS}) WHERE id = ?",
+                    (*values, project_id),
                 )
-            connection.execute(
-                "INSERT INTO manifests (project_id, producer, store_id, store_dir,"
-                " status, problem, manifest_mtime_ns, manifest_size, scanned_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                " ON CONFLICT (project_id, producer) DO UPDATE SET"
-                " store_id = excluded.store_id, store_dir = excluded.store_dir,"
-                " status = excluded.status, problem = excluded.problem,"
-                " manifest_mtime_ns = excluded.manifest_mtime_ns,"
-                " manifest_size = excluded.manifest_size,"
-                " scanned_at = excluded.scanned_at",
-                (
-                    project_id,
-                    info.producer,
-                    store_id,
-                    info.store,
-                    info.status,
-                    info.problem,
-                    stamp.mtime_ns,
-                    stamp.size,
-                    _now(),
-                ),
-            )
-            manifest = (project_id, info.producer)
-            connection.execute(
-                "DELETE FROM project_tasks WHERE project_id = ? AND producer = ?",
-                manifest,
-            )
-            connection.execute(
-                "DELETE FROM pins WHERE project_id = ? AND producer = ?", manifest
-            )
-            connection.executemany(
-                "INSERT INTO project_tasks"
-                " (project_id, producer, task_id, position, command, options, status)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    (
-                        *manifest,
-                        task.task_id,
-                        position,
-                        task.command,
-                        json.dumps(task.options, ensure_ascii=False, default=str),
-                        task.status,
+                for table in ("project_stores", "pin_groups", "pins"):
+                    connection.execute(
+                        f"DELETE FROM {table} WHERE project_id = ?", (project_id,)
                     )
-                    for position, task in enumerate(info.tasks)
-                ],
-            )
-            connection.executemany(
-                "INSERT INTO pins (project_id, producer, task_id, store_id,"
-                " store_dir, version_path, sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    (
-                        *manifest,
-                        pin.task_id,
-                        store_id,
-                        pin.store,
-                        pin.version_path.as_posix(),
-                        pin.sha256.lower() if pin.sha256 else None,
-                    )
-                    for pin in info.pins
-                ],
-            )
+            if document is not None:
+                _write_project_document(connection, project_id, document, stores)
         return key
 
-    def remove_projects(self, producer: str, *, keep: Collection[str]) -> int:
-        """Remove the manifests of ``producer`` whose directory is not in ``keep``.
-
-        A project left without a manifest is removed with them; one that
-        holds another producer's manifest stays, with its key.
+    def remove_projects(self, *, keep: Collection[str]) -> int:
+        """Remove the projects whose directory is not in ``keep``.
 
         Returns
         -------
         int
-            Number of manifests removed.
+            Number of projects removed.
         """
         with self._transaction() as connection:
-            removed = int(
+            return int(
                 connection.execute(
-                    "DELETE FROM manifests WHERE producer = ? AND project_id IN"
-                    f" (SELECT id FROM projects WHERE path NOT IN ({_IDS}))",
-                    (producer, json.dumps(sorted(keep))),
+                    f"DELETE FROM projects WHERE path NOT IN ({_IDS})",
+                    (json.dumps(sorted(keep), ensure_ascii=False),),
                 ).rowcount
             )
-            connection.execute(
-                "DELETE FROM projects WHERE NOT EXISTS"
-                " (SELECT 1 FROM manifests m WHERE m.project_id = projects.id)"
-            )
-        return removed
 
     # Areas.
 
@@ -2660,6 +2618,7 @@ def _meta_row(meta: EntryMeta) -> tuple[object, ...]:
         meta.label,
         meta.label_source,
         meta.sha256.lower() if meta.sha256 else None,
+        meta.content_sha256.lower() if meta.content_sha256 else None,
         meta.size_bytes,
         meta.data_year,
         None if meta.data_date is None else meta.data_date.isoformat(),
@@ -2769,3 +2728,79 @@ def _free_key(connection: sqlite3.Connection, name: str) -> str:
         number += 1
         key = f"{base}-{number}"
     return key
+
+
+def _write_project_document(
+    connection: sqlite3.Connection,
+    project_id: int,
+    document: ProjectDocument,
+    stores: Mapping[str, int | None],
+) -> None:
+    """Insert a project's stores, groups and pins (each pin's store by producer)."""
+    connection.executemany(
+        "INSERT INTO project_stores (project_id, producer, root, store_id)"
+        " VALUES (?, ?, ?, ?)",
+        [
+            (project_id, store.producer, store.root, stores.get(store.producer))
+            for store in document.stores
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO pin_groups (project_id, position, name, origin, producer,"
+        " calls, selections) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                project_id,
+                position,
+                group.name,
+                group.origin.kind,
+                *(
+                    (
+                        group.origin.producer,
+                        _json(
+                            [
+                                {"command": call.command, "options": call.options}
+                                for call in group.origin.calls
+                            ]
+                        ),
+                        None,
+                    )
+                    if isinstance(group.origin, PlanOrigin)
+                    else (
+                        None,
+                        None,
+                        _json(
+                            [
+                                {"from": item.source, "query": item.query}
+                                for item in group.origin.selections
+                            ]
+                        ),
+                    )
+                ),
+            )
+            for position, group in enumerate(document.groups)
+        ],
+    )
+    connection.executemany(
+        "INSERT INTO pins (project_id, group_position, producer, store_id,"
+        " version_path, sha256, content_sha256, size_bytes, unit, label, pinned_at,"
+        " pinned_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            (
+                project_id,
+                position,
+                pin.producer,
+                stores.get(pin.producer),
+                pin.version,
+                pin.sha256,
+                pin.content_sha256,
+                pin.size_bytes,
+                pin.unit,
+                pin.label,
+                format_time(pin.pinned_at),
+                pin.pinned_by,
+            )
+            for position, group in enumerate(document.groups)
+            for pin in group.pins
+        ],
+    )

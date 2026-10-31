@@ -531,7 +531,7 @@ def folder_rules(
     """Return the stores' directories and every project's folder, by access key.
 
     The stores are the configured producer directories and the absolute
-    store directories the projects' manifests name.
+    store directories the projects' files name.
     """
     folders = {
         project.access_key: settings.own_data_dir(project.access_key)[0]
@@ -539,10 +539,10 @@ def folder_rules(
     }
     stores = [root for store in settings.stores for root in store.roots().values()]
     stores += [
-        Path(manifest.store_dir)
+        Path(entry.root)
         for project in known_projects
-        for manifest in project.manifests
-        if os.path.isabs(manifest.store_dir)
+        for entry in project.stores
+        if os.path.isabs(entry.root)
     ]
     return stores, folders
 

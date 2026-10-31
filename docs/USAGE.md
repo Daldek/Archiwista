@@ -258,14 +258,30 @@ versions a scan has just indexed.
 
 ## Projects and own data
 
-> **Changing (A-ADR-049, the author's decision of 2026-10-31):** projects become
+> **Changing (A-ADR-049, the author's decision of 2026-10-31):** projects are
 > Archiwista's own file `archiwista-project.json`, with an area, the stores of its
-> producers and groups of pinned versions; Kartograf and IMGWTools remove their project
-> manifests, and a directory holding only one of them is no longer a project (nothing is
-> migrated). This section still describes the current build, which reads the producers'
-> manifests; it is rewritten with each phase of
-> [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
-> as the new behaviour lands. Own data and snapshots stay as described below.
+> producers and groups of pinned versions; the producers' manifests are no longer read,
+> and a directory holding only one of them is no project (nothing is migrated). The
+> file, its discovery and the commands and routes that write it are in this build; the
+> views below still show the producers' tasks and their actions until the interface
+> follows (the next step of
+> [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)),
+> and those actions are refused meanwhile. Own data and snapshots stay as described
+> below.
+
+- **Creating and editing a project** (any person creates one where none is; the owner
+  or an administrator changes it): `archiwista project-init KATALOG [--name NAZWA]
+  [--description TEKST] [--area-id OBSZAR]` writes `archiwista-project.json` in a
+  directory of a project directory of the settings (at most four levels down, made when
+  missing; the area into `obszary/`); `project-edit PROJEKT --name … --description …`
+  renames or describes it, `project-area PROJEKT --area-id OBSZAR` (or `--clear`) sets
+  its area, and `project-store PROJEKT PRODUCENT --store MAGAZYN` names the configured
+  store of a producer's pins, written relative to the project directory when the store
+  has path aliases, so the project works on every computer that mounts both. Each prints
+  the project's card; the HTTP routes are in [AGENT_API.md](AGENT_API.md). A change waits
+  5 s for another one (the lock `.archiwista-project.lock`) and is then refused naming
+  the lock and its owner; a file broken by hand or of a newer Archiwista is listed with
+  its problem and not changed.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 

@@ -44,7 +44,6 @@ from archiwista.sources import (
     PathRole,
     PlanEntry,
     PlanStatus,
-    ProjectInfo,
     RunStatus,
     ScanScope,
     SourceAdapter,
@@ -115,16 +114,6 @@ class StandinAdapter:
     def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
         """Report that the producer has no location for its files."""
         return Footprint(location="none", reason="no_source")
-
-    def read_project(self, path: Path) -> ProjectInfo:
-        """Describe a project directory without a manifest."""
-        return ProjectInfo(
-            producer=self.producer, store=str(path), path=path, name=path.name
-        )
-
-    def project_status(self, path: Path) -> ProjectInfo:
-        """Report the project as read."""
-        return self.read_project(path)
 
     def commands(self) -> tuple[CommandInfo, ...]:
         """Return the producer's catalog; the root is no option of a call."""

@@ -21,6 +21,8 @@ from archiwista.index import (
     IndexQueries,
     IndexWriter,
     LocationRef,
+    ProjectPinRef,
+    ProjectRecord,
     SlotDetail,
     SlotQuery,
     StoreIndexState,
@@ -143,8 +145,8 @@ def _removable(store: StoreManifest) -> dict[str, tuple[ExpectedEntry, ExpectedE
     held |= {
         pin.version
         for project in store.projects
-        for task in project.tasks
-        for pin in task.pins
+        for group in project.groups
+        for pin in group.pins
     }
     found = {}
     for link in store.by_kind("link"):
@@ -382,8 +384,8 @@ def test_pins_survive_rescan(env: _Env) -> None:
     project = env.store.project("projekt-01")
     pin = next(
         pin
-        for task in project.tasks
-        for pin in task.pins
+        for group in project.groups
+        for pin in group.pins
         if not pin.current and pin.present
     )
     env.scan("full")
@@ -394,7 +396,7 @@ def test_pins_survive_rescan(env: _Env) -> None:
     )
     record = env.queries.project(key, visible=ALL_PROJECTS)
     assert record is not None
-    slot = next(item.slot for item in record.pins if item.version == pin.version)
+    slot = next(item.slot for item in _pins(record) if item.version == pin.version)
     assert slot is not None
 
     # Act
@@ -410,14 +412,19 @@ def test_pins_survive_rescan(env: _Env) -> None:
 
     # Assert
     assert rescanned == record
-    assert {item.state for item in record.pins} == {"ok"}
+    assert {item.state for item in _pins(record)} == {"ok"}
     assert [(ref.project, ref.state) for ref in pinned_by] == [(project.name, "ok")]
     assert marked is not None and dropped is not None
     for later in (marked, dropped):
-        states = {item.version: item.state for item in later.pins}
+        states = {item.version: item.state for item in _pins(later)}
         assert states.pop(pin.version) == "missing"
         assert set(states.values()) == {"ok"}
     assert env.queries.version(STORE, pin.version, visible=ALL_PROJECTS) is None
+
+
+def _pins(record: ProjectRecord) -> list[ProjectPinRef]:
+    """Return the pins of every group of a project."""
+    return [pin for group in record.groups for pin in group.pins]
 
 
 def test_empty_mount_point_keeps_index(env: _Env) -> None:

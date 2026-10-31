@@ -320,16 +320,6 @@ MESSAGES = {
             " — przybliż mapę albo wybierz mniej szczegółową skalę."
         ),
     ),
-    "project_store_unavailable": Text(
-        (
-            'Store "{store}" of project "{project}" is unavailable, and no scan'
-            " has checked the project yet."
-        ),
-        (
-            "Magazyn „{store}” projektu „{project}” jest niedostępny, a żaden skan nie"
-            " sprawdził jeszcze projektu."
-        ),
-    ),
     "refresh_view_timeout": Text(
         "Refreshing the view exceeded {seconds} s — the result comes from the index",
         "Odświeżenie widoku przekroczyło {seconds} s — wynik pochodzi z indeksu",

@@ -51,7 +51,6 @@ from archiwista.index.geometry import (
     require_wgs84_bbox,
     widen_bounds,
 )
-from archiwista.index.projects import PROJECT_MANIFESTS
 from archiwista.index.schema import SCHEMA_VERSION, connect, initialize
 from archiwista.index.series import (
     DEFAULT_YEAR_TYPES,
@@ -96,16 +95,17 @@ from archiwista.index.types import (
     OwnFolderRecord,
     OwnProblem,
     OwnSnapshotRef,
+    PinGroupRef,
     PinRef,
     PinState,
     ProductSummary,
     ProductUsage,
     ProductVersion,
-    ProjectManifestRef,
+    ProjectAreaRef,
     ProjectPinRef,
     ProjectRecord,
     ProjectRef,
-    ProjectTaskRef,
+    ProjectStoreRef,
     RiverScope,
     RowStatus,
     SegmentRef,
@@ -140,9 +140,11 @@ from archiwista.index.types import (
 from archiwista.messages import message
 from archiwista.owndata.document import SNAPSHOTS_DIR
 from archiwista.owndata.reader import FieldInfo, LayerInfo, RasterInfo
+from archiwista.projects import Selection
 from archiwista.sources import (
     ActionPlan,
     AvailabilityReport,
+    CommandCall,
     DateRange,
     GeoJSONGeometry,
     SourceEntry,
@@ -225,23 +227,20 @@ _PIN_STATE = (
     " THEN 'sha256_mismatch' ELSE 'ok' END"
 )
 _PROJECT_SELECT = f"""
-SELECT pr.id, pr.key, pr.name, pr.path, pr.access_key,
-    (SELECT count(*) FROM project_tasks t WHERE t.project_id = pr.id) AS tasks,
+SELECT pr.id, pr.key, pr.name, pr.path, pr.access_key, pr.description, pr.state,
+    pr.problem, pr.problem_detail, pr.created_at, pr.created_by, pr.area_path,
+    pr.area_sha256, pr.area_id, pr.area_state, pr.scanned_at,
+    (SELECT count(*) FROM pin_groups pg WHERE pg.project_id = pr.id) AS group_count,
     (SELECT count(*) FROM pins p WHERE p.project_id = pr.id) AS pins,
     (SELECT count(*) FROM {_PIN_SOURCE}
         WHERE p.project_id = pr.id AND {_PIN_STATE} IN ('missing', 'sha256_mismatch')
     ) AS missing_pins
 FROM projects pr
 """
-_MANIFEST_SELECT = """
-SELECT m.project_id, m.producer, st.key AS store, m.store_dir, m.status, m.problem,
-    m.scanned_at
-FROM manifests m LEFT JOIN stores st ON st.id = m.store_id
-"""
-# A project of a store: one of its manifests names the store.
+# A project of a store: its entry of a producer matches the store.
 _PROJECT_OF_STORE = (
-    "EXISTS (SELECT 1 FROM manifests m JOIN stores st ON st.id = m.store_id"
-    " WHERE m.project_id = pr.id AND st.key = ?)"
+    "EXISTS (SELECT 1 FROM project_stores ps JOIN stores st ON st.id = ps.store_id"
+    " WHERE ps.project_id = pr.id AND st.key = ?)"
 )
 _SLOT_COLUMNS = """
     s.id AS slot_id, s.store_id AS store_id, s.path AS slot_path,
@@ -1694,8 +1693,8 @@ class IndexQueries:
         visible : ProjectVisibility
             Projects the principal sees.
         store : str or None, optional
-            Only projects of this configured store: one of their manifests
-            names it.
+            Only projects of this configured store: their entry of a
+            producer matches it.
         """
         where = _Where()
         if store is not None:
@@ -1707,11 +1706,11 @@ class IndexQueries:
                 f"{_PROJECT_SELECT} WHERE {where.sql()} ORDER BY pr.name, pr.key",
                 where.params,
             ).fetchall()
-            manifests = _manifests(connection, [row["id"] for row in rows])
-        return tuple(_project_ref(row, manifests.get(row["id"], ())) for row in rows)
+            stores = _project_stores(connection, [row["id"] for row in rows])
+        return tuple(_project_ref(row, stores.get(row["id"], ())) for row in rows)
 
     def project(self, key: str, *, visible: ProjectVisibility) -> ProjectRecord | None:
-        """Return a project with the tasks and pins of each of its manifests.
+        """Return a project with its groups and their pins, in the file's order.
 
         Parameters
         ----------
@@ -1733,45 +1732,46 @@ class IndexQueries:
             ).fetchone()
             if row is None:
                 return None
-            manifests = _manifests(connection, [row["id"]])
-            tasks = connection.execute(
-                "SELECT producer, task_id, command, options, status FROM project_tasks"
-                " WHERE project_id = ? ORDER BY producer, position",
+            stores = _project_stores(connection, [row["id"]])
+            groups = connection.execute(
+                "SELECT position, name, origin, producer, calls, selections"
+                " FROM pin_groups WHERE project_id = ? ORDER BY position",
                 (row["id"],),
             ).fetchall()
             pins = connection.execute(
-                "SELECT p.producer, p.task_id, p.version_path, p.sha256,"
-                f" {_PIN_STATE} AS state, s.path AS slot, v.label, v.size_bytes,"
+                "SELECT p.group_position, p.producer, st.key AS store, p.version_path,"
+                " p.sha256, p.content_sha256, p.size_bytes, p.unit, p.label,"
+                f" p.pinned_at, p.pinned_by, {_PIN_STATE} AS state, s.path AS slot,"
                 " coalesce(v.id = s.current_version_id, 0) AS is_current"
                 f" FROM {_PIN_SOURCE} LEFT JOIN slots s ON s.id = v.slot_id"
-                " WHERE p.project_id = ? ORDER BY p.producer, p.id",
+                " LEFT JOIN stores st ON st.id = p.store_id"
+                " WHERE p.project_id = ? ORDER BY p.group_position, p.id",
                 (row["id"],),
             ).fetchall()
-        return ProjectRecord(
-            project=_project_ref(row, manifests.get(row["id"], ())),
-            tasks=tuple(
-                ProjectTaskRef(
-                    producer=task["producer"],
-                    task_id=task["task_id"],
-                    command=task["command"],
-                    options=json.loads(task["options"]),
-                    status=task["status"],
-                )
-                for task in sorted(tasks, key=_by_producer)
-            ),
-            pins=tuple(
+        by_group: dict[int, list[ProjectPinRef]] = {}
+        for pin in pins:
+            by_group.setdefault(int(pin["group_position"]), []).append(
                 ProjectPinRef(
                     producer=pin["producer"],
-                    task=pin["task_id"],
+                    store=pin["store"],
                     version=pin["version_path"],
                     sha256=pin["sha256"],
+                    content_sha256=pin["content_sha256"],
+                    size_bytes=int(pin["size_bytes"]),
+                    unit=pin["unit"],
+                    label=pin["label"],
+                    pinned_at=datetime.fromisoformat(pin["pinned_at"]),
+                    pinned_by=pin["pinned_by"],
                     state=pin["state"],
                     slot=pin["slot"],
-                    label=pin["label"],
-                    size_bytes=pin["size_bytes"],
                     is_current=bool(pin["is_current"]),
                 )
-                for pin in sorted(pins, key=_by_producer)
+            )
+        return ProjectRecord(
+            project=_project_ref(row, stores.get(row["id"], ())),
+            groups=tuple(
+                _pin_group(group, tuple(by_group.get(int(group["position"]), ())))
+                for group in groups
             ),
         )
 
@@ -1786,12 +1786,14 @@ class IndexQueries:
         with self._read() as connection:
             stores = _stores(connection)
             rows = connection.execute(
-                "SELECT pr.name, pr.key, p.producer, p.task_id, p.version_path,"
-                " p.sha256,"
+                "SELECT pr.name, pr.key, p.producer, pg.name AS pin_group,"
+                " p.version_path, p.sha256,"
                 f" {_PIN_STATE} AS state FROM {_PIN_SOURCE}"
                 " JOIN projects pr ON pr.id = p.project_id"
+                " JOIN pin_groups pg ON pg.project_id = p.project_id"
+                " AND pg.position = p.group_position"
                 f" WHERE p.store_id = ? AND {_PIN_STATE} <> 'ok' AND {condition}"
-                " ORDER BY pr.key, p.producer, p.task_id, p.version_path",
+                " ORDER BY pr.key, p.group_position, p.producer, p.version_path",
                 (_store_id(stores, store), *params),
             ).fetchall()
         return tuple(
@@ -1799,7 +1801,7 @@ class IndexQueries:
                 project=row["name"],
                 project_key=row["key"],
                 producer=row["producer"],
-                task=row["task_id"],
+                group=row["pin_group"],
                 version=row["version_path"],
                 sha256=row["sha256"],
                 state=row["state"],
@@ -3307,54 +3309,79 @@ def _slot_row(
     )
 
 
-def _project_ref(
-    row: sqlite3.Row, manifests: tuple[ProjectManifestRef, ...]
-) -> ProjectRef:
+def _project_ref(row: sqlite3.Row, stores: tuple[ProjectStoreRef, ...]) -> ProjectRef:
+    detail = row["problem_detail"]
+    created_at = row["created_at"]
+    area = (
+        None
+        if row["area_path"] is None
+        else ProjectAreaRef(
+            path=row["area_path"],
+            sha256=row["area_sha256"],
+            state=row["area_state"],
+            area_id=row["area_id"],
+        )
+    )
     return ProjectRef(
         key=row["key"],
-        name=row["name"],
         path=row["path"],
         access_key=row["access_key"],
-        manifests=manifests,
-        tasks=int(row["tasks"]),
+        name=row["name"],
+        description=row["description"],
+        state=row["state"],
+        problem=row["problem"],
+        problem_detail=None if detail is None else json.loads(detail),
+        created_at=None if created_at is None else datetime.fromisoformat(created_at),
+        created_by=row["created_by"],
+        stores=stores,
+        area=area,
+        groups=int(row["group_count"]),
         pins=int(row["pins"]),
         missing_pins=int(row["missing_pins"]),
+        scanned_at=datetime.fromisoformat(row["scanned_at"]),
     )
 
 
-def _manifests(
+def _project_stores(
     connection: sqlite3.Connection, projects: Sequence[int]
-) -> dict[int, tuple[ProjectManifestRef, ...]]:
-    """Return the manifests of the projects by project row id, producer by producer."""
+) -> dict[int, tuple[ProjectStoreRef, ...]]:
+    """Return the stores of the projects by project row id, by producer."""
     if not projects:
         return {}
     rows = connection.execute(
-        f"{_MANIFEST_SELECT} WHERE m.project_id IN ({_IDS})",
+        "SELECT ps.project_id, ps.producer, ps.root, st.key AS store"
+        " FROM project_stores ps LEFT JOIN stores st ON st.id = ps.store_id"
+        f" WHERE ps.project_id IN ({_IDS}) ORDER BY ps.project_id, ps.producer",
         (json.dumps(list(projects)),),
     ).fetchall()
-    found: dict[int, list[ProjectManifestRef]] = {}
-    for row in sorted(rows, key=_by_producer):
+    found: dict[int, list[ProjectStoreRef]] = {}
+    for row in rows:
         found.setdefault(int(row["project_id"]), []).append(
-            ProjectManifestRef(
-                producer=row["producer"],
-                store=row["store"],
-                store_dir=row["store_dir"],
-                status=row["status"],
-                problem=row["problem"],
-                scanned_at=datetime.fromisoformat(row["scanned_at"]),
+            ProjectStoreRef(
+                producer=row["producer"], root=row["root"], store=row["store"]
             )
         )
     return {project: tuple(items) for project, items in found.items()}
 
 
-def _by_producer(row: sqlite3.Row) -> tuple[int, str]:
-    """Order of a row of a project's manifest: ``PROJECT_MANIFESTS``, then name.
-
-    Python sorts stably, so the rows of one manifest keep their own order.
-    """
-    producer = str(row["producer"])
-    order = list(PROJECT_MANIFESTS)
-    return (order.index(producer) if producer in order else len(order), producer)
+def _pin_group(row: sqlite3.Row, pins: tuple[ProjectPinRef, ...]) -> PinGroupRef:
+    """Return a group of a project from its row of ``pin_groups``."""
+    producer = row["producer"]
+    calls = json.loads(row["calls"]) if row["calls"] else []
+    selections = json.loads(row["selections"]) if row["selections"] else []
+    return PinGroupRef(
+        name=row["name"],
+        origin=row["origin"],
+        producer=producer,
+        calls=tuple(
+            CommandCall(str(producer), call["command"], call["options"])
+            for call in calls
+        ),
+        selections=tuple(
+            Selection(source=item["from"], query=item["query"]) for item in selections
+        ),
+        pins=pins,
+    )
 
 
 def _visible(visible: ProjectVisibility) -> tuple[str, tuple[object, ...]]:
@@ -3387,13 +3414,15 @@ def _pins(
         return {}
     seen, params = _visible(visible)
     rows = connection.execute(
-        "SELECT p.store_id, p.version_path, p.task_id, p.sha256, pr.name, pr.key,"
+        "SELECT p.store_id, p.version_path, pg.name, p.sha256, pr.name, pr.key,"
         " p.producer, v.sha256 AS version_sha256, v.state AS version_state"
         " FROM pins p"
         " JOIN projects pr ON pr.id = p.project_id"
+        " JOIN pin_groups pg ON pg.project_id = p.project_id"
+        " AND pg.position = p.group_position"
         " LEFT JOIN versions v ON v.store_id = p.store_id AND v.path = p.version_path"
         f" WHERE p.version_path IN ({_IDS}) AND {seen}"
-        " ORDER BY pr.key, p.producer, p.task_id",
+        " ORDER BY pr.key, p.group_position, p.producer",
         (json.dumps(sorted({path for _, path in wanted})), *params),
     ).fetchall()
     found: dict[tuple[int, str], list[PinRef]] = {}
@@ -3411,7 +3440,7 @@ def _pins(
                 project=row[4],
                 project_key=row[5],
                 producer=row[6],
-                task=row[2],
+                group=row[2],
                 version=row[1],
                 sha256=row[3],
                 state=state,

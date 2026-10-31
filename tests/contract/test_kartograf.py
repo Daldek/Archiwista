@@ -32,7 +32,6 @@ from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.sources import (
     Footprint,
     GeoJSONGeometry,
-    ProjectPin,
     ScanScope,
     SourceContext,
     SourceEntry,
@@ -660,57 +659,6 @@ def test_scan_errors_keep_kartograf_messages(
         "ValidationError",
     )
     assert "units" in raised.value.message
-
-
-def test_read_project_gives_tasks_and_pins_of_the_manifest(
-    store: StoreManifest, adapter: KartografAdapter
-) -> None:
-    """A project lists its tasks and pins, including older versions."""
-    expected = store.project("projekt-01")
-
-    project = adapter.read_project(store.base / expected.path)
-
-    assert project.store == str(store.root)
-    assert [(t.task_id, t.command) for t in project.tasks] == [
-        (t.name, t.command) for t in expected.tasks
-    ]
-    assert project.pins == tuple(
-        ProjectPin(str(store.root), Path(pin.version), pin.sha256, task.name)
-        for task in expected.tasks
-        for pin in task.pins
-    )
-
-
-def test_project_status_reports_missing_and_undownloaded_tasks(
-    store: StoreManifest, adapter: KartografAdapter
-) -> None:
-    """Status names the worst pinned file of each task and of the project."""
-    expected = store.project("projekt-01")
-    regular = adapter.project_status(store.base / expected.path)
-    missing = adapter.project_status(store.base / "projects" / "brak-wersji")
-
-    assert {t.task_id: t.status for t in regular.tasks} == {
-        task.name: "ok" if task.pins else "not_downloaded" for task in expected.tasks
-    }
-    assert regular.status == "not_downloaded"
-    assert (missing.status, [t.status for t in missing.tasks]) == (
-        "missing",
-        ["missing"],
-    )
-
-
-def test_invalid_manifest_reports_kartograf_message(
-    store: StoreManifest, adapter: KartografAdapter
-) -> None:
-    """A broken manifest is Kartograf's validation error, text unchanged."""
-    with pytest.raises(ProducerError) as raised:
-        adapter.read_project(store.base / "projects" / "zepsuty")
-
-    assert (raised.value.package, raised.value.exception) == (
-        "kartograf",
-        "ValidationError",
-    )
-    assert raised.value.message
 
 
 def test_sheet_grid_outlines_cover_the_area(adapter: KartografAdapter) -> None:

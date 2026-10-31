@@ -25,8 +25,7 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.cli import main
 from archiwista.config import AppSettings
 from archiwista.errors import StateError
-from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, initialize
-from archiwista.sources import ProjectInfo
+from archiwista.index import IndexQueries, IndexWriter, initialize
 from archiwista.state import (
     MIGRATIONS,
     STATE_SCHEMA_VERSION,
@@ -36,7 +35,7 @@ from archiwista.state import (
     import_state,
 )
 from archiwista.state import initialize as initialize_state
-from tests.fixtures.index_data import PRODUCER, ROOT, STORE
+from tests.fixtures.index_data import PRODUCER, ROOT, STORE, indexed_project
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.permissions import (
     ADMIN,
@@ -161,11 +160,11 @@ def test_index_rebuild_leaves_state_untouched(tmp_path: Path) -> None:
     # Arrange
     paths = local_paths(tmp_path)
     state = _shared_state(paths.state_file)
-    project = ProjectInfo(PRODUCER, ROOT, Path(DIRECTORIES["private"]), "Tajny")
+    directory = Path(DIRECTORIES["private"])
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: {PRODUCER: ROOT}})
-        writer.write_project(project, store=STORE, stamp=ManifestStamp(1, 1))
+        indexed_project(writer, directory, "Tajny", store=STORE)
     before = (_digest(paths.state_file), state.snapshot())
     with sqlite3.connect(paths.index_file) as connection:
         connection.execute("PRAGMA user_version = 1")
@@ -175,7 +174,7 @@ def test_index_rebuild_leaves_state_untouched(tmp_path: Path) -> None:
     rebuilt = initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: {PRODUCER: ROOT}})
-        writer.write_project(project, store=STORE, stamp=ManifestStamp(1, 1))
+        indexed_project(writer, directory, "Tajny", store=STORE)
 
     # Assert
     assert rebuilt == "rebuilt"
@@ -204,8 +203,7 @@ def test_project_through_symlink_keeps_its_access(tmp_path: Path) -> None:
     index = tmp_path / "index.sqlite"
     with IndexWriter(index) as writer, IndexQueries(index) as queries:
         writer.sync_stores({STORE: {PRODUCER: ROOT}})
-        info = ProjectInfo(PRODUCER, ROOT, alias / "raba", "Raba")
-        writer.write_project(info, store=STORE, stamp=ManifestStamp(1, 1))
+        indexed_project(writer, alias / "raba", "Raba", store=STORE)
         seen = {
             who: [
                 ref.name

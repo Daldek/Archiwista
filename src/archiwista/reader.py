@@ -32,7 +32,7 @@ from archiwista.api.models import (
     Issue,
     Preferences,
     ProjectCard,
-    ProjectManifest,
+    ProjectStore,
     SlotCard,
     Version,
     VersionCard,
@@ -300,8 +300,8 @@ def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
             "cli.project_line",
             project=item.project,
             name=item.name,
-            manifests=_manifests_text(item.manifests),
-            tasks=item.tasks,
+            stores=_stores_text(item.stores),
+            groups=item.groups,
             pins=item.pins,
             missing=item.missing_pins,
         )
@@ -314,7 +314,12 @@ def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
 
 def _project(args: argparse.Namespace, reader: _Reader) -> _Output:
     card = project_card(
-        reader.queries, args.project, visible=reader.visible, writable=reader.writable
+        reader.queries,
+        reader.settings,
+        reader.preferences,
+        args.project,
+        visible=reader.visible,
+        writable=reader.writable,
     )
     return _Output(card, project_text(card))
 
@@ -472,52 +477,59 @@ def _version_text(card: VersionCard) -> str:
 
 
 def project_text(card: ProjectCard) -> str:
-    """Return a project's card for a person: the project, its tasks, pins, problems."""
+    """Return a project's card for a person: the project, its groups, pins, problems."""
     lines: list[str] = [
         message(
             "cli.project_line",
             project=card.project,
             name=card.name,
-            manifests=_manifests_text(card.manifests),
-            tasks=len(card.tasks),
-            pins=len(card.pins),
+            stores=_stores_text(card.stores),
+            groups=len(card.groups),
+            pins=card.pins,
             missing=card.missing_pins,
-        )
+        ),
+        message("cli.project_path_line", path=card.path.local),
     ]
-    lines.extend(
-        message(
-            "cli.task_line",
-            task=task.task,
-            producer=task.producer,
-            command=task.command,
-            status=_value(task.status),
+    if card.area is not None:
+        lines.append(
+            message(
+                "cli.project_area_line",
+                path=card.area.path,
+                state=_value(card.area.state),
+            )
         )
-        for task in card.tasks
-    )
-    lines.extend(
-        message(
-            "cli.pin_line",
-            version=pin.version,
-            producer=pin.producer,
-            task=_value(pin.task),
-            state=pin.state,
+    for group in card.groups:
+        lines.append(
+            message(
+                "cli.project_group_line",
+                group=group.name,
+                origin=group.origin.kind,
+                pins=len(group.pins),
+            )
         )
-        for pin in card.pins
-    )
+        lines.extend(
+            message(
+                "cli.pin_line",
+                version=pin.version,
+                producer=pin.producer,
+                state=pin.state,
+            )
+            for pin in group.pins
+        )
     lines.extend(_problem_lines(card.problems))
     return _with_stale(card, lines)
 
 
-def _manifests_text(manifests: Iterable[ProjectManifest]) -> str:
-    """Return a project's manifests for a person: each producer with its store."""
+def _stores_text(stores: Iterable[ProjectStore]) -> str:
+    """Return a project's stores for a person: each producer with its store."""
     return ", ".join(
         message(
-            "cli.manifest_item",
-            producer=manifest.producer,
-            store=_value(manifest.store),
+            "cli.project_store_item",
+            producer=item.producer,
+            store=_value(item.store),
         )
-        for manifest in manifests
-    )
+        for item in stores
+    ) or _value(None)
 
 
 def _problem_lines(problems: Iterable[Issue]) -> list[str]:

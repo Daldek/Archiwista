@@ -15,7 +15,7 @@ from pathlib import Path
 
 import kartograf
 import pytest
-from kartograf.testing import PL_SEGMENT, build_fixture_store, build_project
+from kartograf.testing import PL_SEGMENT, build_fixture_store
 
 from archiwista.adapter.kartograf import load
 from archiwista.sources import SourceContext
@@ -83,13 +83,12 @@ def test_isolation_replaces_the_settings_of_the_developer(
 def test_isolation_adapter_reads_leave_the_canary_untouched(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Reading a store and a project through the adapter writes into no default root."""
-    # Arrange: the variables name other places, a store and a project wait to be read
+    """Reading a store through the adapter writes into no default root."""
+    # Arrange: the variables name other places, a store waits to be read
     elsewhere = tmp_path / "elsewhere"
     for name in ("KARTOGRAF_ROOT", "IMGW_ROOT", "NOGAT_DATA_DIR", "NOGAT_CACHE_DIR"):
         monkeypatch.setenv(name, str(elsewhere / name))
     built = build_fixture_store(tmp_path / "store")
-    project = build_project(tmp_path / "projects" / "projekt", built)
     adapter = load(SourceContext(cache_dir=tmp_path / "cache" / "kartograf"))
 
     # Act
@@ -102,15 +101,12 @@ def test_isolation_adapter_reads_leave_the_canary_untouched(
         )
         meta = adapter.read_meta(entry)
         outline = adapter.footprint(entry)
-        info = adapter.read_project(project)
-        checked = adapter.project_status(project)
         appeared = canary.appeared()
 
     # Assert: the reads happened, and nothing came of them in a default place
     assert state.status == "available"
-    assert meta.relative_path == entry.relative_path
     assert outline.location == "footprint"
-    assert info.tasks and checked.status == "ok"
+    assert meta.relative_path == entry.relative_path
     assert appeared == []
     assert not elsewhere.exists()
 

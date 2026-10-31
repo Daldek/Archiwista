@@ -1,22 +1,19 @@
-r"""Criteria 1, 2 and 6 of SPEC 13 v0.3 against the real source (plan A14).
+r"""Criteria 1 and 6 of SPEC 13 v0.3 against the real source (plan A14).
 
-UC-01 and UC-06 live, with one NMT sheet of GUGiK (``N-34-130-D-d-2-4``,
-1 m, EVRF2007) through Archiwista and through Kartograf's own command line,
-each into its own store in the test directory:
+UC-01 live, with one NMT sheet of GUGiK (``N-34-130-D-d-2-4``, 1 m,
+EVRF2007) through Archiwista and through Kartograf's own command line, each
+into its own store in the test directory:
 
 - criterion 1: the same command run by ``archiwista jobs start download``
   (with the plan of a ``check`` job, as the plan window runs it) and by
   ``kartograf elevation download --root`` gives the same versions, links,
-  SHA-256 and sidecars (all but ``downloaded_at``); the same task added by
-  ``archiwista project-add`` and by ``kartograf project add`` and downloaded
-  gets the same pins;
-- criterion 2: a project's download cancelled after its first sheet
-  (``JobSupervisor.cancel``: SIGINT, as Ctrl+C) leaves no partial version,
-  no staging and no pin; a full scan finds no problem, and once the download
-  run again has finished the task ``kartograf project verify`` passes;
+  SHA-256 and sidecars (all but ``downloaded_at``);
 - criterion 6: UC-01 (the availability of an area inside the sheet, the plan,
-  the download, the store's badge) and UC-06 (status, verification, check
-  against the source and repin of a downloaded project).
+  the download, the store's badge).
+
+The project cases (criterion 2 and UC-06) left with the producers' project
+manifests (A-ADR-049); the pins of Archiwista's project file bring their
+successors.
 
 Run deliberately, by the author (plan D10). The variable opts in, so the
 weekly ``live`` workflow skips the file; the run downloads about 400 MB::
@@ -35,7 +32,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -44,35 +40,27 @@ from typing import Any
 import kartograf
 import pytest
 
-from archiwista.auth import LOCAL_OWNER
 from archiwista.cli import main
 from archiwista.config import (
     AppPaths,
     AppSettings,
     ConfigStore,
-    SettingsService,
     StoreConfig,
 )
 from archiwista.index import IndexQueries, IndexWriter, initialize, scan_store
 from archiwista.index.types import AreaRecord, IssueRef
-from archiwista.jobs import JobSupervisor
 from archiwista.sources.registry import load_registry
 
 pytestmark = pytest.mark.live
 
 OPT_IN = "ARCHIWISTA_LIVE_ACTIONS"
 STORE = "zespol"
-TASK = "teren"
 COMMAND = "elevation download"
 SHEET = "N-34-130-D-d-2-4"
-# The four 1:10 000 sheets of the 1:25 000 sheet above it: a download long
-# enough to be cancelled after its first sheet.
-WIDE_SHEET = "N-34-130-D-d-2"
 LINE = (
     f"kartograf elevation download --product nmt --sheet {SHEET}"
     " --resolution 1m --vertical-crs EVRF2007"
 )
-WIDE_LINE = LINE.replace(SHEET, WIDE_SHEET)
 # The fixed dimensions of the availability rows: the variant the line takes.
 VARIANT = (
     "--horizontal",
@@ -116,7 +104,6 @@ class Place:
     root: Path
     projects: Path
     cli_root: Path
-    cli_projects: Path
     cli_env: dict[str, str]
 
 
@@ -128,11 +115,9 @@ def place(tmp_path: Path) -> Place:
     root = tmp_path / "archiwista" / "kartograf"
     projects = tmp_path / "archiwista" / "projekty"
     cli_root = tmp_path / "cli" / "kartograf"
-    cli_projects = tmp_path / "cli" / "projekty"
     for store in (root, cli_root):
         kartograf.init_store(store)
-    for directory in (projects, cli_projects):
-        directory.mkdir(parents=True)
+    projects.mkdir(parents=True)
     paths = AppPaths(
         config_file=tmp_path / "config" / "config.toml", data_dir=tmp_path / "data"
     )
@@ -145,7 +130,7 @@ def place(tmp_path: Path) -> Place:
         writer.sync_stores({STORE: config.roots()})
         writer.write_area(AREA)
     cli_env = {**os.environ, "KARTOGRAF_CACHE_DIR": str(tmp_path / "cli-cache")}
-    return Place(paths, root, projects, cli_root, cli_projects, cli_env)
+    return Place(paths, root, projects, cli_root, cli_env)
 
 
 def _archiwista(capsys: pytest.CaptureFixture[str], place: Place, *argv: str) -> Any:
@@ -191,28 +176,6 @@ def _options(capsys: pytest.CaptureFixture[str], place: Place, line: str) -> str
     assert parsed["command"] == COMMAND
     assert parsed["options"] == kartograf.parse_command(line).options
     return json.dumps(parsed["options"])
-
-
-def _project(capsys: pytest.CaptureFixture[str], place: Place, line: str) -> str:
-    """Create Archiwista's project ``raba`` with the line as its task; its key."""
-    directory = str(place.projects / "raba")
-    created = _archiwista(
-        capsys, place, "project-init", "kartograf", directory, "--store", STORE
-    )
-    key: str = created["project"]
-    options = _options(capsys, place, line)
-    _archiwista(capsys, place, "project-add", key, TASK, COMMAND, "--options", options)
-    return key
-
-
-def _cli_project(place: Place, line: str) -> Path:
-    """Create the command line's project ``raba`` with the line as its task."""
-    directory = place.cli_projects / "raba"
-    init = ["project", "init", "--project", str(directory), "--root"]
-    _succeeded(_kartograf(place, *init, str(place.cli_root), "--json"))
-    added = ["project", "add", "--project", str(directory), "--json", TASK]
-    _succeeded(_kartograf(place, *added, *line.split()[1:]))
-    return directory
 
 
 def _below(path: Path, root: Path) -> str:
@@ -270,20 +233,6 @@ def _partial(root: Path) -> list[str]:
     return left
 
 
-def _pins(directory: Path) -> list[tuple[Any, ...]]:
-    """Return a project's tasks: command, options, Kartograf's version, pins."""
-    return [
-        (
-            task.name,
-            task.command,
-            dict(task.options),
-            task.kartograf_version,
-            task.files,
-        )
-        for task in kartograf.open_project(directory).tasks
-    ]
-
-
 def _scan_problems(place: Place) -> tuple[IssueRef, ...]:
     """Scan Archiwista's store in full; return the problems the index then holds."""
     settings = ConfigStore(place.paths.config_file).load()
@@ -301,24 +250,10 @@ def _badges(capsys: pytest.CaptureFixture[str], place: Place) -> list[str]:
     return [row["local"]["state"] for row in shown["rows"] if row["local"] is not None]
 
 
-def _until_completed(jobs: JobSupervisor, job_id: str) -> None:
-    """Wait until the job reported its first sheet done."""
-    deadline = time.monotonic() + JOB_TIMEOUT_S
-    while time.monotonic() < deadline:
-        events = jobs.events(job_id)
-        if any(event.data.get("status") == "completed" for event in events):
-            return
-        record = jobs.get(job_id)
-        assert record is not None
-        assert record.state in ("queued", "running"), (record.state, record.error)
-        time.sleep(0.2)
-    raise AssertionError(f"job {job_id} reported no sheet done")
-
-
 def test_uc01_a_download_through_archiwista_equals_the_command_line(
     place: Place, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Availability, plan, download; the same store and pins as Kartograf's CLI."""
+    """Availability, plan, download; the same store as Kartograf's command line."""
     # Arrange
     options = _options(capsys, place, LINE)
 
@@ -335,11 +270,6 @@ def test_uc01_a_download_through_archiwista_equals_the_command_line(
     badges = _badges(capsys, place)
     # The same command through Kartograf's command line.
     _succeeded(_kartograf(place, *LINE.split()[1:], "--root", str(place.cli_root)))
-    # The same task in a project of each, downloaded.
-    key = _project(capsys, place, LINE)
-    project_run = _archiwista(capsys, place, "project-download", key)
-    cli_project = _cli_project(place, LINE)
-    _succeeded(_kartograf(place, "project", "download", "--project", str(cli_project)))
 
     # Assert
     rows = [row for row in report["rows"] if row["year"] is not None]
@@ -353,96 +283,12 @@ def test_uc01_a_download_through_archiwista_equals_the_command_line(
     statuses = {file["status"] for file in download["result"]["files"]}
     assert statuses == {"new"}, download["result"]
     assert set(badges) - {"none"}, f"no year shows the download: {badges}"
-    assert [task["outcome"] for task in project_run["result"]["tasks"]] == ["pinned"]
-    # Criterion 1: the same versions, links, SHA-256, sidecars and pins.
+    # Criterion 1: the same versions, links, SHA-256 and sidecars.
     assert _entries(place.root) == _entries(place.cli_root)
     versions = _versions(place.root)
     assert versions, "no version was downloaded"
     assert versions == _versions(place.cli_root)
     for sha256, sidecar in versions.values():
         assert sidecar["sha256"] == sha256
-    assert _pins(place.projects / "raba") == _pins(cli_project)
-    assert _partial(place.root) == []
-    assert _scan_problems(place) == ()
-
-
-def test_a_project_download_cancelled_midway_leaves_no_partial_version(
-    place: Place, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Criterion 2: no partial version, no pin; a run again finishes the task."""
-    # Arrange
-    key = _project(capsys, place, WIDE_LINE)
-    directory = place.projects / "raba"
-    registry = load_registry(cache_dir=place.paths.cache_dir)
-    settings = SettingsService(ConfigStore(place.paths.config_file), registry)
-
-    # Act
-    with JobSupervisor(place.paths, settings) as jobs:
-        job = jobs.submit(
-            "project_download",
-            params={"project": key, "tasks": None},
-            actor=LOCAL_OWNER,
-        )
-        _until_completed(jobs, job.id)
-        jobs.cancel(job.id)
-        cancelled = jobs.wait(job.id, timeout=JOB_TIMEOUT_S)
-    left = _partial(place.root)
-    problems = _scan_problems(place)
-    published = len(_versions(place.root))
-    pins = _pins(directory)
-    lock = (directory / ".kartograf-project.lock").exists()
-    finished = _archiwista(capsys, place, "project-download", key)
-    verified = _kartograf(place, "project", "verify", "--project", str(directory))
-
-    # Assert
-    assert cancelled.state == "cancelled", (cancelled.state, cancelled.error)
-    assert left == []
-    assert problems == ()
-    assert published >= 1
-    assert [files for *_, files in pins] == [()]
-    assert not lock
-    assert [task["outcome"] for task in finished["result"]["tasks"]] == ["pinned"]
-    assert len(_versions(place.root)) > published
-    _succeeded(verified)
-    assert _partial(place.root) == []
-    assert _scan_problems(place) == ()
-
-
-def test_uc06_a_downloaded_project_is_checked_verified_and_repinned(
-    place: Place, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Status, verification, check against the source, repin; Kartograf agrees."""
-    # Arrange
-    key = _project(capsys, place, LINE)
-    directory = place.projects / "raba"
-    _archiwista(capsys, place, "project-download", key)
-    before = _pins(directory)
-
-    # Act
-    status = _archiwista(capsys, place, "project-status", key)
-    verification = _archiwista(capsys, place, "project-verify", key)
-    check = _archiwista(capsys, place, "project-check", key)
-    repin = _archiwista(capsys, place, "project-repin", key, TASK)
-    after = _pins(directory)
-    kartograf_verified = _kartograf(
-        place, "project", "verify", "--project", str(directory)
-    )
-
-    # Assert
-    assert [(task["task"], task["status"]) for task in status["tasks"]] == [
-        (TASK, "ok")
-    ]
-    assert verification["result"]["ok"] is True
-    assert {file["status"] for file in verification["result"]["files"]} == {"ok"}
-    states = {file["status"] for file in check["result"]["files"]}
-    assert states <= {"current", "newer"}, check["result"]
-    (task,) = repin["result"]["tasks"]
-    if states == {"current"}:
-        assert task["outcome"] == "unchanged"
-        assert after == before
-    else:
-        assert task["outcome"] == "updated"
-        assert after != before
-    _succeeded(kartograf_verified)
     assert _partial(place.root) == []
     assert _scan_problems(place) == ()

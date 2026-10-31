@@ -29,7 +29,6 @@ producer surface as ``ProducerError`` with the message unchanged.
 import os
 import shlex
 from collections.abc import Iterator, Mapping, Sequence
-from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -40,7 +39,6 @@ from imgwtools import (
     IMGWError,
     Meta,
     NormalizedRecord,
-    Project,
     SeriesIndex,
     StationCoverage,
     StationFeature,
@@ -50,10 +48,8 @@ from imgwtools import (
     __version__,
     datasets,
     get_dataset,
-    get_project_status,
     get_provider,
     iter_store,
-    open_project,
     providers,
     read_catalog,
     read_series,
@@ -74,9 +70,6 @@ from archiwista.sources import (
     EntryMeta,
     Extreme,
     Footprint,
-    ProjectInfo,
-    ProjectPin,
-    ProjectTask,
     ScanScope,
     SeriesListing,
     SeriesValues,
@@ -131,18 +124,6 @@ _COUNTRY_TREES = frozenset({"archives", "series"})
 # does not know). ``io_error`` is a file the system cannot read and
 # ``store_unavailable`` a root that is no store anymore.
 _SLOT_UNREADABLE = frozenset({"data_error", "validation_error"})
-# Project and task states by increasing severity.
-_STATUS_ORDER = ("ok", "not_downloaded", "missing", "corrupt")
-# The state IMGWTools gives a task, as one of the states above: a pin whose
-# file is gone and an equivalent version stands in (``content_match``) is
-# still a pin that is missing.
-_TASK_STATUS = {
-    "current": "ok",
-    "unpinned": "not_downloaded",
-    "content_match": "missing",
-    "missing": "missing",
-    "changed": "corrupt",
-}
 
 
 class ImgwAdapter:
@@ -644,47 +625,6 @@ class ImgwAdapter:
         reason = "unreadable" if entry.kind == "problem" else "no_source"
         return Footprint(location="none", reason=reason)
 
-    def read_project(self, path: Path) -> ProjectInfo:
-        """Read a project manifest strictly with ``open_project``.
-
-        Raises
-        ------
-        ProducerError
-            No manifest or an invalid one; IMGWTools' message names the place.
-        """
-        try:
-            project = open_project(path)
-        except IMGWError as error:
-            raise _failure(str(path), error) from error
-        return _project_info(project)
-
-    def project_status(self, path: Path) -> ProjectInfo:
-        """Check the pinned files with ``get_project_status`` (no hashing).
-
-        Returns
-        -------
-        ProjectInfo
-            Each task ``ok``, ``not_downloaded``, ``missing`` or ``corrupt``
-            and the project its worst task.
-
-        Raises
-        ------
-        ProducerError
-            No manifest or an invalid one.
-        """
-        try:
-            report = get_project_status(path)
-            project = open_project(path)
-        except IMGWError as error:
-            raise _failure(str(path), error) from error
-        info = _project_info(project)
-        found = {
-            name: _TASK_STATUS.get(state, state) for name, state in report.tasks.items()
-        }
-        tasks = tuple(replace(task, status=found[task.task_id]) for task in info.tasks)
-        status = max((str(task.status) for task in tasks), key=_severity, default="ok")
-        return replace(info, tasks=tasks, status=status)
-
     def _state(
         self,
         status: SourceStatus,
@@ -966,34 +906,6 @@ def _raw_sidecar(meta: Meta) -> dict[str, object]:
     return raw
 
 
-def _project_info(project: Project) -> ProjectInfo:
-    """Convert a project; its pins are relative to its store."""
-    store = str(project.store_dir)
-    directory = Path(project.path)
-    tasks = tuple(
-        ProjectTask(task_id=task.name, command=task.command, options=dict(task.options))
-        for task in project.tasks
-    )
-    pins = tuple(
-        ProjectPin(
-            store=store,
-            version_path=Path(file.path),
-            sha256=file.sha256,
-            task_id=task.name,
-        )
-        for task in project.tasks
-        for file in task.files
-    )
-    return ProjectInfo(
-        producer=PRODUCER,
-        store=store,
-        path=directory,
-        name=directory.name,
-        tasks=tasks,
-        pins=pins,
-    )
-
-
 def _station(feature: StationFeature) -> Station:
     """Convert a station of ``stations.geojson`` to the producer-neutral one."""
     properties = feature.properties
@@ -1092,13 +1004,6 @@ def _series_values(record: NormalizedRecord) -> SeriesValues:
         accumulated=frozenset(accumulated) if accumulated else _NO_FLAGS,
         extremes=dated or _NO_DATES,
     )
-
-
-def _severity(status: str) -> int:
-    """Rank of a state; an unexpected one ranks above all known ones."""
-    if status in _STATUS_ORDER:
-        return _STATUS_ORDER.index(status)
-    return len(_STATUS_ORDER)
 
 
 def _failure(where: str, error: IMGWError) -> ProducerError | SourceUnavailableError:

@@ -29,7 +29,7 @@ import shapely
 from archiwista.auth import ALL_PROJECTS, ProjectVisibility
 from archiwista.config import AppPaths, AppSettings
 from archiwista.errors import NotFoundError
-from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, own_file_id
+from archiwista.index import IndexQueries, IndexWriter, own_file_id
 from archiwista.messages import message
 from archiwista.owndata.document import SnapshotAuthor
 from archiwista.owndata.reader import OwnReader
@@ -37,10 +37,10 @@ from archiwista.owndata.scan import check_own_folder, folder_rules, scan_own_dat
 from archiwista.owndata.snapshots import make_snapshot
 from archiwista.sandbox import process_work_dir
 from archiwista.services.compare import OWN_FIELDS, VERSION_FIELDS, compare
-from archiwista.sources import ProjectInfo
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE, ServedStore, served_store
+from tests.fixtures.index_data import indexed_project
 from tests.fixtures.make_store import ExpectedEntry, StoreManifest
 from tests.fixtures.own_data import make_own_folder
 
@@ -345,11 +345,7 @@ def own(tmp_path_factory: pytest.TempPathFactory) -> Iterator[OwnData]:
         IndexQueries(paths.index_file) as queries,
         OwnReader(paths) as reader,
     ):
-        key = writer.write_project(
-            ProjectInfo("kartograf", str(root / "magazyn"), place, "Raba"),
-            store=None,
-            stamp=ManifestStamp(None, None),
-        )
+        key = indexed_project(writer, place, "Raba", root=str(root / "magazyn"))
 
         def scan() -> None:
             known = queries.projects(visible=ALL_PROJECTS)

@@ -8,7 +8,7 @@ or absolute paths. Times are timezone-aware UTC ``datetime`` values.
 import hashlib
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
@@ -23,10 +23,12 @@ from archiwista.index.series import (
     YearTypes,
 )
 from archiwista.owndata.reader import LayerInfo, RasterInfo
+from archiwista.projects import OriginKind, ProjectDocument, Selection
 from archiwista.sources import (
     PLAN_STATUSES,
     ActionPlan,
     AvailabilityReport,
+    CommandCall,
     CoordinateTransformer,
     DateRange,
     GeoJSONGeometry,
@@ -44,6 +46,8 @@ type LocationFilter = Literal["any", "with", "none"]
 type RowStatus = Literal["ok", "missing", "no_sidecar", "unreadable", "unrecognized"]
 type StoreStatus = Literal["unknown", "available", "unavailable"]
 type PinState = Literal["ok", "missing", "sha256_mismatch", "unknown"]
+type ProjectState = Literal["ok", "invalid", "unsupported_schema"]
+type ProjectAreaState = Literal["ok", "missing", "changed", "invalid"]
 type VersionState = Literal["present", "missing"]
 type IssueOrigin = Literal["scan", "check"]
 type BBox = tuple[float, float, float, float]
@@ -313,19 +317,18 @@ class LocationRef:
 
 @dataclass(frozen=True, slots=True)
 class PinRef:
-    """A project task pinning a version (``Przypięta w: Raba (teren)``).
+    """A group of a project pinning a version (``Przypięta w: Raba (NMT)``).
 
     ``state`` is ``missing`` when the version is not in the index or no
     longer on disk, ``sha256_mismatch`` when the index holds other content.
-    ``producer`` is the producer of the project's manifest.
     """
 
     project: str
     project_key: str
     producer: str
-    task: str | None
+    group: str
     version: str
-    sha256: str | None
+    sha256: str
     state: PinState
 
 
@@ -1222,109 +1225,168 @@ class StationDataset:
 
 
 @dataclass(frozen=True, slots=True)
-class ManifestStamp:
-    """Size and modification time of a project manifest when it was read."""
+class ProjectStamp:
+    """Size and modification time of a project file when it was read."""
 
-    mtime_ns: int | None
-    size: int | None
+    mtime_ns: int
+    size: int
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectManifestRef:
-    """One producer's manifest of a project as it was last read.
+class ProjectWrite:
+    """A project file as discovery read it, for ``IndexWriter.write_project``.
 
-    ``store`` is the configured store the manifest names, ``None`` when no
-    configured store matches ``store_dir`` (the manifest's own store path).
-    ``status`` is the producer's project status when the manifest was last
-    read (``None``: not checked); ``problem`` is the producer's message for
-    an invalid manifest, whose tasks and pins are not used.
+    Attributes
+    ----------
+    path : Path
+        The project directory as discovery names it (links not resolved).
+    stamp : ProjectStamp
+        The file's stamp, taken before it was read.
+    name : str
+        The file's name, else the directory's (an invalid file, a newer one
+        without a valid name).
+    state : {"ok", "invalid", "unsupported_schema"}
+        Whether the file was read.
+    problem : str or None
+        ``invalid_project_file`` or ``unsupported_project_schema``.
+    problem_detail : Mapping[str, object] or None
+        The pointer, rule and detail of an invalid file, the schema of a
+        newer one: rendered at each request in the language asked.
+    document : ProjectDocument or None
+        What the file holds; ``None`` unless ``state`` is ``ok``.
+    stores : Mapping[str, str or None]
+        The configured store each producer's entry matches, by producer.
+    area_id, area_state : str or None
+        The area the file's area was read into and its state (``None``:
+        not read, no producer with coordinate operations).
+    """
+
+    path: Path
+    stamp: ProjectStamp
+    name: str
+    state: ProjectState = "ok"
+    problem: str | None = None
+    problem_detail: Mapping[str, object] | None = None
+    document: ProjectDocument | None = None
+    stores: Mapping[str, str | None] = field(default_factory=dict)
+    area_id: str | None = None
+    area_state: ProjectAreaState | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectStoreRef:
+    """The store of one producer's pins as the project file writes it.
+
+    ``store`` is the configured store ``root`` matches (by resolved path or
+    alias), ``None`` when none does.
     """
 
     producer: str
+    root: str
     store: str | None
-    store_dir: str
-    status: str | None
-    problem: str | None
-    scanned_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectAreaRef:
+    """A project's area file and what the index made of it.
+
+    ``state`` is ``ok`` (kept as the area ``area_id``), ``missing``,
+    ``changed`` (other bytes than ``sha256``: not used) or ``invalid``;
+    ``None`` while the file was not read.
+    """
+
+    path: str
+    sha256: str
+    state: ProjectAreaState | None
+    area_id: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class ProjectRef:
     """A discovered project as listed (``GET /projects``).
 
-    A project is its directory, holding the manifest of one producer or of
-    several (SPEC 4.7): ``manifests`` in the order of the producers'
-    manifests (``PROJECT_MANIFESTS``: Kartograf's first), each with its own
-    store, status and problem, so an invalid manifest hides nothing of
-    another. ``tasks``, ``pins`` and ``missing_pins`` count those of every
-    manifest; ``missing_pins`` counts pins whose version is not present in
-    the index or holds other content. ``access_key`` is the key of the
-    project's access entry in the state database: its directory after
-    ``realpath`` when it was scanned (``archiwista.auth.access_key``).
+    A project is its directory holding ``archiwista-project.json``
+    (A-ADR-049). ``state`` is ``ok``, ``invalid`` (``problem``
+    ``invalid_project_file``, nothing of it read) or ``unsupported_schema``
+    (a newer format, its groups not read); ``problem_detail`` holds the
+    pointer and rule, or the schema. ``groups``, ``pins`` and
+    ``missing_pins`` count the project's; ``missing_pins`` counts pins whose
+    version is not present in the index or holds other content.
+    ``access_key`` is the key of the project's access entry in the state
+    database: its directory after ``realpath`` when it was scanned
+    (``archiwista.auth.access_key``).
     """
 
     key: str
-    name: str
     path: str
     access_key: str
-    manifests: tuple[ProjectManifestRef, ...]
-    tasks: int
+    name: str
+    description: str
+    state: ProjectState
+    problem: str | None
+    problem_detail: Mapping[str, object] | None
+    created_at: datetime | None
+    created_by: str | None
+    stores: tuple[ProjectStoreRef, ...]
+    area: ProjectAreaRef | None
+    groups: int
     pins: int
     missing_pins: int
+    scanned_at: datetime
 
-    @property
-    def producers(self) -> tuple[str, ...]:
-        """Return the producers whose manifests the project holds, in order."""
-        return tuple(manifest.producer for manifest in self.manifests)
-
-    def manifest(self, producer: str) -> ProjectManifestRef | None:
-        """Return the project's manifest of ``producer``, ``None`` without one."""
-        return next(
-            (item for item in self.manifests if item.producer == producer), None
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class ProjectTaskRef:
-    """A task of a project's manifest with its existing command and options."""
-
-    producer: str
-    task_id: str
-    command: str
-    options: dict[str, object]
-    status: str | None
+    def store(self, producer: str) -> ProjectStoreRef | None:
+        """Return the project's store of ``producer``, ``None`` without one."""
+        return next((item for item in self.stores if item.producer == producer), None)
 
 
 @dataclass(frozen=True, slots=True)
 class ProjectPinRef:
-    """A version a project task pinned, joined with the index by path and SHA-256.
+    """A pinned version of a group, joined with the index by store and path.
 
-    ``producer`` is the producer of the manifest that pins it; ``state`` is
-    ``unknown`` when that manifest's store is not configured; ``slot``,
-    ``label`` and ``size_bytes`` come from the indexed version.
+    ``store`` is the configured store of the project's entry of
+    ``producer``; ``state`` is ``unknown`` without one, ``missing`` when no
+    present version is at ``version``, ``sha256_mismatch`` when the index
+    holds other content there; ``slot`` and ``is_current`` come from the
+    indexed version.
     """
 
     producer: str
-    task: str | None
+    store: str | None
     version: str
-    sha256: str | None
+    sha256: str
+    content_sha256: str | None
+    size_bytes: int
+    unit: str | None
+    label: str | None
+    pinned_at: datetime
+    pinned_by: str
     state: PinState
     slot: str | None
-    label: str | None
-    size_bytes: int | None
     is_current: bool
 
 
 @dataclass(frozen=True, slots=True)
-class ProjectRecord:
-    """A project with its tasks and pinned versions, manifest after manifest.
+class PinGroupRef:
+    """A group of a project with its origin and pins, in the file's order.
 
-    Within a manifest the tasks keep the manifest's order.
+    ``producer`` and ``calls`` are a ``plan`` group's, ``selections`` a
+    ``local`` group's.
     """
 
-    project: ProjectRef
-    tasks: tuple[ProjectTaskRef, ...]
+    name: str
+    origin: OriginKind
+    producer: str | None
+    calls: tuple[CommandCall, ...]
+    selections: tuple[Selection, ...]
     pins: tuple[ProjectPinRef, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectRecord:
+    """A project with its groups and their pins."""
+
+    project: ProjectRef
+    groups: tuple[PinGroupRef, ...]
 
 
 @dataclass(frozen=True, slots=True)

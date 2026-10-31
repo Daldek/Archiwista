@@ -15,7 +15,6 @@ import os
 import shlex
 from collections import Counter
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
-from dataclasses import replace
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -31,12 +30,10 @@ from kartograf import (
     describe_segment,
     file_footprint,
     find_sheet_outlines,
-    get_project_status,
     iter_store,
     link_target,
     list_partitions,
     list_segments,
-    open_project,
     pinned_transform,
     read_sidecar,
     store_root,
@@ -62,10 +59,7 @@ from archiwista.sources import (
     Footprint,
     GeoJSONGeometry,
     ProjectCheck,
-    ProjectInfo,
-    ProjectPin,
     ProjectRun,
-    ProjectTask,
     ScanScope,
     SheetGrid,
     SourceContext,
@@ -84,8 +78,6 @@ _MARKER = STORE_MARKERS[PRODUCER]
 _WGS84 = "EPSG:4326"
 # Problems of a whole segment: they have no slot.
 _SEGMENT_PROBLEMS = frozenset({"unknown_segment", "legacy_campaigns", "stale_incoming"})
-# Project and task states by increasing severity.
-_STATUS_ORDER = ("ok", "not_downloaded", "missing", "corrupt")
 
 
 class KartografAdapter:
@@ -332,51 +324,6 @@ class KartografAdapter:
         if _mapping(sidecar.request).get("whole_country") is True:
             return Footprint(location="country", source="country")
         return Footprint(location="none", reason="no_source")
-
-    def read_project(self, path: Path) -> ProjectInfo:
-        """Read a project manifest strictly with ``open_project``.
-
-        Raises
-        ------
-        ProducerError
-            No manifest or an invalid one; Kartograf's message names the
-            place.
-        """
-        try:
-            project = open_project(path)
-        except KartografError as error:
-            raise _producer_error(error) from error
-        return _project_info(project)
-
-    def project_status(self, path: Path) -> ProjectInfo:
-        """Check pinned versions with ``get_project_status`` (no hashing).
-
-        Returns
-        -------
-        ProjectInfo
-            Each task ``ok``, ``not_downloaded``, ``missing`` or ``corrupt``
-            (its worst pinned file); the project the worst task status.
-
-        Raises
-        ------
-        ProducerError
-            No manifest or an invalid one.
-        """
-        try:
-            check = get_project_status(path)
-        except KartografError as error:
-            raise _producer_error(error) from error
-        info = _project_info(check.project)
-        worst = {str(name): "not_downloaded" for name in check.not_downloaded}
-        for file in check.files:
-            worst[file.task] = max(
-                worst.get(file.task, "ok"), str(file.status), key=_severity
-            )
-        tasks = tuple(
-            replace(task, status=worst.get(task.task_id, "ok")) for task in info.tasks
-        )
-        status = max((str(task.status) for task in tasks), key=_severity, default="ok")
-        return replace(info, tasks=tasks, status=status)
 
     def segments(self, root: Path) -> tuple[str, ...]:
         """List the store's segments (``list_segments``), unknown ones included.
@@ -906,41 +853,6 @@ def _readable_sidecar(path: Path) -> Any | None:
         return read_sidecar(path)
     except InvalidSidecarError:
         return None
-
-
-def _project_info(project: Any) -> ProjectInfo:
-    """Convert a Kartograf project; its pins are relative to its store."""
-    store = str(project.root)
-    directory = Path(project.directory)
-    tasks = tuple(
-        ProjectTask(task_id=task.name, command=task.command, options=dict(task.options))
-        for task in project.tasks
-    )
-    pins = tuple(
-        ProjectPin(
-            store=store,
-            version_path=Path(file.version),
-            sha256=file.sha256,
-            task_id=task.name,
-        )
-        for task in project.tasks
-        for file in task.files
-    )
-    return ProjectInfo(
-        producer=PRODUCER,
-        store=store,
-        path=directory,
-        name=directory.name,
-        tasks=tasks,
-        pins=pins,
-    )
-
-
-def _severity(status: str) -> int:
-    """Rank of a state; an unexpected one ranks above all known ones."""
-    if status in _STATUS_ORDER:
-        return _STATUS_ORDER.index(status)
-    return len(_STATUS_ORDER)
 
 
 def _polygon(bbox: Any) -> GeoJSONGeometry:

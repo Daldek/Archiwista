@@ -185,7 +185,7 @@ def test_every_person_and_agent_creates_a_project_the_account_owns(
     assert (access.owner, access.visibility) == (account, "public")
     (entry,) = entries
     assert (entry.actor, entry.actor_kind) == (account, "agent" if agent else "user")
-    assert entry.details == {"producer": "kartograf", "owner": account}
+    assert entry.details == {"name": "raba", "owner": account}
 
 
 @pytest.mark.parametrize("agent", [False, True], ids=["owner", "agent"])
@@ -211,7 +211,7 @@ def test_the_computers_owner_and_their_agent_create_projects_nobody_owns(
         "local",
         "agent" if agent else "local_owner",
     )
-    assert entry.details == {"producer": "kartograf", "owner": None}
+    assert entry.details == {"name": "raba", "owner": None}
 
 
 def test_the_command_line_creates_a_project_as_the_computers_owner(
@@ -220,8 +220,7 @@ def test_the_command_line_creates_a_project_as_the_computers_owner(
     """``archiwista project-init`` in team mode: no owner, logged at the terminal."""
     # Act
     status = main(
-        ["project-init", "kartograf", str(place.projects / "raba"), "--store", STORE]
-        + ["--json"],
+        ["project-init", str(place.projects / "raba"), "--json"],
         registry=load_registry(cache_dir=place.paths.cache_dir),
         paths=place.paths,
     )
@@ -240,7 +239,7 @@ def test_the_command_line_creates_a_project_as_the_computers_owner(
         "local_owner",
         None,
     )
-    assert entry.details == {"producer": "kartograf", "owner": None}
+    assert entry.details == {"name": "raba", "owner": None}
 
 
 def test_the_scheduler_creates_no_project(place: TeamPlace) -> None:
@@ -261,9 +260,10 @@ def test_the_scheduler_creates_no_project(place: TeamPlace) -> None:
             queries,
             place.paths.index_file,
             Authorizer(state, lambda: settings),
-            producer="kartograf",
             path=str(place.projects / "raba"),
-            store=STORE,
+            name=None,
+            description="",
+            area_id=None,
             actor=SCHEDULER,
         )
 

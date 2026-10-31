@@ -64,8 +64,9 @@ type ActionName = Literal[
     "project.access",
     "project.create",
     "project.data_dir",
-    "project.task_add",
-    "project.task_remove",
+    "project.update",
+    "project.area",
+    "project.store",
     "settings.update",
     "job.start",
     "job.cancel",
@@ -1022,7 +1023,7 @@ class StateStore:
         *,
         owner: str | None,
         visibility: Visibility,
-        producer: str,
+        name: str,
         actor: Principal,
     ) -> ProjectAccessRecord | None:
         """Record a project a principal created: its owner and ``project.create``.
@@ -1030,7 +1031,7 @@ class StateStore:
         With ``owner`` the project gets its access entry (that owner and
         ``visibility``, nobody listed) unless one exists by now, which stays;
         without one it keeps none (a project of the local owner). Either way
-        the log gets ``project.create`` with the producer and the owner.
+        the log gets ``project.create`` with the project's name and the owner.
 
         Parameters
         ----------
@@ -1040,8 +1041,8 @@ class StateStore:
             The account that created it, or ``None``.
         visibility : Visibility
             ``public`` or ``private`` (``default_project_visibility``).
-        producer : str
-            The producer whose manifest made the project.
+        name : str
+            The project's name, as its file holds it.
         actor : Principal
             Who created it.
 
@@ -1075,7 +1076,7 @@ class StateStore:
                 now,
                 after=None if after is None else _access_state(after),
                 details={
-                    "producer": producer,
+                    "name": name,
                     "owner": None if after is None else after.owner,
                 },
             )

@@ -109,10 +109,9 @@ def team_paths(
     )
     ConfigStore(paths.config_file).save(settings)
     initialize(paths.index_file)
-    adapter = load_registry(cache_dir=paths.cache_dir).adapter("kartograf")
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: store.roots()})
-        key = record_project(adapter, writer, directory, stores=settings.stores)
+        key = record_project(writer, directory, stores=settings.stores, geo=None)
     state = StateStore(paths.state_file)
     add_people(state)
     for person in (OWNER, OTHER):

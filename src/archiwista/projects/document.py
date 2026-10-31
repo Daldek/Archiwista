@@ -249,11 +249,13 @@ def invalid_file(
     rule : str
         The rule it breaks: an entry ``project.rule_<rule>`` of the catalog.
     detail : str or None, optional
-        The system's or the JSON reader's own text, appended.
+        The system's or the JSON reader's own text, appended and kept as
+        ``details["detail"]``.
     """
-    return ProjectFileError(
-        rule_text(pointer, rule, detail), details={"pointer": pointer, "rule": rule}
-    )
+    details = {"pointer": pointer, "rule": rule}
+    if detail:
+        details["detail"] = detail
+    return ProjectFileError(rule_text(pointer, rule, detail), details=details)
 
 
 def rule_text(pointer: str, rule: str, detail: str | None = None) -> str:
@@ -278,6 +280,18 @@ def unsupported_schema(schema: str) -> ProjectFileError:
         details={"schema": schema},
         hint=message("fix.unsupported_project_schema"),
     )
+
+
+def read_name(data: Mapping[str, object]) -> str | None:
+    """Return the ``name`` of a file's JSON object when it keeps its rule.
+
+    For a file of a newer format, which is listed with its name when it has
+    one (A-ADR-049 decision 2).
+    """
+    try:
+        return _name(data, "/name", "name", MAX_NAME_CHARS)
+    except ProjectFileError:
+        return None
 
 
 def parse_document(data: object) -> ProjectDocument:

@@ -30,7 +30,6 @@ MESSAGES = {
     "store": Text("STORE", "MAGAZYN"),
     "style": Text("STYLE", "STYL"),
     "target": Text("TARGET", "OBIEKT"),
-    "task": Text("TASK", "ZADANIE"),
     "text": Text("TEXT", "TEKST"),
     "time": Text("TIME", "CZAS"),
     "vertical_crs": Text("HEIGHT_SYSTEM", "UKŁAD_WYSOKOŚCI"),

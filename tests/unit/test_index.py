@@ -15,17 +15,23 @@ from archiwista.index import (
     AreaRecord,
     IndexQueries,
     IndexWriter,
-    ManifestStamp,
+    ProjectStamp,
+    ProjectWrite,
     SlotQuery,
     SlotRow,
     initialize,
 )
+from archiwista.projects import (
+    LocalOrigin,
+    PinGroup,
+    PlanOrigin,
+    ProjectDocument,
+    StoreRoot,
+)
 from archiwista.sources import (
+    CommandCall,
     EntryMeta,
     Footprint,
-    ProjectInfo,
-    ProjectPin,
-    ProjectTask,
     SourceEntry,
     SourceObservation,
     SourceSegment,
@@ -41,7 +47,9 @@ from tests.fixtures.index_data import (
     SEGMENTS,
     STORE,
     box,
+    indexed_project,
     link,
+    pin,
     polygon,
     problem,
     sha,
@@ -54,7 +62,7 @@ from tests.fixtures.index_data import (
 
 SHEET_A = slot_path(NMT, "M-34-100-C-c-4-1")
 SHEET_B = slot_path(NMT, "M-34-100-C-c-4-2")
-STAMP = ManifestStamp(mtime_ns=1, size=10)
+CREATED = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
 NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 
 
@@ -218,24 +226,15 @@ def test_index_pin_to_older_version(index: tuple[IndexWriter, IndexQueries]) -> 
     pinned = version(SHEET_A, "2019-08-09_86133", 2)
     loose = version(SHEET_A, "2012-08-02_72135", 3)
     write_pass(writer, [link(SHEET_A, current), current, pinned, loose])
-    project = ProjectInfo(
-        producer="kartograf",
-        store=ROOT,
-        path=Path("/projekty/Raba"),
-        name="Raba",
-        tasks=(ProjectTask("teren", "elevation download"),),
-        pins=(
-            ProjectPin(
-                store=ROOT,
-                version_path=pinned.relative_path,
-                sha256=sha(2),
-                task_id="teren",
-            ),
-        ),
-    )
 
     # Act
-    key = writer.write_project(project, store=STORE, stamp=STAMP)
+    key = indexed_project(
+        writer,
+        Path("/projekty/Raba"),
+        "Raba",
+        store=STORE,
+        pins=[pin(pinned.relative_path, sha(2))],
+    )
     pinned_rows = queries.slots(
         SlotQuery(versions="pinned"), visible=ALL_PROJECTS
     ).items
@@ -247,9 +246,9 @@ def test_index_pin_to_older_version(index: tuple[IndexWriter, IndexQueries]) -> 
     assert [row.version.path for row in pinned_rows if row.version] == [
         pinned.relative_path.as_posix()
     ]
-    pin = pinned_rows[0].version.pinned_by[0] if pinned_rows[0].version else None
-    assert pin is not None
-    assert (pin.project, pin.project_key, pin.task, pin.state) == (
+    ref = pinned_rows[0].version.pinned_by[0] if pinned_rows[0].version else None
+    assert ref is not None
+    assert (ref.project, ref.project_key, ref.group, ref.state) == (
         "Raba",
         "raba",
         "teren",
@@ -276,12 +275,8 @@ def test_index_pin_states_follow_the_version(
     current = version(SHEET_A, "2025-04-26_82710", 1)
     older = version(SHEET_A, "2019-08-09_86133", 2)
     write_pass(writer, [link(SHEET_A, current), current, older])
-    pins = (
-        ProjectPin(ROOT, current.relative_path, sha(99), "teren"),
-        ProjectPin(ROOT, older.relative_path, sha(2), "archiwum"),
-    )
-    info = ProjectInfo("kartograf", ROOT, Path("/projekty/Raba"), "Raba", pins=pins)
-    writer.write_project(info, store=STORE, stamp=STAMP)
+    pins = (pin(current.relative_path, sha(99)), pin(older.relative_path, sha(2)))
+    indexed_project(writer, Path("/projekty/Raba"), "Raba", store=STORE, pins=pins)
 
     # Act
     write_pass(writer, [link(SHEET_A, current), skipped(current)])
@@ -1341,160 +1336,155 @@ def test_index_segment_recognised_later_reaches_its_slots(
     assert found == [slot]
 
 
+def _project(
+    path: str,
+    name: str,
+    stamp: ProjectStamp,
+    *,
+    stores: dict[str, str | None] | None = None,
+    groups: tuple[PinGroup, ...] = (),
+) -> ProjectWrite:
+    """Return a valid project file of ``path``; ``stores``: store by producer."""
+    matched = {PRODUCER: STORE} if stores is None else stores
+    roots = {PRODUCER: ROOT, "imgw": "/dane/imgw"}
+    document = ProjectDocument(
+        name=name,
+        description="",
+        created_at=CREATED,
+        created_by="local",
+        stores=tuple(StoreRoot(producer, roots[producer]) for producer in matched),
+        groups=groups,
+    )
+    return ProjectWrite(
+        path=Path(path), stamp=stamp, name=name, document=document, stores=matched
+    )
+
+
 def test_index_projects_keep_unique_keys_and_stamps(
     index: tuple[IndexWriter, IndexQueries],
 ) -> None:
     """Projects of one name get distinct keys; stamps and removal follow paths.
 
-    A project without a store or a status has an empty stamp: it is read
-    again on the next pass.
+    A project whose store matches no configured one has no stamp: it is read
+    again on the next pass; an invalid file keeps its stamp.
     """
     # Arrange
     writer, _ = index
-    first = ProjectInfo(
-        "kartograf", ROOT, Path("/projekty/a/Raba"), "Raba", status="ok"
+    first = _project("/projekty/a/Raba", "Raba", ProjectStamp(1, 10))
+    second = _project(
+        "/projekty/b/Raba", "Raba", ProjectStamp(2, 20), stores={PRODUCER: None}
     )
-    second = ProjectInfo("kartograf", ROOT, Path("/projekty/b/Raba"), "Raba")
-    broken = ProjectInfo(
-        "kartograf", "/inny", Path("/projekty/Łąka"), "Łąka", problem="invalid"
+    broken = ProjectWrite(
+        path=Path("/projekty/Łąka"),
+        stamp=ProjectStamp(3, 30),
+        name="Łąka",
+        state="invalid",
+        problem="invalid_project_file",
+        problem_detail={"pointer": "/name", "rule": "required"},
     )
 
     # Act
     keys = [
-        writer.write_project(first, store=STORE, stamp=ManifestStamp(1, 10)),
-        writer.write_project(second, store=STORE, stamp=ManifestStamp(2, 20)),
-        writer.write_project(broken, store=None, stamp=ManifestStamp(3, 30)),
-        writer.write_project(first, store=STORE, stamp=ManifestStamp(4, 40)),
+        writer.write_project(first),
+        writer.write_project(second),
+        writer.write_project(broken),
+        writer.write_project(replace(first, stamp=ProjectStamp(4, 40))),
     ]
-    stamps = writer.project_stamps("kartograf")
-    removed = writer.remove_projects("kartograf", keep={"/projekty/a/Raba"})
+    stamps = writer.project_stamps()
+    removed = writer.remove_projects(keep={"/projekty/a/Raba"})
 
     # Assert
     assert keys == ["raba", "raba-2", "laka", "raba"]
-    assert stamps["/projekty/a/Raba"] == ManifestStamp(4, 40)
-    assert stamps["/projekty/b/Raba"] == ManifestStamp(None, None)
-    assert stamps["/projekty/Łąka"] == ManifestStamp(None, None)
-    assert len(stamps) == 3
+    assert stamps == {
+        "/projekty/a/Raba": ProjectStamp(4, 40),
+        "/projekty/b/Raba": None,
+        "/projekty/Łąka": ProjectStamp(3, 30),
+    }
     assert removed == 2
-    assert list(writer.project_stamps("kartograf")) == ["/projekty/a/Raba"]
+    assert list(writer.project_stamps()) == ["/projekty/a/Raba"]
 
 
-def test_index_project_is_its_directory_with_a_manifest_of_each_producer(
+def test_index_project_keeps_its_stores_groups_and_pins(
     index: tuple[IndexWriter, IndexQueries],
 ) -> None:
-    """Both manifests of a directory are one project with one key, Kartograf's first.
+    """A project's stores, groups and pins are written; writing it again replaces them.
 
-    Each manifest keeps its store, state, stamp, tasks and pins: writing one
-    again replaces only its own, and removing one keeps the project and its key
-    until the last one goes.
+    The list counts the groups, pins and missing pins; the record keeps each
+    group's origin and its pins in order, with their state.
     """
     # Arrange
     writer, queries = index
     current = version(SHEET_A, "2025-04-26_82710", 1)
     write_pass(writer, [link(SHEET_A, current), current])
-    directory = Path("/projekty/Raba")
-    imgw = ProjectInfo(
-        "imgw",
-        "/dane/imgw",
-        directory,
-        "Raba",
-        tasks=(
-            ProjectTask("przeplywy", "series select"),
-            ProjectTask("opady", "series select"),
+    gone = version_path(SHEET_B, "2010-01-01_1", sha(9))
+    call = CommandCall(PRODUCER, "elevation download", {"godlo": "M-34-100-C"})
+    groups = (
+        PinGroup(
+            "teren",
+            PlanOrigin(PRODUCER, (call,)),
+            (pin(current.relative_path, sha(1)), pin(gone, sha(9))),
         ),
-        status="not_downloaded",
+        PinGroup("przeplywy", LocalOrigin()),
     )
-    kartograf = ProjectInfo(
-        "kartograf",
-        ROOT,
-        directory,
-        "Raba",
-        tasks=(ProjectTask("teren", "elevation download"),),
-        pins=(ProjectPin(ROOT, current.relative_path, sha(1), "teren"),),
-        status="ok",
+    stores: dict[str, str | None] = {PRODUCER: STORE, "imgw": None}
+    project = _project(
+        "/projekty/Raba", "Raba", ProjectStamp(1, 10), stores=stores, groups=groups
     )
 
     # Act
-    keys = [
-        writer.write_project(imgw, store=None, stamp=ManifestStamp(1, 10)),
-        writer.write_project(kartograf, store=STORE, stamp=ManifestStamp(2, 20)),
-        writer.write_project(
-            replace(imgw, tasks=imgw.tasks[:1]), store=None, stamp=ManifestStamp(3, 30)
-        ),
-    ]
-    both = queries.project("raba", visible=ALL_PROJECTS)
-    stamps = {name: writer.project_stamps(name) for name in ("kartograf", "imgw")}
-    removed_first = writer.remove_projects("kartograf", keep=set())
-    left = queries.projects(visible=ALL_PROJECTS)
-    removed_last = writer.remove_projects("imgw", keep=set())
+    key = writer.write_project(project)
+    listed = queries.projects(visible=ALL_PROJECTS)
+    record = queries.project(key, visible=ALL_PROJECTS)
+    writer.write_project(replace(project, document=None, state="invalid"))
+    emptied = queries.project(key, visible=ALL_PROJECTS)
 
     # Assert
-    assert keys == ["raba", "raba", "raba"]
-    assert both is not None
-    assert [(m.producer, m.store, m.status) for m in both.project.manifests] == [
-        ("kartograf", STORE, "ok"),
-        ("imgw", None, "not_downloaded"),
+    assert [(p.key, p.groups, p.pins, p.missing_pins) for p in listed] == [
+        ("raba", 2, 2, 1)
     ]
-    assert [(t.producer, t.task_id) for t in both.tasks] == [
-        ("kartograf", "teren"),
-        ("imgw", "przeplywy"),
+    assert record is not None
+    assert [(s.producer, s.root, s.store) for s in record.project.stores] == [
+        ("imgw", "/dane/imgw", None),
+        (PRODUCER, ROOT, STORE),
     ]
-    assert [(p.producer, p.task, p.state) for p in both.pins] == [
-        ("kartograf", "teren", "ok")
+    assert [(g.name, g.origin, g.producer, g.calls) for g in record.groups] == [
+        ("teren", "plan", PRODUCER, (call,)),
+        ("przeplywy", "local", None, ()),
     ]
-    assert (both.project.tasks, both.project.pins) == (2, 1)
-    assert stamps == {
-        "kartograf": {str(directory): ManifestStamp(2, 20)},
-        "imgw": {str(directory): ManifestStamp(None, None)},
-    }
-    assert removed_first == 1
-    assert [(p.key, p.producers, p.tasks, p.pins) for p in left] == [
-        ("raba", ("imgw",), 1, 0)
+    assert [(p.version, p.state, p.is_current) for p in record.groups[0].pins] == [
+        (current.relative_path.as_posix(), "ok", True),
+        (gone, "missing", False),
     ]
-    assert removed_last == 1
-    assert queries.projects(visible=ALL_PROJECTS) == ()
+    assert emptied is not None
+    assert (emptied.project.stores, emptied.groups) == ((), ())
 
 
-# The projects of an index of schema 12 (v0.4): one row per producer and directory.
-_SCHEMA_12_PROJECTS = """
+# The projects of an index of schema 14 (P1): manifests of the producers.
+_SCHEMA_14_PROJECTS = """
 CREATE TABLE projects (
     id INTEGER PRIMARY KEY,
     key TEXT NOT NULL UNIQUE,
-    producer TEXT NOT NULL,
-    path TEXT NOT NULL,
+    path TEXT NOT NULL UNIQUE,
     access_key TEXT NOT NULL,
-    name TEXT NOT NULL,
-    store_id INTEGER,
-    store_dir TEXT NOT NULL,
-    status TEXT,
-    problem TEXT,
-    manifest_mtime_ns INTEGER,
-    manifest_size INTEGER,
-    scanned_at TEXT NOT NULL,
-    UNIQUE (producer, path)
+    name TEXT NOT NULL
 );
-INSERT INTO projects (key, producer, path, access_key, name, store_dir, scanned_at)
-VALUES
-    ('raba', 'kartograf', '/projekty/Raba', '/projekty/Raba', 'Raba', '/dane',
-        '2026-10-25T12:00:00+00:00'),
-    ('raba-2', 'imgw', '/projekty/Raba', '/projekty/Raba', 'Raba', '/dane/imgw',
-        '2026-10-25T12:00:00+00:00');
-PRAGMA user_version = 12;
+INSERT INTO projects (key, path, access_key, name)
+VALUES ('raba', '/projekty/Raba', '/projekty/Raba', 'Raba');
+PRAGMA user_version = 14;
 """
 
 
-def test_index_of_schema_12_is_rebuilt_into_one_project_per_directory(
+def test_index_of_schema_14_is_rebuilt_without_the_manifests(
     tmp_path: Path,
 ) -> None:
-    """An index of a project per producer and directory is rebuilt, not migrated.
+    """An index of the producers' manifests is rebuilt, not migrated.
 
-    Its two projects of one directory are gone; the manifests written again
-    make one project.
+    Its projects are gone until the project files are read again.
     """
     # Arrange
     path = tmp_path / "index.sqlite"
     connection = sqlite3.connect(path)
-    connection.executescript(_SCHEMA_12_PROJECTS)
+    connection.executescript(_SCHEMA_14_PROJECTS)
     connection.close()
 
     # Act
@@ -1502,23 +1492,16 @@ def test_index_of_schema_12_is_rebuilt_into_one_project_per_directory(
     with IndexQueries(path) as queries:
         emptied = queries.projects(visible=ALL_PROJECTS)
     with IndexWriter(path) as writer:
-        writer.sync_stores({STORE: {"kartograf": ROOT, "imgw": "/dane/imgw"}})
-        keys = [
-            writer.write_project(
-                ProjectInfo(producer, root, Path("/projekty/Raba"), "Raba"),
-                store=STORE,
-                stamp=STAMP,
-            )
-            for producer, root in (("kartograf", ROOT), ("imgw", "/dane/imgw"))
-        ]
+        writer.sync_stores({STORE: {PRODUCER: ROOT}})
+        key = writer.write_project(
+            _project("/projekty/Raba", "Raba", ProjectStamp(1, 10))
+        )
     with IndexQueries(path) as queries:
         listed = queries.projects(visible=ALL_PROJECTS)
 
     # Assert
-    assert state == "rebuilt"
-    assert emptied == ()
-    assert keys == ["raba", "raba"]
-    assert [(p.key, p.producers) for p in listed] == [("raba", ("kartograf", "imgw"))]
+    assert (state, emptied, key) == ("rebuilt", (), "raba")
+    assert [(p.key, p.state) for p in listed] == [("raba", "ok")]
 
 
 def test_index_writer_refuses_misuse(index: tuple[IndexWriter, IndexQueries]) -> None:

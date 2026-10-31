@@ -15,10 +15,6 @@ MESSAGES = {
         "No permission to read the project directory: {path}",
         "Brak uprawnień do odczytu katalogu projektów: {path}",
     ),
-    "no_actions": Text(
-        "The source {producer} does not create or change projects.",
-        "Źródło {producer} nie tworzy ani nie zmienia projektów.",
-    ),
     "locked": Text(
         "The project's manifest is locked ({lock})",
         "Manifest projektu jest zablokowany ({lock})",
@@ -38,26 +34,6 @@ MESSAGES = {
     "not_found": Text(
         'There is no project "{project}".',
         "Nie ma projektu „{project}”.",
-    ),
-    "other_producer": Text(
-        (
-            'The project "{project}" holds no manifest of the source {producer};'
-            " its manifests: {producers}."
-        ),
-        (
-            "Projekt „{project}” nie ma manifestu źródła {producer}; jego manifesty:"
-            " {producers}."
-        ),
-    ),
-    "producer_required": Text(
-        (
-            'The project "{project}" holds the manifests of several sources'
-            " ({producers}); name the one to act on."
-        ),
-        (
-            "Projekt „{project}” ma manifesty kilku źródeł ({producers}); wskaż,"
-            " którego dotyczy działanie."
-        ),
     ),
     "outside_project_dirs": Text(
         (
