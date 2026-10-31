@@ -2048,6 +2048,28 @@ MESSAGES = {
         "The project has no exports.",
         "Projekt nie ma zestawów.",
     ),
+    "project_activity_help": Text(
+        (
+            "Lists what was done to a project and its jobs, newest first: its"
+            " changes, pins and exports, and the jobs started, retried or cancelled"
+            " for it (--json: the ProjectActivity model of GET"
+            " /api/v1/projects/{{project}}/activity)."
+        ),
+        (
+            "Wypisuje, co zrobiono z projektem i jego zadaniami, od najnowszych:"
+            " zmiany, przypięcia i zestawy oraz zadania uruchomione, ponowione albo"
+            " anulowane dla niego (--json: model ProjectActivity z GET"
+            " /api/v1/projects/{{project}}/activity)."
+        ),
+    ),
+    "project_activity_cursor_help": Text(
+        "next_cursor of the previous page.",
+        "next_cursor poprzedniej strony.",
+    ),
+    "project_activity_line": Text(
+        "{at}  {actor}: {action}, {outcome}",
+        "{at}  {actor}: {action}, {outcome}",
+    ),
     "project_pin_help": Text(
         (
             "Pins versions the store holds into a new local group of a project, or"

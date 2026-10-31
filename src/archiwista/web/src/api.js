@@ -885,6 +885,20 @@ export function listProjectExports(project, { signal } = {}) {
 }
 
 /**
+ * A page of a project's activity, newest entry first (`get_project_activity`):
+ * its changes and its jobs from the action log.
+ *
+ * @param {string} project - Project id.
+ * @param {{limit?: number, cursor?: number|null}} [query] - Page size (at most
+ *   100) and `next_cursor` of the page before.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<ProjectActivity>}
+ */
+export function getProjectActivity(project, query = {}, { signal } = {}) {
+  return request("GET", `/projects/${one(project)}/activity`, { query, signal });
+}
+
+/**
  * The settings in effect (`get_settings`).
  *
  * @param {RequestOptions} [options]

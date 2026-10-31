@@ -20,7 +20,9 @@ session. Version 3 (v0.4, A-ADR-046, A-ADR-047) adds ``passwords``
 the backup), the accounts' ``sessions_revoked_at``, ``preferences`` per
 principal, and turns the permission log into ``action_log`` (its entries
 kept with the outcome ``ok``; new: the client address, the outcome and
-details), which a trigger keeps append-only.
+details), which a trigger keeps append-only. Version 4 (A-ADR-049 decision
+14) indexes the action log by target and by the project in the details of a
+job's entries, which a project's activity reads.
 """
 
 import sqlite3
@@ -179,8 +181,23 @@ def _version_3(connection: sqlite3.Connection) -> None:
         connection.execute(statement)
 
 
+_VERSION_4 = (
+    "CREATE INDEX action_log_target ON action_log (target, at)",
+    """
+    CREATE INDEX action_log_project
+        ON action_log (json_extract(details, '$.project'), at)
+    """,
+)
+
+
+def _version_4(connection: sqlite3.Connection) -> None:
+    """Index the action log by target and by a job's project (projects' activity)."""
+    for statement in _VERSION_4:
+        connection.execute(statement)
+
+
 # Migration ``i`` takes a database from user_version ``i`` to ``i + 1``.
-MIGRATIONS: tuple[Migration, ...] = (_version_1, _version_2, _version_3)
+MIGRATIONS: tuple[Migration, ...] = (_version_1, _version_2, _version_3, _version_4)
 STATE_SCHEMA_VERSION = len(MIGRATIONS)
 
 

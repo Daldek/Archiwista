@@ -17,11 +17,14 @@ and ``archiwista project-init``, ``project-edit``, ``project-area`` and
 ``project-store`` call the same functions. ``POST /projects/{project}/exports``
 writes an export ``zestawy/<name>/`` from the pins (``project.write``) and
 ``GET /projects/{project}/exports`` lists them to whoever sees the project
-(``project-export``, ``project-exports``). ``POST /projects/{project}/jobs``
-starts a job over the project's groups (``archiwista.services.project_jobs``;
-``project-verify``, ``project-check``, ``project-repin`` and
-``project-restore``); it needs the job supervisor and is in ``job_router``.
-Nothing here uses the network or writes a store: the jobs' workers do.
+(``project-export``, ``project-exports``). ``GET
+/projects/{project}/activity`` pages the project's entries of the action log
+to whoever sees it (A-ADR-049 decision 14, ``project-activity``).
+``POST /projects/{project}/jobs`` starts a job over the project's groups
+(``archiwista.services.project_jobs``; ``project-verify``, ``project-check``,
+``project-repin`` and ``project-restore``); it needs the job supervisor and is
+in ``job_router``. Nothing here uses the network or writes a store: the jobs'
+workers do.
 """
 
 from pathlib import Path as FilePath
@@ -58,6 +61,7 @@ from archiwista.api.models import (
     UnpinRequest,
     staleness,
 )
+from archiwista.api.models_activity import ProjectActivity, ProjectActivityQuery
 from archiwista.api.models_exports import (
     ExportRequest,
     ProjectExport,
@@ -75,6 +79,7 @@ from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
 from archiwista.security import current_principal
+from archiwista.services import activity as activity_service
 from archiwista.services import pins as pin_service
 from archiwista.services import project_detail, project_jobs
 from archiwista.services import projects as project_service
@@ -430,6 +435,26 @@ def exports_answer(
     )
 
 
+def activity_answer(
+    decisions: Authorizer,
+    queries: IndexQueries,
+    key: str,
+    query: ProjectActivityQuery,
+    *,
+    visible: ProjectVisibility,
+) -> ProjectActivity:
+    """Return a page of a project's activity as the route answers it (API and CLI)."""
+    found = activity_service.project_activity(
+        decisions.state,
+        queries,
+        key,
+        visible=visible,
+        cursor=query.cursor,
+        limit=query.limit,
+    )
+    return ProjectActivity.of(found)
+
+
 @router.post(
     "/{project}/groups",
     response_model=PinOutcome,
@@ -543,6 +568,27 @@ def list_project_exports(
     return exports_answer(
         settings.get(), queries, preferences, project, visible=visible
     )
+
+
+@router.get(
+    "/{project}/activity",
+    response_model=ProjectActivity,
+    responses=problem_responses(400, 404),
+)
+def get_project_activity(
+    project: _Project,
+    query: Annotated[ProjectActivityQuery, Query()],
+    visible: _Visible,
+    decisions: _Authorizer,
+    queries: _Queries,
+) -> ProjectActivity:
+    """Page what was done to a project and its jobs, newest first.
+
+    The project's entries of the action log: its changes (`project.*`) and
+    the start, retry and cancelling of its jobs, done or failed. For whoever
+    sees the project; the client address and the session are not given.
+    """
+    return activity_answer(decisions, queries, project, query, visible=visible)
 
 
 @router.post(

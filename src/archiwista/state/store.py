@@ -11,6 +11,7 @@ changed that way gets its own entry. A request that changes nothing writes
 nothing. ``record`` writes the entries of actions that change nothing here
 (a sign-in, a refusal); no method changes an entry, and only
 ``prune_actions`` deletes old ones, logging that it did (``log.prune``).
+``project_activity`` reads a project's entries (A-ADR-049 decision 14).
 
 ``StateStore`` keeps the data rules (ids, names, known people and groups,
 entries that fit the visibility) but decides no permissions: that is
@@ -94,6 +95,15 @@ NAME_MAX_LENGTH = 200
 RESERVED_USER_IDS = frozenset({LOCAL_PRINCIPAL_ID})
 # The actor of an entry written before anyone signed in (a failed sign-in).
 ANONYMOUS_ACTOR = "-"
+# The entries of a job a project's activity shows, by ``details.project``.
+_PROJECT_JOB_ACTIONS: tuple[ActionName, ...] = ("job.start", "job.retry", "job.cancel")
+# A project's activity: the outcomes of what was done, never a refusal.
+_PROJECT_ACTIVITY = (
+    "outcome IN ('ok', 'failed') AND ("
+    "(target = ? AND substr(action, 1, 8) = 'project.')"
+    " OR (json_extract(details, '$.project') = ?"
+    f" AND action IN ({', '.join(repr(name) for name in _PROJECT_JOB_ACTIONS)})))"
+)
 
 _ID = re.compile(ID_PATTERN)
 _IDS = "SELECT value FROM json_each(?)"
@@ -509,6 +519,43 @@ class StateStore:
                 f"SELECT count(*) FROM action_log WHERE {condition}", params
             ).fetchone()
         return int(count)
+
+    def project_activity(
+        self, access_key: str, key: str, *, before: int | None = None, limit: int = 20
+    ) -> ActionPage:
+        """Return a page of a project's activity, newest entry first.
+
+        Its entries ``project.*`` about the project and the entries
+        ``job.start``, ``job.retry`` and ``job.cancel`` of its jobs (a project
+        job, or a download pinning into it), with the outcome ``ok`` or
+        ``failed`` (A-ADR-049 decision 14).
+
+        Parameters
+        ----------
+        access_key : str
+            The project's access key, the ``target`` of its ``project.*``
+            entries.
+        key : str
+            The project's key in the index, ``details.project`` of its jobs'
+            entries.
+        before : int or None, optional
+            Only the entries older than this one: ``ActionPage.next_cursor``
+            of the page before.
+        limit : int, default 20
+            At most this many entries.
+        """
+        condition = _PROJECT_ACTIVITY
+        params: tuple[object, ...] = (access_key, key)
+        if before is not None:
+            condition += " AND id < ?"
+            params = (*params, before)
+        with self._read() as connection:
+            found = _actions(
+                connection, condition, params, newest_first=True, limit=limit + 1
+            )
+        entries = found[:limit]
+        more = len(found) > len(entries) and bool(entries)
+        return ActionPage(entries, entries[-1].id if more else None)
 
     def password_record(self, user_id: str) -> PasswordRecord | None:
         """Return an account's password, or ``None`` without one.

@@ -1,4 +1,4 @@
-"""``archiwista project-init`` … ``-store``, ``-pin``, ``-unpin``, ``-export(s)``.
+"""``archiwista project-init`` … ``-unpin``, ``-export(s)``, ``-activity``.
 
 Projects are Archiwista's own file ``archiwista-project.json`` (A-ADR-049).
 ``project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id
@@ -19,7 +19,9 @@ project's card as the index holds it right after the change (``ProjectCard``).
 ``project-export PROJEKT NAZWA [--group GRUPA …]`` writes an export
 ``zestawy/NAZWA/`` from the pins (``POST /projects/{project}/exports``,
 ``ProjectExport``) and ``project-exports PROJEKT`` lists them (``GET
-…/exports``, ``ProjectExports``). They call
+…/exports``, ``ProjectExports``); ``project-activity PROJEKT [--limit N]
+[--cursor ID]`` pages what was done to the project and its jobs (``GET
+…/activity``, ``ProjectActivity``). They call
 ``archiwista.services.projects`` and ``archiwista.api.projects`` without
 HTTP, as the owner of the installation (``LOCAL_OWNER``, an administrator,
 who may change every project) through the ``Authorizer`` over the state
@@ -51,8 +53,10 @@ from archiwista.api.models import (
     StoreChoice,
     UnpinRequest,
 )
+from archiwista.api.models_activity import ProjectActivity, ProjectActivityQuery
 from archiwista.api.models_exports import ExportRequest, ProjectExport, ProjectExports
 from archiwista.api.projects import (
+    activity_answer,
     export_answer,
     exports_answer,
     pin_outcome,
@@ -77,7 +81,7 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.messages import message, with_detail
+from archiwista.messages import label, lookup, message, with_detail
 from archiwista.projects import SELECTION_SOURCES
 from archiwista.reader import pin_text, project_text
 from archiwista.services import pins as pin_service
@@ -94,6 +98,7 @@ COMMANDS = frozenset(
         "project-store",
         "project-export",
         "project-exports",
+        "project-activity",
         "project-pin",
         "project-unpin",
     }
@@ -195,6 +200,16 @@ def add_commands(commands: Commands) -> None:
     )
     listed = add_parser(commands, "project-exports", "cli.project_exports_help")
     _project(listed)
+    activity = add_parser(commands, "project-activity", "cli.project_activity_help")
+    _project(activity)
+    activity.add_argument(
+        "--limit", metavar=message("metavar.number"), help=message("log.limit_help")
+    )
+    activity.add_argument(
+        "--cursor",
+        metavar=message("metavar.cursor"),
+        help=message("cli.project_activity_cursor_help"),
+    )
 
     pin = add_parser(commands, "project-pin", "cli.project_pin_help")
     _project(pin)
@@ -423,6 +438,51 @@ def _exports_text(answer: ProjectExports) -> str:
     return "\n".join(lines)
 
 
+def _activity(args: argparse.Namespace, place: _Place) -> _Output:
+    """Page a project's activity as ``GET /projects/{project}/activity`` does."""
+    given = _given(args, "limit", "cursor")
+    try:
+        query = ProjectActivityQuery.model_validate(given)
+    except ValidationError as error:
+        located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
+        raise _InvalidBody(validation_problem(located)) from None
+    answer = activity_answer(
+        place.decisions,
+        place.queries,
+        args.project,
+        query,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return answer, _activity_text(answer)
+
+
+def _activity_text(answer: ProjectActivity) -> str:
+    """Return what ``project-activity`` prints for people: a line per entry."""
+    lines = []
+    for item in answer.items:
+        actor = item.actor_name or item.actor
+        if item.actor_kind == "agent":
+            actor = message("log.agent_of", actor=actor)
+        elif item.actor_kind == "scheduler":
+            actor = message("log.scheduler")
+        lines.append(
+            message(
+                "cli.project_activity_line",
+                at=item.at.isoformat(timespec="seconds"),
+                actor=actor,
+                action=lookup(
+                    f"log.action_{item.action.replace('.', '_')}", item.action
+                ),
+                outcome=label("log.outcome", item.outcome),
+            )
+        )
+    if not lines:
+        lines.append(message("log.list_none"))
+    if answer.next_cursor is not None:
+        lines.append(message("log.list_next", cursor=answer.next_cursor))
+    return "\n".join(lines)
+
+
 def _pin(args: argparse.Namespace, place: _Place) -> _Output:
     """Pin versions as ``POST …/groups`` (``--add``: ``…/pins``); print the outcome."""
     given: dict[str, Any] = {
@@ -506,6 +566,7 @@ _ACTIONS: dict[str, _Action] = {
     "project-store": _store,
     "project-export": _export,
     "project-exports": _exports,
+    "project-activity": _activity,
     "project-pin": _pin,
     "project-unpin": _unpin,
 }

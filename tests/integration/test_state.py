@@ -333,7 +333,7 @@ def test_version_2_log_becomes_ok_entries_of_the_action_log(tmp_path: Path) -> N
             row[0] for row in connection.execute("SELECT name FROM sqlite_master")
         }
     connection.close()
-    assert version == STATE_SCHEMA_VERSION == 3
+    assert version == STATE_SCHEMA_VERSION
     assert "permission_log" not in tables
 
 

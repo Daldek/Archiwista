@@ -28,7 +28,9 @@
  * the folder, followed to its end; after the sharing screen changed the
  * folder, the scan the server started) and „Pokaż na mapie” (the project's
  * map: its own data and pinned versions). Between them „Zestawy”, the
- * project's exports with „Eksportuj…” (views/project-exports.js).
+ * project's exports with „Eksportuj…” (views/project-exports.js). Last
+ * „Aktywność”: what was done to the project and its jobs, from the action log
+ * (views/project-activity.js).
  */
 
 import {
@@ -81,6 +83,7 @@ import {
   storeName,
   useJob,
 } from "./cards.js";
+import { ProjectActivity } from "./project-activity.js";
 import { ProjectExports } from "./project-exports.js";
 import { SharingDialog } from "./sharing.js";
 
@@ -566,6 +569,7 @@ function ProjectCard({ id, onChanged }) {
     <${Groups} card=${card} onChanged=${changed} />
     <${ProjectExports} card=${card} />
     <${OwnData} key=${card.project} project=${card.project} round=${folderRound} />
+    <${ProjectActivity} card=${card} />
     ${sharing
       ? html`<${SharingDialog} project=${card.project} name=${card.name}
           onChanged=${(what) => {

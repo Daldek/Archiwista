@@ -64,6 +64,17 @@ command-line interface may change.
   /projects/{project}/exports` say when the project changed after an export
   ("projekt zmieniony po eksporcie — wygeneruj ponownie"). The QGIS project stays v1.1.
 
+- A project's activity (A-ADR-049 decision 14, plan P5): "Aktywność" at the end of the
+  project's card, `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` and
+  `GET /projects/{project}/activity` (`ProjectActivity`) show what was done to the
+  project and its jobs from the action log, newest first: who created, changed,
+  shared, pinned, unpinned and exported it, and the jobs started, retried or cancelled
+  for it, done or failed; the card the 20 newest and "Więcej" the older ones. For
+  whoever sees the project, with the account's name and without the client address or
+  the session. The state database moves to schema version 4 (the action log indexed by
+  target and by a job's project), migrated on start. The log's action names in the
+  web gain "przypięcie wersji" and "odpięcie wersji".
+
 - The user guide (A-ADR-048): "Instrukcja" in the top bar, its icon alone on a phone,
   opens `/instrukcja` in a new tab, a short guide in Polish of twelve slides with
   pictures of this interface: the window and its views, an area and what the store

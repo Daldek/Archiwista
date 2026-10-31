@@ -1529,6 +1529,33 @@
  * @property {ProjectExportItem[]} items
  */
 
+/**
+ * An entry of a project's activity: who did what to it, when, how it ended.
+ *
+ * @typedef {object} ProjectActivityEntry
+ * @property {number} id - Order of the entries: a later one has a greater id.
+ * @property {string} at - When (UTC).
+ * @property {string} actor - An account id; `local`, the owner of a local
+ *   installation, also for the server's scheduler.
+ * @property {string|null} actor_name - The account's name; null for `local` and a
+ *   removed account.
+ * @property {"local_owner"|"user"|"agent"|"scheduler"|null} actor_kind - How;
+ *   `agent` acts for `actor`.
+ * @property {string} action - `project.*` (a change of the project), or `job.start`,
+ *   `job.retry`, `job.cancel` of a job of the project.
+ * @property {"ok"|"failed"} outcome
+ * @property {Object<string, *>|null} details - E.g. a pin's `group`, a job's `kind`.
+ */
+
+/**
+ * A page of a project's activity, newest entry first
+ * (`GET /projects/{project}/activity`).
+ *
+ * @typedef {object} ProjectActivity
+ * @property {ProjectActivityEntry[]} items
+ * @property {number|null} next_cursor - `cursor` of the next page; null on the last.
+ */
+
 // Settings (9a) --------------------------------------------------------------
 
 /**

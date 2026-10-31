@@ -282,6 +282,14 @@ versions a scan has just indexed.
   file whole. Archiwista never removes an export. At the terminal: `archiwista
   project-export PROJEKT NAZWA [--group GRUPA …]` and `project-exports PROJEKT`. The
   QGIS project and the other files of SPEC 8.4 come with v1.1.
+- **Activity** ("Aktywność" at the end of the project's card; whoever sees the project):
+  what was done to the project and its jobs, from the action log, newest first — who
+  created, changed, shared, pinned, unpinned and exported it, and which jobs were
+  started, retried or cancelled for it (a download pinning into it among them), a
+  failure marked "nieudane". The card shows the 20 newest entries and "Więcej" the
+  older ones; a change made on the card appears at once. The client address and the
+  session stay in "Dziennik" for administrators. At the terminal: `archiwista
+  project-activity PROJEKT [--limit N] [--cursor ID]`.
 - **Pinning what the store holds** (the owner or an administrator): `archiwista
   project-pin PROJEKT GRUPA --version MAGAZYN:WERSJA` pins a version, an older one
   too, into a new group of the project, and `--query '{"store": "zespol", "product":

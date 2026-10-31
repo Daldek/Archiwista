@@ -31,6 +31,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
 | a project's exports from its pins, `pliki.txt` and `ATRYBUCJE.txt` in `zestawy/NAZWA/` (A-ADR-049), and their list | `archiwista project-export PROJEKT NAZWA [--group GRUPA …]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports` |
+| a project's activity from the action log: its changes and its jobs, newest first, without the client address (A-ADR-049) | `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
 | pin versions the store holds into a project's group (offline, from the index), remove pins or a group (A-ADR-049) | `archiwista project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add]`, `project-unpin PROJEKT GRUPA [--pin PRODUCENT:WERSJA …]` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}` |
 | jobs over a project's groups (A-ADR-049): the pinned files hashed in the store (offline), the pins compared with the source, one group pinned anew to the source's newer versions, the missing pins downloaded again; in the foreground, exit 0, 10, 11 or 130 | `archiwista project-verify PROJEKT [GRUPA …]`, `project-check PROJEKT [GRUPA …]`, `project-repin PROJEKT GRUPA`, `project-restore PROJEKT [GRUPA …]` | `POST /projects/{project}/jobs` |
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
@@ -373,10 +374,10 @@ cursor is safe in a URL).
 - **Changing (A-ADR-049):** projects are kept in Archiwista's own
   `archiwista-project.json`; the producers' manifests are no longer read, and
   the routes and commands of their tasks, status and jobs are gone. Pinning
-  (`project-pin`, `project-unpin`) and the jobs over a project's groups
+  (`project-pin`, `project-unpin`), the jobs over a project's groups
   (`POST /projects/{project}/jobs`, `project-verify`, `project-check`,
-  `project-repin`, `project-restore`; section 9) are here; `/activity` (SPEC 9.2)
-  is added as
+  `project-repin`, `project-restore`; section 9) and the activity
+  (`project-activity`) are here; the project card's actions are added as
   [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
   lands.
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
@@ -454,6 +455,22 @@ cursor is safe in a URL).
   {items}`: each export of `zestawy/` with `name`, `path`, `files`, `written_at` and
   `changed_since` (the project file changed after it: write it again). Archiwista
   never removes an export.
+- `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` / `GET
+  /projects/{project}/activity` (`?limit=` 1 to 100, by default 20; `?cursor=`
+  the `next_cursor` of the page before; another parameter is `400
+  validation_error`): what was done to the project and its jobs, from the action
+  log, newest first (A-ADR-049 decision 14). The entries `project.*` about the
+  project (`project.create`, `project.update`, `project.area`, `project.store`,
+  `project.access`, `project.data_dir`, `project.pin`, `project.unpin`,
+  `project.export`) and `job.start`, `job.retry` and `job.cancel` of a job whose
+  `details.project` is the project (a project job, a download that pins into it,
+  a warm-up of its previews), with the outcome `ok` or `failed`; a refusal and
+  another project's entries never. The answer `ProjectActivity {items,
+  next_cursor}`: each item `id`, `at`, `actor`, `actor_name` (the account's name;
+  `null` for `local` and a removed account), `actor_kind`, `action`, `outcome`
+  and `details`, without the client address and the session (`GET /log` keeps
+  them for administrators). For whoever sees the project (`404` for a hidden
+  one).
 - `archiwista project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … | --query
   JSON) [--from local_state|catalog|file] [--add]` / `POST
   /projects/{project}/groups` (`{"name", "from", "versions"?: [{"store",

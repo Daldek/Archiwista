@@ -1,4 +1,4 @@
-"""The project card's exports, in Chromium (A-ADR-049 decision 13, plan P6).
+"""The project card's exports and activity, in Chromium (A-ADR-049, plan P5, P6).
 
 A generated Kartograf store served offline with its projects
 (``tests/fixtures/make_store.py``). The computer's owner writes an export of
@@ -7,6 +7,9 @@ a fixture project with „Eksportuj…” and finds ``pliki.txt`` and
 „projekt zmieniony po eksporcie — wygeneruj ponownie” and the export is
 written again from the form opened on its name. A person the project is
 shared with sees the exports and „Eksportuj…” disabled with the reason.
+„Aktywność” shows the 20 newest entries of the project's activity, older
+ones on „Więcej”, never another project's, and a change made on the card at
+once; the person it is shared with sees it too.
 """
 
 import os
@@ -36,6 +39,12 @@ def exports(page: Page) -> Locator:
     """Return the section „Zestawy” of the chosen project's card."""
     panel = page.get_by_role("complementary", name="Projekt")
     return panel.get_by_role("region", name="Zestawy")
+
+
+def activity(page: Page) -> Locator:
+    """Return the section „Aktywność” of the chosen project's card."""
+    panel = page.get_by_role("complementary", name="Projekt")
+    return panel.get_by_role("region", name="Aktywność")
 
 
 def test_an_export_is_written_and_written_again_after_a_change(
@@ -110,7 +119,7 @@ def test_an_export_is_written_and_written_again_after_a_change(
 def test_a_person_who_may_not_change_the_project_sees_its_exports_only(
     serve: Serve, tab: Tab, tmp_path: Path
 ) -> None:
-    """Shared with her: the list, and „Eksportuj…” disabled with why."""
+    """Shared with her: the list, „Eksportuj…” disabled with why, the activity."""
     # Arrange
     store, served = served_store(serve, tmp_path)
     directory = store.base / store.project(PROJECT).path
@@ -137,4 +146,61 @@ def test_a_person_who_may_not_change_the_project_sees_its_exports_only(
     item = section.get_by_role("listitem").filter(has_text="stary")
     expect(item).to_contain_text(CHANGED)
     expect(item.get_by_role("button", name="Wygeneruj ponownie…")).to_have_count(0)
+    entries = activity(page).get_by_role("listitem")
+    expect(entries.first).to_contain_text("zmiana udostępnienia projektu")
+    tab.assert_clean()
+
+
+def test_the_activity_shows_the_newest_entries_and_a_change_made_on_the_card(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """20 newest, „Więcej” for the rest, no other project; a group removed shows."""
+    # Arrange: 22 job starts of the project (the newest failed), one of another.
+    store, served = served_store(serve, tmp_path)
+    state = StateStore(served.paths.state_file)
+    add_people(state)
+    owner = principal(state, "owner")
+    pinning = {"kind": "download", "project": PROJECT, "group": "NMT"}
+    for number in range(21):
+        state.record(owner, "job.start", f"job-{number}", details=pinning)
+    state.record(owner, "job.start", "job-21", outcome="failed", details=pinning)
+    state.record(
+        owner,
+        "job.start",
+        "job-other",
+        details={"kind": "download", "project": "brak-wersji"},
+    )
+    page = tab.page
+    open_projects(page, served, served.token_url(), PROJECT)
+    section = activity(page)
+    entries = section.get_by_role("list", name="Aktywność projektu").get_by_role(
+        "listitem"
+    )
+
+    # Assert: the 20 newest, the failed one first.
+    expect(entries).to_have_count(20)
+    expect(entries.first).to_contain_text(
+        "Olga Owczarek uruchomienie zadania, pobranie"
+    )
+    expect(entries.first).to_contain_text("nieudane")
+    expect(entries.nth(1)).not_to_contain_text("nieudane")
+
+    # Act
+    section.get_by_role("button", name="Więcej").click()
+
+    # Assert: the other two, and nothing more to read.
+    expect(entries).to_have_count(22)
+    expect(section.get_by_role("button", name="Więcej")).to_have_count(0)
+
+    # Act: a group removed on the card, after the question.
+    panel = page.get_by_role("complementary", name="Projekt")
+    panel.get_by_role("button", name="Usuń grupę archiwum").click()
+    question = page.get_by_role("dialog", name="Usuń grupę")
+    question.get_by_role("button", name="Usuń grupę").click()
+
+    # Assert: the activity read again, the change first.
+    expect(entries.first).to_contain_text(
+        "właściciel lokalny odpięcie wersji, grupa „archiwum”"
+    )
+    expect(entries).to_have_count(20)
     tab.assert_clean()
