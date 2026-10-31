@@ -46,6 +46,7 @@ from archiwista.api.dependencies import (
     writable_projects,
 )
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
+from archiwista.api.files import CACHE_CONTROL
 from archiwista.api.jobs import job_supervisor
 from archiwista.api.models import (
     AreaChoice,
@@ -590,7 +591,8 @@ def list_project_exports(
         200: {
             "description": (
                 "The export's ZIP, `Content-Disposition: attachment` as"
-                " `<name>.zip`: its folders and `README.txt`."
+                " `<name>.zip`: its folders and `README.txt`; `Cache-Control:"
+                " private, no-store`."
             ),
             "content": {"application/zip": {}},
         },
@@ -610,12 +612,17 @@ def get_project_export_zip(
 
     For whoever sees the project; `404 not_found` for an export without
     one. A link of the interface (`Sec-Fetch-Site: same-origin`) needs no
-    `X-Archiwista-CSRF`, as a file download.
+    `X-Archiwista-CSRF` and nothing is cached, as a file download.
     """
     found = project_service.project_export_zip(
         settings.get(), queries, project, name, visible=visible
     )
-    return FileResponse(found, media_type="application/zip", filename=found.name)
+    return FileResponse(
+        found,
+        media_type="application/zip",
+        filename=found.name,
+        headers={"Cache-Control": CACHE_CONTROL},
+    )
 
 
 @router.get(

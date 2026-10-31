@@ -213,6 +213,7 @@ def test_an_export_copies_two_sets_into_flat_folders(tmp_path: Path) -> None:
     assert archive.status_code == 200, archive.text
     assert archive.headers["content-type"] == "application/zip"
     assert archive.headers["content-disposition"].startswith("attachment")
+    assert archive.headers["cache-control"] == "private, no-store"
     assert archive.content == zip_path.read_bytes()
     assert (
         zipfile.ZipFile(BytesIO(archive.content)).read(README)
