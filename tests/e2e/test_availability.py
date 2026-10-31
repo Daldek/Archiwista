@@ -3,7 +3,8 @@
 The store ``zespol`` is a Kartograf store of three NMT flights over the sheets
 of ``AREA_SHEET`` (``tests/fixtures/layer_store``): ``SHEET_NW`` and
 ``SHEET_NE`` of 2023 (campaign 82710) and ``SHEET_SW`` of 2022 (campaign
-61003), scanned before the server starts. The kept report of the area is a
+61003), scanned before the server starts; the report names those two by their
+survey works, as a source does. The kept report of the area is a
 stand-in report of the stand-in producer (``tests/fixtures/action_source``),
 written by hand so that its rows need every Polish form of SPEC 6.4: 2, 5, 22
 and 25 campaigns, 1, 2 and 5 partial sheets, a share below 1%, a partial set
@@ -52,6 +53,7 @@ from tests.fixtures.layer_store import (
     add_campaign,
     sheet_bounds,
     sheet_polygon,
+    survey_work,
 )
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.make_store import NMT
@@ -74,6 +76,9 @@ AREA = AreaRecord(
     countries=("PL",),
     name="Arkusz D-d-2",
 )
+# The survey works of the store's flights: the report's names of their campaigns.
+WORK_2023 = survey_work("82710", "2023-06-02")
+WORK_2022 = survey_work("61003", "2022-04-11")
 # Sheets of the sets of many campaigns: one record per campaign.
 SHEETS = tuple(
     f"N-34-130-D-{quarter}-{row}-{column}"
@@ -159,11 +164,11 @@ def _partial(year: int, campaign: str, share: float) -> AvailabilityCombination:
 
 def stand_in_report(checked_at: datetime) -> AvailabilityReport:
     """Return the kept report: six years, best variant first by SPEC 6.4."""
-    best_2023 = _records((SHEET_NW, "82710"), (SHEET_NE, "82710"))
+    best_2023 = _records((SHEET_NW, WORK_2023), (SHEET_NE, WORK_2023))
     five = _records(
         (SHEET_NW, "61001"),
         (SHEET_NE, "61002"),
-        (SHEET_SW, "61003"),
+        (SHEET_SW, WORK_2022),
         (SHEET_SE, "61004"),
         (SHEETS[0], "61005"),
     )
@@ -211,7 +216,7 @@ def stand_in_report(checked_at: datetime) -> AvailabilityReport:
             _set(
                 2023,
                 "PL-1992",
-                _records((SHEET_NW, "82710"))
+                _records((SHEET_NW, WORK_2023))
                 + _records((SHEET_SW, "82711"), (SHEET_SE, "82711"), full=False),
                 complete=False,
                 share=0.4,

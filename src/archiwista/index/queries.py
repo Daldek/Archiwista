@@ -1969,14 +1969,17 @@ class IndexQueries:
         dataset: str,
         units: Sequence[str],
         year: int | None,
-        campaigns: Sequence[str],
+        survey_works: Sequence[str],
     ) -> frozenset[str]:
         """Return the units of which a store holds a version of a dataset.
 
         A present version counts when its dataset is ``dataset``, its slot's
-        unit one of ``units``, its data year ``year`` and its campaign one of
-        ``campaigns``; ``None`` and an empty ``campaigns`` ask for any (the
-        store badge of an availability combination, SPEC 6.4).
+        unit one of ``units``, its data year ``year`` and its survey work
+        (``survey_work_id``, the number a source's index gives the campaign)
+        one of ``survey_works``; ``None`` and an empty ``survey_works`` ask
+        for any (the store badge of an availability combination, SPEC 6.4).
+        A version's ``campaign`` is the producer's own id of its file and is
+        never compared: a source's report does not know it.
         """
         if not units:
             return frozenset()
@@ -1988,8 +1991,10 @@ class IndexQueries:
             where.add("v.dataset = ?", dataset)
             if year is not None:
                 where.add("v.data_year = ?", year)
-            if campaigns:
-                where.add(f"v.campaign IN ({_IDS})", json.dumps(list(campaigns)))
+            if survey_works:
+                where.add(
+                    f"v.survey_work_id IN ({_IDS})", json.dumps(list(survey_works))
+                )
             found = connection.execute(
                 "SELECT DISTINCT s.unit FROM slots s"
                 f" JOIN versions v ON v.slot_id = s.id WHERE {where.sql()}",

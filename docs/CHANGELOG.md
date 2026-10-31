@@ -1097,6 +1097,14 @@ command-line interface may change.
 
 ### Fixed
 
+- The store badge of an availability row ("pobrane", "pobrane 5/12") said "niepobrane"
+  for sheets the store held: the report names a combination's campaigns by their survey
+  work numbers (Kartograf's `nr_zglosz`), while the index compared them with the
+  campaign id of a version's sidecar, the number of the downloaded file
+  (`2022-05-10_83233`). A version now counts by its survey work (`survey_work_id` of
+  the sidecar, already in the index, so no rebuild is needed). A LAZ tile's sidecar
+  names no survey work, so a LAZ combination still shows "niepobrane" until Kartograf
+  records it.
 - Opening Archiwista from another site showed only "Żądanie wysłane z innej strony
   zostało odrzucone." (`403 csrf_rejected`): behind Cloudflare Access the redirect back
   after signing in at `<team>.cloudflareaccess.com`, and every link to Archiwista

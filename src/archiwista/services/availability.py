@@ -390,7 +390,10 @@ def summary(
     A unit of a variant, a full or partial sheet of its shown combination,
     counts when the store holds a present version of that combination's
     dataset (so of its format), of its year and of one of its campaigns; a
-    combination without a year or campaigns asks for none. The height system
+    combination without a year or campaigns asks for none. A report names a
+    campaign by its survey work (Kartograf's ``nr_zglosz``), so a version
+    counts by its ``survey_work_id``, never by its ``campaign`` (the id of
+    the producer's file, which no report names). The height system
     is not compared: a combination names it as the source does (``EVRF2007``),
     a version's sidecar by its EPSG code, and the producer names no store
     segment of a combination (a request to Kartograf), so a version of the
@@ -436,7 +439,7 @@ def _badge(
         dataset=combination.source,
         units=units,
         year=combination.year,
-        campaigns=combination.campaigns,
+        survey_works=combination.campaigns,
     )
     return StoreBadge(store=store, units=len(held), of=len(units))
 

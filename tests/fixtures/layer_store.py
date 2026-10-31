@@ -210,6 +210,11 @@ def add_campaign(
     return StoredVersion(path, NMT, sheet, int(day[:4]), campaign=campaign)
 
 
+def survey_work(campaign: str, day: str) -> str:
+    """Return the survey work of a flight: what a source's report names it by."""
+    return f"GK.6640.{campaign}.{day[:4]}"
+
+
 def sheet_bounds(sheet: str) -> Bounds:
     """Return a PL-1992 sheet's box in EPSG:2180 (what its ASC grid covers)."""
     found = SheetParser(sheet).get_bbox()
@@ -297,7 +302,7 @@ def _edition(root: Path, edition: str, number: int) -> StoredVersion:
 
 def _campaign_extra(sheet: str, day: str, campaign: str) -> dict[str, Any]:
     """``extra`` of a flight's version (ADR-036 label, ``extra.campaign``)."""
-    work = f"GK.6640.{campaign}.{day[:4]}"
+    work = survey_work(campaign, day)
     return {
         "version": {"label": f"{day}_{campaign}", "label_source": "campaign"},
         "campaign": {

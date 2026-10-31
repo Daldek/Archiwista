@@ -2,8 +2,9 @@
 
 The badge counts the units of a variant's shown combination, its full and
 partial sheets, of which the store holds a present version of the same
-dataset (so format), year and campaign. The expected counts are worked out
-from the versions each test writes.
+dataset (so format), year and campaign: a report names a campaign by its
+survey work, which a version keeps as ``survey_work_id``. The expected
+counts are worked out from the versions each test writes.
 """
 
 from datetime import UTC, datetime
@@ -69,16 +70,20 @@ def _version(
     seed: int,
     *,
     year: int = 2022,
-    campaign: str = "D",
+    work: str = "D",
     dataset: str = DATASET,
 ) -> SourceEntry:
-    """Return a version of a sheet of the NMT segment with its year and campaign."""
+    """Return a version of a sheet of the NMT segment with its year and survey work.
+
+    Its campaign id is the producer's own number, which no report names.
+    """
     return version(
         slot_path(NMT, unit),
-        f"{year}-05-01_{campaign}",
+        f"{year}-05-01_{seed}",
         seed,
         dataset=dataset,
-        campaign=campaign,
+        campaign=str(seed),
+        survey_work_id=work,
         data_year=year,
     )
 
@@ -86,9 +91,9 @@ def _version(
 def test_summary_counts_the_units_with_a_version_of_the_set(
     index: tuple[IndexWriter, IndexQueries],
 ) -> None:
-    """Only S1 holds a version of 2022, campaign D, in the dataset of ASC.
+    """Only S1 holds a version of 2022, survey work D, in the dataset of ASC.
 
-    S2 holds one of 2021, S3 one of another campaign, S4 one of the dataset
+    S2 holds one of 2021, S3 one of another survey work, S4 one of the dataset
     of another format, and S2's 2022 version went missing: 1 of 4 units.
     """
     writer, queries = index
@@ -98,7 +103,7 @@ def test_summary_counts_the_units_with_a_version_of_the_set(
         [
             _version("S1", 1),
             _version("S2", 2, year=2021),
-            _version("S3", 3, campaign="X"),
+            _version("S3", 3, work="X"),
             _version("S4", 4, dataset="pl.gugik.nmt_ascii_nmt_1m"),
             gone,
         ],
@@ -109,7 +114,7 @@ def test_summary_counts_the_units_with_a_version_of_the_set(
         [
             _version("S1", 1),
             _version("S2", 2, year=2021),
-            _version("S3", 3, campaign="X"),
+            _version("S3", 3, work="X"),
             _version("S4", 4, dataset="pl.gugik.nmt_ascii_nmt_1m"),
         ],
         full=True,

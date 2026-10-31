@@ -1885,7 +1885,7 @@ and the file card shows it instead of the estimate.
 
 | Badge | When |
 |---|---|
-| "pobrane" (downloaded) | every unit of the combination (full and incomplete sheets) has a version from this combination in the store (campaign of this year, this variant) |
+| "pobrane" (downloaded) | every unit of the combination (full and incomplete sheets) has a version from this combination in the store (campaign of this year, this variant; a campaign is matched by its survey work number, the version's `survey_work_id`, never by the producer's campaign id of the file) |
 | "pobrane 5/12" (downloaded 5/12) | some of the units |
 | "niepobrane" (not downloaded) | none |
 

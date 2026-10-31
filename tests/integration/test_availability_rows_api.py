@@ -2,7 +2,8 @@
 
 The stand-in producer's report of the area ``AREA`` is kept, the settings
 name the store ``zespol``, and its index holds versions of two of the three
-sheets of 2023's PL-2000 set (campaign C). The expected rows are worked out
+sheets of 2023's PL-2000 set (campaign C, the survey work a version keeps as
+``survey_work_id``). The expected rows are worked out
 from the stand-in's report (``tests/fixtures/action_source``): 2023 shows
 PL-2000, complete from one campaign, above PL-1992, complete from two; 2022
 is partial at 58% with one partial sheet.
@@ -66,7 +67,7 @@ def paths(tmp_path: Path, standin: ModuleType) -> AppPaths:
                     "2023-05-01_C",
                     seed,
                     dataset="standin_dem",
-                    campaign="C",
+                    survey_work_id="C",
                 )
                 for seed, sheet in enumerate(("T1", "T2"))
             ],
