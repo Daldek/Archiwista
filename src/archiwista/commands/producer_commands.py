@@ -6,10 +6,13 @@ command line into a call (``POST /commands/parse``), ``commands validate
 PRODUCER COMMAND [--options JSON] [--store ID]`` checks a call without the
 network (``POST /commands/validate``) and ``commands format PRODUCER COMMAND
 [--options JSON] [--run JSON]`` writes the producer's command line of a call
-(``POST /commands/format``). They call ``archiwista.services.commands``
-without HTTP: ``--json`` prints the route's model, a refusal the route's
-problem as the ``archiwista-error/1`` document. Nothing here uses the network
-or writes.
+(``POST /commands/format``). ``version-command STORE VERSION`` prints the call
+that selects a stored version again and its line (``GET
+/stores/{store}/versions/{version}/command``, A-ADR-049 D-10). They call
+``archiwista.services.commands`` without HTTP: ``--json`` prints the route's
+model, a refusal the route's problem as the ``archiwista-error/1`` document.
+Nothing here uses the network or writes a store; ``version-command`` keeps
+the producer's answer in the local index.
 """
 
 import argparse
@@ -19,22 +22,29 @@ from typing import Any, TextIO
 
 from pydantic import BaseModel
 
-from archiwista.api.models_commands import CommandCallItem, CommandLine, CommandList
+from archiwista.api.models_commands import (
+    CommandCallItem,
+    CommandLine,
+    CommandList,
+    VersionCommand,
+)
 from archiwista.commands import Commands, add_parser
 from archiwista.config import AppPaths, ConfigStore, SettingsValidationError
 from archiwista.error_document import describe, exception_problem, refuse
 from archiwista.errors import ArchiwistaError
+from archiwista.index import IndexQueries
 from archiwista.messages import message, with_detail
 from archiwista.services.commands import (
     format_command,
     list_commands,
     parse_command,
     validate_command,
+    version_command,
 )
 from archiwista.sources import CommandCall
 from archiwista.sources.registry import PluginRegistry
 
-COMMANDS = frozenset({"commands"})
+COMMANDS = frozenset({"commands", "version-command"})
 
 # What an action prints: the route's model with ``--json``, else text for people.
 type _Output = tuple[BaseModel, str]
@@ -81,6 +91,17 @@ def add_commands(commands: Commands) -> None:
         metavar="JSON",
         help=message("cli.commands_run_help"),
     )
+    asked = add_parser(commands, "version-command", "cli.version_command_help")
+    asked.add_argument(
+        "store",
+        metavar=message("metavar.store"),
+        help=message("cli.version_command_store_help"),
+    )
+    asked.add_argument(
+        "version",
+        metavar=message("metavar.version"),
+        help=message("cli.version_command_version_help"),
+    )
 
 
 def main(
@@ -110,7 +131,8 @@ def main(
         ``0`` on success; a refusal returns the exit code of its registry code.
     """
     try:
-        model, text = _ACTIONS[args.action](args, paths, registry)
+        action = _ACTIONS[args.action] if args.command == "commands" else _version
+        model, text = action(args, paths, registry)
     except SettingsValidationError as error:
         return refuse(
             exception_problem(
@@ -174,6 +196,24 @@ def _format(
     call = CommandCall(args.producer, args.name, args.options, args.run)
     line = CommandLine.of(call, format_command(registry, call))
     return line, line.line
+
+
+def _version(
+    args: argparse.Namespace, paths: AppPaths, registry: PluginRegistry
+) -> _Output:
+    settings = ConfigStore(paths.config_file).load()
+    with IndexQueries(paths.index_file) as queries:
+        found = version_command(
+            registry, settings, queries, paths.index_file, args.store, args.version
+        )
+    answer = VersionCommand.of(found.call, found.line)
+    text = answer.line or message(
+        "cli.version_command_call",
+        producer=answer.producer,
+        command=answer.command,
+        options=_json(answer.options),
+    )
+    return answer, text
 
 
 _ACTIONS: dict[str, _Action] = {

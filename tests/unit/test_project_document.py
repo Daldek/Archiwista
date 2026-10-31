@@ -113,7 +113,7 @@ def _pin(data: dict[str, Any]) -> dict[str, Any]:
 # (change of the valid document, pointer, rule)
 BROKEN: list[tuple[Change, str, str]] = [
     (lambda d: d.pop("schema"), "/schema", "required"),
-    (lambda d: d.update(schema="kartograf-project/1"), "/schema", "schema"),
+    (lambda d: d.update(schema="kartograf-store/1"), "/schema", "schema"),
     (lambda d: d.update(schema="archiwista-project/0"), "/schema", "schema"),
     (lambda d: d.pop("name"), "/name", "required"),
     (lambda d: d.update(name=" \t "), "/name", "name"),

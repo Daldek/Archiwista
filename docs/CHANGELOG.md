@@ -9,6 +9,22 @@ command-line interface may change.
 
 ### Added
 
+- The command of a stored version (A-ADR-049 decision 10, plan P4):
+  `archiwista version-command MAGAZYN WERSJA` and `GET
+  /stores/{store}/versions/{version}/command` answer the producer's call that selects
+  the version again (`producer`, `command`, `options` without the store root) and its
+  command line with the store's directory (`line`, `null` for a producer without
+  commands). The producer rebuilds it from the version's metadata, offline (Kartograf's
+  `command_for_file`, KB-6; IMGWTools' `command_for_version`, IMGW-21); where it cannot,
+  the answer is `422 unsupported` with the reason `command_not_rebuildable`, the
+  producer's text and a hint (a derived file, for example). The local index keeps each
+  answer for the installed version of the producer (table `version_calls`), so the
+  producer is asked once. A pin of a project's card carries `command` (`rebuildable`,
+  `not_rebuildable` with the producer's text in `command_refusal`, or `unknown` until
+  the producer is asked). The source interface gains `VersionCommandAdapter`
+  (`command_for_version(version, *, root)`) and `ActionAdapter.run(..., upgrade=)`, the
+  update mode a re-pin runs in.
+
 - A project's exports (A-ADR-049 decision 13): "Eksportuj…" in the section "Zestawy" of
   the project's card, `archiwista project-export PROJEKT NAZWA [--group GRUPA …]` and
   `POST /projects/{project}/exports` write `zestawy/<name>/` in the project directory
@@ -921,6 +937,15 @@ command-line interface may change.
   read or migrate. SPEC (4.7, 8.4, 9.2, 13 "Projects"), SCOPE and PRD describe it, A-ADR-039
   and A-ADR-040 are superseded, and `docs/plans/2026-10-31-archiwista-projects.md` builds it
   in the phases P2 to P6, released together with v0.3 and v0.4.
+
+- **Breaking:** the producers are re-pinned to their commits without projects (A-ADR-049,
+  plan P4): Kartograf `8ad55ab6` and IMGWTools `4bf8bb0d` (`pyproject.toml`, `uv.lock`;
+  the supported ranges are unchanged); their project manifests and functions are gone.
+  The source interface `archiwista.sources` no longer has `ProjectActionAdapter` and the
+  project types `PinnedVersion`, `ProjectTaskRun`, `ProjectRun`, `ProjectFileState`,
+  `ProjectFileStatus`, `PROJECT_FILE_STATUSES`, `ProjectCheck`, `TaskOutcome` and
+  `TASK_OUTCOMES`: a plugin implements `VersionCommandAdapter` instead. The local index
+  is rebuilt (schema 16) by the next scan.
 
 - **Breaking:** projects are Archiwista's own file (A-ADR-049, plan P2): a project is a
   directory holding `archiwista-project.json`, and the producers' manifests

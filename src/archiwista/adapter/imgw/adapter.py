@@ -46,6 +46,7 @@ from imgwtools import (
     StoreEntry,
     StoreInfo,
     __version__,
+    command_for_version,
     datasets,
     get_dataset,
     get_provider,
@@ -61,9 +62,15 @@ from imgwtools import current_version as current_of_slot
 from imgwtools import read_meta as read_sidecar
 
 from archiwista.adapter.imgw import PACKAGE, PRODUCER, SCHEMAS
-from archiwista.errors import NotFoundError, ProducerError, SourceUnavailableError
+from archiwista.errors import (
+    NotFoundError,
+    ProducerError,
+    SourceUnavailableError,
+    UnsupportedError,
+)
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
+    CommandCall,
     DefaultRoot,
     DefaultRootSource,
     EntryKind,
@@ -86,6 +93,10 @@ from archiwista.sources import (
 from archiwista.sources.markers import STORE_MARKERS, foreign_markers
 
 _MARKER = STORE_MARKERS[PRODUCER]
+# IMGWTools' reason of a version whose call its metadata do not rebuild, and
+# the option of a call that names the store root (A-ADR-049 D-10).
+_NOT_REBUILDABLE = "command_not_rebuildable"
+_ROOT = "root"
 # The trees whose presence is the layout of a store, and the state file the
 # server keeps in a default root: IMGWTools' own rules (``init_store``). A
 # contract test compares them with its verdicts.
@@ -140,8 +151,9 @@ class ImgwAdapter:
     dataset is a segment that cannot be read alone), ``CurrentVersionAdapter``
     (a slot has no link), ``StationCatalogAdapter`` (each provider's station
     catalog), ``SeriesIndexAdapter`` (the index of each dataset's series),
-    ``SeriesValuesAdapter`` (a station's values) and ``DefaultRootAdapter``
-    (``store_root()``); no other optional capability.
+    ``SeriesValuesAdapter`` (a station's values), ``DefaultRootAdapter``
+    (``store_root()``) and ``VersionCommandAdapter`` (``command_for_version``);
+    no other optional capability.
     All methods may run in several threads at once; one iterator of
     ``iter_entries`` belongs to one thread.
     """
@@ -624,6 +636,44 @@ class ImgwAdapter:
             return Footprint(location="country", source="country")
         reason = "unreadable" if entry.kind == "problem" else "no_source"
         return Footprint(location="none", reason=reason)
+
+    def command_for_version(self, version: str, *, root: Path) -> CommandCall:
+        """Return the call that selects a stored version again (IMGWTools').
+
+        IMGWTools rebuilds it offline from the version's sidecar and the
+        store's layout; its store root (``options["root"]``) is no option of
+        the producer-neutral call, whose caller names the configured store.
+
+        Raises
+        ------
+        UnsupportedError
+            IMGWTools cannot rebuild the call (``unsupported``, reason
+            ``command_not_rebuildable``), its text unchanged.
+        ProducerError
+            Any other refusal (``not_found``, ``data_error``,
+            ``validation_error``, ``store_unavailable``) with its code.
+        """
+        try:
+            call = command_for_version(version, root=root)
+        except IMGWError as error:
+            details = dict(error.details)
+            if (
+                error.code == "unsupported"
+                and details.get("reason") == _NOT_REBUILDABLE
+            ):
+                raise UnsupportedError(
+                    str(error),
+                    details={"producer": PRODUCER, "version": version, **details},
+                ) from error
+            raise ProducerError(
+                PACKAGE,
+                type(error).__name__,
+                str(error),
+                code=error.code,
+                details=details,
+            ) from error
+        options = {name: value for name, value in call.options.items() if name != _ROOT}
+        return CommandCall(PRODUCER, call.command, options, dict(call.run))
 
     def _state(
         self,

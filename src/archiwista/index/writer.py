@@ -59,12 +59,14 @@ from archiwista.index.types import (
     StationCatalogRecord,
     StoredPlan,
     StoreStatus,
+    VersionCall,
     own_file_id,
 )
 from archiwista.messages import STORED_LANG, localize
 from archiwista.projects import PlanOrigin, ProjectDocument, format_time
 from archiwista.sources import (
     AvailabilityReport,
+    CommandCall,
     DateRange,
     EntryMeta,
     Footprint,
@@ -1619,6 +1621,37 @@ class IndexWriter:
                 ],
             )
 
+    def write_version_calls(self, store: str, calls: Iterable[VersionCall]) -> None:
+        """Keep the producer's answers for the calls of versions of ``store``.
+
+        Each answer replaces the one kept for the same version path (an
+        answer of another producer version, A-ADR-049 D-10).
+
+        Raises
+        ------
+        ValueError
+            ``store`` is not in the index.
+        """
+        store_id = self._store_id(store)
+        with self._transaction() as connection:
+            connection.executemany(
+                "INSERT INTO version_calls (store_id, version_path, producer_version,"
+                " call, refusal) VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT (store_id, version_path) DO UPDATE SET"
+                " producer_version = excluded.producer_version,"
+                " call = excluded.call, refusal = excluded.refusal",
+                [
+                    (
+                        store_id,
+                        answer.version_path,
+                        answer.producer_version,
+                        None if answer.call is None else _call_json(answer.call),
+                        answer.refusal,
+                    )
+                    for answer in calls
+                ],
+            )
+
     # Own data of projects (decision 8).
 
     def write_own_folder(
@@ -2508,6 +2541,18 @@ def _utc(value: datetime) -> str:
 
 def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _call_json(call: CommandCall) -> str:
+    """Return a call as ``version_calls.call`` keeps it."""
+    return _json(
+        {
+            "producer": call.producer,
+            "command": call.command,
+            "options": dict(call.options),
+            "run": dict(call.run),
+        }
+    )
 
 
 def _observe(

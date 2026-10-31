@@ -14,7 +14,7 @@ import json
 import os
 import shlex
 from collections import Counter
-from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -58,8 +58,6 @@ from archiwista.sources import (
     FloatArray,
     Footprint,
     GeoJSONGeometry,
-    ProjectCheck,
-    ProjectRun,
     ScanScope,
     SheetGrid,
     SourceContext,
@@ -98,9 +96,8 @@ class KartografAdapter:
     ``SegmentedAdapter``, ``PartitionedAdapter``, ``GeoAdapter``,
     ``LinkCheckAdapter``, ``SheetGridAdapter``, ``DefaultRootAdapter``,
     ``ActionAdapter`` (Kartograf's commands and ``check_availability``,
-    ``actions.py``) and ``ProjectActionAdapter`` (``init_project``,
-    ``add_project_task``, ``remove_project_task``, ``download_project``,
-    ``check_project``, ``verify_project``, ``actions.py``). All methods
+    ``actions.py``) and ``VersionCommandAdapter`` (``command_for_file``,
+    ``actions.py``). All methods
     may run in several threads at once; one iterator of ``iter_entries``
     belongs to one thread.
     """
@@ -514,13 +511,15 @@ class KartografAdapter:
         *,
         root: Path,
         plan: ActionPlan | None = None,
+        upgrade: bool = False,
         on_progress: Callable[[ActionProgress], None] | None = None,
         on_notice: Callable[[AvailabilityNotice], None] | None = None,
     ) -> ActionResult:
         """Run a command in the store at ``root`` (``run_command``, ``root=``).
 
         With Archiwista's own metadata cache in ``cache_dir``, never
-        Kartograf's default one (D5); a plan runs as ``update="upgrade"``.
+        Kartograf's default one (D5); a plan, or ``upgrade`` without one, runs
+        as ``update="upgrade"``.
         """
         return actions.run(
             command,
@@ -528,6 +527,7 @@ class KartografAdapter:
             root=root,
             cache_dir=self._cache_dir,
             plan=plan,
+            upgrade=upgrade,
             on_progress=on_progress,
             on_notice=on_notice,
         )
@@ -540,65 +540,9 @@ class KartografAdapter:
         """Return the plan keeping only the positions to download at ``paths``."""
         return actions.narrow(plan, paths)
 
-    def create_project(self, directory: Path, *, root: Path, relative: bool) -> None:
-        """Create a project with ``init_project``, ``root=`` the configured store's."""
-        actions.create_project(directory, root=root, relative=relative)
-
-    def add_project_task(
-        self,
-        directory: Path,
-        *,
-        name: str,
-        command: str,
-        options: Mapping[str, object],
-    ) -> None:
-        """Add a task with ``add_project_task``, its options checked as a call first."""
-        actions.add_task(directory, name=name, command=command, options=options)
-
-    def remove_project_task(self, directory: Path, *, name: str) -> None:
-        """Remove a task with ``remove_project_task``; its store files stay."""
-        actions.remove_task(directory, name=name)
-
-    def download_project(
-        self,
-        directory: Path,
-        *,
-        tasks: Sequence[str] | None = None,
-        upgrade: bool = False,
-        on_progress: Callable[[ActionProgress], None] | None = None,
-        on_notice: Callable[[AvailabilityNotice], None] | None = None,
-    ) -> ProjectRun:
-        """Download, pin and restore tasks with ``download_project``.
-
-        With Archiwista's own metadata cache in ``cache_dir``, never
-        Kartograf's default one (D5); ``upgrade`` is ``update="upgrade"``.
-        """
-        return actions.project_download(
-            directory,
-            tasks=tasks,
-            upgrade=upgrade,
-            cache_dir=self._cache_dir,
-            on_progress=on_progress,
-            on_notice=on_notice,
-        )
-
-    def check_project(
-        self,
-        directory: Path,
-        *,
-        tasks: Sequence[str] | None = None,
-        on_notice: Callable[[AvailabilityNotice], None] | None = None,
-    ) -> ProjectCheck:
-        """Compare pins with the source (``check_project``), Archiwista's cache."""
-        return actions.project_check(
-            directory, tasks=tasks, cache_dir=self._cache_dir, on_notice=on_notice
-        )
-
-    def verify_project(
-        self, directory: Path, *, tasks: Sequence[str] | None = None
-    ) -> ProjectCheck:
-        """Verify pinned files with ``verify_project`` (no network)."""
-        return actions.project_verify(directory, tasks=tasks)
+    def command_for_version(self, version: str, *, root: Path) -> CommandCall:
+        """Return the call of a stored version (its sidecar, ``command_for_file``)."""
+        return actions.command_for_version(version, root=root)
 
     def _state(
         self,

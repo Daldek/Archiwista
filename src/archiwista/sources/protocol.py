@@ -6,8 +6,8 @@ factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 version of a slot, station catalogs, the series indexes of stations, the
 values of a station's series, their parts, coordinate operations, link
 confirmation, sheet grids, the default store root, the producer's commands
-with the availability at the source, and the changes and runs of a project
-are optional capabilities: a producer without them still satisfies
+with the availability at the source, and the command of a stored version are
+optional capabilities: a producer without them still satisfies
 ``SourceAdapter``.
 """
 
@@ -29,8 +29,6 @@ from archiwista.sources.types import (
     Extreme,
     Footprint,
     GeoJSONGeometry,
-    ProjectCheck,
-    ProjectRun,
     ScanScope,
     SeriesListing,
     SeriesValues,
@@ -456,6 +454,7 @@ class ActionAdapter(Protocol):
         *,
         root: Path,
         plan: ActionPlan | None = None,
+        upgrade: bool = False,
         on_progress: Callable[[ActionProgress], None] | None = None,
         on_notice: Callable[[AvailabilityNotice], None] | None = None,
     ) -> ActionResult:
@@ -468,15 +467,20 @@ class ActionAdapter(Protocol):
         plan ``check`` made of the same call, runs that plan: only its positions
         to download, and a position whose source changed since the plan fails
         as ``conflict`` with the reason ``stale_plan``. Without a plan the
-        versions the store holds are kept. ``on_progress`` and ``on_notice``
-        receive each event when it happens. A unit that fails is an item of
-        the result, not an error.
+        versions the store holds are kept, and ``upgrade`` downloads the
+        source's newer versions instead (the producer's update mode without a
+        plan, A-ADR-049 D-10). ``on_progress`` and ``on_notice`` receive each
+        event when it happens. A unit that fails is an item of the result, not
+        an error.
 
         Raises
         ------
         ProducerError
             The producer refused the call (an unknown command, an invalid
             option or plan, a store it cannot write) or failed as a whole.
+        UnsupportedError
+            ``upgrade`` was asked of a producer without that mode (reason
+            ``no_upgrade``).
         BrokenContractError
             The producer reported a file outside the store, or a plain one
             (``written``, ``replaced``).
@@ -517,118 +521,28 @@ class ActionAdapter(Protocol):
 
 
 @runtime_checkable
-class ProjectActionAdapter(Protocol):
-    """Optional capability: change and run a project (SPEC 4.7, 9.2; ADR-039, 040).
+class VersionCommandAdapter(Protocol):
+    """Optional capability: the command of a stored version (A-ADR-049 D-10).
 
-    Create a project bound to a store, add a task (a data command of the
-    producer's catalog with its options) and remove one; download, pin and
-    restore its tasks, compare its pins with the source and verify them in
-    the store. Each call is the producer's own: it writes the manifest under
-    the producer's lock and refuses what the producer's command line refuses,
-    as ``ProducerError`` with the producer's code, text and
-    ``details.option``; a lock that stays past the producer's wait is
-    ``ProjectLockedError``, and nothing of Archiwista removes it. Only the
-    download writes the store, the one the manifest names; only it and the
-    check use the network. The store's files of a removed task stay.
+    Offline and read-only, from the version's metadata in the store: the call
+    that selects the version again, so a project job can check, restore and
+    re-pin a pin with the producer's own commands.
     """
 
-    def create_project(self, directory: Path, *, root: Path, relative: bool) -> None:
-        """Create the project's manifest in ``directory`` for the store at ``root``.
+    def command_for_version(self, version: str, *, root: Path) -> CommandCall:
+        """Return the call that selects the stored version ``version`` again.
 
-        ``root`` is the configured store's directory, never the producer's
-        default root. ``relative`` writes it relative to the project directory
-        (a share mounted under other paths on other computers, SPEC 4.6 point
-        7), else as the absolute path. A missing ``directory`` is created; a
-        project that exists already is refused and left as it is.
-        """
-        ...
-
-    def add_project_task(
-        self,
-        directory: Path,
-        *,
-        name: str,
-        command: str,
-        options: Mapping[str, object],
-    ) -> None:
-        """Add the task ``name``: ``command`` with ``options`` in their JSON form.
-
-        Checked without the network, as the producer checks the command before
-        its first request; nothing is downloaded.
-        """
-        ...
-
-    def remove_project_task(self, directory: Path, *, name: str) -> None:
-        """Remove the task ``name`` with its pins; its files stay in the store."""
-        ...
-
-    def download_project(
-        self,
-        directory: Path,
-        *,
-        tasks: Sequence[str] | None = None,
-        upgrade: bool = False,
-        on_progress: Callable[[ActionProgress], None] | None = None,
-        on_notice: Callable[[AvailabilityNotice], None] | None = None,
-    ) -> ProjectRun:
-        """Download, pin and restore the tasks ``tasks`` (``None``: every task).
-
-        Without ``upgrade`` a task not downloaded yet is downloaded and pinned,
-        a pinned task whose versions the store holds is left as it is without
-        the network, and a missing pinned version is restored only with the
-        same SHA-256. With ``upgrade`` the source's newer versions are
-        downloaded and the task is pinned anew. The producer writes the store
-        the manifest names and the manifest after each task; a task that fails
-        keeps its pins and the others run. An interrupt
-        (``KeyboardInterrupt``) is let through. ``on_progress`` and
-        ``on_notice`` receive each event when it happens.
+        ``version`` is the version's path relative to ``root``, the configured
+        store's producer directory (``/``-separated); the call is the one
+        ``ActionAdapter.parse`` would read from its command line.
 
         Raises
         ------
-        ProjectLockedError
-            The manifest's lock stayed past the producer's wait: left by an
-            interrupted change, or held by another process.
+        UnsupportedError
+            The version's metadata do not rebuild its call (reason
+            ``command_not_rebuildable``, the producer's text unchanged).
         ProducerError
-            The producer refused: an invalid manifest, an unknown task, a
-            missing store directory, a store it may not write.
-        """
-        ...
-
-    def check_project(
-        self,
-        directory: Path,
-        *,
-        tasks: Sequence[str] | None = None,
-        on_notice: Callable[[AvailabilityNotice], None] | None = None,
-    ) -> ProjectCheck:
-        """Compare the pins of the tasks ``tasks`` with what the source has now.
-
-        Uses the network; nothing is downloaded or written but the producer's
-        metadata cache. A task without pins is ``not_downloaded``; a pin the
-        source could not be asked about is ``check_failed``, the others are
-        checked all the same; a store a run would refuse gives one
-        ``conflict`` per task.
-
-        Raises
-        ------
-        ProducerError
-            The producer refused: an invalid manifest, an unknown task, a
-            missing store directory.
-        """
-        ...
-
-    def verify_project(
-        self, directory: Path, *, tasks: Sequence[str] | None = None
-    ) -> ProjectCheck:
-        """Verify the pinned files of the tasks ``tasks`` in the store.
-
-        SHA-256, size and sidecar of each pinned version: ``ok``, ``missing``
-        or ``corrupt``. No network; nothing is written.
-
-        Raises
-        ------
-        ProducerError
-            The producer refused: an invalid manifest, an unknown task, a
-            missing store directory.
+            The producer refused otherwise: no such version or sidecar, an
+            invalid sidecar, a path that is no version.
         """
         ...

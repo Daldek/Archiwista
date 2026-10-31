@@ -19,13 +19,14 @@ import numpy as np
 from fastapi import APIRouter, Depends, Path, Query
 
 from archiwista.api.dependencies import (
+    app_paths,
     index_queries,
     plugin_registry,
     principal_preferences,
     settings_service,
     visible_projects,
 )
-from archiwista.api.errors import problem_responses
+from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
 from archiwista.api.models import (
     WGS84,
     CatalogFilters,
@@ -40,8 +41,9 @@ from archiwista.api.models import (
     VersionCard,
     staleness,
 )
+from archiwista.api.models_commands import VersionCommand
 from archiwista.auth import Principal, ProjectVisibility
-from archiwista.config import AppSettings, SettingsService
+from archiwista.config import AppPaths, AppSettings, SettingsService
 from archiwista.doctor import REQUIRED_PRODUCERS
 from archiwista.errors import (
     IndexQueryError,
@@ -54,6 +56,7 @@ from archiwista.index.geometry import box_geometry, require_wgs84_bbox
 from archiwista.messages import message
 from archiwista.paths import indexed_path
 from archiwista.security import current_principal
+from archiwista.services import commands as command_service
 from archiwista.services import issue_problem
 from archiwista.sources import GeoAdapter, SourceState
 from archiwista.sources.registry import PluginRegistry
@@ -445,6 +448,53 @@ def get_sidecar(
             text = message("api.version_unknown", version=version, store=store)
         raise NotFoundError(text)
     return found
+
+
+@router.get(
+    "/stores/{store}/versions/{version:path}/command",
+    response_model=VersionCommand,
+    responses={
+        **problem_responses(404, 503),
+        422: {
+            "description": (
+                "`unsupported`: the producer cannot rebuild the version's call"
+                " from its metadata (reason `command_not_rebuildable`, the"
+                " producer's text), or gives no calls of versions (`no_commands`)."
+            ),
+            "content": {
+                PROBLEM_MEDIA_TYPE: {
+                    "schema": {"$ref": "#/components/schemas/ProblemDetails"},
+                    "example": problem_example(
+                        "unsupported",
+                        "Soil HSG is derived from the soil map: no command fetches it.",
+                        reason="command_not_rebuildable",
+                    ),
+                }
+            },
+        },
+    },
+)
+def get_version_command(
+    store: _Store,
+    version: Annotated[str, Path(description="Version path in the store.")],
+    principal: _Principal,
+    queries: _Queries,
+    registry: _Registry,
+    settings: _Settings,
+    paths: Annotated[AppPaths, Depends(app_paths)],
+) -> VersionCommand:
+    """Return the call that selects the version again, and its command line.
+
+    The producer rebuilds it from the version's metadata, offline
+    (`command_for_version`); the index keeps its answer for the installed
+    producer. `line` is the producer's line with the store's directory of
+    the producer (null for a producer without commands); `archiwista
+    version-command` prints the same.
+    """
+    found = command_service.version_command(
+        registry, settings.get(), queries, paths.index_file, store, version
+    )
+    return VersionCommand.of(found.call, found.line)
 
 
 @router.get(

@@ -88,6 +88,16 @@ MESSAGES = {
             " jej nie usuwa."
         ),
     ),
+    "command_not_rebuildable": Text(
+        (
+            "The version stays pinned as it is; its check, restore and re-pin are"
+            " not possible. A plan group from the plan window keeps its calls."
+        ),
+        (
+            "Wersja zostaje przypięta taka, jaka jest; nie da się jej sprawdzić,"
+            " przywrócić ani przepiąć. Grupa z okna planu zachowuje swoje wywołania."
+        ),
+    ),
     "unsupported_project_schema": Text(
         (
             "A newer Archiwista wrote the project: update Archiwista to read and"

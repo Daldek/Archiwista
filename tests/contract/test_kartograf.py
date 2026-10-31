@@ -76,6 +76,8 @@ STORE_API: dict[str, list[tuple[str, inspect._ParameterKind, object]]] = {
         ("src_crs", POSITIONAL, EMPTY),
         ("dst_crs", POSITIONAL, EMPTY),
     ],
+    # The call of a stored version (KB-6, A-ADR-049 D-10).
+    "command_for_file": [("sidecar", POSITIONAL, EMPTY)],
 }
 # Record fields the adapter reads.
 STORE_RECORDS: dict[str, set[str]] = {
@@ -121,12 +123,6 @@ STORE_RECORDS: dict[str, set[str]] = {
     },
     "SegmentInfo": {"segment", "product", "country", "dataset_key", "name", "known"},
     "Footprint": {"native", "wgs84", "source"},
-    # The store of a project is its ``root`` (ADR-054).
-    "Project": {"directory", "root", "tasks"},
-    "ProjectTask": {"name", "command", "options", "files"},
-    "PinnedFile": {"version", "sha256"},
-    "ProjectCheck": {"project", "files", "not_downloaded"},
-    "FileCheck": {"task", "status"},
 }
 PRAGUE_SJTSK = (-743_000.0, -1_043_000.0)
 PRAGUE_WGS84 = (14.4185946, 50.0873465)

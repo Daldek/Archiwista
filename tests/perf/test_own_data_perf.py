@@ -31,6 +31,7 @@ import struct
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -39,10 +40,10 @@ import pyogrio
 import pytest
 import rasterio
 import shapely
-from kartograf import init_project
 from rasterio.transform import from_origin
 
 from archiwista.config import AppSettings, StoreConfig, StoreKind, detect_store_kind
+from archiwista.projects import ProjectDocument, StoreRoot, change_project_file
 from tests.fixtures.perf_server import (
     Medium,
     ServerProcess,
@@ -110,7 +111,18 @@ def _write_folder(directory: Path) -> None:
     """Write the project, its store and its data folder of ``FILES`` files."""
     store = directory / "store"
     project = directory / "projects" / PROJECT
-    init_project(project, root=store.absolute())
+    store.mkdir(parents=True, exist_ok=True)
+    project.mkdir(parents=True)
+    change_project_file(
+        project,
+        create=ProjectDocument(
+            name=PROJECT,
+            description="",
+            created_at=datetime(2026, 10, 31, tzinfo=UTC),
+            created_by="local",
+            stores=(StoreRoot("kartograf", str(store.absolute())),),
+        ),
+    )
     folder = project / DATA_DIR
     pristine = directory / "pristine"
     pristine.mkdir(parents=True)

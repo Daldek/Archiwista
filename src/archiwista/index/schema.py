@@ -81,6 +81,10 @@ each producer as written and the configured store it matches;
 ``pin_groups`` the groups with their origin; ``pins`` the pinned versions of
 each group. ``manifests`` and ``project_tasks`` go. ``versions`` gains
 ``content_sha256`` (the producer's canonical content).
+
+Version 16 (A-ADR-049 D-10): ``version_calls``, the call that selects each
+version the projects pin again (or the producer's refusal), per store and
+version path, as the producer of a given version answered it.
 """
 
 import sqlite3
@@ -92,7 +96,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -341,6 +345,20 @@ CREATE TABLE pins (
 );
 CREATE INDEX pins_version ON pins (store_id, version_path);
 CREATE INDEX pins_project ON pins (project_id, group_position);
+
+-- The call that selects a stored version again (VersionCommandAdapter), or
+-- the producer's text why there is none, as the producer of that version
+-- (producer_version) answered: a version never changes, so its answer changes
+-- only with the producer (A-ADR-049 D-10). A row whose producer_version is
+-- not the installed one is asked again. call is the JSON of the CommandCall.
+CREATE TABLE version_calls (
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    version_path TEXT NOT NULL,
+    producer_version TEXT NOT NULL,
+    call TEXT,
+    refusal TEXT,
+    PRIMARY KEY (store_id, version_path)
+) WITHOUT ROWID;
 
 CREATE TABLE areas (
     id TEXT PRIMARY KEY,

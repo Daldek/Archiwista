@@ -67,6 +67,7 @@ from archiwista.index import (
     LocationRef,
     MapFootprint,
     MapQuery,
+    PinCommand,
     PinGroupRef,
     PinRef,
     PinState,
@@ -305,11 +306,11 @@ _SOURCE_EXAMPLE = {
     "status": "available",
     "package_version": "0.8.0.dev0",
     "supported_versions": ">=0.8.0.dev0,<0.9",
-    "schemas": ["kartograf-meta/1", "kartograf-project/1", "kartograf-store/1"],
+    "schemas": ["kartograf-meta/1", "kartograf-store/1"],
     "detail": None,
     "message": (
         "Wtyczka kartograf: wersja 0.8.0.dev0 (wspierane >=0.8.0.dev0,<0.9;"
-        " schematy: kartograf-meta/1, kartograf-project/1, kartograf-store/1)"
+        " schematy: kartograf-meta/1, kartograf-store/1)"
     ),
     "fix": None,
 }
@@ -477,6 +478,8 @@ _PROJECT_PIN_EXAMPLE = {
     "state": "ok",
     "slot": _SLOT,
     "is_current": False,
+    "command": "rebuildable",
+    "command_refusal": None,
 }
 _PIN_GROUP_EXAMPLE = {
     "name": "NMT 2023",
@@ -2744,6 +2747,17 @@ class ProjectPin(BaseModel):
     )
     slot: str | None = Field(description="Standard path of the version's slot.")
     is_current: bool
+    command: PinCommand = Field(
+        description=(
+            "Whether the producer rebuilds the call that selects the version"
+            " again, as the index keeps its answer: `rebuildable`;"
+            " `not_rebuildable` (its check, restore and re-pin are not"
+            " attempted; `command_refusal` says why); `unknown` (not asked yet)."
+        )
+    )
+    command_refusal: str | None = Field(
+        description="The producer's text of a `not_rebuildable` call; null otherwise."
+    )
 
     @classmethod
     def of(cls, pin: ProjectPinRef) -> Self:
@@ -2762,6 +2776,8 @@ class ProjectPin(BaseModel):
             state=pin.state,
             slot=pin.slot,
             is_current=pin.is_current,
+            command=pin.command,
+            command_refusal=pin.command_refusal,
         )
 
 

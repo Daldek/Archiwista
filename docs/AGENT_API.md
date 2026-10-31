@@ -43,7 +43,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | files of a project and the card of a file | `archiwista files PROJEKT`, `archiwista file PROJEKT PLIK` | `GET /projects/{project}/files`, `GET …/files/{file_id}` |
 | plan and making of a snapshot | `archiwista snapshot PROJEKT PLIK --plan`, `archiwista snapshot PROJEKT PLIK [--note TEKST]` | `GET …/files/{file_id}/snapshot-plan`, `POST …/files/{file_id}/snapshots` |
 | scan of the own-data folder | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
-| producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format` |
+| producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3), the call that selects a stored version again (A-ADR-049) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]`, `version-command MAGAZYN WERSJA` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format`, `GET /stores/{store}/versions/{version}/command` |
 | what the source has for an area and a product: the last report kept with its rows (labels, ranked variants, store badges), a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID] [--store ID] [--horizontal …] [--resolution …] [--vertical-crs …]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` and the same options | `GET /availability`, `POST /availability` |
 | a job of a producer's calls on a configured store (all the lines of a row in one job, ADR-044), kind `check` (the plan of a run of each call without its effects) or `download` (the run of each call, with the plans of a `check` job of the same calls if named; it writes the store), and the plans a `check` job kept (v0.3) | `archiwista jobs start check PRODUCENT --store MAGAZYN --call JSON [--call JSON …]`, `jobs start download PRODUCENT --store MAGAZYN --call JSON [--call JSON …] [--plan ZADANIE]` (each `--call` a `{"command": "…", "options": {…}}`; the job in the foreground, printed as it ended), `jobs plan ZADANIE` | `POST /jobs`, `GET /jobs/{job}/plan` |
 | a file itself: a version's, an own file's or one file of its set, a snapshot's (v0.4) | — (HTTP only) | `GET /stores/{store}/versions/{version}/file`, `GET /projects/{project}/files/{file_id}/file`, `GET …/files/{file_id}/snapshots/{label}/file` (each also `HEAD`, a set's file by `?member=`) |
@@ -355,6 +355,17 @@ cursor is safe in a URL).
   `GET /stores/{store}/versions/{version}`: all values of the version from the
   index, the outline in WGS84 and the raw sidecar; the sidecar alone:
   `GET …/versions/{version}/sidecar`.
+- `archiwista version-command MAGAZYN WERSJA` /
+  `GET /stores/{store}/versions/{version}/command` (A-ADR-049 D-10): the
+  producer's call that selects the stored version again (`VersionCommand`:
+  `producer`, `command`, `options` without the store root, and `line`, the
+  producer's command line with the store's directory; `null` for a producer
+  without commands), rebuilt by the producer from the version's metadata,
+  offline. Where the metadata does not rebuild it the answer is `422
+  unsupported` with `details.reason` `command_not_rebuildable` and the
+  producer's text (for example a derived file); a producer that gives no calls
+  of versions is `422 unsupported` (`no_commands`). The index keeps the answer
+  for the installed producer version, so a second request does not ask it.
 - `GET /requests/{parent_request}`: the files of one producer request (for
   example both sides of the PL/CZ border).
 - **Changing (A-ADR-049):** projects are kept in Archiwista's own
@@ -380,7 +391,10 @@ cursor is safe in a URL).
   `origin` `{kind: "plan", producer, calls}` or `{kind: "local", selections}`,
   and its `pins`, each with `producer`, `store`, `version`, `sha256`,
   `content_sha256`, `size_bytes`, `unit`, `label`, `pinned_at`, `pinned_by`,
-  `state`, `slot`, `is_current`) and `problems` (`invalid_project_file`,
+  `state`, `slot`, `is_current`, and `command`: `rebuildable`,
+  `not_rebuildable` with the producer's text in `command_refusal`, or
+  `unknown` until the producer is asked, see `version-command`) and `problems`
+  (`invalid_project_file`,
   `unsupported_project_schema`, `unknown_store`, `area_missing`,
   `area_changed`, `area_invalid`, `missing_pin`, `pin_sha256_mismatch`).
   `--store` / `?store=` lists the projects with a store of that id.

@@ -12,7 +12,6 @@ the real Kartograf plugin, offline, and its jobs wait (``team_api``).
 
 from pathlib import Path
 
-import imgwtools
 import pytest
 
 from archiwista.api.owndata import start_own_scan
@@ -141,27 +140,6 @@ def test_a_directory_with_an_access_entry_is_changed_only_by_who_may(
     assert accepted.status_code == 201, accepted.text
     assert (directory / PROJECT_FILE).is_file()
     assert after == before
-
-
-def test_a_producers_project_file_alone_is_no_project(place: TeamPlace) -> None:
-    """A directory holding only ``imgw-project.json`` is new: kasia creates it."""
-    directory = place.projects / "wisla"
-    imgwtools.init_project(directory, store_dir=place.imgw)
-    with team_api(place) as served:
-        # Act
-        listed = served.caller(OWNER).request("GET", "/projects").json()["items"]
-        created = served.caller(OWNER).request(
-            "POST", "/projects", json=place.body("wisla")
-        )
-        access = served.state.project_access(access_key(directory))
-
-    # Assert
-    assert listed == []
-    assert created.status_code == 201, created.text
-    assert (directory / PROJECT_FILE).is_file()
-    assert (directory / "imgw-project.json").is_file()
-    assert access is not None
-    assert access.owner == OWNER
 
 
 def test_the_owner_sets_a_data_folder_inside_her_project_only(

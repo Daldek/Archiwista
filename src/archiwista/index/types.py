@@ -46,6 +46,9 @@ type LocationFilter = Literal["any", "with", "none"]
 type RowStatus = Literal["ok", "missing", "no_sidecar", "unreadable", "unrecognized"]
 type StoreStatus = Literal["unknown", "available", "unavailable"]
 type PinState = Literal["ok", "missing", "sha256_mismatch", "unknown"]
+# Whether the producer rebuilds the call of a pinned version (``version_calls``,
+# A-ADR-049 D-10): ``unknown`` until a pin service or a job asks it.
+type PinCommand = Literal["rebuildable", "not_rebuildable", "unknown"]
 type ProjectState = Literal["ok", "invalid", "unsupported_schema"]
 type ProjectAreaState = Literal["ok", "missing", "changed", "invalid"]
 type VersionState = Literal["present", "missing"]
@@ -1347,7 +1350,9 @@ class ProjectPinRef:
     ``producer``; ``state`` is ``unknown`` without one, ``missing`` when no
     present version is at ``version``, ``sha256_mismatch`` when the index
     holds other content there; ``slot`` and ``is_current`` come from the
-    indexed version.
+    indexed version. ``command`` is what ``version_calls`` keeps of the
+    version's call (``unknown`` without an answer), and ``command_refusal``
+    the producer's text of a ``not_rebuildable`` one.
     """
 
     producer: str
@@ -1363,6 +1368,25 @@ class ProjectPinRef:
     state: PinState
     slot: str | None
     is_current: bool
+    command: PinCommand = "unknown"
+    command_refusal: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class VersionCall:
+    """The producer's answer for the call of one stored version (A-ADR-049 D-10).
+
+    ``version_path`` is the version's path below the producer's directory of
+    the store; ``call`` the call that selects it again, or ``None`` with
+    ``refusal``, the producer's text why there is none
+    (``command_not_rebuildable``); ``producer_version`` the version of the
+    producer that answered.
+    """
+
+    version_path: str
+    producer_version: str
+    call: CommandCall | None = None
+    refusal: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

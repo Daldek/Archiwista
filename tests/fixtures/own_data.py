@@ -42,9 +42,9 @@ import numpy as np
 import pyogrio.raw
 import rasterio
 import shapely
-from kartograf import init_project
 from rasterio.transform import from_bounds
 
+from archiwista.projects import ProjectDocument, StoreRoot, change_project_file
 from archiwista.sources.registry import APP_DISTRIBUTION
 from tests.fixtures.control_points import POINT_3722
 
@@ -526,7 +526,7 @@ _WRITERS = {
 
 
 def project_inside_store(store_root: Path, name: str = "w-magazynie") -> Path:
-    """Write a project whose manifest lies inside the store root.
+    """Write a project whose file lies inside the store root.
 
     Its default data folder (``<project>/dane/``) would be inside the
     producer directory, so Archiwista must report it ``invalid``. The
@@ -539,8 +539,17 @@ def project_inside_store(store_root: Path, name: str = "w-magazynie") -> Path:
         The project directory (``<store_root>/projekty/<name>``).
     """
     directory = store_root / "projekty" / name
-    # Like Kartograf's CLI: ``root`` as given from the working directory.
-    init_project(directory, root=os.path.relpath(store_root))
+    directory.mkdir(parents=True)
+    change_project_file(
+        directory,
+        create=ProjectDocument(
+            name=name,
+            description="",
+            created_at=datetime(2026, 10, 31, tzinfo=UTC),
+            created_by="local",
+            stores=(StoreRoot("kartograf", os.path.relpath(store_root, directory)),),
+        ),
+    )
     return directory
 
 

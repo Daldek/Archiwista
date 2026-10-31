@@ -19,10 +19,14 @@ file the store holds stays (``unchanged``), and with the plan of a check only
 the plan's files to download are fetched, a file whose source changed since
 the plan coming back as a stale item. A run with a plan trusts it: each of its
 files to download is transferred, also one the store came to hold meanwhile
-(the same content, ``unchanged``). Each transfer appends the file's path to
-``FETCHES`` in the store, so a test can tell what was fetched twice. While
-the store holds ``HOLD`` a run waits after its first new file until the file
-is gone. Each of these six appends its call to ``CALLS`` with the options it
+(the same content, ``unchanged``); a run with ``update="upgrade"`` and no plan
+fetches again each file whose content the source changed. Each transfer
+appends the file's path to ``FETCHES`` in the store, so a test can tell what
+was fetched twice. While the store holds ``HOLD`` a run waits after its first
+new file until the file is gone. ``command_for_version`` gives the call of a
+stored file from its path (``series fetch`` of its station and kind), and
+refuses a file of ``DERIVED`` (``unsupported``, ``command_not_rebuildable``).
+Each of these seven appends its call to ``CALLS`` with the options it
 received, so a test can tell what Archiwista passed.
 """
 
@@ -32,7 +36,7 @@ import shlex
 import time
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 __version__ = "2.0.0"
 PROGRAM = "standin"
@@ -42,6 +46,9 @@ AVAILABILITY_PRODUCTS = ("dem",)
 HOLD = ".standin-hold"
 # A file in the store with one line per transfer: the path of the file fetched.
 FETCHES = ".standin-fetches"
+# The kind of files (``derived/<station>/<file>``) no command fetches: their
+# call cannot be rebuilt (A-ADR-049 D5, as Kartograf's ``soil hsg``).
+DERIVED = "derived"
 
 CALLS: list[tuple[str, str, dict[str, object]]] = []
 
@@ -197,6 +204,13 @@ class ValidationError(Exception):
         self.option = option
 
 
+class NotRebuildableError(Exception):
+    """A stored file no command of the catalog fetches again."""
+
+    code = "unsupported"
+    reason = "command_not_rebuildable"
+
+
 def list_commands() -> list[str]:
     """Return the names of the commands, in the order of the catalog."""
     return list(_COMMANDS)
@@ -243,6 +257,27 @@ def parse_command(line: str) -> tuple[str, dict[str, object]]:
             raise ValidationError(f"expected --<option> <value>, got {flag!r}")
         options[flag[2:].replace("-", "_")] = flags.pop(0)
     return command, options
+
+
+def command_for_version(version: str, *, root: str) -> tuple[str, dict[str, object]]:
+    """Return the call that fetches the stored file ``version`` again.
+
+    ``version`` is ``<kind>/<station>/<file>`` below ``root``; the file need
+    not exist. The call is ``series fetch`` of its station and kind, without
+    the root.
+    """
+    CALLS.append(("command_for_version", version, {"root": root}))
+    parts = PurePosixPath(version).parts
+    if len(parts) != 3 or ".." in parts:
+        raise ValidationError(f"{version!r} is no stored file", option="version")
+    kind, station, _ = parts
+    if kind == DERIVED:
+        raise NotRebuildableError(
+            f"No command fetches the derived file {version} again: pin it as it is."
+        )
+    checked = _checked("series fetch", {"station": station, "kind": kind, "root": root})
+    del checked["root"]
+    return "series fetch", checked
 
 
 def check_availability(
@@ -358,24 +393,23 @@ def run_command(
     *,
     options: Mapping[str, object],
     plan: Mapping[str, object] | None = None,
+    update: str | None = None,
     on_progress: Callable[[int, int, str, str], None] | None = None,
     on_notice: Callable[[str, str, str], None] | None = None,
 ) -> dict[str, object]:
     """Fetch a station's files into the store ``options["root"]``.
 
     Without ``plan`` every file the source tells about is fetched unless the
-    store holds it; with the plan of ``check_command`` only its files to
+    store holds it (with ``update="upgrade"``: holds it with the source's
+    content); with the plan of ``check_command`` only its files to
     download (``newer``, ``missing``), each failing as stale when the source
     changed it since. A file the source could not tell about fails. Each
     event goes to ``on_progress`` as ``(current, total, station, status)``.
     """
-    CALLS.append(
-        (
-            "run_command",
-            command,
-            {**options, **({} if plan is None else {"plan": plan})},
-        )
-    )
+    given = {**options, **({} if plan is None else {"plan": plan})}
+    if update is not None:
+        given["update"] = update
+    CALLS.append(("run_command", command, given))
     checked = _checked(command, options)
     root = Path(str(checked["root"]))
     station = str(checked["station"])
@@ -400,7 +434,12 @@ def run_command(
             status = "failed"
         else:
             fetched = _fetch(
-                root, name, station, str(now["source"]), planned=plan is not None
+                root,
+                name,
+                station,
+                str(now["source"]),
+                planned=plan is not None,
+                upgrade=update == "upgrade",
             )
             files.append(fetched)
             items.append({"id": name, "status": "ok"})
@@ -429,16 +468,18 @@ def run_command(
 
 
 def _fetch(
-    root: Path, name: str, station: str, label: str, *, planned: bool
+    root: Path, name: str, station: str, label: str, *, planned: bool, upgrade: bool
 ) -> dict[str, object]:
     """Write one file whole (``os.replace``) unless the store holds it.
 
-    A file written, or any file of a plan's run, is a transfer: one line of
-    ``FETCHES``.
+    With ``upgrade`` a file the store holds with other content is written
+    again. A file written, or any file of a plan's run, is a transfer: one
+    line of ``FETCHES``.
     """
     target = root / name
     content = f"{station},{name},{label}\n".encode()
-    status = "unchanged" if target.is_file() else "new"
+    held = target.is_file() and not (upgrade and target.read_bytes() != content)
+    status = "unchanged" if held else "new"
     if status == "new" or planned:
         with (root / FETCHES).open("a", encoding="utf-8") as fetches:
             fetches.write(f"{name}\n")

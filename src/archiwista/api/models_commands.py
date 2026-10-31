@@ -394,3 +394,49 @@ class CommandLine(BaseModel):
     def of(cls, call: CommandCall, line: str) -> Self:
         """Return the model of the command line of a call."""
         return cls(producer=call.producer, command=call.command, line=line)
+
+
+class VersionCommand(BaseModel):
+    """The call that selects a stored version again (A-ADR-049 D-10)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "producer": "kartograf",
+                    "command": "elevation download",
+                    "options": {**_OPTIONS, "year": 2022, "all_campaigns": True},
+                    "line": (
+                        "kartograf elevation download --product nmt --sheet"
+                        " N-34-130-D-d-2-4 --resolution 1m --vertical-crs EVRF2007"
+                        " --year 2022 --all-campaigns --root /mnt/nas/kartograf"
+                    ),
+                }
+            ]
+        }
+    )
+
+    producer: str = Field(description="Producer id.")
+    command: str = Field(description="Command of the producer's catalog.")
+    options: dict[str, Any] = Field(
+        description=(
+            "Its options in the JSON form of the producer's catalog, with every"
+            " option that chooses the version pinned; never the store root."
+        )
+    )
+    line: str | None = Field(
+        description=(
+            "The producer's command line of the call in the store's producer"
+            " directory; null for a producer without commands."
+        )
+    )
+
+    @classmethod
+    def of(cls, call: CommandCall, line: str | None) -> Self:
+        """Return the model of a version's call and its line."""
+        return cls(
+            producer=call.producer,
+            command=call.command,
+            options=dict(call.options),
+            line=line,
+        )

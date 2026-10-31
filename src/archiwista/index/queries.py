@@ -95,6 +95,7 @@ from archiwista.index.types import (
     OwnFolderRecord,
     OwnProblem,
     OwnSnapshotRef,
+    PinCommand,
     PinGroupRef,
     PinRef,
     PinState,
@@ -131,6 +132,7 @@ from archiwista.index.types import (
     StoreUsage,
     TransformerFactory,
     UnusedVersions,
+    VersionCall,
     VersionDetail,
     VersionsMode,
     VersionSummary,
@@ -226,6 +228,8 @@ _PIN_STATE = (
     " WHEN p.sha256 IS NOT NULL AND v.sha256 IS NOT NULL AND p.sha256 <> v.sha256"
     " THEN 'sha256_mismatch' ELSE 'ok' END"
 )
+# Paths of one query of ``version_calls`` (SQLite's limit of variables is 32766).
+_VERSION_CALLS_BATCH = 500
 _PROJECT_SELECT = f"""
 SELECT pr.id, pr.key, pr.name, pr.path, pr.access_key, pr.description, pr.state,
     pr.problem, pr.problem_detail, pr.created_at, pr.created_by, pr.area_path,
@@ -1742,9 +1746,12 @@ class IndexQueries:
                 "SELECT p.group_position, p.producer, st.key AS store, p.version_path,"
                 " p.sha256, p.content_sha256, p.size_bytes, p.unit, p.label,"
                 f" p.pinned_at, p.pinned_by, {_PIN_STATE} AS state, s.path AS slot,"
-                " coalesce(v.id = s.current_version_id, 0) AS is_current"
+                " coalesce(v.id = s.current_version_id, 0) AS is_current,"
+                " vc.call AS known_call, vc.refusal AS command_refusal"
                 f" FROM {_PIN_SOURCE} LEFT JOIN slots s ON s.id = v.slot_id"
                 " LEFT JOIN stores st ON st.id = p.store_id"
+                " LEFT JOIN version_calls vc ON vc.store_id = p.store_id"
+                " AND vc.version_path = p.version_path"
                 " WHERE p.project_id = ? ORDER BY p.group_position, p.id",
                 (row["id"],),
             ).fetchall()
@@ -1765,6 +1772,8 @@ class IndexQueries:
                     state=pin["state"],
                     slot=pin["slot"],
                     is_current=bool(pin["is_current"]),
+                    command=_pin_command(pin["known_call"], pin["command_refusal"]),
+                    command_refusal=pin["command_refusal"],
                 )
             )
         return ProjectRecord(
@@ -1986,6 +1995,36 @@ class IndexQueries:
             )
             for row in rows
         )
+
+    def version_calls(
+        self, store: str, paths: Collection[str], producer_version: str
+    ) -> dict[str, VersionCall]:
+        """Return the kept answers for the calls of versions of ``store``.
+
+        Only answers of ``producer_version`` (the installed producer) count:
+        another producer may answer otherwise (A-ADR-049 D-10). A path without
+        such an answer is left out, for the caller to ask the producer.
+        """
+        wanted = sorted(set(paths))
+        found: dict[str, VersionCall] = {}
+        with self._read() as connection:
+            store_id = _store_id(_stores(connection), store)
+            for start in range(0, len(wanted), _VERSION_CALLS_BATCH):
+                part = wanted[start : start + _VERSION_CALLS_BATCH]
+                rows = connection.execute(
+                    "SELECT version_path, call, refusal FROM version_calls"
+                    " WHERE store_id = ? AND producer_version = ?"
+                    f" AND version_path IN ({', '.join('?' * len(part))})",
+                    (store_id, producer_version, *part),
+                ).fetchall()
+                for row in rows:
+                    found[row["version_path"]] = VersionCall(
+                        version_path=row["version_path"],
+                        producer_version=producer_version,
+                        call=None if row["call"] is None else _call(row["call"]),
+                        refusal=row["refusal"],
+                    )
+        return found
 
     def held_units(
         self,
@@ -2372,6 +2411,24 @@ def _filters(query: SlotQuery | MapQuery) -> _Filters:
         versions=query.versions,
         status=query.status,
         project=query.project,
+    )
+
+
+def _pin_command(call: str | None, refusal: str | None) -> PinCommand:
+    """Return what ``version_calls`` knows of a pin's call."""
+    if call is not None:
+        return "rebuildable"
+    return "unknown" if refusal is None else "not_rebuildable"
+
+
+def _call(text: str) -> CommandCall:
+    """Read a call as ``version_calls.call`` keeps it."""
+    data = json.loads(text)
+    return CommandCall(
+        str(data["producer"]),
+        str(data["command"]),
+        dict(data["options"]),
+        dict(data["run"]),
     )
 
 

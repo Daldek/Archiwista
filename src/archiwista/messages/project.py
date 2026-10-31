@@ -15,10 +15,6 @@ MESSAGES = {
         "No permission to read the project directory: {path}",
         "Brak uprawnień do odczytu katalogu projektów: {path}",
     ),
-    "locked": Text(
-        "The project's manifest is locked ({lock})",
-        "Manifest projektu jest zablokowany ({lock})",
-    ),
     "not_discoverable": Text(
         (
             "A scan finds a project at most {depth} levels below a project"

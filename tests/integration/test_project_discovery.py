@@ -132,9 +132,11 @@ def _edit(directory: Path, **members: Any) -> None:
 
 
 def test_discovery_reads_the_project_file_only(place: Place) -> None:
-    """A directory with Kartograf's manifest alone is no project; the file is."""
+    """A directory with another JSON file alone is no project; the file is."""
     # Arrange
-    kartograf.init_project(place.projects / "tylko-kartograf", root=place.root)
+    other = place.projects / "inny-plik"
+    other.mkdir(parents=True)
+    (other / "project.json").write_text('{"name": "inny"}', encoding="utf-8")
     _write(place, "raba")
 
     # Act

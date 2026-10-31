@@ -11,18 +11,18 @@ requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Piotr de Bever", email = "git@debever.pl" }]
 dependencies = [
-    # Commit of the Kartograf branch `feature/data-output` (REL-5.3): the store
-    # root `root`, the marker `kartograf-store.json`, the default root
+    # Commit of the Kartograf branch `feature/archiwista-projects` (REL-5.3): the
+    # store root `root`, the marker `kartograf-store.json`, the default root
     # (`store_root()`), `kartograf.testing` (ADR-054), `find_sheet_outlines`
     # (PL-2000 zones of powiats, Kartograf ADR-055), the refresh TTL of the
     # metadata cache with the index answers shared by the availability report and
-    # the plans (Kartograf ADR-056), `store_state()`, `PROJECT_LOCK` with the
-    # reason `project_locked` and the task options of `run_command("project add")`
+    # the plans (Kartograf ADR-056), `store_state()`, and Kartograf without
+    # projects, with `command_for_file` (KB-6, Kartograf ADR-057; A-ADR-049)
     # (Archiwista's requests) have no release yet; the commit is on GitHub.
     # The release pull request replaces the commit with the tag (REL-2.1) and
     # narrows `SUPPORTED_VERSIONS` to `>=0.8.0` (REL-5.6). The versions the
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`.
-    "kartograf @ git+https://github.com/Daldek/Kartograf@745e8b18b586243ae4899fa483db74588cc13dac",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@8ad55ab67b1e6e2e2ef3eb52cb6930ed92fecc06",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
@@ -54,11 +54,12 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an IMGWTools store. The commit is the head of the IMGWTools branch
-# `feature/data-output` (REL-5.3), which has the default root (`store_root()`); the
-# release pull request replaces it with the tag `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
+# `feature/archiwista-projects` (REL-5.3), which has the default root (`store_root()`),
+# no projects and `command_for_version` (IMGW-21, A-ADR-049); the release pull request
+# replaces it with the tag `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
 # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.imgw`.
 imgw = [
-    "imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@6bd35a49b329f99b591ffdee39367daec0e75af7",
+    "imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@4bf8bb0d44ceb27ca84f4f6fa6ffeee46a6b3185",
 ]
 
 [dependency-groups]

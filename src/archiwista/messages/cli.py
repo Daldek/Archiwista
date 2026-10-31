@@ -1444,6 +1444,28 @@ MESSAGES = {
         "Cannot check the command",
         "Nie można sprawdzić polecenia",
     ),
+    "version_command_help": Text(
+        (
+            "Prints the producer's call that selects a stored version again and"
+            " its command line (--json: VersionCommand model)."
+        ),
+        (
+            "Wypisuje wywołanie producenta, które wybiera zapisaną wersję"
+            " ponownie, i jego linię polecenia (--json: model VersionCommand)."
+        ),
+    ),
+    "version_command_store_help": Text(
+        "Store identifier from the settings.",
+        "Identyfikator magazynu z ustawień.",
+    ),
+    "version_command_version_help": Text(
+        "Version path in the store, as the file card shows it.",
+        "Ścieżka wersji w magazynie, jak pokazuje ją karta pliku.",
+    ),
+    "version_command_call": Text(
+        "{producer} {command} (no command line): {options}",
+        "{producer} {command} (bez linii polecenia): {options}",
+    ),
     "commands_item": Text(
         "{producer} {command}: {summary}",
         "{producer} {command}: {summary}",

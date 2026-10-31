@@ -23,23 +23,19 @@ asking it again (Kartograf ADR-056: the plan of a report's row right after the
 report asks GUGiK nothing), its ``kartograf-plan/1`` read as the
 producer-neutral ``ActionPlan``.
 ``run_command`` runs it (A5, ADR-037): ``root=``, Archiwista's cache, the
-kept plan back as ``update="upgrade", plan=…``, and ``kartograf-download/1``
-read as the producer-neutral ``ActionResult``; ``narrow`` leaves out of a kept
-plan the positions another job fetches (ADR-047), which Kartograf then never
-executes. ``init_project``,
-``add_project_task`` and ``remove_project_task`` change a project's manifest
-(A7, ADR-039): the store root of a new project is the configured store's, and
-the options of a task are checked as a call of its command first.
-``download_project``, ``check_project`` and ``verify_project`` run a project
-(A8, ADR-040), with Archiwista's cache as every call that asks a source. A
-call of a project that Kartograf refuses, or a task that fails, while
-Kartograf's lock of the manifest stays is ``ProjectLockedError``: the lock is
-named and never removed.
+kept plan back as ``update="upgrade", plan=…`` (or ``update="upgrade"``
+without one, a re-pin of A-ADR-049), and ``kartograf-download/1`` read as the
+producer-neutral ``ActionResult``; ``narrow`` leaves out of a kept plan the
+positions another job fetches (ADR-047), which Kartograf then never executes.
+``command_for_version`` gives the call that selects a stored version again
+(A-ADR-049 D-10): ``read_sidecar`` of the version into ``command_for_file``,
+offline; Kartograf's refusal ``command_not_rebuildable`` is ``UnsupportedError``
+with its text.
 """
 
 import inspect
 import os
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping
 from contextlib import suppress
 from dataclasses import replace
 from datetime import datetime
@@ -48,39 +44,30 @@ from typing import Any, cast
 
 import shapely
 from kartograf import (
-    PROJECT_LOCK,
     BBox,
+    CommandNotRebuildableError,
     KartografError,
     MetadataCache,
     PlanItem,
     UpdatePlan,
     check_availability,
     check_command,
-    check_project,
+    command_for_file,
     command_schema,
-    download_project,
     error_report,
     format_command,
-    init_project,
     list_commands,
-    open_project,
     parse_command,
     pinned_transform,
-    remove_project_task,
+    read_sidecar,
     run_command,
     validate_command,
-    verify_project,
 )
 from shapely.geometry import shape
 
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER
-from archiwista.errors import (
-    BrokenContractError,
-    ProducerError,
-    ProjectLockedError,
-    UnsupportedError,
-)
-from archiwista.messages import current_language, message, with_detail
+from archiwista.errors import BrokenContractError, ProducerError, UnsupportedError
+from archiwista.messages import current_language, message
 from archiwista.sources import (
     FILE_STATUSES,
     PLAN_TODO,
@@ -105,16 +92,9 @@ from archiwista.sources import (
     ItemStatus,
     OptionType,
     PathRole,
-    PinnedVersion,
     PlanEntry,
-    ProjectCheck,
-    ProjectFileState,
-    ProjectFileStatus,
-    ProjectRun,
-    ProjectTaskRun,
     RunStatus,
     ScanScope,
-    TaskOutcome,
 )
 
 # The names a call gives beside its options: the keyword arguments of
@@ -167,16 +147,6 @@ _UNIT_NAMES = frozenset(
         "campaign",
     }
 )
-# Kartograf's commands of a project: their hints and examples. Its check of a
-# project is ``project download`` with ``check``; there is no ``project check``.
-_PROJECT_INIT = "project init"
-_PROJECT_ADD = "project add"
-_PROJECT_REMOVE = "project remove"
-_PROJECT_DOWNLOAD = "project download"
-_PROJECT_VERIFY = "project verify"
-# Kartograf's lock of a manifest is ``kartograf.PROJECT_LOCK``, a directory beside
-# it made for one change; a refusal or a failed task with the reason
-# ``project_locked`` says that it stays.
 
 
 def catalog() -> tuple[CommandInfo, ...]:
@@ -392,6 +362,7 @@ def run(
     root: Path,
     cache_dir: Path,
     plan: ActionPlan | None,
+    upgrade: bool,
     on_progress: Callable[[ActionProgress], None] | None,
     on_notice: Callable[[AvailabilityNotice], None] | None,
 ) -> ActionResult:
@@ -401,10 +372,12 @@ def run(
     (``METADATA_CACHE_FILE`` in ``cache_dir``), never ``cache=True``, and no
     ``output_dir``. With ``plan`` (a plan of ``check_command``) the run is
     ``update="upgrade", plan=…``, Kartograf's ``UpdatePlan`` read back from
-    the plan's document; without one ``update`` is not given, so the versions
-    the store holds are kept. ``files[]`` of ``kartograf-download/1`` come
-    back below the root (``unchanged`` also stands for Kartograf's ``local``
-    and ``reused``); a command whose result is no download has none.
+    the plan's document; without one it is ``update="upgrade"`` with
+    ``upgrade`` (the source's newer versions downloaded), else ``update`` is
+    not given, so the versions the store holds are kept. ``files[]`` of
+    ``kartograf-download/1`` come back below the root (``unchanged`` also
+    stands for Kartograf's ``local`` and ``reused``); a command whose result
+    is no download has none.
 
     Raises
     ------
@@ -420,7 +393,7 @@ def run(
             command,
             options,
             root=root,
-            update=None if plan is None else "upgrade",
+            update="upgrade" if plan is not None or upgrade else None,
             plan=None if plan is None else UpdatePlan.from_dict(dict(plan.document)),
             cache=cache,
             on_progress=None if on_progress is None else _progress(on_progress),
@@ -431,6 +404,39 @@ def run(
     finally:
         cache.close()
     return _run_result(result, root)
+
+
+def command_for_version(version: str, *, root: Path) -> CommandCall:
+    """Return the call that selects the stored version ``version`` again.
+
+    ``read_sidecar`` reads the sidecar of the version file ``root / version``
+    (the file itself is never opened, so a version whose data are gone still
+    has its call) and ``command_for_file`` rebuilds the call from it, as
+    ``parse`` converts one: its options in their JSON form, no store root
+    (the caller names it) and an empty ``run``. No network, nothing written.
+
+    Raises
+    ------
+    UnsupportedError
+        Kartograf cannot rebuild the call from the sidecar (reason
+        ``command_not_rebuildable``, Kartograf's text and hint, its
+        ``family`` and ``field``).
+    ProducerError
+        The sidecar is missing, unreadable or invalid (``data_error``).
+    """
+    try:
+        call = command_for_file(read_sidecar(root / version))
+    except CommandNotRebuildableError as error:
+        refused = call_error(error)
+        raise UnsupportedError(
+            refused.message,
+            reason="command_not_rebuildable",
+            details={"producer": PRODUCER, "version": version, **refused.details},
+            hint=refused.hint,
+        ) from error
+    except KartografError as error:
+        raise call_error(error) from error
+    return CommandCall(PRODUCER, call.command, call.options, call.run)
 
 
 def narrow(plan: ActionPlan, paths: Collection[str]) -> ActionPlan:
@@ -490,275 +496,6 @@ def scope(path: str) -> ScanScope:
     stem = name.rpartition(".")[0] or name
     return ScanScope(
         segment=f"{product}/{variant}", units=("/".join((*hierarchy, stem)),)
-    )
-
-
-def create_project(directory: Path, *, root: Path, relative: bool) -> None:
-    """Create a project with ``init_project``, its store the configured ``root``.
-
-    Kartograf writes a ``root`` given relative to the working directory relative
-    to the project directory, and an absolute one as it is: a relative root goes
-    as the path from the working directory, or as the absolute path where there
-    is none (another drive, a working directory that is gone). The root is always
-    named, so Kartograf's default root never stands in.
-
-    Raises
-    ------
-    ProducerError
-        Kartograf refused: the manifest exists already (nothing is changed) or
-        the store directory cannot be made.
-    """
-    given: str | Path = root
-    if relative:
-        with suppress(ValueError, OSError):
-            given = os.path.relpath(root)
-    try:
-        init_project(directory, root=given)
-    except KartografError as error:
-        raise _project_error(
-            error, _PROJECT_INIT, {"project_dir": str(directory)}
-        ) from error
-
-
-def add_task(
-    directory: Path, *, name: str, command: str, options: Mapping[str, object]
-) -> None:
-    """Add a task with ``add_project_task``; its options are checked as a call first.
-
-    ``validate`` checks the options in their JSON form as a call of the command on
-    the project's store, as ``kartograf project add`` reads them (a refusal names
-    the command's own example); then ``run_command`` of ``project add`` gives
-    ``add_project_task`` the library arguments, in which a box (``bbox`` with
-    ``bbox_crs``) is one ``BBox``, and the options are written back in their JSON
-    form. Nothing uses the network.
-
-    Raises
-    ------
-    ProducerError
-        invalid or taken name, no data command.
-    ProjectLockedError
-        Kartograf's lock of the manifest stayed past its wait.
-    """
-    given = {"name": name, "command": command, "options": dict(options)}
-    try:
-        project = open_project(directory)
-    except KartografError as error:
-        raise call_error(error, command=_PROJECT_ADD, given=given) from error
-    validate(command, options, root=project.root)
-    try:
-        run_command(
-            _PROJECT_ADD,
-            {
-                "project_dir": str(directory),
-                "name": name,
-                "command": command,
-                "options": dict(options),
-            },
-        )
-    except KartografError as error:
-        raise _project_error(error, _PROJECT_ADD, given) from error
-
-
-def remove_task(directory: Path, *, name: str) -> None:
-    """Remove a task with its pins (``remove_project_task``); its files stay.
-
-    Raises
-    ------
-    ProducerError
-        Kartograf refused: an unknown task (``details.option`` ``name``), a
-        missing store directory, the task changed by another process meanwhile.
-    ProjectLockedError
-        Kartograf's lock of the manifest stayed past its wait.
-    """
-    try:
-        remove_project_task(directory, name=name)
-    except KartografError as error:
-        raise _project_error(error, _PROJECT_REMOVE, {"name": name}) from error
-
-
-def project_download(
-    directory: Path,
-    *,
-    tasks: Sequence[str] | None,
-    upgrade: bool,
-    cache_dir: Path,
-    on_progress: Callable[[ActionProgress], None] | None,
-    on_notice: Callable[[AvailabilityNotice], None] | None,
-) -> ProjectRun:
-    """Download, pin and restore a project's tasks (``download_project``).
-
-    With Archiwista's own metadata cache (``METADATA_CACHE_FILE`` in
-    ``cache_dir``), never ``cache=True``, and ``update`` unset (pin or
-    restore) or ``"upgrade"`` (a repin); the store is the one the manifest
-    names. A task that failed with Kartograf's reason ``project_locked`` failed on
-    the lock (Kartograf writes the pins of each task under it, after its download).
-
-    Raises
-    ------
-    ProjectLockedError
-        A task failed and Kartograf's lock of the manifest stays.
-    ProducerError
-        Kartograf refused the project: an invalid manifest, an unknown task,
-        a missing store directory, a store refused (nested, not empty, no
-        marker).
-    """
-    given: dict[str, object] = {"project_dir": str(directory)}
-    if tasks is not None:
-        given["tasks"] = list(tasks)
-    if upgrade:
-        given["update"] = "upgrade"
-    cache = MetadataCache(cache_dir / METADATA_CACHE_FILE)
-    try:
-        report = download_project(
-            directory,
-            tasks=None if tasks is None else list(tasks),
-            update="upgrade" if upgrade else None,
-            cache=cache,
-            on_progress=None if on_progress is None else _progress(on_progress),
-            on_notice=None if on_notice is None else _forward(on_notice),
-        )
-    except KartografError as error:
-        raise _project_error(error, _PROJECT_DOWNLOAD, given) from error
-    finally:
-        cache.close()
-    run = ProjectRun(
-        producer=PRODUCER,
-        root=str(report.project.root),
-        tasks=tuple(_task_run(task) for task in report.tasks),
-        notices=tuple(_notice(notice) for notice in report.notices),
-    )
-    lock = Path(report.project.directory) / PROJECT_LOCK
-    for task in run.failed:
-        if task.reason == "project_locked":
-            raise _locked(lock, task.errors[0] if task.errors else None)
-    return run
-
-
-def project_check(
-    directory: Path,
-    *,
-    tasks: Sequence[str] | None,
-    cache_dir: Path,
-    on_notice: Callable[[AvailabilityNotice], None] | None,
-) -> ProjectCheck:
-    """Compare a project's pins with the source (``check_project``).
-
-    With Archiwista's own metadata cache, never ``cache=True``; nothing is
-    downloaded or written but that cache.
-
-    Raises
-    ------
-    ProducerError
-        Kartograf refused the project: an invalid manifest, an unknown task,
-        a missing store directory, a store it cannot read.
-    """
-    given: dict[str, object] = {"project_dir": str(directory), "check": True}
-    if tasks is not None:
-        given["tasks"] = list(tasks)
-    cache = MetadataCache(cache_dir / METADATA_CACHE_FILE)
-    try:
-        checked = check_project(
-            directory,
-            tasks=None if tasks is None else list(tasks),
-            cache=cache,
-            on_notice=None if on_notice is None else _forward(on_notice),
-        )
-    except KartografError as error:
-        raise _project_error(error, _PROJECT_DOWNLOAD, given) from error
-    finally:
-        cache.close()
-    return _project_check(checked)
-
-
-def project_verify(directory: Path, *, tasks: Sequence[str] | None) -> ProjectCheck:
-    """Verify a project's pinned files in the store (``verify_project``).
-
-    SHA-256, size and sidecar of each pinned version; no network.
-
-    Raises
-    ------
-    ProducerError
-        Kartograf refused the project: an invalid manifest, an unknown task,
-        a missing store directory.
-    """
-    given: dict[str, object] = {"project_dir": str(directory)}
-    if tasks is not None:
-        given["tasks"] = list(tasks)
-    try:
-        checked = verify_project(
-            directory, tasks=None if tasks is None else list(tasks)
-        )
-    except KartografError as error:
-        raise _project_error(error, _PROJECT_VERIFY, given) from error
-    return _project_check(checked)
-
-
-def _project_error(
-    error: KartografError,
-    command: str,
-    given: Mapping[str, object],
-) -> ProducerError | ProjectLockedError:
-    """Return Kartograf's refusal of a project call; the left lock if it stays."""
-    refused = call_error(error, command=command, given=given)
-    if error.reason != "project_locked":
-        return refused
-    return _locked(Path(str(error.details()["path"])), refused.message)
-
-
-def _locked(lock: Path, text: str | None) -> ProjectLockedError:
-    """Return the refusal of a project whose ``lock`` stays, with Kartograf's text."""
-    return ProjectLockedError(
-        with_detail(message("project.locked", lock=lock), text),
-        lock=str(lock),
-        hint=message("fix.project_locked", lock=lock),
-    )
-
-
-def _task_run(task: Any) -> ProjectTaskRun:
-    """Convert one ``TaskResult`` of ``kartograf-project-report/1``."""
-    return ProjectTaskRun(
-        name=str(task.name),
-        outcome=cast(TaskOutcome, task.outcome),
-        pinned=tuple(_pinned(pin) for pin in task.pinned),
-        unpinned=tuple(_pinned(pin) for pin in task.unpinned),
-        errors=tuple(str(text) for text in task.errors),
-        code=task.code,
-        reason=task.reason,
-    )
-
-
-def _pinned(pin: Any) -> PinnedVersion:
-    """Convert a ``PinnedFile``: its paths are relative to the store, as kept."""
-    return PinnedVersion(
-        path=str(pin.path),
-        version_path=str(pin.version),
-        unit=str(pin.unit),
-        label=str(pin.label),
-        sha256=str(pin.sha256),
-        size_bytes=int(pin.size_bytes),
-    )
-
-
-def _project_check(checked: Any) -> ProjectCheck:
-    """Convert ``kartograf-project-check/1`` (``ProjectCheck``)."""
-    return ProjectCheck(
-        producer=PRODUCER,
-        root=str(checked.project.root),
-        files=tuple(
-            ProjectFileState(
-                task=str(item.task),
-                unit=str(item.unit),
-                path=str(item.path),
-                status=cast(ProjectFileStatus, item.status),
-                pinned_label=item.pinned_label,
-                available_label=item.available_label,
-                detail=item.detail,
-            )
-            for item in checked.files
-        ),
-        not_downloaded=tuple(str(name) for name in checked.not_downloaded),
-        notices=tuple(_notice(notice) for notice in checked.notices),
-        ok=bool(checked.ok),
     )
 
 

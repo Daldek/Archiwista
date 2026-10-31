@@ -15,12 +15,7 @@ from pathlib import Path
 
 import kartograf
 import pytest
-from kartograf.testing import (
-    PL_SEGMENT,
-    FixtureStore,
-    build_fixture_store,
-    build_project,
-)
+from kartograf.testing import PL_SEGMENT, FixtureStore, build_fixture_store
 
 from archiwista.adapter.kartograf import SCHEMAS, load
 from archiwista.adapter.kartograf.adapter import KartografAdapter
@@ -253,13 +248,10 @@ def test_marker_probe_accepts_an_empty_directory(
     assert adapter.probe(empty).status == "available"
 
 
-def test_marker_probe_refuses_the_parent_of_a_store_that_holds_a_project(
+def test_marker_probe_refuses_the_parent_of_a_store(
     adapter: KartografAdapter, built: FixtureStore, tmp_path: Path
 ) -> None:
     """The directory above a store holds another store: Kartograf's nested store."""
-    # Arrange
-    build_project(tmp_path / "projects" / "projekt", built)
-
     # Act
     parent = adapter.probe(tmp_path)
 

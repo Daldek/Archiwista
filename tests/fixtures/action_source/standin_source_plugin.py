@@ -10,7 +10,9 @@ the options. Its availability takes the area, its countries and ``refresh``
 among the options too, and so do its plan and its run of a call the store
 root. Its store is the files a run fetched, ``<kind>/<station>/<file>``: each
 file a version of its own slot, its station the unit a scan reads it by. A
-plan is narrowed (``narrow``) by the ``file`` of its items.
+plan is narrowed (``narrow``) by the ``file`` of its items. The call of a
+stored file (``command_for_version``) is its station's fetch; a file of
+``standin_producer.DERIVED`` is refused as ``command_not_rebuildable``.
 """
 
 from collections.abc import Callable, Collection, Iterator, Mapping
@@ -21,7 +23,7 @@ from typing import Literal, cast
 
 import standin_producer  # type: ignore[import-not-found]
 
-from archiwista.errors import ProducerError
+from archiwista.errors import ProducerError, UnsupportedError
 from archiwista.messages import current_language
 from archiwista.sources import (
     PLAN_TODO,
@@ -224,10 +226,14 @@ class StandinAdapter:
         *,
         root: Path,
         plan: ActionPlan | None = None,
+        upgrade: bool = False,
         on_progress: Callable[[ActionProgress], None] | None = None,
         on_notice: Callable[[AvailabilityNotice], None] | None = None,
     ) -> ActionResult:
-        """Run a call; the store root is ``options["root"]``, a plan its document."""
+        """Run a call; the store root is ``options["root"]``, a plan its document.
+
+        ``upgrade`` is the producer's ``update="upgrade"`` (without a plan).
+        """
 
         def notice(level: Literal["info", "warning"], code: str, text: str) -> None:
             if on_notice is not None:
@@ -242,6 +248,7 @@ class StandinAdapter:
                 command,
                 options={**options, ROOT: str(root)},
                 plan=None if plan is None else dict(plan.document),
+                update="upgrade" if upgrade else None,
                 on_progress=progress,
                 on_notice=notice,
             )
@@ -281,6 +288,22 @@ class StandinAdapter:
                 "items": [i for i in items if keeps(i["status"], i["file"])],
             },
         )
+
+    def command_for_version(self, version: str, *, root: Path) -> CommandCall:
+        """Return the producer's call of a stored file; ``derived`` files refused."""
+        try:
+            command, options = standin_producer.command_for_version(
+                version, root=str(root)
+            )
+        except standin_producer.NotRebuildableError as error:
+            raise UnsupportedError(
+                str(error),
+                reason=error.reason,
+                details={"producer": PRODUCER, "version": version},
+            ) from error
+        except standin_producer.ValidationError as error:
+            raise _refusal(error) from error
+        return CommandCall(PRODUCER, str(command), options)
 
 
 def _info(name: str, spec: dict[str, object], *, polish: bool) -> CommandInfo:

@@ -43,7 +43,7 @@ from archiwista.adapter.imgw import (
     load,
 )
 from archiwista.adapter.imgw.adapter import ImgwAdapter
-from archiwista.errors import ProducerError, SourceUnavailableError
+from archiwista.errors import ProducerError, SourceUnavailableError, UnsupportedError
 from archiwista.sources import (
     CurrentVersionAdapter,
     GeoAdapter,
@@ -57,8 +57,10 @@ from archiwista.sources import (
     SourceContext,
     SourceEntry,
     SourceSegment,
+    VersionCommandAdapter,
 )
 from tests.fixtures.imgw_edits import add_version, drop_sidecar, rewrite_sidecar
+from tests.fixtures.network import no_network
 
 type Stores = Callable[[str], Path]
 type Row = tuple[object, ...]
@@ -1110,3 +1112,83 @@ print(len(entries))
 
     assert result.returncode == 0, result.stderr
     assert int(result.stdout) > 20
+
+
+def _stored(root: Path, kind: str) -> str:
+    """Return the first version of ``kind`` (``archive``, ``catalog``) in ``root``."""
+    return next(
+        entry.version.relative_to(root).as_posix()
+        for entry in iter_store(root)
+        if entry.version is not None
+        and entry.slot is not None
+        and entry.slot.startswith(f"{kind}:")
+    )
+
+
+def test_command_for_version_of_an_archive_is_imgwtools_call_without_the_root(
+    imgw_store: Stores, adapter: ImgwAdapter
+) -> None:
+    """The call IMGWTools rebuilds offline, the store root left to the caller."""
+    # Arrange
+    root = imgw_store("complete")
+    version = _stored(root, "archive")
+    produced = imgwtools.command_for_version(version, root=root)
+
+    # Act
+    with no_network() as attempts:
+        call = adapter.command_for_version(version, root=root)
+
+    # Assert
+    assert isinstance(adapter, VersionCommandAdapter)
+    assert attempts == []
+    assert (call.producer, call.command) == ("imgw", produced.command)
+    assert "root" in produced.options
+    assert dict(call.options) == {
+        name: value for name, value in produced.options.items() if name != "root"
+    }
+    assert call.options["datasets"] == [HYDRO]
+
+
+def test_command_for_version_of_a_catalog_built_from_a_users_file_is_refused(
+    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+) -> None:
+    """``unsupported``, ``command_not_rebuildable``, IMGWTools' text unchanged."""
+    # Arrange
+    root = _copy(imgw_store, tmp_path / "store")
+    version = _stored(root, "catalog")
+    request = dict(read_meta(root / version).request)
+    rewrite_sidecar(root, version, request={**request, "user_locations": "moje.csv"})
+    with pytest.raises(IMGWError) as produced:
+        imgwtools.command_for_version(version, root=root)
+
+    # Act
+    with pytest.raises(UnsupportedError) as raised:
+        adapter.command_for_version(version, root=root)
+
+    # Assert
+    error = raised.value
+    assert (error.code, error.details["reason"]) == (
+        "unsupported",
+        "command_not_rebuildable",
+    )
+    assert error.message == str(produced.value)
+    assert error.details["version"] == version
+
+
+def test_command_for_version_of_no_version_is_imgwtools_refusal_with_its_code(
+    imgw_store: Stores, adapter: ImgwAdapter
+) -> None:
+    """A path that is no stored version: ``ProducerError``, never ``unsupported``."""
+    # Arrange
+    root = imgw_store("complete")
+    version = "archives/versions/nic/2026-01-01_00000000/nic.zip"
+    with pytest.raises(IMGWError) as produced:
+        imgwtools.command_for_version(version, root=root)
+
+    # Act
+    with pytest.raises(ProducerError) as raised:
+        adapter.command_for_version(version, root=root)
+
+    # Assert
+    assert raised.value.code == produced.value.code
+    assert raised.value.code != "unsupported"
