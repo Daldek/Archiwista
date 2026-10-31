@@ -76,6 +76,7 @@ from types import FrameType
 from typing import IO, cast
 
 from archiwista._errors import BY_CODE
+from archiwista.areas import write_area_package
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import AppPaths, StoreConfig
 from archiwista.error_document import Problem, describe
@@ -619,7 +620,9 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
 def run_availability(spec: JobSpec, emit: Emitter) -> JsonObject:
     """Ask the producer what the source has for an area and keep the report.
 
-    The area is the one the index keeps (``area_id``); the producer's notices
+    The area is the one the index keeps (``area_id``), given to the producer
+    as its GeoPackage in ``areas_dir`` (``areas.write_area_package``, kept
+    for the calls of the report's command lines); the producer's notices
     become the job's. The report replaces the area's last one of the product
     unless that one is newer.
     """
@@ -633,10 +636,14 @@ def run_availability(spec: JobSpec, emit: Emitter) -> JsonObject:
         area = queries.area(area_id)
     if area is None:
         raise NotFoundError(message("api.area_unknown", area=area_id))
-    adapter = actions(load_registry(cache_dir=spec.cache_dir), producer)
+    registry = load_registry(cache_dir=spec.cache_dir)
+    adapter = actions(registry, producer)
+    area_file = write_area_package(
+        spec.areas_dir, area, transformer=_transformer(registry)
+    )
     report = adapter.availability(
         product,
-        area=area.geometry,
+        area_file=area_file,
         countries=area.countries,
         force=bool(spec.params["force"]),
         on_notice=lambda notice: emit.notice(notice.level, notice.code, notice.message),
@@ -897,6 +904,7 @@ def _pin_download(
             files=cast(Sequence[Mapping[str, object]], summary["files"]),
             positions=positions,
             account=spec.actor,
+            areas=spec.areas_dir,
         )
     except ArchiwistaError as error:
         return {**target, "written": False, "error": _call_error(error)}

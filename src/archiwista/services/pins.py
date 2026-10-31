@@ -20,7 +20,8 @@ check, restore and re-pin.
 A download of the plan window that names ``pin`` (decision 9) is checked
 before its job exists by ``check_plan_pin`` (the project, its name and its
 store), and its worker writes the ``plan`` group with ``pin_download`` when
-the job succeeded.
+the job succeeded: a call naming an area's GeoPackage names its copy in the
+project's ``obszary/`` there (A-ADR-035 erratum 2).
 """
 
 import logging
@@ -31,6 +32,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from archiwista.areas import area_package_id
 from archiwista.auth import ALL_PROJECTS, Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings
@@ -48,6 +50,7 @@ from archiwista.projects import (
     SelectionSource,
     change_project_file,
     clean_name,
+    copy_area_package,
     format_time,
     read_project_json,
 )
@@ -424,6 +427,7 @@ def pin_download(
     files: Sequence[Mapping[str, Any]],
     positions: Sequence[str],
     account: str,
+    areas: Path,
 ) -> dict[str, object]:
     """Write the ``plan`` group of a download that succeeded (decision 9).
 
@@ -451,6 +455,10 @@ def pin_download(
         are pinned to the current version the index holds there.
     account : str
         The job's actor (``pinned_by``).
+    areas : Path
+        Where the areas' GeoPackages are (``AppPaths.areas_dir``): an option
+        naming one names its copy in the project's ``obszary/`` in the
+        group, relative to the project directory (``copy_area_package``).
 
     Returns
     -------
@@ -511,6 +519,13 @@ def pin_download(
         raise NotFoundError(message("api.store_not_configured", store=store))
     written = written_root(root, directory, relative=bool(config.path_aliases))
     moment = format_time(datetime.now(UTC).replace(microsecond=0))
+    origin = [
+        {
+            "command": call.command,
+            "options": _project_options(call.options, directory, areas),
+        }
+        for call in calls
+    ]
 
     def change(data: dict[str, Any]) -> None:
         found = find_group(data, group)
@@ -525,10 +540,7 @@ def pin_download(
                 "origin": {
                     "kind": "plan",
                     "producer": producer,
-                    "calls": [
-                        {"command": call.command, "options": dict(call.options)}
-                        for call in calls
-                    ],
+                    "calls": origin,
                 },
                 "pins": [
                     _pin_json(fact, moment, account) for fact in candidates.values()
@@ -544,6 +556,26 @@ def pin_download(
         "group": group,
         "pins": len(candidates),
         "not_pinned": not_pinned,
+    }
+
+
+def _project_options(
+    options: Mapping[str, object], directory: Path, areas: Path
+) -> dict[str, object]:
+    """Return a call's options, an area's GeoPackage as its copy in the project.
+
+    An option naming a GeoPackage of ``areas`` (``area_package_id``) names
+    the copy in the project's ``obszary/`` (``copy_area_package``), relative
+    to the project directory, so the group's calls hold wherever the project
+    lies; the other options stay as they are.
+    """
+    return {
+        name: (
+            value
+            if area_package_id(value, areas) is None
+            else copy_area_package(directory, Path(str(value)))
+        )
+        for name, value in options.items()
     }
 
 

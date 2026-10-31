@@ -181,7 +181,9 @@ def _validate(
     settings = ConfigStore(paths.config_file).load()
     asked = CommandCall(args.producer, args.name, args.options)
     call = CommandCallItem.of(
-        validate_command(registry, settings, asked, store=args.store)
+        validate_command(
+            registry, settings, asked, store=args.store, areas=paths.areas_dir
+        )
     )
     lines = [
         message("cli.commands_valid", producer=call.producer, command=call.command),

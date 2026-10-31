@@ -498,19 +498,20 @@ class KartografAdapter:
         self,
         product: str,
         *,
-        area: GeoJSONGeometry,
+        area_file: Path,
         countries: tuple[str, ...],
         force: bool = False,
         on_notice: Callable[[AvailabilityNotice], None] | None = None,
     ) -> AvailabilityReport:
         """Ask GUGiK and CUZK what they have for an area (``check_availability``).
 
-        With Archiwista's own metadata cache in ``cache_dir``, never Kartograf's
-        default one (D5); ``force`` asks the services again.
+        The area's GeoPackage goes as ``geometry``, with Archiwista's own
+        metadata cache in ``cache_dir``, never Kartograf's default one (D5);
+        ``force`` asks the services again.
         """
         return actions.availability(
             product,
-            area=area,
+            area_file=area_file,
             countries=countries,
             cache_dir=self._cache_dir,
             force=force,

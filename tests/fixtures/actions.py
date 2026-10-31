@@ -118,5 +118,6 @@ def action_spec(
         cache_dir=paths.cache_dir,
         previews_dir=paths.previews_dir,
         work_dir=paths.work_dir,
+        areas_dir=paths.areas_dir,
         settings=AppSettings(stores=(store,)),
     )

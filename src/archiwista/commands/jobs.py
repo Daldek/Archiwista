@@ -252,6 +252,7 @@ def _start(
             calls=request.command_calls(),
             actor=LOCAL_OWNER,
             visible=ALL_PROJECTS,
+            areas=paths.areas_dir,
             plan_job=request.plan_job,
             pin=request.pin_target(),
         )

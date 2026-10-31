@@ -12,9 +12,10 @@ text and hint in the language of the call, and the option it names. None of
 this uses the network.
 
 ``check_availability`` asks GUGiK and CUZK what they have for an area (plan of
-2026-10-25, A2; ADR-035). The area goes to Kartograf as the envelope of its
-polygon in the CRS Kartograf measures the area's first country in, with the
-country (``auto`` for both), and the metadata cache is Archiwista's own,
+2026-10-25, A2; ADR-035 erratum 2). The area goes to Kartograf as Archiwista's
+GeoPackage of it (``geometry``, ``areas.write_area_package``), with the
+country (``auto`` for both), so the command lines of the report name that file
+and their runs select by its features; the metadata cache is Archiwista's own,
 ``metadata.db`` in the adapter's cache directory: never ``cache=True``, which
 would be Kartograf's default cache (D5). ``check_command`` plans a run in the
 configured store the same way (A4, ADR-036): with ``root=`` and Archiwista's
@@ -42,9 +43,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
-import shapely
 from kartograf import (
-    BBox,
     CommandNotRebuildableError,
     KartografError,
     MetadataCache,
@@ -58,12 +57,10 @@ from kartograf import (
     format_command,
     list_commands,
     parse_command,
-    pinned_transform,
     read_sidecar,
     run_command,
     validate_command,
 )
-from shapely.geometry import shape
 
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER
 from archiwista.errors import BrokenContractError, ProducerError, UnsupportedError
@@ -88,7 +85,6 @@ from archiwista.sources import (
     CommandInfo,
     CommandOption,
     CommandWrites,
-    GeoJSONGeometry,
     ItemStatus,
     OptionType,
     PathRole,
@@ -121,13 +117,9 @@ METADATA_CACHE_FILE = "metadata.db"
 PLAN_REFRESH_TTL_S = 3600
 # The command of ``check_availability`` in Kartograf's catalog.
 AVAILABILITY_COMMAND = "elevation availability"
-# The CRS Kartograf measures each country's part of an area in: EPSG:2180 for
-# PL, the CRS of the CZ part of its report for CZ; in the order of its report.
-_AREA_CRS = {"PL": "EPSG:2180", "CZ": "EPSG:5514"}
-_WGS84 = "EPSG:4326"
-# Longest edge of an area before it moves to the planar CRS (about 0.5 km):
-# the edges of a WGS84 polygon bend there.
-_SEGMENT_DEGREES = 0.005
+# The countries whose parts of an area Kartograf checks, in the order of its
+# report: an area of both goes as ``auto``.
+_AREA_COUNTRIES = ("PL", "CZ")
 _LANGUAGES = frozenset({"en", "pl"})
 # Kartograf's progress events (``DownloadProgress.status``) whose ``current``
 # of ``total`` count the units of a run, and those whose ``sheet`` names a
@@ -256,7 +248,7 @@ def availability_products() -> tuple[str, ...]:
 def availability(
     product: str,
     *,
-    area: GeoJSONGeometry,
+    area_file: Path,
     countries: tuple[str, ...],
     cache_dir: Path,
     force: bool,
@@ -264,25 +256,30 @@ def availability(
 ) -> AvailabilityReport:
     """Ask GUGiK and CUZK what they have for an area (``check_availability``).
 
-    ``cache_dir`` holds Archiwista's own metadata cache of Kartograf
-    (``METADATA_CACHE_FILE``); ``force`` asks the services again and writes
-    the answers over the cached ones.
+    The area is its GeoPackage ``area_file`` (``geometry``), with the country
+    of ``area_country``. ``cache_dir`` holds Archiwista's own metadata cache
+    of Kartograf (``METADATA_CACHE_FILE``); ``force`` asks the services again
+    and writes the answers over the cached ones.
 
     Raises
     ------
     ProducerError
         Kartograf refused the request (an unknown product, an area outside
-        PL and CZ) or a service failed, with Kartograf's code and text.
+        PL and CZ, a file it cannot read) or a service failed, with
+        Kartograf's code and text.
     """
+    country = area_country(countries)
+    given: dict[str, object] = {
+        "product": product,
+        "country": country,
+        "geometry": str(area_file),
+    }
     cache = MetadataCache(cache_dir / METADATA_CACHE_FILE)
-    given: dict[str, object] = {"product": product}
     try:
-        country, bbox = area_request(area, countries)
-        given |= {"country": country, "bbox": list(bbox[:4]), "bbox_crs": bbox.crs}
         report = check_availability(
             product=product,
             country=country,
-            bbox=bbox,
+            geometry=area_file,
             cache=cache,
             force=force,
             on_notice=None if on_notice is None else _forward(on_notice),
@@ -499,33 +496,15 @@ def scope(path: str) -> ScanScope:
     )
 
 
-def area_request(area: GeoJSONGeometry, countries: tuple[str, ...]) -> tuple[str, BBox]:
-    """Return Kartograf's ``country`` and ``bbox`` of an area (ADR-035).
+def area_country(countries: tuple[str, ...]) -> str:
+    """Return Kartograf's ``country`` of an area that meets ``countries``.
 
-    The box is the envelope of the polygon, its edges densified, in the CRS
-    Kartograf measures the first of the area's countries in, so it is what
-    Kartograf takes of a geometry file with that polygon; the country is
-    ``pl`` or ``cz``, or ``auto`` for both. An area in neither country goes as
-    its WGS84 envelope with ``auto``, for Kartograf to refuse.
-
-    Raises
-    ------
-    KartografError
-        No pinned operation to the CRS.
+    ``pl`` or ``cz`` for one of them, ``auto`` for both; an area in neither
+    goes with ``auto`` too, for Kartograf to refuse before the network.
     """
-    polygon = shape(area)
     named = {country.upper() for country in countries}
-    known = [country for country in _AREA_CRS if country in named]
-    if not known:
-        min_x, min_y, max_x, max_y = (float(value) for value in polygon.bounds)
-        return "auto", BBox(min_x, min_y, max_x, max_y, _WGS84)
-    crs = _AREA_CRS[known[0]]
-    points = shapely.get_coordinates(shapely.segmentize(polygon, _SEGMENT_DEGREES))
-    xs, ys = pinned_transform(_WGS84, crs).transform(points[:, 0], points[:, 1])
-    country = known[0].lower() if len(known) == 1 else "auto"
-    return country, BBox(
-        float(xs.min()), float(ys.min()), float(xs.max()), float(ys.max()), crs
-    )
+    known = [country for country in _AREA_COUNTRIES if country in named]
+    return known[0].lower() if len(known) == 1 else "auto"
 
 
 def call_error(

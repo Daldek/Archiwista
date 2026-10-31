@@ -11,7 +11,10 @@ the capability refuses them as ``unsupported``.
 the root of the configured store for a command that works on a store, never
 the producer's default root (Decision 1 of the plan), and refuses an option of
 the request that is a file path: the producer would open that file in this
-process (SPEC 10.1). Nothing here uses the network or writes.
+process (SPEC 10.1). The one file path it takes is an input naming an area's
+GeoPackage Archiwista wrote (``areas.write_area_package``, A-ADR-035 erratum
+2): the command lines of an availability report name it. Nothing here uses
+the network or writes.
 
 ``version_command`` gives the call that selects a stored version again
 (A-ADR-049 D-10, ``VersionCommandAdapter``) and its command line with the
@@ -24,6 +27,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from archiwista.areas import area_package_id
 from archiwista.auth import ProjectVisibility
 from archiwista.config import AppSettings
 from archiwista.errors import (
@@ -116,6 +120,7 @@ def validate_command(
     call: CommandCall,
     *,
     store: str | None = None,
+    areas: Path,
 ) -> CommandCall:
     """Check a call of a command of a producer's catalog without network.
 
@@ -131,6 +136,9 @@ def validate_command(
         Id of the configured store whose producer directory a command that
         works on a store (``CommandInfo.store``) is checked with; not used for
         another command.
+    areas : Path
+        Where the areas' GeoPackages are (``AppPaths.areas_dir``): an input
+        option may name one of them.
 
     Returns
     -------
@@ -147,7 +155,8 @@ def validate_command(
     NotFoundError
         ``store`` is not configured.
     PathOutsideRootError
-        An option that is a file path is given (``details.option``).
+        An option that is a file path is given (``details.option``), other
+        than an input naming an area's GeoPackage.
     ProducerError
         The producer refused the call (``validation_error``, its text and
         ``details.option``).
@@ -156,7 +165,7 @@ def validate_command(
     """
     adapter = actions(registry, call.producer)
     return checked_call(
-        adapter, settings, command_info(adapter, call), call, store=store
+        adapter, settings, command_info(adapter, call), call, store=store, areas=areas
     )
 
 
@@ -167,28 +176,35 @@ def checked_call(
     call: CommandCall,
     *,
     store: str | None,
+    areas: Path,
 ) -> CommandCall:
     """Check a call of the catalog's command ``info`` (``validate_command``).
 
     Raises
     ------
     PathOutsideRootError
-        An option that is a file path is given (``details.option``).
+        An option that is a file path is given (``details.option``), other
+        than an input naming an area's GeoPackage in ``areas``.
     CommandRequestError, NotFoundError
         As ``store_root``, for a command that works on a store.
     ProducerError
         The producer refused the call.
     """
-    refuse_path_options(info, call.options)
+    refuse_path_options(info, call.options, areas=areas)
     root = store_root(settings, store, call) if info.store else None
     checked = adapter.validate(call.command, call.options, root=root)
     return CommandCall(call.producer, call.command, checked)
 
 
-def refuse_path_options(info: CommandInfo, options: Mapping[str, object]) -> None:
+def refuse_path_options(
+    info: CommandInfo, options: Mapping[str, object], *, areas: Path
+) -> None:
     """Refuse an option of the command ``info`` that is a file path.
 
-    The producer would open the file in this process (SPEC 10.1).
+    The producer would open the file in this process (SPEC 10.1). An input
+    naming an area's GeoPackage Archiwista wrote in ``areas``
+    (``areas.area_package_id``) is no such option: the command lines of an
+    availability report name it (A-ADR-035 erratum 2).
 
     Raises
     ------
@@ -196,12 +212,16 @@ def refuse_path_options(info: CommandInfo, options: Mapping[str, object]) -> Non
         An option with a ``path_role`` is given (``details.option``).
     """
     for option in info.options:
-        if option.path_role is not None and option.name in options:
-            raise PathOutsideRootError(
-                message("command.path_option", option=option.name),
-                hint=message("command.path_option_hint"),
-                details={"option": option.name},
-            )
+        if option.path_role is None or option.name not in options:
+            continue
+        value = options[option.name]
+        if option.path_role == "input" and area_package_id(value, areas) is not None:
+            continue
+        raise PathOutsideRootError(
+            message("command.path_option", option=option.name),
+            hint=message("command.path_option_hint"),
+            details={"option": option.name},
+        )
 
 
 def format_command(registry: PluginRegistry, call: CommandCall) -> str:

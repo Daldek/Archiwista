@@ -84,7 +84,11 @@ from archiwista.jobs.worker import (
     _run_section,
 )
 from archiwista.messages import message, with_detail
-from archiwista.projects import change_project_file, format_time
+from archiwista.projects import (
+    change_project_file,
+    format_time,
+    project_area_options,
+)
 from archiwista.services.commands import (
     actions,
     not_rebuildable,
@@ -482,13 +486,19 @@ def _group_calls(
 ) -> _GroupCalls:
     """Return a group's calls: a plan group's origin, a local group's pins'.
 
+    A plan group's call naming its area's GeoPackage in the project's
+    ``obszary/`` (A-ADR-035 erratum 2) names it in the project directory.
     The call of a local pin comes from the index's ``version_calls`` of the
     installed producer, else from the producer (``command_for_version``),
     whose answer is kept.
     """
     found = _GroupCalls()
     if group.origin == "plan":
-        found.calls = list(group.calls)
+        directory = project_directory(job.project, spec.settings)
+        found.calls = [
+            replace(call, options=project_area_options(call.options, directory))
+            for call in group.calls
+        ]
         return found
     places: dict[str, int] = {}
     with (

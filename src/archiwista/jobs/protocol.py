@@ -44,7 +44,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 13
+PROTOCOL_VERSION = 14
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -171,6 +171,10 @@ class JobSpec:
     work_dir : Path
         Root of the scratch directories of processes reading files
         (``AppPaths.work_dir``).
+    areas_dir : Path
+        Where the areas' GeoPackages are (``AppPaths.areas_dir``,
+        ``areas.write_area_package``): ``availability`` writes its area's
+        there, and a ``download`` that pins copies those its calls name.
     settings : AppSettings
         Settings in effect when the job started.
     claimed : tuple of str or None, optional
@@ -194,6 +198,7 @@ class JobSpec:
     cache_dir: Path
     previews_dir: Path
     work_dir: Path
+    areas_dir: Path
     settings: AppSettings
     claimed: tuple[str, ...] | None = None
     taken: tuple[JsonObject, ...] = ()
@@ -252,6 +257,7 @@ def encode_spec(spec: JobSpec) -> str:
             "cache_dir": str(spec.cache_dir),
             "previews_dir": str(spec.previews_dir),
             "work_dir": str(spec.work_dir),
+            "areas_dir": str(spec.areas_dir),
             "settings": spec.settings.model_dump(mode="json"),
         }
     )
@@ -307,6 +313,7 @@ def decode_spec(line: str) -> JobSpec:
             cache_dir=Path(value["cache_dir"]),
             previews_dir=Path(value["previews_dir"]),
             work_dir=Path(value["work_dir"]),
+            areas_dir=Path(value["areas_dir"]),
             settings=AppSettings.model_validate(value["settings"]),
             claimed=None if claimed is None else tuple(claimed),
             taken=tuple(taken),

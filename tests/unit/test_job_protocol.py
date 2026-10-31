@@ -97,6 +97,7 @@ def test_job_spec_keeps_settings_and_paths(
         cache_dir=data / "cache",
         previews_dir=data / "previews",
         work_dir=data / "work",
+        areas_dir=data / "areas",
         settings=AppSettings(stores=(config,), offline=True, scan_threads=3),
     )
 

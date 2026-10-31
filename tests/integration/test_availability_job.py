@@ -16,6 +16,7 @@ from datetime import timedelta
 from pathlib import Path
 from types import ModuleType
 
+import pyogrio.raw
 import pytest
 
 from archiwista.auth import LOCAL_OWNER
@@ -58,7 +59,12 @@ def held(paths: AppPaths) -> Iterator[JobSupervisor]:
 def test_the_job_asks_the_producer_and_keeps_the_report(
     paths: AppPaths, standin: ModuleType
 ) -> None:
-    """The producer gets the area as the index keeps it; the report is kept whole."""
+    """The producer gets the area's GeoPackage; the report is kept whole.
+
+    The file is the area as the index keeps it, in the planar CRS of its
+    country, where the calls of the report's lines name it (A-ADR-035
+    erratum 2).
+    """
     stream = io.StringIO()
 
     summary = worker.run_availability(
@@ -67,14 +73,18 @@ def test_the_job_asks_the_producer_and_keeps_the_report(
     with IndexQueries(paths.index_file) as queries:
         stored = queries.availability(AREA.id, "dem", producer="standin")
     received = standin.CALLS
+    area_file = paths.areas_dir / f"{AREA.id}.gpkg"
 
     assert received == [
         (
             "check_availability",
             "dem",
-            {"area": AREA.geometry, "countries": ["PL"], "refresh": True},
+            {"geometry": str(area_file), "countries": ["PL"], "refresh": True},
         )
     ]
+    meta, _, parts, _ = pyogrio.raw.read(area_file)
+    assert pyogrio.list_layers(area_file).tolist() == [["area", "Polygon"]]
+    assert (meta["crs"], len(parts)) == ("EPSG:2180", 1)
     assert stored is not None
     report = stored.report
     assert (stored.checked_at, stored.job_id) == (

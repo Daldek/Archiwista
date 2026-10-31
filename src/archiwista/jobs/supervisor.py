@@ -1609,6 +1609,7 @@ class JobSupervisor:
             cache_dir=self._paths.cache_dir,
             previews_dir=self._paths.previews_dir,
             work_dir=self._paths.work_dir,
+            areas_dir=self._paths.areas_dir,
             settings=settings,
             claimed=claims.claimed,
             taken=claims.taken,

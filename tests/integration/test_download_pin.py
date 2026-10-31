@@ -221,6 +221,52 @@ def test_a_planned_download_pins_its_files_and_the_plans_held_positions(
     )
 
 
+def test_a_pinned_call_names_its_area_copied_into_the_project(place: Place) -> None:
+    """A call naming an area's GeoPackage names its copy in ``obszary/``.
+
+    The command lines of an availability report name the area's GeoPackage
+    in Archiwista's data directory (A-ADR-035 erratum 2); the plan group keeps
+    a copy in the project and the path relative to the project directory, so
+    its calls hold wherever the project lies, and a check of the project
+    gives the producer the copy.
+    """
+    # Arrange
+    package = place.paths.areas_dir / "0123456789abcdef.gpkg"
+    package.parent.mkdir(parents=True, exist_ok=True)
+    package.write_bytes(b"GPKG of the area")
+    options = {**STATION, "area": str(package)}
+    body = {**CHECK_BODY, "calls": [{"command": "series fetch", "options": options}]}
+    checked = _run(place, place.owner, body)
+
+    # Act
+    detail = _run(
+        place,
+        place.owner,
+        _pinned(place, {**body, "kind": "download", "plan_job": checked["id"]}),
+    )
+    asked = place.owner.request(
+        "POST", f"/projects/{place.project}/jobs", json={"kind": "check"}
+    )
+    assert asked.status_code == 202, asked.text
+    place.jobs.wait(asked.json()["id"], timeout=JOB_TIMEOUT_S)
+    project_check = place.owner.request("GET", f"/jobs/{asked.json()['id']}").json()
+
+    # Assert
+    assert detail["state"] == "succeeded", detail
+    (group,) = _file(place)["groups"]
+    copy = place.directory / "obszary" / package.name
+    assert group["origin"]["calls"] == [
+        {
+            "command": "series fetch",
+            "options": {**STATION, "area": f"obszary/{package.name}"},
+        }
+    ]
+    assert copy.read_bytes() == package.read_bytes()
+    (section,) = project_check["result"]["calls"]
+    assert str(copy) in section["line"]
+    assert str(package) not in section["line"]
+
+
 def test_a_partial_download_pins_nothing_and_says_so(place: Place) -> None:
     """A failed unit leaves the project unchanged; the summary's `pin` tells why."""
     # Act

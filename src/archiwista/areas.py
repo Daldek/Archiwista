@@ -21,12 +21,20 @@ after densifying the edges. A path from the client is never opened: the
 upload is written under a random name. The copy of the file stays in
 ``<user_data_dir>/areas/<id>/`` and is deleted at start-up once older than
 ``AREA_COPY_MAX_AGE`` (7 days); the area itself stays in the index.
+
+An area a producer reads as a file (its availability, then the calls of the
+report's command lines, A-ADR-035 erratum 2) is the GeoPackage
+``<user_data_dir>/areas/<id>.gpkg`` (``write_area_package``): the polygon as
+it is, one feature per part, in the planar CRS of the area's first country.
+It stays as long as the area: a kept plan, a job or a project's group may
+name it. ``area_package_id`` tells a path of such a file from any other.
 """
 
 import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -53,9 +61,11 @@ from archiwista.index.coverage import (
     SEGMENT_DEGREES,
     SEGMENT_METRES,
     WGS84,
+    PlanarMover,
     measure_coverage,
 )
 from archiwista.index.geometry import require_wgs84_area
+from archiwista.index.types import TransformerFactory
 from archiwista.messages import load, message
 from archiwista.paths import private_directory
 from archiwista.sandbox import run_untrusted
@@ -79,6 +89,11 @@ AREA_READER_COMMAND: tuple[str, ...] = (
 # Uploads being read; what a crash leaves is pruned like the copies.
 INCOMING_DIR = ".incoming"
 AREA_ID_CHARS = 16
+# The GeoPackage of an area a producer reads (``write_area_package``): its
+# suffix, its one layer, and the name it has in the areas directory.
+AREA_PACKAGE_SUFFIX = ".gpkg"
+AREA_PACKAGE_LAYER = "area"
+_AREA_PACKAGE = re.compile(rf"[0-9a-f]{{{AREA_ID_CHARS}}}\{AREA_PACKAGE_SUFFIX}")
 
 _WGS84_NAMES = frozenset({WGS84, "OGC:CRS84"})
 _MIB = 1024**2
@@ -355,6 +370,91 @@ def discard_copy(found: FileGeometry) -> None:
     shutil.rmtree(found.directory, ignore_errors=True)
 
 
+def write_area_package(
+    directory: Path, area: AreaRecord, *, transformer: TransformerFactory | None
+) -> Path:
+    """Write an area as the GeoPackage a producer reads; return its path.
+
+    ``<directory>/<area id>.gpkg``, one layer ``area`` with one polygon
+    feature per part of the area, the polygon as it is: in the planar CRS of
+    the area's first country (``area_crs``: EPSG:2180 for PL, EPSG:5514 for
+    CZ alone), its edges densified and moved by the producer's pinned
+    operation (``transformer``), or in WGS84 for an area in neither country
+    or without a transformer. The id is a digest of the geometry, so a file
+    already there holds this area and is kept; a new one is written under a
+    name of its own and moved into place. ``prune_area_copies`` never removes
+    it.
+
+    Parameters
+    ----------
+    directory : Path
+        ``<user_data_dir>/areas`` (``AppPaths.areas_dir``).
+    area : AreaRecord
+        An area of the index.
+    transformer : TransformerFactory or None
+        The producer's pinned operations (``GeoAdapter.transformer``).
+
+    Raises
+    ------
+    ProducerError
+        The producer has no pinned operation to the planar CRS.
+    OSError
+        The file could not be written.
+    """
+    # GDAL is loaded by the job that writes the file, never by the server.
+    import pyogrio.raw
+
+    target = directory / f"{area.id}{AREA_PACKAGE_SUFFIX}"
+    if target.is_file() and not target.is_symlink():
+        return target
+    crs = area_crs(area.countries)
+    if crs is None or transformer is None:
+        crs, polygon = None, shape(area.geometry)
+    else:
+        polygon = PlanarMover(crs, transformer).move(area.geometry, WGS84)
+    parts = list(getattr(polygon, "geoms", (polygon,)))
+    temp = directory / f".{area.id}.{secrets.token_hex(4)}{AREA_PACKAGE_SUFFIX}"
+    private_directory(directory)
+    try:
+        pyogrio.raw.write(
+            str(temp),
+            shapely.to_wkb(parts),
+            [],
+            fields=[],
+            layer=AREA_PACKAGE_LAYER,
+            driver="GPKG",
+            geometry_type="Polygon",
+            crs=crs or WGS84,
+            layer_options={"SPATIAL_INDEX": "NO"},
+        )
+        os.replace(temp, target)
+    finally:
+        temp.unlink(missing_ok=True)
+    return target
+
+
+def area_package_id(value: object, directory: Path) -> str | None:
+    """Return the area id of a path of an area's GeoPackage, else ``None``.
+
+    ``value`` names one when it is the absolute path of a regular file (no
+    link) right in ``directory`` (``AppPaths.areas_dir``) named
+    ``<area id>.gpkg``: a file ``write_area_package`` wrote, nothing else.
+    """
+    if not isinstance(value, str):
+        return None
+    path = Path(value)
+    if not path.is_absolute() or _AREA_PACKAGE.fullmatch(path.name) is None:
+        return None
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        if path.parent.resolve(strict=True) != directory.resolve(strict=True):
+            return None
+    except OSError:
+        return None
+    return path.name.removesuffix(AREA_PACKAGE_SUFFIX)
+
+
 def prune_area_copies(
     directory: Path,
     *,
@@ -363,8 +463,9 @@ def prune_area_copies(
 ) -> int:
     """Delete copies of area files (and unfinished uploads) older than ``max_age``.
 
-    Called at start-up; the areas stay in the index. Nothing outside
-    ``directory`` is touched: a link is removed, never followed.
+    Called at start-up; the areas stay in the index, and so do their
+    GeoPackages (``write_area_package``). Nothing outside ``directory`` is
+    touched: a link is removed, never followed.
 
     Returns
     -------
@@ -375,7 +476,13 @@ def prune_area_copies(
     removed = 0
     for parent in (directory, directory / INCOMING_DIR):
         for entry in _entries(parent):
-            if parent == directory and entry.name == INCOMING_DIR:
+            if parent == directory and (
+                entry.name == INCOMING_DIR
+                or (
+                    _AREA_PACKAGE.fullmatch(entry.name) is not None
+                    and entry.is_file(follow_symlinks=False)
+                )
+            ):
                 continue
             try:
                 if entry.stat(follow_symlinks=False).st_mtime >= cutoff:

@@ -47,7 +47,6 @@ from archiwista.sources import (
     CommandWrites,
     EntryMeta,
     Footprint,
-    GeoJSONGeometry,
     OptionType,
     PathRole,
     PlanEntry,
@@ -183,18 +182,22 @@ class StandinAdapter:
         self,
         product: str,
         *,
-        area: GeoJSONGeometry,
+        area_file: Path,
         countries: tuple[str, ...],
         force: bool = False,
         on_notice: Callable[[AvailabilityNotice], None] | None = None,
     ) -> AvailabilityReport:
-        """Ask the fake source; the area, countries and ``force`` are options."""
+        """Ask the fake source; the area's file, countries and ``force`` are options."""
 
         def notice(level: Literal["info", "warning"], code: str, text: str) -> None:
             if on_notice is not None:
                 on_notice(AvailabilityNotice(level, code, text))
 
-        options = {"area": area, "countries": list(countries), "refresh": force}
+        options = {
+            "geometry": str(area_file),
+            "countries": list(countries),
+            "refresh": force,
+        }
         try:
             document = standin_producer.check_availability(
                 product, options=options, on_notice=notice

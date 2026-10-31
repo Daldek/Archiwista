@@ -55,7 +55,9 @@ def paths(tmp_path: Path, standin: ModuleType) -> AppPaths:
     store = StoreConfig(id=STORE, name="Zespół", kartograf=root, kind="local")
     ConfigStore(created.config_file).save(AppSettings(stores=(store,)))
     adapter = actions(load_registry(cache_dir=created.cache_dir), "standin")
-    report = adapter.availability("dem", area=AREA.geometry, countries=AREA.countries)
+    report = adapter.availability(
+        "dem", area_file=created.areas_dir / "area.gpkg", countries=AREA.countries
+    )
     with IndexWriter(created.index_file) as writer:
         writer.write_availability(AREA.id, report, product="dem", job_id=None)
         writer.sync_stores({STORE: {"kartograf": root}})

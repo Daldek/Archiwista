@@ -61,7 +61,9 @@ def _keep_report(paths: AppPaths, standin: ModuleType, *, age: timedelta) -> Non
     The producer's call is forgotten, so ``standin.CALLS`` shows the test's.
     """
     adapter = actions(load_registry(cache_dir=paths.cache_dir), "standin")
-    report = adapter.availability("dem", area=AREA.geometry, countries=AREA.countries)
+    report = adapter.availability(
+        "dem", area_file=paths.areas_dir / "area.gpkg", countries=AREA.countries
+    )
     aged = replace(report, checked_at=report.checked_at - age)
     with IndexWriter(paths.index_file) as writer:
         writer.write_availability(AREA.id, aged, product="dem", job_id=KEPT_BY)

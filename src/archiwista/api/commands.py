@@ -13,7 +13,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from archiwista.api.dependencies import plugin_registry, settings_service
+from archiwista.api.dependencies import app_paths, plugin_registry, settings_service
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
 from archiwista.api.models_commands import (
     CommandCallItem,
@@ -24,7 +24,7 @@ from archiwista.api.models_commands import (
     ValidateRequest,
 )
 from archiwista.auth import Principal
-from archiwista.config import SettingsService
+from archiwista.config import AppPaths, SettingsService
 from archiwista.messages import message
 from archiwista.security import current_principal
 from archiwista.services import commands as command_service
@@ -35,6 +35,7 @@ router = APIRouter(tags=["commands"])
 _Principal = Annotated[Principal, Depends(current_principal)]
 _Registry = Annotated[PluginRegistry, Depends(plugin_registry)]
 _Settings = Annotated[SettingsService, Depends(settings_service)]
+_Paths = Annotated[AppPaths, Depends(app_paths)]
 
 
 def _responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
@@ -109,6 +110,7 @@ def validate_command(
     principal: _Principal,
     registry: _Registry,
     settings: _Settings,
+    paths: _Paths,
 ) -> CommandCallItem:
     """Check a call of a command of a producer's catalog without the network.
 
@@ -118,14 +120,15 @@ def validate_command(
     (`store_required`), a store without a directory of the producer `400`
     (`store_without_producer`), an unknown one `404`. An option that is a file
     path (`path_role`) is `403` (`path_outside_root`, `details.option`): the
-    producer would open it on the server. A command outside the catalog is
-    `400` (`unknown_command`). The producer's refusal is `400
-    validation_error` with its own text and hint and the option in
-    `details.option`. The answer is the call with the options as the producer
-    reads them; `run` is empty.
+    producer would open it on the server; an input naming an area's
+    GeoPackage Archiwista wrote, as the command lines of `/availability` do,
+    is none. A command outside the catalog is `400` (`unknown_command`). The
+    producer's refusal is `400 validation_error` with its own text and hint
+    and the option in `details.option`. The answer is the call with the
+    options as the producer reads them; `run` is empty.
     """
     call = command_service.validate_command(
-        registry, settings.get(), body.call(), store=body.store
+        registry, settings.get(), body.call(), store=body.store, areas=paths.areas_dir
     )
     return CommandCallItem.of(call)
 

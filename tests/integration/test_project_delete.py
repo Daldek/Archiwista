@@ -173,6 +173,8 @@ def test_deleting_removes_what_archiwista_wrote_and_keeps_the_data(
     """The file, obszary/ and eksport/ go; dane/, .wersje/ and other files stay."""
     with world(tmp_path) as made:
         store_before = _tree(made.store)
+        # The area a plan group's calls name (A-ADR-035 erratum 2).
+        (made.directory / "obszary" / "0123456789abcdef.gpkg").write_bytes(b"GPKG")
         assert all(_index_rows(made.paths).values())
         since = last_entry(made.api.state)
         owner = made.api.session(principal(made.api.state, "owner"))

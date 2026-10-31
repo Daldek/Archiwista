@@ -11,13 +11,18 @@ refusals before the network are Kartograf's own.
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import kartograf
+import pyogrio.raw
 import pytest
+import shapely
 
 import archiwista.adapter.kartograf.actions as actions_module
 from archiwista.adapter.kartograf import load
+from archiwista.areas import area_from_geometry, write_area_package
 from archiwista.errors import ProducerError
+from archiwista.index.coverage import PlanarMover
 from archiwista.sources import (
     ActionAdapter,
     AvailabilityArea,
@@ -27,6 +32,7 @@ from archiwista.sources import (
     AvailabilityNotice,
     AvailabilityReport,
     AvailabilitySheet,
+    GeoAdapter,
     GeoJSONGeometry,
     SourceContext,
 )
@@ -209,15 +215,13 @@ def test_validate_names_the_store_root_of_a_store_command_only(
     assert received == [("elevation download", {"root": root}), ("sheet parse", {})]
 
 
-def test_availability_asks_kartograf_with_archiwistas_cache_and_the_area_box(
+def test_availability_asks_kartograf_with_archiwistas_cache_and_the_area_file(
     adapter: ActionAdapter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The cache is ``metadata.db`` of the adapter's cache, never ``cache=True``.
 
-    The box is the envelope of the area's polygon in EPSG:2180 with its edges
-    densified: a box across 19°E reaches its lowest northing on the central
-    meridian, between the corners (Kartograf's own ``bbox_to_2180`` lost that
-    strip from the corners alone). The report and its notices come back in
+    The area goes as its GeoPackage (``geometry``) with its country, never as
+    a box (ADR-035 erratum 2). The report and its notices come back in
     Archiwista's types.
     """
     received: list[dict[str, object]] = []
@@ -231,16 +235,12 @@ def test_availability_asks_kartograf_with_archiwistas_cache_and_the_area_box(
 
     monkeypatch.setattr(actions_module, "check_availability", recording)
     said: list[AvailabilityNotice] = []
-    to_2180 = kartograf.pinned_transform("EPSG:4326", "EPSG:2180")
-    west, south = to_2180.transform(18.5, 50.0)
-    middle, low = to_2180.transform(19.0, 50.0)
-    east, _ = to_2180.transform(19.5, 50.0)
-    _, north = to_2180.transform(19.5, 50.2)
+    area_file = tmp_path / "areas" / "0123456789abcdef.gpkg"
 
     with no_network() as attempts:
         report = adapter.availability(
             "nmt",
-            area=_box(18.5, 50.0, 19.5, 50.2),
+            area_file=area_file,
             countries=("PL",),
             force=True,
             on_notice=said.append,
@@ -248,17 +248,12 @@ def test_availability_asks_kartograf_with_archiwistas_cache_and_the_area_box(
 
     (call,) = received
     cache = call.pop("cache")
-    bbox = call.pop("bbox")
     assert isinstance(cache, kartograf.MetadataCache)
     assert cache.db_path == tmp_path / "cache" / "kartograf" / "metadata.db"
-    assert isinstance(bbox, kartograf.BBox)
-    assert bbox.crs == "EPSG:2180"
-    assert tuple(bbox[:4]) == pytest.approx((west, low, east, north), abs=0.01)
-    assert south - low > 100
-    assert middle == pytest.approx(500_000.0)
     assert call == {
         "product": "nmt",
         "country": "pl",
+        "geometry": area_file,
         "force": True,
         "on_notice": call["on_notice"],
     }
@@ -316,20 +311,17 @@ def test_availability_asks_kartograf_with_archiwistas_cache_and_the_area_box(
 
 
 @pytest.mark.parametrize(
-    ("countries", "country", "crs"),
-    [
-        (("CZ", "PL"), "auto", "EPSG:2180"),
-        (("CZ",), "cz", "EPSG:5514"),
-    ],
+    ("countries", "country"),
+    [(("CZ", "PL"), "auto"), (("CZ",), "cz"), (("PL",), "pl"), ((), "auto")],
 )
-def test_an_area_of_two_countries_is_auto_in_the_crs_of_its_first(
+def test_an_area_of_two_countries_is_auto(
     adapter: ActionAdapter,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     countries: tuple[str, ...],
     country: str,
-    crs: str,
 ) -> None:
-    """PL comes first, as Kartograf reports its parts; CZ alone is in S-JTSK."""
+    """One country is named; both, or neither for Kartograf to refuse, are ``auto``."""
     received: list[dict[str, object]] = []
 
     def recording(**kwargs: object) -> kartograf.AvailabilityReport:
@@ -337,32 +329,117 @@ def test_an_area_of_two_countries_is_auto_in_the_crs_of_its_first(
         return _kartograf_report()
 
     monkeypatch.setattr(actions_module, "check_availability", recording)
+    area_file = tmp_path / "0123456789abcdef.gpkg"
 
-    adapter.availability("laz", area=_box(18.0, 49.6, 18.6, 49.9), countries=countries)
+    adapter.availability("laz", area_file=area_file, countries=countries)
 
     (call,) = received
-    bbox = call["bbox"]
-    assert isinstance(bbox, kartograf.BBox)
-    assert (call["country"], bbox.crs, call["force"]) == (country, crs, False)
+    assert (call["country"], call["geometry"], call["force"]) == (
+        country,
+        area_file,
+        False,
+    )
+
+
+def test_an_area_reaches_kartograf_as_its_polygon_not_its_box(
+    adapter: ActionAdapter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kartograf reads the area itself, so its runs select by the polygon.
+
+    An area of two small squares at the corners of a diagonal: its GeoPackage
+    holds each part as it is in EPSG:2180, and Kartograf's own offline sheet
+    selection of that file picks the sheets of the parts only, never those of
+    the envelope between them, the box Archiwista sent before ADR-035
+    erratum 2.
+    """
+    received: list[dict[str, object]] = []
+
+    def recording(**kwargs: object) -> kartograf.AvailabilityReport:
+        received.append(kwargs)
+        return _kartograf_report()
+
+    monkeypatch.setattr(actions_module, "check_availability", recording)
+    geo = cast(GeoAdapter, adapter)
+    parts = [_box(19.90, 50.00, 19.91, 50.01), _box(20.00, 50.07, 20.01, 50.08)]
+    area = area_from_geometry(
+        {
+            "type": "MultiPolygon",
+            "coordinates": [part["coordinates"] for part in parts],
+        },
+        adapter=geo,
+        source="drawn",
+    )
+    written = write_area_package(tmp_path / "areas", area, transformer=geo.transformer)
+
+    adapter.availability("nmt", area_file=written, countries=area.countries)
+
+    (call,) = received
+    area_file = call["geometry"]
+    assert isinstance(area_file, Path)
+    meta, _, read, _ = pyogrio.raw.read(area_file)
+    mover = PlanarMover("EPSG:2180", geo.transformer)
+    planar = [mover.move(part, "EPSG:4326") for part in parts]
+    assert (call["country"], meta["crs"]) == ("pl", "EPSG:2180")
+    assert [
+        shapely.equals_exact(
+            shapely.normalize(shapely.from_wkb(found)),
+            shapely.normalize(part),
+            tolerance=1e-6,
+        )
+        for found, part in zip(read, planar, strict=True)
+    ] == [True, True]
+    by_file = kartograf.find_sheets_for_geometry(
+        area_file, "1:10000", sheet_system="1992"
+    )
+    by_parts = {
+        sheet
+        for part in planar
+        for sheet in kartograf.find_sheets_for_bbox(
+            kartograf.BBox(
+                part.bounds[0],
+                part.bounds[1],
+                part.bounds[2],
+                part.bounds[3],
+                "EPSG:2180",
+            ),
+            "1:10000",
+            sheet_system="1992",
+        )
+    }
+    min_x, min_y, max_x, max_y = shapely.union_all(planar).bounds
+    by_box = kartograf.find_sheets_for_bbox(
+        kartograf.BBox(min_x, min_y, max_x, max_y, "EPSG:2180"),
+        "1:10000",
+        sheet_system="1992",
+    )
+    assert set(by_file) == by_parts
+    assert len(by_file) < len(by_box)
 
 
 @pytest.mark.parametrize(
     ("product", "area", "countries", "option"),
     [
         ("bdot10k", _box(19.9, 50.0, 20.0, 50.05), ("PL",), "product"),
-        ("nmt", _box(10.0, 50.0, 10.1, 50.05), (), "bbox"),
+        ("nmt", _box(10.0, 50.0, 10.1, 50.05), (), "geometry"),
     ],
 )
 def test_kartograf_refuses_a_product_or_an_area_before_the_network(
     adapter: ActionAdapter,
+    tmp_path: Path,
     product: str,
     area: GeoJSONGeometry,
     countries: tuple[str, ...],
     option: str,
 ) -> None:
     """An unknown product and an area in neither country are Kartograf's refusals."""
+    geo = cast(GeoAdapter, adapter)
+    record = area_from_geometry(area, adapter=geo, source="drawn")
+    area_file = write_area_package(
+        tmp_path / "areas", record, transformer=geo.transformer
+    )
+
     with no_network() as attempts, pytest.raises(ProducerError) as refused:
-        adapter.availability(product, area=area, countries=countries)
+        adapter.availability(product, area_file=area_file, countries=countries)
 
     error = refused.value
     assert (error.code, error.details["option"]) == ("validation_error", option)

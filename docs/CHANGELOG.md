@@ -1304,6 +1304,12 @@ command-line interface may change.
 
 ### Fixed
 
+- A polygon area reached Kartograf as its bounding box, so the report's command lines carried
+  `--bbox` and a plan or download selected sheets outside the polygon. Archiwista now writes the
+  area as a GeoPackage (`<data-dir>/areas/<id>.gpkg`) and passes it as Kartograf's geometry;
+  command lines accept only such a file as a path, and pinned plan calls name its project copy
+  `obszary/<id>.gpkg` (A-ADR-035 erratum 2, A-ADR-049 erratum 3).
+
 - Pinning versions of two producers of one store in one request (a local group, A-ADR-049
   decision 1) wrote the first producer's directory as the second one's `stores[]` root,
   so the project's IMGW pins showed `unknown` and a later IMGW pin was refused with

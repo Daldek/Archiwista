@@ -9,9 +9,10 @@ configured (``404``), a command outside the producer's catalog (``400``,
 ``unknown_command``), one that works on no store or has no plan without
 effects (``422 unsupported``, ``no_store``, ``no_check``: every run goes
 through its plan), an option that is a file path (``403``,
-``path_outside_root``), the producer's own refusal of the options (``400``,
-its text) and the plans of other calls (``409``, ``plan_mismatch``); a
-refusal of one call names its place (``details.call``). Offline mode refuses
+``path_outside_root``; an input naming an area's GeoPackage Archiwista wrote
+is none, A-ADR-035 erratum 2), the producer's own refusal of the options
+(``400``, its text) and the plans of other calls (``409``, ``plan_mismatch``);
+a refusal of one call names its place (``details.call``). Offline mode refuses
 a job that needs the network (``409``, ``offline_mode``), and nothing is
 recorded. The job keeps the options as the producer read them.
 ``kept_plans`` returns the plans a ``check`` job kept (``GET /jobs/{job}/plan``,
@@ -22,6 +23,7 @@ check and run happen in the job's worker.
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal, get_args
 
 from archiwista.auth import Principal, ProjectVisibility
@@ -74,6 +76,7 @@ def start(
     calls: Sequence[CommandCall],
     actor: Principal,
     visible: ProjectVisibility,
+    areas: Path,
     plan_job: str | None = None,
     pin: tuple[str, str] | None = None,
 ) -> JobRecord:
@@ -105,6 +108,9 @@ def start(
         Who asks: the job's actor.
     visible : ProjectVisibility
         The projects ``actor`` sees: a ``plan_job`` must be a job they see.
+    areas : Path
+        Where the areas' GeoPackages are (``AppPaths.areas_dir``): an input
+        option of a call may name one of them.
     plan_job : str or None, optional
         ``download`` only: the ``check`` job whose kept plans the run runs, a
         job of the same store, producer and calls.
@@ -141,7 +147,8 @@ def start(
         the store has no directory of the producer
         (``store_without_producer``).
     PathOutsideRootError
-        An option that is a file path is given (``details.option``).
+        An option that is a file path is given (``details.option``), other
+        than an input naming an area's GeoPackage in ``areas``.
     ProducerError
         The producer refused a call's options (its code, text and
         ``details.option``).
@@ -189,7 +196,7 @@ def start(
     checked: list[dict[str, object]] = []
     for place, call in enumerate(calls):
         try:
-            valid = _checked(adapter, settings, infos, call, store=store)
+            valid = _checked(adapter, settings, infos, call, store=store, areas=areas)
         except ArchiwistaError as error:
             error.details["call"] = place
             raise
@@ -240,6 +247,7 @@ def _checked(
     call: CommandCall,
     *,
     store: str,
+    areas: Path,
 ) -> CommandCall:
     """Return a call as the producer read it, of a command a job may run.
 
@@ -259,7 +267,7 @@ def _checked(
             message("command.no_check", producer=call.producer, command=call.command),
             reason="no_check",
         )
-    return checked_call(adapter, settings, info, call, store=store)
+    return checked_call(adapter, settings, info, call, store=store, areas=areas)
 
 
 def _stored_plans(queries: IndexQueries, job_id: str) -> tuple[StoredPlan, ...]:

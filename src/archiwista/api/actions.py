@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, Path, Response
 
 from archiwista.api import API_PREFIX
 from archiwista.api.dependencies import (
+    app_paths,
     authorizer,
     index_queries,
     plugin_registry,
@@ -32,7 +33,7 @@ from archiwista.api.models import JobDetail
 from archiwista.api.models_actions import ActionPlanInfo, JobRequest
 from archiwista.auth import Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
-from archiwista.config import SettingsService
+from archiwista.config import AppPaths, SettingsService
 from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
@@ -49,6 +50,7 @@ _Settings = Annotated[SettingsService, Depends(settings_service)]
 _Jobs = Annotated[JobSupervisor, Depends(job_supervisor)]
 _Queries = Annotated[IndexQueries, Depends(index_queries)]
 _Visible = Annotated[ProjectVisibility, Depends(visible_projects)]
+_Paths = Annotated[AppPaths, Depends(app_paths)]
 _JobId = Annotated[str, Path(description="Job id.", examples=["3f9c1a7e5b2d4c60"])]
 
 _UNSUPPORTED: dict[int | str, dict[str, Any]] = {
@@ -92,6 +94,7 @@ def start_job(
     settings: _Settings,
     jobs: _Jobs,
     queries: _Queries,
+    paths: _Paths,
     response: Response,
 ) -> JobDetail:
     """Start a job of calls of a producer's catalog on a configured store.
@@ -112,7 +115,9 @@ def start_job(
     store without a directory of the producer (`400`,
     `store_without_producer`), a command on no store or without a check
     (`422`, `no_store`, `no_check`), an option that is a file path (`403`,
-    `path_outside_root`), the producer's refusal of the options (`400` with
+    `path_outside_root`; an input naming an area's GeoPackage Archiwista
+    wrote, as the command lines of `/availability` do, is none), the
+    producer's refusal of the options (`400` with
     its text and `details.option`), each refusal of a call naming its place
     (`details.call`), a `plan_job` the session does not see or without a
     kept plan (`404`) or of another store, producer or calls (`409`,
@@ -135,6 +140,7 @@ def start_job(
         calls=body.command_calls(),
         actor=principal,
         visible=visible,
+        areas=paths.areas_dir,
         plan_job=body.plan_job,
         pin=body.pin_target(),
     )
