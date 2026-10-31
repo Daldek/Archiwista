@@ -1350,6 +1350,13 @@ command-line interface may change.
   points that are no grid has no preview (`unsupported_format`).
 - A raster whose rows run from the south (an XYZ grid sorted by rising Y, as GUGiK
   writes them) had its thumbnail upside down; it is drawn north up.
+- On an iPhone held upright the bottom navigation ran past the right edge of the screen
+  after signing in to a team server until the phone was turned sideways and back: iOS
+  (WebKit, so Safari and Firefox alike) zoomed in on the 13 px sign-in fields and kept
+  the zoom in the app, which opens in the same page. On a phone or a touch screen every
+  field (sign-in, search, the panels' fields and lists) now has 16 px text, which iOS
+  does not zoom in on; a computer's fields are unchanged and zooming by hand stays
+  allowed.
 - The plan window of a set with a line per sheet (Kartograf gives one when the grid of
   the area holds sheets without data, as at sea around the island of Wolin: about 116) sent
   every line's `POST /commands/parse` at once: over HTTP/2 (a team server behind a

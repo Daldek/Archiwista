@@ -408,6 +408,16 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .version { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 9px; padding: 7px 9px; font-size: 12px; }
 .pop { position: absolute; top: 46px; right: 120px; width: 360px; z-index: 30; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 12px; display: grid; gap: 8px; }
 
+/* ---------- touch screens and phones: fields at 16 px ----------
+   iOS (WebKit, so every iPhone browser) zooms the page in on a field whose text
+   is smaller than 16 px and keeps that zoom once the field is left: after the
+   sign-in form the shell opened in the same page wider than the screen, the
+   bottom navigation overflowing it until a rotation reset the zoom. Views style
+   their fields at 12-13 px in their own stylesheets, hence !important. */
+@media (max-width: 860px), (pointer: coarse) {
+  input, select, textarea { font-size: 16px !important; }
+}
+
 /* ---------- phones: navigation at the bottom, panels as bottom sheets ---------- */
 @media (max-width: 860px) {
   .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: 48px minmax(0, 1fr) 58px; }
