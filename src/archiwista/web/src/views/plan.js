@@ -21,6 +21,13 @@
  * lines it failed or skipped; above 5 GB or 500 positions it asks to be
  * confirmed first (SPEC 10.3). A session that may not write the stores
  * (`store_write`) sees the plan with the action disabled and the reason.
+ * „Dodaj do projektu” (A-ADR-049 decision 9) asks the download to pin, once
+ * it succeeded, what it fetched and the plan's positions the store holds
+ * into a new group of a project the session may change (`pin` of `POST
+ * /jobs`; the group's name starts as the window's title); with nothing to
+ * download it only pins. It is disabled with its reason without
+ * `store_write`, offline, without a project to change or before a plan; a
+ * refusal of the project or the group shows at its field.
  *
  * The shell opens the window (`openPlan` of downloads.js), so it outlives the
  * view. Planning and the confirmation are modal; once something started the
@@ -36,6 +43,7 @@ import { CancelDownload, downloadActive, DownloadStatus, useDownloads } from "..
 import { bytes, count, int, plural } from "../format.js";
 import { actions } from "../labels/actions.js";
 import { t } from "../labels/index.js";
+import { pins } from "../labels/pins.js";
 import {
   CopyButton,
   html,
@@ -51,11 +59,13 @@ import {
   useState,
 } from "../ui.js";
 import { Badge, FINAL_STATES, loadCardStyles, SUMMARY_STATES } from "./cards.js";
+import { FieldNote, MAX_GROUP_NAME, pinRefusalField, useWritableProjects } from "./pin-dialog.js";
 
 await loadCardStyles();
 await loadStylesheet(new URL("./plan.css", import.meta.url));
 
 const L = actions.plan;
+const PL = pins.plan;
 /** A run above either asks to be confirmed (SPEC 10.3). */
 const LARGE_BYTES = 5e9;
 const LARGE_POSITIONS = 500;
@@ -90,7 +100,10 @@ export function DownloadPlan({
   onClose,
   onMinimise,
 }) {
-  const { session } = useApp();
+  const { session, settings } = useApp();
+  const projects = useWritableProjects();
+  const [pin, setPin] = useState(() => ({ on: false, project: null, group: groupName(title) }));
+  const [pinRefusal, setPinRefusal] = useState(null);
   const downloads = useDownloads();
   const titleId = useId();
   const dialog = useRef(null);
@@ -106,6 +119,17 @@ export function DownloadPlan({
   const planned = check.ended;
   const large = sum.todo > LARGE_POSITIONS || sum.known > LARGE_BYTES;
   const allowed = Boolean(session?.store_write);
+  const writable = projects.data ?? [];
+  let pinWhy = null;
+  if (!allowed) pinWhy = PL.no_write;
+  else if (settings?.offline) pinWhy = PL.offline;
+  else if (projects.data && !writable.length) pinWhy = PL.no_project;
+  else if (!planned || !sum.plans.length) pinWhy = PL.no_plan;
+  const pinning = pin.on && pinWhy === null && writable.length > 0;
+  const pinProject = pin.project ?? writable[0]?.project ?? null;
+  const pinGroup = pin.group.trim();
+  const pinTarget =
+    pinning && pinProject && pinGroup ? { project: pinProject, group: pinGroup } : null;
   const followed = (run) => {
     if (!run.job) return null;
     const item = downloads.entries.find((entry) => entry.id === run.job.id) ?? seen.current.get(run.job.id) ?? null;
@@ -114,7 +138,13 @@ export function DownloadPlan({
   };
   const settled = runs !== null && runs.every((run) => run.problem || (run.job && isOver(followed(run))));
   const started = runs !== null;
-  const ready = planned && sum.todo > 0 && allowed && (!large || confirmed) && !started;
+  const ready =
+    planned &&
+    (sum.todo > 0 || pinning) &&
+    allowed &&
+    (!large || confirmed) &&
+    !started &&
+    (!pinning || pinTarget !== null);
   // Modal while planning; not once something started, so the page stays usable.
   useEffect(() => {
     const element = dialog.current;
@@ -143,29 +173,52 @@ export function DownloadPlan({
     setRuns((current) => current.map((run, place) => (place === index ? { ...run, ...patch } : run)));
   const download = async () => {
     setRuns([{ key: "download", kind: "download", job: null, problem: null }]);
+    const body = {
+      kind: "download",
+      producer,
+      store: store.id,
+      calls: check.calls,
+      plan_job: check.job.id,
+      ...(pinTarget ? { pin: pinTarget } : {}),
+    };
     try {
-      const job = await startJob({
-        kind: "download",
-        producer,
-        store: store.id,
-        calls: check.calls,
-        plan_job: check.job.id,
-      });
+      const job = await startJob(body);
       downloads.track(job, { title, window: windowKey });
       record(0, { job });
     } catch (error) {
       if (!error.problem) throw error;
+      const field = pinTarget ? pinRefusalField(error) : null;
+      if (field) {
+        // The project or the group refused before a job: corrected and asked again.
+        setRuns(null);
+        setPinRefusal({ problem: error.problem, field: field === "group" ? "group" : "project" });
+        return;
+      }
       record(0, { problem: error.problem });
     }
+  };
+  const changePin = (patch) => {
+    setPin((now) => ({ ...now, ...patch }));
+    setPinRefusal(null);
   };
   const submit = (event) => {
     event.preventDefault();
     if (ready) download();
   };
-  const reason = !planned || !sum.plans.length ? null : !sum.todo ? L.nothing : !allowed ? L.no_write : null;
-  const label = planned
-    ? t(L.submit, { count: int(sum.todo), positions: plural(sum.todo, L.positions_accusative) })
-    : L.submit_unplanned;
+  let reason = null;
+  if (planned && sum.plans.length) {
+    if (!sum.todo && !pinning) reason = L.nothing;
+    else if (!allowed) reason = L.no_write;
+  }
+  // Pinning only, with nothing to download, counts the plan's positions.
+  const pinOnly = pinning && !sum.todo;
+  const counted = pinOnly ? sum.positions : sum.todo;
+  const label = !planned
+    ? L.submit_unplanned
+    : t(pinOnly ? PL.submit_pin_only : pinning ? PL.submit : L.submit, {
+        count: int(counted),
+        positions: accusative(counted),
+      });
   return html`<dialog class="plan-window" ref=${dialog} aria-labelledby=${titleId}
     onCancel=${(event) => {
       event.preventDefault();
@@ -220,6 +273,10 @@ export function DownloadPlan({
             <span>${t(L.large, { positions: count(sum.todo, L.positions_accusative), size: sizeText(sum) })}</span>
           </label>`
         : null}
+      ${lines !== null && !started
+        ? html`<${PinOption} pin=${pin} why=${pinWhy} projects=${projects} project=${pinProject}
+            refusal=${pinRefusal} onChange=${changePin} />`
+        : null}
       ${reason && !started
         ? html`<p class="plan-line warn plan-reason" role="note"><${Icon} name="alert" size=${15} /><span>${reason}</span></p>`
         : null}
@@ -245,6 +302,61 @@ export function DownloadPlan({
       </div>
     </form>
   </dialog>`;
+}
+
+/** „pozycję”, „pozycje”, „pozycji”: after „Pobierz” and „Przypnij”. */
+function accusative(n) {
+  return plural(n, L.positions_accusative);
+}
+
+/** The first name of a window's group: its title as a group may be named. */
+function groupName(title) {
+  return title.replaceAll("/", "-").replace(/\p{Cc}/gu, "").trim().slice(0, MAX_GROUP_NAME);
+}
+
+/**
+ * „Dodaj do projektu”: the project and the new group the download pins
+ * into, disabled with its reason (`why`); a refusal at its field.
+ */
+function PinOption({ pin, why, projects, project, refusal, onChange }) {
+  const id = useId();
+  const items = projects.data ?? [];
+  const on = pin.on && why === null && items.length > 0;
+  const at = (field) => (refusal?.field === field ? refusal.problem : null);
+  const toggle = (event) => onChange({ on: event.currentTarget.checked });
+  return html`<fieldset class="plan-pin">
+    <label class="check-field">
+      <input type="checkbox" checked=${on} disabled=${why !== null || !projects.data}
+        aria-describedby=${`${id}-why`} onChange=${toggle} />
+      <span>${PL.option}</span>
+    </label>
+    <span class="field-hint" id=${`${id}-why`}>${why ?? PL.option_hint}</span>
+    ${projects.error ? html`<${ProblemView} problem=${projects.error.problem} compact />` : null}
+    ${on
+      ? html`<div class="plan-pin-fields">
+          <div class=${`field${at("project") ? " invalid" : ""}`}>
+            <label for=${`${id}-project`}>${PL.project}</label>
+            <select id=${`${id}-project`} value=${project ?? ""}
+              aria-invalid=${at("project") ? "true" : null} aria-describedby=${`${id}-project-note`}
+              onChange=${(event) => onChange({ project: event.currentTarget.value })}>
+              ${items.map(
+                (item) => html`<option key=${item.project} value=${item.project}>${item.name}</option>`,
+              )}
+            </select>
+            <${FieldNote} id=${`${id}-project-note`} problem=${at("project")} />
+          </div>
+          <div class=${`field${at("group") ? " invalid" : ""}`}>
+            <label for=${`${id}-group`}>${PL.group}</label>
+            <input id=${`${id}-group`} value=${pin.group} maxlength=${MAX_GROUP_NAME}
+              autocomplete="off" aria-invalid=${at("group") ? "true" : null}
+              aria-describedby=${`${id}-group-note`}
+              onInput=${(event) => onChange({ group: event.currentTarget.value })} />
+            <${FieldNote} id=${`${id}-group-note`} problem=${at("group")}>
+              ${PL.group_hint}</${FieldNote}>
+          </div>
+        </div>`
+      : null}
+  </fieldset>`;
 }
 
 /** A run that ended, or can no longer be followed. */

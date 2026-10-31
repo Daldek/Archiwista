@@ -17,7 +17,9 @@
  * the version's title opens the comparison with another version of the
  * slot (`view=compare&a&b`, views/compare.js), and „Pobierz plik” downloads
  * the version's file (api.js `fileAddress`; disabled with its reason while
- * the store is unavailable or the version is gone). Then the slot's problems.
+ * the store is unavailable or the version is gone); „Dodaj do projektu…”
+ * pins the version, an older one too, into a group of a project
+ * (views/pin-dialog.js). Then the slot's problems.
  * „Potwierdź bieżącą wersję” starts a link check (`POST
  * /stores/{store}/link-check`; an administrator's, disabled with the reason
  * for anyone else) and shows its result from the job's events.
@@ -38,6 +40,7 @@ import { count, day, size, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { file as L } from "../labels/file.js";
 import { T, t } from "../labels/index.js";
+import { pins as P } from "../labels/pins.js";
 import { PREVIEW_PARAM, PREVIEW_STYLE_PARAM } from "../map/previews.js";
 import { PreviewPane } from "../previews.js";
 import { Link, readRoute, setParams, useRoute } from "../router.js";
@@ -70,6 +73,7 @@ import {
   storeName,
   useJob,
 } from "./cards.js";
+import { PinButton } from "./pin-dialog.js";
 
 await loadCardStyles();
 
@@ -173,7 +177,7 @@ function SlotCard({ store, slot, wanted, tab, style }) {
     <${VersionAxis} versions=${versions} chosen=${chosen} />
     ${chosen
       ? html`<${VersionDetails} key=${chosen.path} store=${store} card=${card} version=${chosen}
-          versions=${versions} tab=${tab} style=${style} />`
+          versions=${versions} tab=${tab} style=${style} onPinned=${reload} />`
       : html`<section class="det-sec"><${StandardPathRows} card=${card} /></section>`}
     <${LinkCheck} store=${store} card=${card} versions=${versions} onDone=${reload} />
     ${loading ? html`<${Spinner} quiet />` : null}
@@ -286,7 +290,7 @@ function Pins({ pins }) {
   </p>`;
 }
 
-function VersionDetails({ store, card, version, versions, tab, style }) {
+function VersionDetails({ store, card, version, versions, tab, style, onPinned }) {
   const panel = useId();
   const title = version.label
     ? t(L.version.title, { label: version.label })
@@ -299,6 +303,12 @@ function VersionDetails({ store, card, version, versions, tab, style }) {
       <div class="fc-version-actions">
         <${CompareWith} versions=${versions} version=${version} />
         <${DownloadVersion} store=${store} card=${card} version=${version} />
+        <${PinButton} source="file" versions=${[{ store, version: version.path }]}
+          onPinned=${onPinned}
+          what=${t(P.from_file, {
+            label: version.label ?? version.path,
+            name: fileName(card.slot),
+          })} />
       </div>
     </div>
     <${VersionTabs} tab=${tab} panel=${panel} />

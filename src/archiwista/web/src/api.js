@@ -105,6 +105,9 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").ExportRequest} ExportRequest */
 /** @typedef {import("./types.js").ProjectExport} ProjectExport */
 /** @typedef {import("./types.js").ProjectExports} ProjectExports */
+/** @typedef {import("./types.js").PinsRequest} PinsRequest */
+/** @typedef {import("./types.js").GroupRequest} GroupRequest */
+/** @typedef {import("./types.js").PinOutcome} PinOutcome */
 
 /**
  * Abort a read: every function takes these options last.
@@ -797,6 +800,64 @@ export function setProjectStore(project, producer, store) {
 }
 
 /**
+ * A new local group of a project with the versions the store holds
+ * (`add_project_group`, A-ADR-049 decision 8): the versions named, or the
+ * rows of a `GET /slots` query on every page.
+ *
+ * @param {string} project - Project id.
+ * @param {GroupRequest} body
+ * @returns {Promise<PinOutcome>} What was pinned, with the card after it (`201`).
+ * @throws {ApiError} `403 permission_denied`, `404` (an unknown project),
+ *   `400` (`invalid_group_name`, `too_many_pins` with `details.count`), `409`
+ *   (`group_exists`, `other_store`, `unknown_store`, `project_locked`), `422`.
+ */
+export function addProjectGroup(project, body) {
+  return request("POST", `/projects/${one(project)}/groups`, { json: body });
+}
+
+/**
+ * More versions the store holds in a local group (`add_group_pins`).
+ *
+ * @param {string} project - Project id.
+ * @param {string} group - The group's name.
+ * @param {PinsRequest} body
+ * @returns {Promise<PinOutcome>}
+ * @throws {ApiError} As `addProjectGroup`; `404` for an unknown group and `409
+ *   group_origin_plan` for a group of the plan window.
+ */
+export function addGroupPins(project, group, body) {
+  return request("POST", `/projects/${one(project)}/groups/${one(group)}/pins`, { json: body });
+}
+
+/**
+ * Take pins out of a group (`unpin_group_pins`); the group stays.
+ *
+ * @param {string} project - Project id.
+ * @param {string} group - The group's name.
+ * @param {Array<{producer: string, version: string}>} pins
+ * @returns {Promise<ProjectCard>} The changed card.
+ * @throws {ApiError} `403 permission_denied`, `404` (an unknown project or
+ *   group), `409 project_locked`.
+ */
+export function unpinGroupPins(project, group, pins) {
+  return request("POST", `/projects/${one(project)}/groups/${one(group)}/unpin`, {
+    json: { pins },
+  });
+}
+
+/**
+ * Remove a group with its pins from a project (`remove_project_group`).
+ *
+ * @param {string} project - Project id.
+ * @param {string} group - The group's name.
+ * @returns {Promise<ProjectCard>} The changed card.
+ * @throws {ApiError} As `unpinGroupPins`.
+ */
+export function removeProjectGroup(project, group) {
+  return request("DELETE", `/projects/${one(project)}/groups/${one(group)}`);
+}
+
+/**
  * Write a project's export `zestawy/<name>/` from its pins (`export_project`):
  * `pliki.txt` and `ATRYBUCJE.txt`.
  *
@@ -1427,14 +1488,18 @@ export function validateCommand(body) {
  * Start a job of a producer's calls on a configured store (`start_job`), all
  * the lines of a row in one job (ADR-044): `check` plans a run of each call
  * without its effects, `download` runs them (with `plan_job`, the plans that
- * check kept of the same calls).
+ * check kept of the same calls; with `pin`, into a new group of a project
+ * once it succeeded, A-ADR-049 decision 9).
  *
  * @param {JobRequest} body
  * @returns {Promise<JobDetail>} The queued job (`202`).
  * @throws {ApiError} `403 permission_denied` (a download without
- *   `store_write`), `400` (`store_without_producer`, the producer's refusal
- *   of an option), `404`, `409 conflict` (`offline_mode`, `plan_mismatch`);
- *   a refusal of one call names its place in `calls` as `details.call`.
+ *   `store_write`, a `pin` into a project the session may not change), `400`
+ *   (`store_without_producer`, the producer's refusal of an option,
+ *   `invalid_group_name`), `404` (also a project of `pin`), `409 conflict`
+ *   (`offline_mode`, `plan_mismatch`, `group_exists`, `other_store`,
+ *   `unknown_store`); a refusal of one call names its place in `calls` as
+ *   `details.call`.
  */
 export function startJob(body) {
   return request("POST", "/jobs", { json: body });

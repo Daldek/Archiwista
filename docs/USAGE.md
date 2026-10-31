@@ -295,7 +295,13 @@ versions a scan has just indexed.
   --pin-group GRUPA` writes, when the job succeeds, a new group of the plan window
   with the files it fetched and the versions the store holds at the plan's other
   positions; a job that ends `partial` pins nothing, and a taken name or another
-  store is refused before the download starts.
+  store is refused before the download starts. In the web: "Dodaj do projektu…" on the
+  catalog's result, a coverage row of the map and a version on the file card pins the
+  chosen versions into a new group of a project the session may change (or adds them
+  to a group the project has); on the project's card "Odepnij" removes a pin and "Usuń
+  grupę" a group, each asked first. The plan window's option "Dodaj do projektu" names
+  the project and the new group; the download's result in the top bar then says what
+  was pinned and what was not.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 

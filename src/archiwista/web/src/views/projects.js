@@ -15,7 +15,9 @@
  * when and by whom it was created, its problems, and its groups in the file's
  * order — each with where its versions came from (a plan's commands to copy,
  * or the requests that chose them from the store) and its pins with their
- * state, leading to their file cards. „Zmień…” changes the name, the
+ * state, leading to their file cards; „Odepnij” at a pin and „Usuń grupę”
+ * (each after a question) for a session that may change the project.
+ * „Zmień…” changes the name, the
  * description, the area and the store of a producer; „Udostępnij…” opens the
  * sharing screen (views/sharing.js): who sees the project, its owner and its
  * data folder. Both are the owner's or an administrator's
@@ -35,18 +37,21 @@ import {
   listJobs,
   listOwnFiles,
   listProjects,
+  removeProjectGroup,
   setProjectArea,
   setProjectStore,
   startProjectScan,
+  unpinGroupPins,
   updateProject,
   uploadArea,
 } from "../api.js";
 import { useApp } from "../context.js";
 import { count, int, size, stamp } from "../format.js";
-import { useResource } from "../hooks.js";
-import { projects as L } from "../labels/projects.js";
-import { previews as P } from "../labels/previews.js";
+import { useAction, useResource } from "../hooks.js";
 import { T, t } from "../labels/index.js";
+import { pins as PIN } from "../labels/pins.js";
+import { previews as P } from "../labels/previews.js";
+import { projects as L } from "../labels/projects.js";
 import { ChangeBadge, OwnCardLink, ownName, PROJECT_PARAM, StateBadge } from "../map/own.js";
 import { ViewLayout } from "../panels.js";
 import { Link, setParams } from "../router.js";
@@ -54,6 +59,7 @@ import {
   CopyButton,
   html,
   Icon,
+  Modal,
   ProblemView,
   Seg,
   Spinner,
@@ -557,7 +563,7 @@ function ProjectCard({ id, onChanged }) {
           <${IssueList} issues=${card.problems} currentProject=${card.project} />
         </section>`
       : null}
-    <${Groups} card=${card} />
+    <${Groups} card=${card} onChanged=${changed} />
     <${ProjectExports} card=${card} />
     <${OwnData} key=${card.project} project=${card.project} round=${folderRound} />
     ${sharing
@@ -629,10 +635,24 @@ function ActionButton({ icon, label, title, why, whyId, onClick }) {
     <${Icon} name=${icon} size=${14} />${label}</button>`;
 }
 
-/** The groups of pinned versions in the file's order, each with its origin and pins. */
-function Groups({ card }) {
+/**
+ * The groups of pinned versions in the file's order, each with its origin and
+ * pins; for a session that may change the project „Odepnij” at each pin and
+ * „Usuń grupę”, each after a question.
+ */
+function Groups({ card, onChanged }) {
+  const [asking, setAsking] = useState(null);
+  const [done, setDone] = useState(null);
+  const write = card.project_write;
+  // A pin of a group (`pin`) or the whole group (`pin` null), asked first.
+  const ask = (group, pin) =>
+    setAsking({ group: group.name, pin, pins: pin ? 1 : group.pins.length });
   return html`<section class="det-sec" aria-labelledby="pc-groups-title">
     <h3 class="section-title" id="pc-groups-title">${L.card.groups}</h3>
+    ${done
+      ? html`<p class="pc-done" role="status"><${Icon} name="check" size=${15} />
+          <span>${done}</span></p>`
+      : null}
     ${card.groups.length
       ? html`<ul class="pc-groups">
           ${card.groups.map(
@@ -641,6 +661,12 @@ function Groups({ card }) {
                 <b>${group.name}</b>
                 <${Origin} origin=${group.origin} />
                 <span class="faint">${count(group.pins.length, L.card.pin_count)}</span>
+                ${write
+                  ? html`<button type="button" class="btn ghost sm pc-group-remove"
+                      aria-label=${t(PIN.remove_group_label, { group: group.name })}
+                      onClick=${() => ask(group, null)}>
+                      <${Icon} name="trash" size=${13} />${PIN.remove_group}</button>`
+                  : null}
               </div>
               ${group.origin.kind === "plan"
                 ? (group.origin.calls ?? []).map(
@@ -648,12 +674,54 @@ function Groups({ card }) {
                       call=${call} />`,
                   )
                 : null}
-              <${PinList} pins=${group.pins} />
+              <${PinList} pins=${group.pins} group=${group.name}
+                onUnpin=${write ? (pin) => ask(group, pin) : null} />
             </li>`,
           )}
         </ul>`
       : html`<p class="faint">${card.state === "ok" ? L.card.no_groups : L.card.groups_unread}</p>`}
+    ${asking
+      ? html`<${PinQuestion} project=${card.project} asking=${asking}
+          onClose=${() => setAsking(null)}
+          onDone=${(text) => {
+            setAsking(null);
+            setDone(text);
+            onChanged();
+          }} />`
+      : null}
   </section>`;
+}
+
+/** „Odepnij” of a pin or „Usuń grupę”, asked first; a refusal shows in the question. */
+function PinQuestion({ project, asking, onClose, onDone }) {
+  const action = useAction();
+  const { group, pin } = asking;
+  const version = pin ? (pin.label ?? pin.version) : null;
+  const question = pin
+    ? t(PIN.unpin_question, { version, group })
+    : t(PIN.remove_group_question, { group, count: int(asking.pins) });
+  const confirm = () =>
+    action
+      .run(() =>
+        pin
+          ? unpinGroupPins(project, group, [{ producer: pin.producer, version: pin.version }])
+          : removeProjectGroup(project, group),
+      )
+      .then((answer) => {
+        if (answer) onDone(pin ? t(PIN.unpinned, { version, group }) : t(PIN.removed, { group }));
+      });
+  const yes = pin ? PIN.unpin : PIN.remove_group;
+  return html`<${Modal} label=${yes} onClose=${onClose}>
+    <h2>${yes}</h2>
+    <p>${question}</p>
+    ${action.problem ? html`<${ProblemView} problem=${action.problem} compact />` : null}
+    <div class="modal-actions">
+      <button type="button" class="btn" disabled=${action.busy} onClick=${onClose}>
+        ${PIN.confirm_cancel}</button>
+      <button type="button" class="btn danger" disabled=${action.busy} onClick=${confirm}>
+        <${Icon} name="trash" size=${14} />${yes}</button>
+    </div>
+  </${Modal}>`;
 }
 
 /** Where a group's versions came from: a plan of a producer, or the store. */
@@ -683,7 +751,7 @@ function Command({ producer, call }) {
   </div>`;
 }
 
-function PinList({ pins }) {
+function PinList({ pins, group, onUnpin }) {
   if (!pins.length) return html`<p class="faint pc-no-pins">${L.card.no_pins}</p>`;
   return html`<ul class="pc-pins" aria-label=${L.card.pins}>
     ${pins.map(
@@ -711,6 +779,11 @@ function PinList({ pins }) {
           </${Tech}>
         </${Badge}>
         <span class="faint tabular">${size(pin.size_bytes)}</span>
+        ${onUnpin
+          ? html`<button type="button" class="btn ghost sm pc-unpin"
+              aria-label=${t(PIN.unpin_label, { version: pin.label ?? pin.version, group })}
+              onClick=${() => onUnpin(pin)}><${Icon} name="x" size=${12} />${PIN.unpin}</button>`
+          : null}
       </li>`,
     )}
   </ul>`;

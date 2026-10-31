@@ -1458,6 +1458,38 @@
  */
 
 /**
+ * Body of `POST /projects/{project}/groups/{group}/pins`: versions the store
+ * holds, pinned into a local group (A-ADR-049 decision 8). Exactly one of
+ * `versions` (`from: "file"`) and `query` (`local_state`, `catalog`).
+ *
+ * @typedef {object} PinsRequest
+ * @property {"local_state"|"catalog"|"file"} from - Where they were chosen.
+ * @property {Array<{store: string, version: string}>} [versions] - Versions by store
+ *   and path; older ones too.
+ * @property {Object<string, string>} [query] - The filters and area of `GET /slots`
+ *   (no `limit`, no `cursor`): the versions of its rows on every page; more than
+ *   10,000 rows are refused (`too_many_pins`).
+ */
+
+/**
+ * Body of `POST /projects/{project}/groups`: a new local group with its first pins.
+ *
+ * @typedef {PinsRequest & {name: string}} GroupRequest
+ */
+
+/**
+ * What a pin request did, with the project's card after it.
+ *
+ * @typedef {object} PinOutcome
+ * @property {ProjectCard} project
+ * @property {string} group - The group's name as the file holds it.
+ * @property {number} pinned - Versions added to the group.
+ * @property {number} already - Versions the group pinned already.
+ * @property {Array<{store: string, version: string, reason: "missing"|"no_sha256"}>}
+ *   skipped - Versions not pinned, with why.
+ */
+
+/**
  * Body of `POST /projects/{project}/exports`: the export `zestawy/<name>/`.
  *
  * @typedef {object} ExportRequest
@@ -1657,7 +1689,10 @@
  *   `status` `ok`, `partial`, `failed` or `skipped`, `reason` of a skipped one
  *   `not_planned`, `nothing_to_download` or `taken`, `files`, `failed`, `error`),
  *   `taken` (positions another download fetches: `path`, `unit`, `job`, `actor`),
- *   `rescanned`, `seconds`; of a `preview_warm` `versions`, `files`, `warmed`,
+ *   `rescanned`, `pin` (a download with `pin`: `project`, `group`, `written`; written:
+ *   `pins` and `not_pinned` (`path`, `reason` `not_in_store`); not: `reason`
+ *   `job_partial` or `error` `{code, reason, detail}`), `seconds`; of a
+ *   `preview_warm` `versions`, `files`, `warmed`,
  *   `cached`, `needs_build`, `failed`, `failures` (`ref`, `code`, `detail`),
  *   `skipped`, `stopped` (`cache_full` or null), `room_bytes`, `seconds`.
  * @property {JobFailure|null} error
@@ -2467,6 +2502,9 @@
  *   one names its place as `details.call`.
  * @property {string} [plan_job] - `download` only: the `check` job of the same calls
  *   whose plans it runs.
+ * @property {{project: string, group: string}} [pin] - `download` only: once it
+ *   succeeded, its files and the plans' positions the store holds are pinned into
+ *   this new group of the project (origin `plan`).
  */
 
 /**

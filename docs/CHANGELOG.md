@@ -24,6 +24,13 @@ command-line interface may change.
   the producer is asked). The source interface gains `VersionCommandAdapter`
   (`command_for_version(version, *, root)`) and `ActionAdapter.run(..., upgrade=)`, the
   update mode a re-pin runs in.
+- Pinning versions into a project's groups (A-ADR-049, P3): `archiwista project-pin`,
+  `project-unpin`, the routes `POST /projects/{project}/groups`, `…/pins`, `…/unpin` and
+  `DELETE …/groups/{group}`, and `jobs start download … --pin PROJEKT --pin-group GRUPA`
+  (`POST /jobs` `pin`), which pins what a successful download leaves. In the web:
+  "Dodaj do projektu…" in the catalog, the map's coverage and the file card, "Odepnij"
+  and "Usuń grupę" on the project's card, and the plan window's option "Dodaj do
+  projektu" with the pin's outcome in the download's result.
 
 - A project's exports (A-ADR-049 decision 13): "Eksportuj…" in the section "Zestawy" of
   the project's card, `archiwista project-export PROJEKT NAZWA [--group GRUPA …]` and

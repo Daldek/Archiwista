@@ -10,9 +10,10 @@
 
 import { watchJob } from "../api.js";
 import { useApp } from "../context.js";
-import { bytes, int, plural, stamp } from "../format.js";
+import { bytes, count, int, plural, stamp } from "../format.js";
 import { cards as L } from "../labels/cards.js";
 import { T, t } from "../labels/index.js";
+import { pins } from "../labels/pins.js";
 import { Link, useRoute } from "../router.js";
 import {
   CopyButton,
@@ -516,7 +517,8 @@ function defaultSummary(events) {
 /**
  * The summary of a download (`download`): its files by status, each with its
  * size, its failed units and the lines of a row it failed or skipped
- * (`result.calls`, ADR-044), as `archiwista jobs show` says them.
+ * (`result.calls`, ADR-044), as `archiwista jobs show` says them; with `pin`
+ * whether it pinned into its project's group (A-ADR-049 decision 9).
  *
  * @param {JobEvents} events
  */
@@ -534,6 +536,7 @@ export function downloadSummary(events) {
   return html`<div class="job-download">
     <p class="job-summary">${t(L.job.download_files, { files: int(files), counts: counts.join(", "), failed: int(result.failed) })}</p>
     <${TakenList} taken=${result.taken ?? []} />
+    ${result.pin ? html`<${PinResult} pin=${result.pin} />` : null}
     ${result.files.length
       ? html`<ul class="job-files" aria-label=${L.job.download_files_title}>${result.files.map(
           (file) => html`<li key=${`${file.call}/${file.path}`}>
@@ -559,6 +562,34 @@ export function downloadSummary(events) {
             (call) => html`<${CallOutcome} key=${call.place} call=${call} count=${calls.length} />`,
           )}</ul>
         </div>`
+      : null}
+  </div>`;
+}
+
+/**
+ * The pin of a download: the group written with its pins and the plan's
+ * positions the store did not hold, or why nothing was pinned.
+ *
+ * @param {{pin: Object<string, *>}} props - `result.pin` of the download.
+ */
+function PinResult({ pin }) {
+  const R = pins.result;
+  const names = { project: pin.project, group: pin.group };
+  const link = html`<${Link} view="projects" params=${{ project: pin.project }}>
+    ${R.open_project}</${Link}>`;
+  if (!pin.written) {
+    const text = pin.error
+      ? html`<${Tech} value=${[["code", pin.error.code], ["reason", pin.error.reason ?? "–"]]}>
+          ${t(R.error, names)}</${Tech}> ${pin.error.detail}`
+      : t(R.job_partial, names);
+    return html`<p class="job-pin bad-text" role="note">${text}</p>`;
+  }
+  const missing = pin.not_pinned ?? [];
+  return html`<div class="job-pin">
+    <p>${t(R.written, { ...names, count: count(pin.pins, pins.versions) })} ${link}</p>
+    ${missing.length
+      ? html`<p class="faint">${t(R.not_pinned, { count: int(missing.length) })}:
+          <span class="mono">${missing.map((item) => item.path).join(", ")}</span></p>`
       : null}
   </div>`;
 }

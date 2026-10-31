@@ -91,12 +91,18 @@ def standin(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     return module
 
 
-def serve_store(serve: Serve, tmp_path: Path) -> Served:
+def serve_store(
+    serve: Serve, tmp_path: Path, *, projects: Path | None = None
+) -> Served:
     """Serve the stand-in's store ``pomiary`` online, with the area kept."""
     root = tmp_path / STORE
     root.mkdir()
     store = StoreConfig(id=STORE, name="Pomiary", kartograf=root, kind="local")
-    served = serve(AppSettings(offline=False, basemaps=(), stores=(store,)))
+    dirs = () if projects is None else (projects,)
+    settings = AppSettings(
+        offline=False, basemaps=(), stores=(store,), project_dirs=dirs
+    )
+    served = serve(settings)
     with IndexWriter(served.paths.index_file) as writer:
         writer.write_area(AREA)
     return served
@@ -132,7 +138,7 @@ def call(page: Page, method: str, path: str, body: dict[str, Any] | None = None)
     """Return the JSON answer of an API request made with the page's session."""
     data = None if body is None else json.dumps(body)
     answer: dict[str, Any] = page.evaluate(API, [method, path, data])
-    assert answer["status"] in (200, 202), answer
+    assert answer["status"] in (200, 201, 202), answer
     return answer["body"]
 
 
@@ -342,8 +348,86 @@ def test_a_session_that_may_not_write_sees_the_download_disabled_with_its_reason
         "Pobieranie zapisuje magazyn, a ta sesja nie ma uprawnienia „zapis do"
         " magazynu” (rola store_writer). Plan można obejrzeć."
     )
+    option = dialog.get_by_role("checkbox", name="Dodaj do projektu")
+    expect(option).to_be_disabled()
+    expect(option).to_have_accessible_description(
+        "Przypięcie idzie z pobraniem, a ta sesja nie ma uprawnienia „zapis do"
+        " magazynu” (rola store_writer)."
+    )
     shot(page, "05-bez-uprawnienia")
     assert call(page, "GET", "/jobs?kind=download")["items"] == []
+    tab.assert_clean()
+
+
+def test_a_download_pins_its_files_into_a_new_group_of_a_project(
+    serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """No project: the option disabled; then a pinned run, its group, a taken name."""
+    # Arrange
+    projects = tmp_path / "projekty"
+    projects.mkdir()
+    served = serve_store(serve, tmp_path, projects=projects)
+    page = tab.page
+    step = open_area(page, served, served.token_url())
+    first = check_at_source(step).nth(0)
+
+    # Act: no project the session may change.
+    dialog = open_plan(page, first)
+
+    # Assert
+    option = dialog.get_by_role("checkbox", name="Dodaj do projektu")
+    expect(option).to_be_disabled()
+    expect(option).to_have_accessible_description(
+        "Ta sesja nie może zmienić żadnego projektu: przypina właściciel projektu"
+        " albo administrator."
+    )
+
+    # Act: a project; the run pins into a new group of it.
+    dialog.get_by_role("button", name="Anuluj").click()
+    created = call(page, "POST", "/projects", {"path": str(projects / "raba")})
+    dialog = open_plan(page, first)
+    dialog.get_by_role("checkbox", name="Dodaj do projektu").check()
+    group = dialog.get_by_label("Nowa grupa")
+    expect(group).to_have_value("dem · 2023 · PL-2000 · 1m · EVRF2007 · obszar Kraków")
+    group.fill("Wodowskaz 2023")
+    dialog.get_by_role("button", name="Pobierz 2 pozycje i przypnij").click()
+
+    # Assert: the run's two files pinned; the group on the project's card.
+    expect(dialog).to_contain_text(
+        "Przypięto w projekcie raba, grupa „Wodowskaz 2023”: 2 wersje.",
+        timeout=WAIT_S * 1000,
+    )
+    card = call(page, "GET", f"/projects/{created['project']}")
+    (pinned,) = card["groups"]
+    assert (pinned["name"], pinned["origin"]["kind"], len(pinned["pins"])) == (
+        "Wodowskaz 2023",
+        "plan",
+        2,
+    )
+    dialog.get_by_role("button", name="Zamknij").click()
+    expect(dialog).to_be_hidden()
+
+    # Act: the same name again (case aside) is refused before a job.
+    dialog = open_plan(page, first)
+    dialog.get_by_role("checkbox", name="Dodaj do projektu").check()
+    dialog.get_by_label("Nowa grupa").fill("wodowskaz 2023")
+    dialog.get_by_role("button", name=re.compile(r"(i przypnij|^Przypnij .*)$")).click()
+
+    # Assert
+    expect(dialog.locator(".plan-pin .field-error")).to_contain_text(
+        "ma już grupę „Wodowskaz 2023”"
+    )
+    expect(dialog.get_by_label("Nowa grupa")).to_have_attribute("aria-invalid", "true")
+    assert len(call(page, "GET", "/jobs?kind=download")["items"]) == 1
+
+    # Act: the project's card.
+    dialog.get_by_role("button", name="Anuluj").click()
+    page.goto(f"{served.base}/?view=projects&project={created['project']}")
+
+    # Assert
+    head = page.get_by_role("complementary", name="Projekt").locator(".pc-group-head")
+    expect(head).to_contain_text("Wodowskaz 2023")
+    expect(head).to_contain_text("z planu pobrania · standin")
     tab.assert_clean()
 
 

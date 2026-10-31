@@ -18,7 +18,9 @@
  * the one of `Ctrl+K`. A row opens the file card overlay (`file=`). The
  * switch over the centre (views/switch.js) leads to the map and the
  * Wachlarz with the same address; where the centre is wide enough, the map
- * stands beside the catalog (views/map.js `embedded`).
+ * stands beside the catalog (views/map.js `embedded`). „Dodaj do projektu…”
+ * over the list pins the versions of every row of the result
+ * (views/pin-dialog.js), disabled with the reason above 10 000 rows.
  */
 
 import { listProducts, listSlots, listStationDatasets } from "../api.js";
@@ -27,6 +29,7 @@ import { count, int } from "../format.js";
 import { NARROW, useMedia, useResource, useSize } from "../hooks.js";
 import { catalog as L } from "../labels/catalog.js";
 import { T, t } from "../labels/index.js";
+import { pins as P } from "../labels/pins.js";
 import { setDetails as D } from "../labels/set-details.js";
 import { timeline as TL } from "../labels/timeline.js";
 import { GROUP_PARAM, LAYER_PARAM } from "../map/previews.js";
@@ -53,6 +56,7 @@ import { CatalogGrid, FILE_ROWS, onMapOf } from "./catalog-grid.js";
 import { activeStationFilters, CatalogStations, stationFamily, stationQuery } from "./catalog-stations.js";
 import { timelineDataset } from "./catalog-station-timeline.js";
 import { CatalogTimeline, useTimelineLayers } from "./catalog-timeline.js";
+import { PinButton, pinQuery, queryRows } from "./pin-dialog.js";
 import { DetailsToggle, SetDetails } from "./set-details.js";
 import { LAYOUT_PARAM, MODE_PARAM, SPLIT_MIN, TIMELINE_LAYOUT, ViewSwitch } from "./switch.js";
 
@@ -89,10 +93,7 @@ function slotQuery(params) {
  * @returns {number|null}
  */
 function groupTotal(groups, location) {
-  if (!groups) return null;
-  if (location === "with") return groups.footprint + groups.country;
-  if (location === "none") return groups.none;
-  return groups.footprint + groups.country + groups.none;
+  return groups ? queryRows(groups, location) : null;
 }
 
 /**
@@ -281,6 +282,10 @@ export default function Catalog({ route }) {
               <${Groups} groups=${pages.groups} location=${location} area=${Boolean(query.area_id || query.bbox)} />
               <span class="cat-spacer"></span>
               <${Summary} total=${total} loaded=${pages.items.length} versions=${query.versions} />
+              ${total !== null
+                ? html`<${PinButton} source="catalog" query=${pinQuery(query)} rows=${total}
+                    what=${P.from_catalog} />`
+                : null}
               ${map && location !== "none"
                 ? html`<${Link} view="map" params=${pick(query, MAP_PARAMS)} class="btn sm"
                     title=${L.result.show_on_map_title}><${Icon} name="map" size=${14} />${L.result.show_on_map}</${Link}>`

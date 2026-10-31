@@ -5,7 +5,8 @@
  * store and then answers „lokalnie 83% obszaru” per country, measured in the
  * country's planar CRS — or says why there is no percent, or that the answer
  * comes from the index (`stale`). The files of the area come from the
- * catalog's location groups.
+ * catalog's location groups. „Dodaj do projektu…” of a product pins the
+ * current versions of its files in the area (views/pin-dialog.js).
  */
 
 import { getLocalCoverage, listSlots } from "../api.js";
@@ -13,8 +14,10 @@ import { count, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { T, t } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
+import { pins as P } from "../labels/pins.js";
 import { Link } from "../router.js";
 import { html, Icon, ProblemView, Spinner, Tech, useEffect, useId, useState } from "../ui.js";
+import { PinButton, pinQuery } from "../views/pin-dialog.js";
 import { productStores } from "./products.js";
 
 const KM2 = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
@@ -73,7 +76,8 @@ export function LocalState({ area, filters, products, stores, names, indexKey, o
           .map(
             (pair) => html`<${CoverageItem} key=${pairKey(pair)} state=${results[pairKey(pair)]}
               title=${names.get(pair.product) ?? pair.product} product=${pair.product}
-              store=${several ? storeName(pair.store) : null} />`,
+              store=${several ? storeName(pair.store) : null}
+              query=${localQuery(filters, area, pair)} />`,
           )
       : null}
     ${area && empty.length
@@ -89,12 +93,20 @@ export function LocalState({ area, filters, products, stores, names, indexKey, o
   </section>`;
 }
 
-function CoverageItem({ state, title, product, store }) {
+/**
+ * A product of a store in the area: its local state per country, and
+ * „Dodaj do projektu…” of its current versions in the area (`query`).
+ */
+function CoverageItem({ state, title, product, store, query }) {
   if (!state) return null;
+  const what = store
+    ? t(P.from_local_state_store, { product: title, store })
+    : t(P.from_local_state, { product: title });
   return html`<div class="coverage-item">
     <div class="coverage-head">
       <${Tech} value=${product}><b>${title}</b><//>
       ${store ? html`<span class="faint">${t(L.local.store, { name: store })}</span>` : null}
+      <${PinButton} source="local_state" query=${query} what=${what} />
     </div>
     ${state.loading ? html`<${Spinner} quiet />` : null}
     ${state.error ? html`<${ProblemView} problem=${state.error.problem} compact />` : null}
@@ -137,6 +149,12 @@ function staleText(answer) {
 
 function pairKey(pair) {
   return `${pair.store}/${pair.product}`;
+}
+
+/** The current versions of a pair's files in the area, as a pin request asks for them. */
+function localQuery(filters, area, pair) {
+  const { store, product } = pair;
+  return pinQuery({ ...filters, area_id: area.id, store, product, versions: "current" });
 }
 
 /**

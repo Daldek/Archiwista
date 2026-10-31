@@ -1,0 +1,15 @@
+/* „Dodaj do projektu…” (views/pin-dialog.js) and the plan window's option (views/plan.js). */
+.pin-open { display: inline-flex; }
+.pin-form { display: grid; gap: 4px; }
+.pin-form h2 { margin-bottom: 8px; }
+.field-label { font-weight: 600; font-size: 12.5px; }
+.pin-what { overflow-wrap: anywhere; }
+.pin-group { border: 0; padding: 0; }
+.pin-group legend { padding: 0; margin-bottom: 4px; font-weight: 600; font-size: 12.5px; }
+.pin-group .check-field { font-weight: 400; }
+.pin-group input:not([type="radio"]), .pin-group select { margin-left: 24px; width: calc(100% - 24px); }
+.pin-done { display: flex; align-items: flex-start; gap: 8px; }
+.pin-skipped ul { margin: 4px 0 0; padding-left: 18px; font-size: 12px; }
+.plan-pin { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.plan-pin .field { margin: 0; }
+.plan-pin-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
