@@ -8,11 +8,11 @@ relative directory is taken from the current one), ``project-edit PROJEKT
 (``PATCH /projects/{project}``), ``project-area PROJEKT (--area-id OBSZAR |
 --clear)`` its area (``PUT /projects/{project}/area``) and ``project-store
 PROJEKT PRODUCENT --store MAGAZYN`` the store of a producer's pins (``PUT
-/projects/{project}/stores/{producer}``), ``project-pin PROJEKT GRUPA
+/projects/{project}/stores/{producer}``), ``project-pin PROJEKT ZESTAW
 (--version MAGAZYN:WERSJA … | --query JSON) [--from ŹRÓDŁO] [--add]`` pins
 versions the store holds into a new local group or, with ``--add``, one the
 project has (``POST /projects/{project}/groups``, ``…/groups/{group}/pins``,
-printing ``PinOutcome``) and ``project-unpin PROJEKT GRUPA [--pin
+printing ``PinOutcome``) and ``project-unpin PROJEKT ZESTAW [--pin
 PRODUCENT:WERSJA …]`` removes pins or the whole group (``POST
 …/groups/{group}/unpin``, ``DELETE …/groups/{group}``): the others print the
 project's card as the index holds it right after the change (``ProjectCard``).

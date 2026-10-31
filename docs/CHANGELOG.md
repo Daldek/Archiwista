@@ -36,8 +36,8 @@ command-line interface may change.
   (`command_for_version(version, *, root)`) and `ActionAdapter.run(..., upgrade=)`, the
   update mode a re-pin runs in.
 - The jobs over a project's groups (A-ADR-049 decisions 11 and 12, plan P4):
-  `archiwista project-verify PROJEKT [GRUPA …]`, `project-check`, `project-repin PROJEKT
-  GRUPA` and `project-restore`, and `POST /projects/{project}/jobs` (`kind` `verify`,
+  `archiwista project-verify PROJEKT [ZESTAW …]`, `project-check`, `project-repin PROJEKT
+  ZESTAW` and `project-restore`, and `POST /projects/{project}/jobs` (`kind` `verify`,
   `check`, `repin` or `restore`, `groups` left out for every group), start the job kinds
   `project_verify` (the pinned files hashed in the store, offline: `ok`, `corrupt`,
   `missing`, `content_match` when another version of the slot holds the same content,
@@ -56,7 +56,7 @@ command-line interface may change.
   keeps each version's command in the index at once.
 - Pinning versions into a project's groups (A-ADR-049, P3): `archiwista project-pin`,
   `project-unpin`, the routes `POST /projects/{project}/groups`, `…/pins`, `…/unpin` and
-  `DELETE …/groups/{group}`, and `jobs start download … --pin PROJEKT --pin-group GRUPA`
+  `DELETE …/groups/{group}`, and `jobs start download … --pin PROJEKT --pin-group ZESTAW`
   (`POST /jobs` `pin`), which pins what a successful download leaves. In the web:
   "Dodaj do projektu…" in the catalog, the map's coverage and the file card, "Odepnij"
   and "Usuń grupę" on the project's card, and the plan window's option "Dodaj do
@@ -1065,11 +1065,11 @@ command-line interface may change.
   pinned and missing versions.
 
 - Pinning what the store holds (A-ADR-049 decisions 7 and 8, plan P3): `archiwista
-  project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … | --query JSON) [--from …]
+  project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … | --query JSON) [--from …]
   [--add]` / `POST /projects/{project}/groups` and `…/groups/{group}/pins` pin named
   versions, older ones too, or the versions of a catalog query into a local group,
   offline from the index (`PinOutcome`: pinned, already pinned, skipped with
-  `missing` or `no_sha256`); `archiwista project-unpin PROJEKT GRUPA [--pin
+  `missing` or `no_sha256`); `archiwista project-unpin PROJEKT ZESTAW [--pin
   PRODUCENT:WERSJA …]` / `POST …/groups/{group}/unpin` and `DELETE
   …/groups/{group}` remove pins or a group. The first pin of a producer names the
   project's store; refused are more than 10,000 versions (`too_many_pins`), a taken
@@ -1079,7 +1079,7 @@ command-line interface may change.
 
 - A download pins what it leaves into a new project group (A-ADR-049 decision 9, plan
   P3): `POST /jobs` with `"pin": {"project", "group"}` / `archiwista jobs start
-  download … --pin PROJEKT --pin-group GRUPA` needs `project.write` of the project
+  download … --pin PROJEKT --pin-group ZESTAW` needs `project.write` of the project
   too and is refused before a job as a new group is (a taken or invalid name,
   `other_store`, `unknown_store`); a retry asks the same. When the job succeeds, its
   worker writes the group after the rescan, origin `plan` with the job's producer and
