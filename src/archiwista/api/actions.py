@@ -117,7 +117,12 @@ def start_job(
     (`details.call`), a `plan_job` the session does not see or without a
     kept plan (`404`) or of another store, producer or calls (`409`,
     `plan_mismatch`), a producer whose plugin is missing (`503`) and offline
-    mode (`409 offline_mode`).
+    mode (`409 offline_mode`). With `pin` (a download only) the session also
+    needs `project.write` of the project (`404` for one it does not see,
+    `403` for one it may not change), the group's name must keep the rule
+    (`400 invalid_group_name`) and be free (`409 group_exists`), and the
+    project's store of the producer must be the job's (`409 other_store`)
+    and configured (`409 unknown_store`).
     """
     job = action_service.start(
         registry,
@@ -131,6 +136,7 @@ def start_job(
         actor=principal,
         visible=visible,
         plan_job=body.plan_job,
+        pin=body.pin_target(),
     )
     response.headers["Location"] = f"{API_PREFIX}/jobs/{job.id}"
     return JobDetail.of(job)

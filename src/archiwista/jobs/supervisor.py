@@ -660,6 +660,10 @@ def action_details(
     project = params.get("project")
     if project is not None:
         details["project"] = project
+    pin = params.get("pin")
+    if isinstance(pin, Mapping):
+        details["project"] = pin.get("project")
+        details["group"] = pin.get("group")
     return details
 
 
@@ -2115,12 +2119,28 @@ def _check_params(params: Mapping[str, object]) -> JsonObject:
 
 
 def _download_params(params: Mapping[str, object]) -> JsonObject:
-    """Check a ``download`` job's calls (as of ``check``) and its ``plan_job``."""
+    """Check a ``download`` job's calls (as of ``check``), ``plan_job`` and ``pin``.
+
+    ``pin`` (A-ADR-049 decision 9), when given, is ``{"project", "group"}``,
+    both non-empty texts; a download without it keeps no ``pin``.
+    """
     plan_job = params.get("plan_job")
     if not (plan_job is None or (isinstance(plan_job, str) and plan_job)):
         raise ValueError(f"invalid download plan job {plan_job!r}"[:300])
-    calls = {name: value for name, value in params.items() if name != "plan_job"}
-    return {**_check_params(calls), "plan_job": plan_job}
+    pin = params.get("pin")
+    if pin is not None and not (
+        isinstance(pin, Mapping)
+        and set(pin) == {"project", "group"}
+        and all(isinstance(pin[name], str) and pin[name] for name in pin)
+    ):
+        raise ValueError(f"invalid download pin {pin!r}"[:300])
+    calls = {
+        name: value for name, value in params.items() if name not in ("plan_job", "pin")
+    }
+    checked: JsonObject = {**_check_params(calls), "plan_job": plan_job}
+    if pin is not None:
+        checked["pin"] = {"project": pin["project"], "group": pin["group"]}
+    return checked
 
 
 def _snapshot_params(params: Mapping[str, object]) -> JsonObject:
@@ -2314,6 +2334,9 @@ class _Scope:
         named = params.get("project")
         if isinstance(named, str):
             projects.add(named)
+        pin = params.get("pin")
+        if isinstance(pin, Mapping) and isinstance(pin.get("project"), str):
+            projects.add(pin["project"])
         stores = store is not None or any(
             isinstance(ref, str) and ref.startswith(_VERSION_REF) for ref in refs
         )

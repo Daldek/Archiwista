@@ -215,6 +215,7 @@ def test_a_retry_fetches_a_taken_position_the_other_job_failed(
             jobs,
             decisions,
             queries,
+            ConfigStore(paths.config_file).load(),
             job_id=second.id,
             actor=ANNA,
             visible=ALL_PROJECTS,

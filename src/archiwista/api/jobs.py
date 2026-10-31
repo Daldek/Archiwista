@@ -707,6 +707,7 @@ def retry_job(
     decisions: _Authorizer,
     jobs: _Jobs,
     queries: _Queries,
+    settings: Annotated[SettingsService, Depends(settings_service)],
     response: Response,
 ) -> JobDetail:
     """Start a job that did not succeed again; answer `202` with the new job.
@@ -717,9 +718,11 @@ def retry_job(
     `actor`), with `Location: /api/v1/jobs/{new job}`. A download fetches
     only what its store still lacks: units it finished are not fetched
     again. What the kind needs at its start is asked again: a download needs
-    the role `store_writer` or the setting `store_write_for_all`, a snapshot
-    the project's owner or an administrator, a project's download or repin
-    both, a store's scan, unit outlines, a link check or a scan of every
+    the role `store_writer` or the setting `store_write_for_all` (and one
+    that pins into a project, the project's owner or an administrator, with
+    its group's name still free: `409 group_exists`), a snapshot the
+    project's owner or an administrator, a store's scan, unit outlines, a
+    link check or a scan of every
     project's data folder an administrator (`403 permission_denied`); a scan
     of one project's data folder keeps to a person's limits (`429
     rate_limited`). A job that succeeded or has not ended is `409`
@@ -729,7 +732,13 @@ def retry_job(
     projects the session does not see is `404`.
     """
     record = job_controls.retry(
-        jobs, decisions, queries, job_id=job, actor=principal, visible=visible
+        jobs,
+        decisions,
+        queries,
+        settings.get(),
+        job_id=job,
+        actor=principal,
+        visible=visible,
     )
     return _accepted(record, response)
 

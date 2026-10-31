@@ -290,7 +290,12 @@ versions a scan has just indexed.
   the unit and the label come from the index, a version not in the store or without
   a SHA-256 is skipped with the reason, and the first pin of a producer names the
   project's store. `project-unpin PROJEKT GRUPA --pin PRODUCENT:WERSJA` removes a pin,
-  and without `--pin` the whole group; the files stay in the store.
+  and without `--pin` the whole group; the files stay in the store. A download pins
+  what it leaves too: `archiwista jobs start download … --plan ZADANIE --pin PROJEKT
+  --pin-group GRUPA` writes, when the job succeeds, a new group of the plan window
+  with the files it fetched and the versions the store holds at the plan's other
+  positions; a job that ends `partial` pins nothing, and a taken name or another
+  store is refused before the download starts.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 

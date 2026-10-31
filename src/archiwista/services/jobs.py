@@ -37,6 +37,7 @@ from typing import Any
 
 from archiwista.auth import Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
+from archiwista.config import AppSettings
 from archiwista.errors import ConflictError, NotFoundError, PermissionDeniedError
 from archiwista.index import IndexQueries
 from archiwista.jobs import (
@@ -49,6 +50,7 @@ from archiwista.jobs import (
 from archiwista.jobs.supervisor import action_details
 from archiwista.messages import label, message
 from archiwista.services.owndata import scan_limits
+from archiwista.services.pins import check_plan_pin
 
 # States of a job that a retry runs again: it did not succeed.
 RETRY_STATES: tuple[JobState, ...] = ("partial", "failed", "interrupted", "cancelled")
@@ -136,6 +138,7 @@ def retry(
     jobs: JobSupervisor,
     authorizer: Authorizer,
     queries: IndexQueries,
+    settings: AppSettings,
     *,
     job_id: str,
     actor: Principal,
@@ -152,6 +155,9 @@ def retry(
         ``project.write``, ``store.scan``).
     queries : IndexQueries
         The local index: the project of a ``snapshot`` job.
+    settings : AppSettings
+        The configured stores and project directories: the ``pin`` of a
+        ``download``.
     job_id : str
         The job to run again.
     actor : Principal
@@ -176,10 +182,14 @@ def retry(
         The job succeeded (reason ``job_succeeded``) or has not ended
         (``job_active``), with ``details.job``.
     PermissionDeniedError
-        A ``download`` without ``store.write``, a ``snapshot`` without
+        A ``download`` without ``store.write`` (and, with ``pin``, without
+        ``project.write`` of its project), a ``snapshot`` without
         ``project.write`` of its project, a ``scan``, ``footprints``,
         ``link_check`` or an ``own_scan`` of every project without
         ``store.scan``.
+    ConflictError, InvalidChangeError
+        The ``pin`` of a ``download`` is refused as ``actions.start`` refuses
+        it (``group_exists``, ``other_store``, ``unknown_store``).
     RateLimitedError
         An ``own_scan`` of one project beyond the limits of a person's scans
         (``scan_running``, ``scan_too_soon``).
@@ -202,6 +212,19 @@ def retry(
         )
     if record.kind == "download":
         authorizer.require(actor, "store.write", target=record.store)
+        pin = record.params.get("pin")
+        if isinstance(pin, dict) and record.store is not None:
+            check_plan_pin(
+                settings,
+                queries,
+                authorizer,
+                project=str(pin["project"]),
+                group=str(pin["group"]),
+                producer=str(record.params["producer"]),
+                store=record.store,
+                actor=actor,
+                visible=visible,
+            )
     if record.kind in STORE_SCAN_KINDS:
         authorizer.require(actor, "store.scan")
     admit: Callable[[], None] | None = None

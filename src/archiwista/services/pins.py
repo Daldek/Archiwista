@@ -1,4 +1,4 @@
-"""Pinning what the store holds into a project's groups (A-ADR-049 decisions 7, 8).
+"""Pinning into a project's groups (A-ADR-049 decisions 7, 8 and 9).
 
 ``pin_local`` adds versions the index holds to a ``local`` group of a project
 file: a new group, or one the project has. The versions are named (a store
@@ -13,21 +13,26 @@ store, or while the project's store matches no configured one, is refused.
 ``project.write``, write the file under its lock
 (``archiwista.projects.change_project_file``), log ``project.pin`` or
 ``project.unpin`` and record the project in the index at once.
+
+A download of the plan window that names ``pin`` (decision 9) is checked
+before its job exists by ``check_plan_pin`` (the project, its name and its
+store), and its worker writes the ``plan`` group with ``pin_download`` when
+the job succeeded.
 """
 
 import unicodedata
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from archiwista.auth import Principal, ProjectVisibility
+from archiwista.auth import ALL_PROJECTS, Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings
 from archiwista.errors import ConflictError, InvalidChangeError, NotFoundError
-from archiwista.index import IndexQueries, VersionFacts
-from archiwista.index.projects import match_store
+from archiwista.index import IndexQueries, IndexWriter, VersionFacts
+from archiwista.index.projects import match_store, record_project
 from archiwista.messages import message
 from archiwista.projects import (
     MAX_GROUP_NAME_CHARS,
@@ -35,6 +40,7 @@ from archiwista.projects import (
     change_project_file,
     clean_name,
     format_time,
+    read_project_json,
 )
 from archiwista.projects import document as project_document
 from archiwista.services.projects import (
@@ -43,6 +49,7 @@ from archiwista.services.projects import (
     record_changed,
     written_root,
 )
+from archiwista.sources import CommandCall, GeoAdapter
 from archiwista.sources.registry import PluginRegistry
 
 if TYPE_CHECKING:
@@ -341,6 +348,190 @@ def unpin(
         details["group_removed"] = True
     authorizer.state.record(actor, "project.unpin", project.access_key, details=details)
     return record_changed(registry, settings, index_path, directory)
+
+
+def check_plan_pin(
+    settings: AppSettings,
+    queries: IndexQueries,
+    authorizer: Authorizer,
+    *,
+    project: str,
+    group: str,
+    producer: str,
+    store: str,
+    actor: Principal,
+    visible: ProjectVisibility,
+) -> dict[str, str]:
+    """Check the ``pin`` of a download before its job exists; return the job's.
+
+    Returns
+    -------
+    dict[str, str]
+        ``project`` (its key) and ``group`` (the name as the file will hold
+        it): the job's ``params.pin``.
+
+    Raises
+    ------
+    NotFoundError
+        No project ``project`` ``actor`` sees.
+    PermissionDeniedError
+        ``actor`` may not change the project.
+    InvalidChangeError
+        The name breaks the rule (``invalid_group_name``).
+    ConflictError
+        The project holds a group of the name (``group_exists``), or names
+        another store of ``producer`` (``other_store``) or one matching no
+        configured store (``unknown_store``).
+    ProjectFileError
+        The file is invalid or of a newer format.
+    """
+    ref = changed_project(queries, authorizer, project, actor=actor, visible=visible)
+    directory = project_directory(ref, settings)
+    name = group_name(group)
+    data = read_project_json(directory)
+    project_document.parse_document(data)
+    found = find_group(data, name)
+    if found is not None:
+        raise group_taken(ref.key, str(found["name"]))
+    stores = _project_stores(data, directory, settings)
+    if producer in stores:
+        probe = VersionFacts(store, "", producer, None, None, None, None, None, True)
+        _require_store(data, stores, probe, "")
+    return {"project": ref.key, "group": name}
+
+
+def pin_download(
+    settings: AppSettings,
+    index_path: Path,
+    geo: GeoAdapter | None,
+    *,
+    pin: Mapping[str, object],
+    store: str,
+    calls: Sequence[CommandCall],
+    files: Sequence[Mapping[str, Any]],
+    positions: Sequence[str],
+    account: str,
+) -> dict[str, object]:
+    """Write the ``plan`` group of a download that succeeded (decision 9).
+
+    Parameters
+    ----------
+    settings : AppSettings
+        The configured stores and project directories.
+    index_path : Path
+        The local index, read after the download's rescan.
+    geo : GeoAdapter or None
+        Coordinate operations: the project's area read into the index.
+    pin : Mapping[str, object]
+        The job's ``params.pin``: ``project`` and ``group``.
+    store : str
+        The download's configured store.
+    calls : Sequence[CommandCall]
+        The download's calls, in their order: the group's origin.
+    files : Sequence[Mapping[str, Any]]
+        ``files[]`` of the download's summary: each pinned by its
+        ``version_path``, ``sha256``, ``size_bytes``, ``label`` and ``unit``
+        (``content_sha256`` from the index); one without a ``version_path``
+        as a position.
+    positions : Sequence[str]
+        Standard paths of the kept plans' positions: those not in ``files``
+        are pinned to the current version the index holds there.
+    account : str
+        The job's actor (``pinned_by``).
+
+    Returns
+    -------
+    dict[str, object]
+        The summary's ``pin``: ``project``, ``group``, ``pins`` (the count
+        written) and ``not_pinned`` (``[{path, reason}]``, reason
+        ``not_in_store``).
+
+    Raises
+    ------
+    ArchiwistaError
+        The project is gone, the name was taken meanwhile, the store is
+        another one, the lock is held, or the file cannot be written.
+    """
+    project, group = str(pin["project"]), str(pin["group"])
+    producer = calls[0].producer
+    versioned = [item for item in files if item.get("version_path")]
+    done = {str(item["path"]) for item in versioned}
+    rest = [str(item["path"]) for item in files if not item.get("version_path")]
+    candidates: dict[str, VersionFacts] = {}
+    not_pinned: list[dict[str, str]] = []
+    with IndexQueries(index_path) as queries:
+        record = queries.project(project, visible=ALL_PROJECTS)
+        if record is None:
+            raise NotFoundError(message("project.not_found", project=project))
+        indexed = queries.version_facts(
+            store, [str(item["version_path"]) for item in versioned]
+        )
+        for item in versioned:
+            version = str(item["version_path"])
+            content = indexed.get(version)
+            candidates.setdefault(
+                version,
+                VersionFacts(
+                    store=store,
+                    path=version,
+                    producer=producer,
+                    sha256=str(item["sha256"]),
+                    content_sha256=None if content is None else content.content_sha256,
+                    size_bytes=int(item["size_bytes"]),
+                    unit=item.get("unit"),
+                    label=item.get("label"),
+                    present=True,
+                ),
+            )
+        for path in dict.fromkeys([*positions, *rest]):
+            if path in done:
+                continue
+            current = queries.current_version_at(store, path)
+            if current is None or current.sha256 is None:
+                not_pinned.append({"path": path, "reason": "not_in_store"})
+                continue
+            candidates.setdefault(current.path, current)
+    directory = project_directory(record.project, settings)
+    config = settings.store(store)
+    root = None if config is None else config.roots().get(producer)
+    if config is None or root is None:
+        raise NotFoundError(message("api.store_not_configured", store=store))
+    written = written_root(root, directory, relative=bool(config.path_aliases))
+    moment = format_time(datetime.now(UTC).replace(microsecond=0))
+
+    def change(data: dict[str, Any]) -> None:
+        found = find_group(data, group)
+        if found is not None:
+            raise group_taken(project, str(found["name"]))
+        stores = _project_stores(data, directory, settings)
+        for fact in candidates.values():
+            _require_store(data, stores, fact, written)
+        data.setdefault("groups", []).append(
+            {
+                "name": group,
+                "origin": {
+                    "kind": "plan",
+                    "producer": producer,
+                    "calls": [
+                        {"command": call.command, "options": dict(call.options)}
+                        for call in calls
+                    ],
+                },
+                "pins": [
+                    _pin_json(fact, moment, account) for fact in candidates.values()
+                ],
+            }
+        )
+
+    change_project_file(directory, change)
+    with IndexWriter(index_path) as writer:
+        record_project(writer, directory, stores=settings.stores, geo=geo)
+    return {
+        "project": project,
+        "group": group,
+        "pins": len(candidates),
+        "not_pinned": not_pinned,
+    }
 
 
 def _same(left: str, right: str) -> bool:

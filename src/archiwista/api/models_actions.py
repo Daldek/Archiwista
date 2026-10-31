@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from archiwista.api.models_availability import AvailabilityNoticeItem
 from archiwista.index import PlanTotals, StoredPlan
 from archiwista.jobs import MAX_JOB_CALLS
+from archiwista.projects import MAX_GROUP_NAME_CHARS
 from archiwista.services.actions import ActionKind, KeptPlans
 from archiwista.sources import CommandCall, PlanEntry, PlanStatus
 
@@ -161,6 +162,27 @@ class CallRequest(BaseModel):
     )
 
 
+class JobPin(BaseModel):
+    """The project and the new group a download pins its files into."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    project: str = Field(
+        min_length=1,
+        description="Project id (`project` of /projects).",
+        examples=["raba"],
+    )
+    group: str = Field(
+        min_length=1,
+        max_length=MAX_GROUP_NAME_CHARS,
+        description=(
+            "The new group's name: 1 to 80 characters, no control character, no"
+            " `/`, free in the project (compared case-folded)."
+        ),
+        examples=["NMT 2023"],
+    )
+
+
 class JobRequest(BaseModel):
     """A job of a producer's calls on a configured store (`POST /jobs`)."""
 
@@ -216,6 +238,20 @@ class JobRequest(BaseModel):
         ),
         examples=[_JOB_ID],
     )
+    pin: "JobPin | None" = Field(
+        default=None,
+        description=(
+            "`download` only: pin what the run leaves into a new group of a"
+            " project (A-ADR-049 decision 9). When the job succeeds (no failed"
+            " unit, nothing taken) its worker writes the group, origin `plan`"
+            " with the job's producer and calls: a pin for every file of"
+            " `files[]` and, for each call with a kept plan, for every other"
+            " position the version the index holds at its standard path. The"
+            " request also needs `project.write`; a taken name is `409"
+            " group_exists` before a job exists. The summary's `pin` says"
+            " what was written."
+        ),
+    )
 
     @field_validator("plan_job")
     @classmethod
@@ -226,12 +262,25 @@ class JobRequest(BaseModel):
             raise ValueError("only a download runs the plans of a check job")
         return value
 
+    @field_validator("pin")
+    @classmethod
+    def _only_a_download_pins(
+        cls, value: "JobPin | None", info: ValidationInfo
+    ) -> "JobPin | None":
+        if value is not None and info.data.get("kind") != "download":
+            raise ValueError("only a download pins its files into a project")
+        return value
+
     def command_calls(self) -> tuple[CommandCall, ...]:
         """Return the calls of the job, in their order."""
         return tuple(
             CommandCall(self.producer, call.command, call.options)
             for call in self.calls
         )
+
+    def pin_target(self) -> tuple[str, str] | None:
+        """Return ``pin`` as ``(project, group)``."""
+        return None if self.pin is None else (self.pin.project, self.pin.group)
 
 
 class PlanEntryItem(BaseModel):

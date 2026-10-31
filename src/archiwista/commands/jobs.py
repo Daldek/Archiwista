@@ -118,6 +118,17 @@ def add_commands(commands: Commands) -> None:
         metavar=message("metavar.job"),
         help=message("cli.jobs_plan_job_help"),
     )
+    started.add_argument(
+        "--pin",
+        dest="pin_project",
+        metavar=message("metavar.project"),
+        help=message("cli.jobs_pin_help"),
+    )
+    started.add_argument(
+        "--pin-group",
+        metavar=message("metavar.group"),
+        help=message("cli.jobs_pin_group_help"),
+    )
     listed = add_parser(actions, "list", "cli.jobs_list_help")
     listed.add_argument(
         "--kind",
@@ -213,6 +224,8 @@ def _start(
     for name in ("store", "calls", "plan_job"):
         if getattr(args, name) is not None:
             given[name] = getattr(args, name)
+    if args.pin_project is not None or args.pin_group is not None:
+        given["pin"] = {"project": args.pin_project, "group": args.pin_group}
     try:
         request = JobRequest.model_validate(given)
     except ValidationError as error:
@@ -240,6 +253,7 @@ def _start(
             actor=LOCAL_OWNER,
             visible=ALL_PROJECTS,
             plan_job=request.plan_job,
+            pin=request.pin_target(),
         )
 
     return foreground(jobs, submit, args, out, err)
@@ -366,6 +380,7 @@ def _control(
                 jobs,
                 decisions,
                 queries,
+                service.get(),
                 job_id=args.job,
                 actor=LOCAL_OWNER,
                 visible=ALL_PROJECTS,

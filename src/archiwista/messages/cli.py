@@ -1539,6 +1539,22 @@ MESSAGES = {
             " pobiera tylko pozycje do pobrania ze swojego planu."
         ),
     ),
+    "jobs_pin_help": Text(
+        (
+            "download only: the project whose new group (--pin-group) the run's"
+            " files and its plans' other positions are pinned into when the job"
+            " succeeds."
+        ),
+        (
+            "tylko download: projekt, do którego nowej grupy (--pin-group) zostaną"
+            " przypięte pliki uruchomienia i pozostałe pozycje jego planów, gdy"
+            " zadanie się powiedzie."
+        ),
+    ),
+    "jobs_pin_group_help": Text(
+        "The new group's name in the project of --pin.",
+        "Nazwa nowej grupy w projekcie z --pin.",
+    ),
     "jobs_call_help": Text(
         (
             "One call as a JSON object, a command of the producer's catalog on a"

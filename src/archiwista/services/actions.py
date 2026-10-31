@@ -38,6 +38,7 @@ from archiwista.jobs import JobRecord, JobSupervisor
 from archiwista.messages import message
 from archiwista.services.commands import actions, checked_call, command_info
 from archiwista.services.jobs import visible_job
+from archiwista.services.pins import check_plan_pin
 from archiwista.sources import ActionAdapter, CommandCall, CommandInfo
 from archiwista.sources.registry import PluginRegistry
 
@@ -74,6 +75,7 @@ def start(
     actor: Principal,
     visible: ProjectVisibility,
     plan_job: str | None = None,
+    pin: tuple[str, str] | None = None,
 ) -> JobRecord:
     """Check a request for a job of a producer's calls, then start the job.
 
@@ -106,13 +108,18 @@ def start(
     plan_job : str or None, optional
         ``download`` only: the ``check`` job whose kept plans the run runs, a
         job of the same store, producer and calls.
+    pin : (str, str) or None, optional
+        ``download`` only: the project and the new group the run's files and
+        its plans' other positions are pinned into when the job succeeds
+        (A-ADR-049 decision 9); the request then also needs
+        ``project.write`` of the project.
 
     Returns
     -------
     JobRecord
         The job, ``queued`` or already ``running``; its parameters hold the
         producer, the calls with the options as the producer read them, and
-        a download's ``plan_job``.
+        a download's ``plan_job`` and ``pin``.
 
     Raises
     ------
@@ -121,7 +128,8 @@ def start(
         role ``store_writer`` nor the setting ``store_write_for_all``.
     NotFoundError
         ``store`` is not configured; ``plan_job`` is no job ``actor`` sees
-        (``job.not_found``) or kept no plan (``job.no_plan``).
+        (``job.not_found``) or kept no plan (``job.no_plan``); ``pin`` names
+        no project ``actor`` sees.
     SourceUnavailableError, SourceIncompatibleError
         The producer's plugin is not available.
     UnsupportedError
@@ -139,12 +147,16 @@ def start(
         ``details.option``).
     ConflictError
         ``plan_job`` planned another store, producer or calls (reason
-        ``plan_mismatch``, ``details.job``).
+        ``plan_mismatch``, ``details.job``); the project of ``pin`` holds the
+        group (``group_exists``) or names another store of the producer
+        (``other_store``) or one matching none (``unknown_store``).
+    InvalidChangeError
+        The group's name breaks the rule (``invalid_group_name``).
     OfflineModeError
         Offline mode is on; nothing is recorded.
     ValueError
-        No call, calls of several producers, or ``plan_job`` with a
-        ``check``.
+        No call, calls of several producers, or ``plan_job`` or ``pin`` with
+        a ``check``.
 
     A refusal of one call (``UnsupportedError``, ``CommandRequestError``,
     ``PathOutsideRootError``, ``ProducerError``) names its place in
@@ -154,11 +166,24 @@ def start(
         raise ValueError(f"a job takes calls of one producer, got {len(calls)} calls")
     if kind == "download":
         authorizer.require(actor, "store.write", target=store)
-    elif plan_job is not None:
-        raise ValueError(f"a {kind} job runs no plan, got plan job {plan_job!r}")
+    elif plan_job is not None or pin is not None:
+        raise ValueError(f"a {kind} job runs no plan and pins nothing")
     if settings.store(store) is None:
         raise NotFoundError(message("api.store_not_configured", store=store))
     producer = calls[0].producer
+    pinned = None
+    if pin is not None:
+        pinned = check_plan_pin(
+            settings,
+            queries,
+            authorizer,
+            project=pin[0],
+            group=pin[1],
+            producer=producer,
+            store=store,
+            actor=actor,
+            visible=visible,
+        )
     adapter = actions(registry, producer)
     infos: dict[str, CommandInfo] = {}
     checked: list[dict[str, object]] = []
@@ -181,6 +206,8 @@ def start(
                     details={"job": plan_job},
                 )
         params["plan_job"] = plan_job
+        if pinned is not None:
+            params["pin"] = pinned
     return jobs.submit(kind, store=store, params=params, actor=actor)
 
 

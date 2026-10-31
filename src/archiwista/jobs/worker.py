@@ -742,6 +742,15 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
     failed), ends ``partial``; one none of whose calls run succeeded fails
     with the error of its first (``RunFailedError``, the code of the first
     failed unit, when the producer reported the units).
+
+    With ``pin`` (A-ADR-049 decision 9) a job that succeeded writes, after
+    the rescan, the ``plan`` group of the project: its ``files[]`` and the
+    positions of its kept plans it did not transfer, at the version the
+    index holds at their standard path; the summary's ``pin`` says what was
+    written (``written``, ``pins``, ``not_pinned``). A job that is not ``ok``
+    pins nothing (``written`` false, ``reason`` ``job_partial``), and a write
+    that fails (``error``) ends the job ``partial``; the downloaded files
+    stay.
     """
     if spec.settings.offline:
         raise OfflineModeError(message("job.offline_mode"))
@@ -841,7 +850,51 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
         "rescanned": rescanned,
         "seconds": round(time.perf_counter() - started, 3),
     }
+    if "pin" in spec.params:
+        summary["pin"] = _pin_download(
+            spec, config.id, calls, summary, plans, ok, geo=_geo(registry)
+        )
+        ok = ok and "error" not in summary["pin"]
+        summary["status"] = "ok" if ok else "partial"
     return summary if ok else PartialResult(summary)
+
+
+def _pin_download(
+    spec: JobSpec,
+    store: str,
+    calls: Sequence[CommandCall],
+    summary: JsonObject,
+    plans: Mapping[int, ActionPlan] | None,
+    ok: bool,
+    *,
+    geo: GeoAdapter | None,
+) -> JsonObject:
+    """Write the project's ``plan`` group of a download; return the ``pin``."""
+    # Only a download that pins needs the services: imported here.
+    from archiwista.services.pins import pin_download
+
+    pin = cast(Mapping[str, str], spec.params["pin"])
+    target: JsonObject = {"project": pin["project"], "group": pin["group"]}
+    if not ok:
+        return {**target, "written": False, "reason": "job_partial"}
+    positions = [
+        entry.path for plan in (plans or {}).values() for entry in plan.entries
+    ]
+    try:
+        written = pin_download(
+            spec.settings,
+            spec.index_path,
+            geo,
+            pin=pin,
+            store=store,
+            calls=calls,
+            files=cast(Sequence[Mapping[str, object]], summary["files"]),
+            positions=positions,
+            account=spec.actor,
+        )
+    except ArchiwistaError as error:
+        return {**target, "written": False, "error": _call_error(error)}
+    return {**written, "written": True}
 
 
 def run_preview(spec: JobSpec, emit: Emitter) -> JsonObject:

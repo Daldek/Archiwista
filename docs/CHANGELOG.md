@@ -1000,6 +1000,19 @@ command-line interface may change.
   (`other_store`) and a project store matching no configured one (`unknown_store`).
   The action log has `project.pin` and `project.unpin`.
 
+- A download pins what it leaves into a new project group (A-ADR-049 decision 9, plan
+  P3): `POST /jobs` with `"pin": {"project", "group"}` / `archiwista jobs start
+  download … --pin PROJEKT --pin-group GRUPA` needs `project.write` of the project
+  too and is refused before a job as a new group is (a taken or invalid name,
+  `other_store`, `unknown_store`); a retry asks the same. When the job succeeds, its
+  worker writes the group after the rescan, origin `plan` with the job's producer and
+  calls: every file of the run and, for each call with a kept plan, the current
+  version the store holds at each other position. `result.pin` tells what was pinned
+  and what was not (`not_in_store`); a job that ends `partial` pins nothing
+  (`job_partial`), and a write that fails ends the job `partial`. The job belongs to
+  the project in `GET /jobs?project=`, and `job.start` in the log names the project
+  and the group.
+
 - **Breaking:** the year types are each person's preference (v0.4, ADR-047 erratum 1):
   `year_types` left `GET` and `PUT /api/v1/settings`, and `PUT
   /api/v1/settings/year-types` is removed; use `PUT /api/v1/preferences`. A
