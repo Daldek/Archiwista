@@ -588,9 +588,11 @@ def _origin(origin: Mapping[str, object], base: str) -> PlanOrigin | LocalOrigin
             if source is None:
                 raise invalid_file(f"{pointer}/from", "selection")
             query = selection.get("query")
-            if source == "file":
-                if query is not None:
-                    raise invalid_file(f"{pointer}/query", "query")
+            # A request that named its versions has no query: always `file`,
+            # and `local_state` for the year layer the map shows.
+            if source == "file" and query is not None:
+                raise invalid_file(f"{pointer}/query", "query")
+            if query is None and source != "catalog":
                 selections.append(Selection(source=source, query=None))
                 continue
             if not isinstance(query, dict):

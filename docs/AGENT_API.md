@@ -511,8 +511,9 @@ cursor is safe in a URL).
   JSON) [--from local_state|catalog|file] [--add]` / `POST
   /projects/{project}/groups` (`{"name", "from", "versions"?: [{"store",
   "version"}], "query"?: {…the filters of GET /slots}}`, exactly one of
-  `versions` and `query`; `from` `file` names `versions`, `local_state` and
-  `catalog` a `query`) pins versions the store holds into a new local group,
+  `versions` and `query`; `from` `file` names `versions`, `catalog` a `query`,
+  `local_state` either: its filters, or the year layer the map shows) pins
+  versions the store holds into a new local group,
   and with `--add` / `POST /projects/{project}/groups/{group}/pins` (the same
   without `name`, `200`) into a local group the project has. The versions come
   from the index alone (no network, no producer): named ones, older too, or the

@@ -1315,7 +1315,16 @@ command-line interface may change.
   area as a GeoPackage (`<data-dir>/areas/<id>.gpkg`) and passes it as Kartograf's geometry;
   command lines accept only such a file as a path, and pinned plan calls name its project copy
   `obszary/<id>.gpkg` (A-ADR-035 erratum 2, A-ADR-049 erratum 3).
-
+- "Dodaj do projektu…" of "Stan lokalny" pinned the current versions whatever the
+  filters said, so with "Wersje: wszystkie" and an older year ("Lata danych: 2019") it
+  found none and "Przypnij" stayed disabled; and a year chosen on the map (the years on
+  the map or the Wachlarz) changed only the picture, so the current versions were pinned
+  while the map showed 2019. It now pins what the map shows: the chosen year's versions
+  of its variant ("Warstwa mapy „…”: rok 2019 · …"), else the versions of the filters.
+  The window names the choice and counts versions ("4 wersje"), in the Catalog too. For
+  the year layer `POST /projects/{project}/groups` and `…/groups/{group}/pins` accept
+  `from` `local_state` with `versions`; its selection in `archiwista-project.json` has
+  no `query` (required for `catalog` only).
 - Pinning versions of two producers of one store in one request (a local group, A-ADR-049
   decision 1) wrote the first producer's directory as the second one's `stores[]` root,
   so the project's IMGW pins showed `unknown` and a later IMGW pin was refused with

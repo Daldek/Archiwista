@@ -78,7 +78,8 @@ export function SelectionPanel(props) {
     <${AreaStep} ...${props} />
     <${ProductStep} ...${props} />
     <${LocalState} area=${props.area} filters=${props.filters} products=${props.products?.items ?? []}
-      stores=${props.stores} names=${props.names} indexKey=${props.indexKey} onRefreshed=${props.onRefreshed} />
+      stores=${props.stores} names=${props.names} indexKey=${props.indexKey} layer=${props.mapLayer}
+      onRefreshed=${props.onRefreshed} />
     <${SourceStep} area=${props.area} areaLabel=${props.area ? areaName(props.area) : null} filters=${props.filters}
       stores=${props.stores} names=${props.names} />
   </div>`;

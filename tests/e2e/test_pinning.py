@@ -1,16 +1,19 @@
 """„Dodaj do projektu…” in the views, in Chromium (A-ADR-049 decision 8, P3).
 
 A generated Kartograf store served offline (``tests/fixtures/make_store.py``)
-with its projects. „Stan lokalny” of an area pins the current versions of a
-product's files in it into a new group; the Katalog, with filters, refuses a
-taken name at the group's field and then adds its rows to that local group;
-the file card pins an older version, and the project card unpins it and
-removes its group, each after a question (the window also in Firefox). A
-person who may change no project finds „Dodaj do projektu…” disabled with
-the reason. No request leaves the server.
+with its projects. „Stan lokalny” of an area pins what the map shows of a
+product's files in it into a new group: the versions its filters choose (the
+current ones, or every version of an older year), else the versions of the
+year chosen on the map; the Katalog, with filters, refuses a taken name at
+the group's field and then adds its rows to that local group, and pins an
+older year's versions; the file card pins an older version, and the project
+card unpins it and removes its group, each after a question (the window also
+in Firefox). A person who may change no project finds „Dodaj do projektu…”
+disabled with the reason. No request leaves the server.
 """
 
 import json
+import re
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -25,7 +28,7 @@ from archiwista.projects import PROJECT_FILE
 from archiwista.security import fragment_url, issue_one_time_token
 from archiwista.state import StateStore
 from tests.fixtures.browser import Served, Tab
-from tests.fixtures.make_store import NMT, StoreManifest, make_store
+from tests.fixtures.make_store import NMT, ExpectedEntry, StoreManifest, make_store
 from tests.fixtures.permissions import add_people, principal, share
 
 Serve = Callable[..., Served]
@@ -33,6 +36,8 @@ Serve = Callable[..., Served]
 STORE = "zespol"
 PROJECT = "projekt-01"
 INDEX_TIMEOUT_S = 60.0
+# „Stan lokalny” names NMT files so (the product's name in the index).
+NMT_FILES = "Pliki „Digital Terrain Model 1 m (ASC grid)” w obszarze"
 READ_TIMEOUT_MS = 30_000
 NO_PROJECT = (
     "Ta sesja nie może zmienić żadnego projektu: przypina właściciel projektu albo"
@@ -128,6 +133,38 @@ def nmt_sheet(store: StoreManifest) -> str:
     return sheet.unit
 
 
+def older_year(store: StoreManifest) -> tuple[str, int, ExpectedEntry, ExpectedEntry]:
+    """Return an NMT sheet of an older year, that year's version, the current one."""
+    for entry in store.by_kind("version"):
+        if entry.segment != NMT or entry.case != "regular" or entry.current:
+            continue
+        current = next(
+            item
+            for item in store.by_kind("version")
+            if item.segment == NMT and item.unit == entry.unit and item.current
+        )
+        if entry.unit and entry.data_year and entry.data_year != current.data_year:
+            return entry.unit, entry.data_year, entry, current
+    raise AssertionError("the store has no NMT sheet with an older year")
+
+
+def choose_sheet(page: Page, sheet: str) -> tuple[Locator, str]:
+    """Choose a sheet as the map's area; return „Stan lokalny” and the area's id."""
+    page.get_by_label("Godło arkusza").fill(sheet)
+    page.get_by_role("button", name="Wybierz", exact=True).click()
+    local = page.get_by_role("region", name="Stan lokalny")
+    expect(local.get_by_text("lokalnie 100% obszaru")).to_be_visible(
+        timeout=READ_TIMEOUT_MS
+    )
+    page.wait_for_function("() => new URLSearchParams(location.search).has('area_id')")
+    return local, parse_qs(urlsplit(page.url).query)["area_id"][0]
+
+
+def pinned(store: StoreManifest, name: str) -> dict[str, str]:
+    """Return the SHA-256 of each version a group of the fixture project pins."""
+    return {pin["version"]: pin["sha256"] for pin in group_of(store, name)["pins"]}
+
+
 def test_pins_from_the_local_state_and_the_catalog_into_one_group(
     serve: Serve, tab: Tab, tmp_path: Path
 ) -> None:
@@ -137,14 +174,7 @@ def test_pins_from_the_local_state_and_the_catalog_into_one_group(
     page = tab.page
     start(page, served.token_url())
     page.goto(f"{served.base}/?view=map&product=nmt")
-    page.get_by_label("Godło arkusza").fill(nmt_sheet(store))
-    page.get_by_role("button", name="Wybierz", exact=True).click()
-    local = page.get_by_role("region", name="Stan lokalny")
-    expect(local.get_by_text("lokalnie 100% obszaru")).to_be_visible(
-        timeout=READ_TIMEOUT_MS
-    )
-    page.wait_for_function("() => new URLSearchParams(location.search).has('area_id')")
-    area = parse_qs(urlsplit(page.url).query)["area_id"][0]
+    local, area = choose_sheet(page, nmt_sheet(store))
     local_query = {"product": "nmt", "area_id": area, "store": STORE}
     in_area = rows(page, {**local_query, "versions": "current"})
     current = versions(page, {**local_query, "versions": "current"})
@@ -152,8 +182,8 @@ def test_pins_from_the_local_state_and_the_catalog_into_one_group(
     # Act: the area's current NMT versions into a new group.
     local.get_by_role("button", name="Dodaj do projektu…").click()
     window = pin_window(page)
-    expect(window).to_contain_text("Bieżące wersje plików")
-    expect(window).to_contain_text(f"{in_area} wiersz")
+    expect(window.locator(".pin-what")).to_have_text(f"{NMT_FILES} · wersje: bieżące")
+    expect(window).to_contain_text(f"{in_area} wersj")
     choose_project(window)
     window.get_by_label("Nazwa nowego zestawu").fill("NMT obszaru")
     window.get_by_role("button", name="Przypnij").click()
@@ -178,7 +208,7 @@ def test_pins_from_the_local_state_and_the_catalog_into_one_group(
     page.get_by_role("button", name="Dodaj do projektu…").click()
     window = pin_window(page)
     expect(window).to_contain_text("Wiersze Katalogu z obecnymi filtrami")
-    expect(window).to_contain_text(f"{every} wiersz")
+    expect(window).to_contain_text(f"{every} wersj")
     choose_project(window)
     name = window.get_by_label("Nazwa nowego zestawu")
     name.fill("nmt OBSZARU")
@@ -216,6 +246,124 @@ def test_pins_from_the_local_state_and_the_catalog_into_one_group(
         "catalog",
     ]
     assert tab.foreign_requests(served.base) == []
+    tab.assert_clean()
+
+
+def test_the_filters_older_year_is_pinned_from_the_local_state_and_the_catalog(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """Versions „wszystkie” of an older year: those versions, counted, in both views."""
+    # Arrange
+    store, served = served_store(serve, tmp_path)
+    sheet, year, older, current = older_year(store)
+    page = tab.page
+    start(page, served.token_url())
+    filters = {"product": "nmt", "versions": "all", "years": str(year)}
+    page.goto(f"{served.base}/?view=map&{urlencode(filters)}")
+    local, area = choose_sheet(page, sheet)
+    shown = versions(page, {**filters, "area_id": area, "store": STORE})
+    assert older.version_path in shown
+    assert current.version_path not in shown
+
+    # Act
+    local.get_by_role("button", name="Dodaj do projektu…").click()
+    window = pin_window(page)
+
+    # Assert: the filter named, its versions counted.
+    expect(window.locator(".pin-what")).to_have_text(
+        f"{NMT_FILES} · wersje: wszystkie · lata danych: {year}"
+    )
+    expect(window.locator(".pin-count")).to_have_text(
+        re.compile(rf"^{len(shown)} wersj[aei]$")
+    )
+
+    # Act
+    choose_project(window)
+    window.get_by_label("Nazwa nowego zestawu").fill(f"NMT {year}")
+    window.get_by_role("button", name="Przypnij").click()
+
+    # Assert: exactly the versions of that year, the current one not.
+    expect(window.get_by_role("status")).to_contain_text(f"przypięte {len(shown)},")
+    group = pinned(store, f"NMT {year}")
+    assert set(group) == shown
+    assert group.get(str(older.version_path)) == older.sha256
+    window.get_by_role("button", name="Zamknij").click()
+
+    # Act: the Katalog with the same filters.
+    page.goto(f"{served.base}/?view=catalog&{urlencode(filters)}")
+    listed = versions(page, filters)
+    page.get_by_role("button", name="Dodaj do projektu…").click()
+    window = pin_window(page)
+    expect(window.locator(".pin-count")).to_have_text(
+        re.compile(rf"^{len(listed)} wersj[aei]$")
+    )
+    choose_project(window)
+    window.get_by_label("Nazwa nowego zestawu").fill(f"Katalog {year}")
+    window.get_by_role("button", name="Przypnij").click()
+
+    # Assert: the year's versions, but those the store cannot pin (listed with why).
+    status = window.get_by_role("status")
+    expect(status).to_contain_text(", już były 0, pominięte ")
+    skipped = window.get_by_role("list", name="Pominięte wersje").locator("li")
+    left_out = {text.split(":")[0].strip() for text in skipped.all_inner_texts()}
+    expect(status).to_contain_text(
+        f"przypięte {len(listed - left_out)}, już były 0, pominięte {len(left_out)}."
+    )
+    assert set(pinned(store, f"Katalog {year}")) == listed - left_out
+    assert current.version_path not in listed
+    tab.assert_clean()
+
+
+def test_the_year_chosen_on_the_map_is_what_the_local_state_pins(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """A year layer chosen on the map: „Stan lokalny” pins its versions, named so."""
+    # Arrange
+    store, served = served_store(serve, tmp_path)
+    sheet, year, older, current = older_year(store)
+    page = tab.page
+    start(page, served.token_url())
+    page.goto(f"{served.base}/?view=map&product=nmt")
+    local, area = choose_sheet(page, sheet)
+    query = {"product": "nmt", "area_id": area, "store": STORE}
+    of_year = versions(page, {**query, "versions": "all", "years": str(year)})
+
+    # Act: the year on the map, then „Dodaj do projektu…”.
+    strip = page.get_by_role("group", name="Lata na mapie")
+    chip = strip.get_by_role("button", name=re.compile(rf"^{year}\b"))
+    chip.click()
+    expect(page).to_have_url(re.compile(r"[?&]layer="))
+    local.get_by_role("button", name="Dodaj do projektu…").click()
+    window = pin_window(page)
+
+    # Assert: the window names the map's year and counts its versions.
+    expect(window.locator(".pin-what")).to_contain_text(f"rok {year}")
+    expect(window.locator(".pin-count")).to_have_text(
+        re.compile(rf"^{len(of_year)} wersj[aei]$")
+    )
+
+    # Act
+    choose_project(window)
+    window.get_by_label("Nazwa nowego zestawu").fill(f"Mapa {year}")
+    window.get_by_role("button", name="Przypnij").click()
+
+    # Assert: that year's versions, not the current ones.
+    expect(window.get_by_role("status")).to_contain_text(f"przypięte {len(of_year)},")
+    group = pinned(store, f"Mapa {year}")
+    assert set(group) == of_year
+    assert group.get(str(older.version_path)) == older.sha256
+    assert current.version_path not in group
+    window.get_by_role("button", name="Zamknij").click()
+
+    # Act: the map's year left: the current versions again.
+    chip.click()
+    expect(page).not_to_have_url(re.compile(r"[?&]layer="))
+    local.get_by_role("button", name="Dodaj do projektu…").click()
+
+    # Assert
+    expect(pin_window(page).locator(".pin-what")).to_have_text(
+        f"{NMT_FILES} · wersje: bieżące"
+    )
     tab.assert_clean()
 
 

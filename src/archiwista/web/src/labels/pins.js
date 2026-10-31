@@ -11,17 +11,23 @@ export const pins = {
   open_title: "Przypnij te wersje z magazynu w zestawie projektu",
   title: "Dodaj do projektu",
   what: "Co zostanie przypięte",
-  from_local_state: "Bieżące wersje plików „{product}” w obszarze",
-  from_local_state_store: "Bieżące wersje plików „{product}” w obszarze, magazyn {store}",
+  /** „Stan lokalny”: its filters, joined by „ · ”. */
+  local: {
+    files: "Pliki „{product}” w obszarze",
+    versions: "wersje: {versions}",
+    years: "lata danych: {years}",
+    store: "magazyn {store}",
+  },
+  /** „Stan lokalny” while the map shows a year layer: that layer's versions. */
+  layer: "Warstwa mapy „{product}”: {layer} · {variant}",
+  layer_year: "rok {year}",
   from_catalog: "Wiersze Katalogu z obecnymi filtrami",
   from_file: "Wersja {label} pliku {name}",
   counting: "Liczenie wersji…",
   versions: ["wersja", "wersje", "wersji"],
-  /** Rows of a query: each pins its version, a row without one nothing. */
-  rows: ["wiersz", "wiersze", "wierszy"],
   nothing: "Wybór nie ma żadnej wersji do przypięcia.",
   too_many:
-    "Zestaw mieści najwyżej {limit} przypięć, a wybór ma {count} wierszy: zawęź filtry.",
+    "Zestaw mieści najwyżej {limit} przypięć, a wybór ma {count} wersji: zawęź filtry.",
   project: "Projekt",
   project_hint: "Projekty, które ta sesja może zmienić.",
   no_project:

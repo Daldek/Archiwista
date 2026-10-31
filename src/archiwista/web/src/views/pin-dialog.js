@@ -220,7 +220,7 @@ export function PinDialog({ source, query, versions, what, onPinned, onClose }) 
             ? html`<${ProblemView} problem=${rows.error.problem} compact />`
             : total === null
               ? html`<${Spinner} label=${L.counting} />`
-              : html`<b>${count(total, query ? L.rows : L.versions)}</b>`}
+              : html`<b>${count(total, L.versions)}</b>`}
         </div>
         <${FieldNote} id=${`${id}-what-note`} problem=${at("what")} error=${tooMany}>
           ${total === 0 ? L.nothing : null}

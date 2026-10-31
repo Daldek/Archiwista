@@ -384,6 +384,8 @@ export default function MapScreen({ route, embedded = false }) {
     stores,
     names,
     indexKey,
+    // „Stan lokalny” pins what the map shows: the chosen year layer's versions.
+    mapLayer: layer ? { set: layers.set, layer } : null,
     onRefreshed: () => setRound((n) => n + 1),
     station: stationMode
       ? { choice: station, loading: datasets.loading, error: datasets.error, onChange: (patch) => setParams(patch) }

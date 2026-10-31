@@ -184,7 +184,8 @@ MESSAGES = {
         "local_state, catalog or file", "local_state, catalog albo file"
     ),
     "rule_query": Text(
-        "a JSON object, left out for file", "obiekt JSON, pominięty dla file"
+        "a JSON object; left out for file, required for catalog",
+        "obiekt JSON; pominięty dla file, wymagany dla catalog",
     ),
     "rule_pins": Text("at most 10,000 pins", "najwyżej 10 000 przypięć"),
     "rule_version": Text(

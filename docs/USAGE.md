@@ -97,7 +97,12 @@ The panel "Wybór" (selection) leads through four steps:
    local), with km² and the number of versions, separately for every country.
    "Odśwież" (refresh) reads the slots of the area from the store again;
    "Pokaż pliki obszaru w Katalogu" (show the files of the area in the
-   Catalog) opens the list.
+   Catalog) opens the list. "Dodaj do projektu…" of a product pins what the
+   map shows of it in the area: with a year chosen on the map (the years on
+   the map or the Wachlarz), that year's versions of its variant ("Warstwa
+   mapy „…”: rok 2019 · …"); else the versions of the filters, the current
+   ones by default, or with "Wersje: wszystkie" and "Lata danych: 2019"
+   every version of 2019. The window names the choice and counts its versions.
 4. **At the source** ("U źródła"): a product whose
    availability a producer checks and the target store ("Magazyn docelowy").
    "Sprawdź u źródła" asks the source (a background job); a report younger
@@ -353,7 +358,8 @@ and a directory holding only one of them is no project.
   positions; a job that ends `partial` pins nothing, and a taken name or another
   store is refused before the download starts. In the web: "Dodaj do projektu…" on the
   catalog's result, a coverage row of the map and a version on the file card pins the
-  chosen versions into a new set of a project the session may change ("Nowy zestaw",
+  chosen versions (those the filters, or the year chosen on the map, show; the window
+  counts them) into a new set of a project the session may change ("Nowy zestaw",
   for example "2024") or adds them to one the project has ("Istniejący zestaw
   projektu"); on the project's card "Odepnij" removes a pin and "Usuń zestaw" a set,
   each asked first. The plan window's option "Dodaj do projektu" names the project and

@@ -3080,7 +3080,8 @@ class PinsRequest(BaseModel):
         alias="from",
         description=(
             "Where the versions were chosen: `file` (the file card: `versions`),"
-            " `local_state` or `catalog` (`query`). Recorded in the group's"
+            " `catalog` (`query`) or `local_state` (`query`, or `versions`: the"
+            " year layer the map shows). Recorded in the group's"
             " `selections`, never run again."
         ),
     )
@@ -3102,10 +3103,10 @@ class PinsRequest(BaseModel):
     def _one_choice(self) -> Self:
         if (self.versions is None) == (self.query is None):
             raise ValueError("exactly one of versions and query is required")
-        if (self.source == "file") != (self.versions is not None):
-            raise ValueError(
-                "from file names versions, local_state and catalog a query"
-            )
+        if self.source == "file" and self.versions is None:
+            raise ValueError("from file names versions")
+        if self.source == "catalog" and self.query is None:
+            raise ValueError("from catalog names a query")
         return self
 
     def chosen(self) -> list[tuple[str, str]] | None:

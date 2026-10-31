@@ -5,8 +5,10 @@
  * store and then answers „lokalnie 83% obszaru” per country, measured in the
  * country's planar CRS — or says why there is no percent, or that the answer
  * comes from the index (`stale`). The files of the area come from the
- * catalog's location groups. „Dodaj do projektu…” of a product pins the
- * current versions of its files in the area (views/pin-dialog.js).
+ * catalog's location groups. „Dodaj do projektu…” of a product pins what
+ * the map shows of it in the area: the versions of the chosen year layer of
+ * its store, else those of the filters (`versions`, `years`…; the current
+ * ones by default), and says which (views/pin-dialog.js).
  */
 
 import { getLocalCoverage, listSlots } from "../api.js";
@@ -32,9 +34,12 @@ const KM2 = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
  * @param {import("../types.js").StoreSettings[]} props.stores
  * @param {Map<string, string>} props.names - Product names by key.
  * @param {string} props.indexKey - Changes when a store was indexed again.
+ * @param {{set: import("../types.js").LayerSet,
+ *   layer: import("../types.js").Layer}|null} [props.layer] - The year layer the map shows.
  * @param {() => void} [props.onRefreshed] - The store was read again.
  */
-export function LocalState({ area, filters, products, stores, names, indexKey, onRefreshed }) {
+export function LocalState(props) {
+  const { area, filters, products, stores, names, indexKey, layer = null, onRefreshed } = props;
   const id = useId();
   const [round, setRound] = useState(0);
   const pairs = coveragePairs(filters, products, stores);
@@ -73,12 +78,13 @@ export function LocalState({ area, filters, products, stores, names, indexKey, o
     ${area
       ? pairs
           .filter((pair) => results[pairKey(pair)]?.data?.results.length !== 0)
-          .map(
-            (pair) => html`<${CoverageItem} key=${pairKey(pair)} state=${results[pairKey(pair)]}
+          .map((pair) => {
+            const shown = layer?.set.store === pair.store && layer?.set.product === pair.product;
+            return html`<${CoverageItem} key=${pairKey(pair)} state=${results[pairKey(pair)]}
               title=${names.get(pair.product) ?? pair.product} product=${pair.product}
-              store=${several ? storeName(pair.store) : null}
-              query=${localQuery(filters, area, pair)} />`,
-          )
+              store=${several ? storeName(pair.store) : null} filters=${filters}
+              query=${localQuery(filters, area, pair)} layer=${shown ? layer.layer : null} />`;
+          })
       : null}
     ${area && empty.length
       ? html`<p class="hint">${t(filters.product ? L.local.no_files : L.local.none_products, {
@@ -95,18 +101,20 @@ export function LocalState({ area, filters, products, stores, names, indexKey, o
 
 /**
  * A product of a store in the area: its local state per country, and
- * „Dodaj do projektu…” of its current versions in the area (`query`).
+ * „Dodaj do projektu…” of what the map shows of it: the versions of the
+ * chosen year `layer`, else those of the filters' `query`.
  */
-function CoverageItem({ state, title, product, store, query }) {
+function CoverageItem({ state, title, product, store, filters, query, layer }) {
   if (!state) return null;
-  const what = store
-    ? t(P.from_local_state_store, { product: title, store })
-    : t(P.from_local_state, { product: title });
+  const what = layer ? layerText(title, store, layer) : filtersText(title, store, filters);
+  const pin = layer
+    ? html`<${PinButton} source="local_state" versions=${layerVersions(layer)} what=${what} />`
+    : html`<${PinButton} source="local_state" query=${query} what=${what} />`;
   return html`<div class="coverage-item">
     <div class="coverage-head">
       <${Tech} value=${product}><b>${title}</b><//>
       ${store ? html`<span class="faint">${t(L.local.store, { name: store })}</span>` : null}
-      <${PinButton} source="local_state" query=${query} what=${what} />
+      ${pin}
     </div>
     ${state.loading ? html`<${Spinner} quiet />` : null}
     ${state.error ? html`<${ProblemView} problem=${state.error.problem} compact />` : null}
@@ -151,10 +159,43 @@ function pairKey(pair) {
   return `${pair.store}/${pair.product}`;
 }
 
-/** The current versions of a pair's files in the area, as a pin request asks for them. */
+/** A pair's versions in the area as the filters choose them, as a pin request asks for them. */
 function localQuery(filters, area, pair) {
   const { store, product } = pair;
-  return pinQuery({ ...filters, area_id: area.id, store, product, versions: "current" });
+  return pinQuery({ ...filters, area_id: area.id, store, product });
+}
+
+/** What a pair's filters pin, for people: the product, versions, years and store. */
+function filtersText(title, store, filters) {
+  const versions = L.filters.versions_options[filters.versions ?? "current"] ?? filters.versions;
+  return [
+    t(P.local.files, { product: title }),
+    t(P.local.versions, { versions }),
+    filters.years ? t(P.local.years, { years: filters.years }) : null,
+    store ? t(P.local.store, { store }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** The store versions a layer draws (`version:<store>:<path>`), as a pin request names them. */
+function layerVersions(layer) {
+  return (layer.versions ?? []).map((item) => {
+    const rest = item.ref.slice("version:".length);
+    const split = rest.indexOf(":");
+    return { store: rest.slice(0, split), version: rest.slice(split + 1) };
+  });
+}
+
+/** What a year layer pins, for people: the product, its year (or edition) and variant. */
+function layerText(title, store, layer) {
+  const shown = layer.kind === "year" ? t(P.layer_year, { year: layer.year }) : layer.title;
+  return [
+    t(P.layer, { product: title, layer: shown, variant: layer.subtitle }),
+    store ? t(P.local.store, { store }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /**
