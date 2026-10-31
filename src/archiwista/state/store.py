@@ -67,6 +67,7 @@ type ActionName = Literal[
     "project.update",
     "project.area",
     "project.store",
+    "project.export",
     "settings.update",
     "job.start",
     "job.cancel",

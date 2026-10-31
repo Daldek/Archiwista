@@ -545,6 +545,22 @@ def project_store(tmp_path: Path) -> Performed:
         return Performed(made.api.state, since, expected)
 
 
+def project_export(tmp_path: Path) -> Performed:
+    """Export the project, which pins nothing yet, as the owner."""
+    with world(tmp_path) as made:
+        since = last_entry(made.api.state)
+        written = made.owner.request(
+            "POST", f"/projects/{made.project}/exports", json={"name": "hydrograf"}
+        )
+        assert written.status_code == 201, written.text
+        expected = as_owner(
+            made,
+            access_key(made.directory),
+            details={"name": "hydrograf", "pins": 0},
+        )
+        return Performed(made.api.state, since, expected)
+
+
 def settings_update(tmp_path: Path) -> Performed:
     """Raise ``network_jobs_per_person`` from 2 to 3 as the owner."""
     with world(tmp_path) as made:
@@ -713,6 +729,7 @@ CASES: dict[str, Callable[[Path], Performed]] = {
     "project.update": project_update,
     "project.area": project_area,
     "project.store": project_store,
+    "project.export": project_export,
     "settings.update": settings_update,
     "job.start": job_start,
     "job.cancel": job_cancel,

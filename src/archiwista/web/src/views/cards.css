@@ -218,3 +218,9 @@
   .fc-pins { grid-row: 3; }
   .store-head { align-items: flex-start; }
 }
+/* the project's exports (views/project-exports.js) */
+.pc-exports { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pc-export { display: grid; gap: 4px; font-size: 12.5px; }
+.pc-export > div:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.pc-export .hint { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pc-form fieldset.field { border: 0; padding: 0; display: grid; gap: 2px; }

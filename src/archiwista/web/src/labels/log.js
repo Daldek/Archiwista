@@ -111,6 +111,7 @@ export const log = {
     "project.update": "zmiana nazwy lub opisu projektu",
     "project.area": "zmiana obszaru projektu",
     "project.store": "zmiana magazynu projektu",
+    "project.export": "eksport zestawu projektu",
     "settings.update": "zmiana ustawień",
     "job.start": "uruchomienie zadania",
     "job.cancel": "anulowanie zadania",

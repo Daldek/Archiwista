@@ -1949,6 +1949,67 @@ MESSAGES = {
         "Changed the project {project}.",
         "Zmieniono projekt {project}.",
     ),
+    "project_export_help": Text(
+        (
+            "Writes the export zestawy/NAME/ of a project from its pins: pliki.txt"
+            " and ATRYBUCJE.txt (--json: the ProjectExport model of POST"
+            " /api/v1/projects/{{project}}/exports)."
+        ),
+        (
+            "Zapisuje zestaw zestawy/NAZWA/ projektu z jego przypięć: pliki.txt i"
+            " ATRYBUCJE.txt (--json: model ProjectExport z POST"
+            " /api/v1/projects/{{project}}/exports)."
+        ),
+    ),
+    "project_export_name_help": Text(
+        (
+            "The export's name: 1 to 64 letters, digits, '.', '_' and '-', not"
+            " starting with '.'; an export of that name is written again."
+        ),
+        (
+            "Nazwa zestawu: od 1 do 64 liter, cyfr, '.', '_' i '-', nie od '.';"
+            " zestaw o tej nazwie zostanie zapisany ponownie."
+        ),
+    ),
+    "project_export_group_help": Text(
+        "Only this group's pins (repeatable); by default every group's.",
+        "Tylko przypięcia tej grupy (można powtórzyć); domyślnie wszystkich grup.",
+    ),
+    "project_exports_help": Text(
+        (
+            "Lists a project's exports and whether the project changed after each"
+            " (--json: the ProjectExports model of GET"
+            " /api/v1/projects/{{project}}/exports)."
+        ),
+        (
+            "Wypisuje zestawy projektu i czy projekt zmienił się po każdym z nich"
+            " (--json: model ProjectExports z GET"
+            " /api/v1/projects/{{project}}/exports)."
+        ),
+    ),
+    "project_exported": Text(
+        (
+            "Wrote the export {name} of the project {project} in {path}: versions"
+            " {versions}; left out: without a configured store {no_store}, missing"
+            " {missing}."
+        ),
+        (
+            "Zapisano zestaw {name} projektu {project} w {path}: wersje {versions};"
+            " pominięte: bez magazynu z ustawień {no_store}, brakujące {missing}."
+        ),
+    ),
+    "project_export_line": Text(
+        "{name} — written {written_at}: {files}",
+        "{name} — zapisany {written_at}: {files}",
+    ),
+    "project_export_changed": Text(
+        "  the project changed after the export: write it again",
+        "  projekt zmieniony po eksporcie — wygeneruj ponownie",
+    ),
+    "no_project_exports": Text(
+        "The project has no exports.",
+        "Projekt nie ma zestawów.",
+    ),
     "preview_warm_help": Text(
         (
             "Prepares the first look at current versions ahead (the preview pane's"

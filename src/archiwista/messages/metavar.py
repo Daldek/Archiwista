@@ -10,6 +10,7 @@ MESSAGES = {
     "cursor": Text("CURSOR", "KURSOR"),
     "directory": Text("DIRECTORY", "KATALOG"),
     "file": Text("FILE", "PLIK"),
+    "group": Text("GROUP", "GRUPA"),
     "horizontal": Text("SYSTEM", "UKŁAD"),
     "job": Text("JOB", "ZADANIE"),
     "kind": Text("KIND", "RODZAJ"),

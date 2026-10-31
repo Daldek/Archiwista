@@ -171,6 +171,7 @@ MESSAGES = {
     ),
     "action_project_area": Text("project area changed", "zmiana obszaru projektu"),
     "action_project_store": Text("project store changed", "zmiana magazynu projektu"),
+    "action_project_export": Text("project exported", "eksport zestawu projektu"),
     "action_settings_update": Text("settings changed", "zmiana ustawień"),
     "action_job_start": Text("job started", "uruchomienie zadania"),
     "action_job_cancel": Text("job cancelled", "anulowanie zadania"),

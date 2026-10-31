@@ -2,7 +2,8 @@
 
 Archiwista writes a project's directory only on a person's command
 (A-ADR-049 decisions 3 and 4, SPEC 10.1): the project file, the area files
-in ``obszary/`` and, later, the exports. A share gives no reliable byte-range
+in ``obszary/`` and the exports in ``zestawy/`` (``exports``, through
+``_write_atomic``). A share gives no reliable byte-range
 locks (SPEC 4.6), so every change of the project file takes the lock
 ``.archiwista-project.lock``, a directory made with ``os.mkdir`` beside the
 file (atomic on a local disk and on SMB), with its owner (``<host>_<pid>``

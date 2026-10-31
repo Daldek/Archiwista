@@ -1457,6 +1457,46 @@
  * @property {string} [description]
  */
 
+/**
+ * Body of `POST /projects/{project}/exports`: the export `zestawy/<name>/`.
+ *
+ * @typedef {object} ExportRequest
+ * @property {string} name - 1 to 64 letters, digits, '.', '_' and '-', not starting
+ *   with '.'.
+ * @property {string[]} [groups] - Only these groups' pins; left out: every group's.
+ */
+
+/**
+ * An export just written (`POST /projects/{project}/exports`).
+ *
+ * @typedef {object} ProjectExport
+ * @property {string} name
+ * @property {CopyPath} path - The export's directory.
+ * @property {string[]} files - `pliki.txt` and `ATRYBUCJE.txt`.
+ * @property {number} pins - Versions listed in `pliki.txt`, each once.
+ * @property {{no_store: number, missing: number}} skipped - Pins left out: their store
+ *   is not configured, or their version is not present.
+ * @property {string} written_at
+ */
+
+/**
+ * An export in a project's `zestawy/`.
+ *
+ * @typedef {object} ProjectExportItem
+ * @property {string} name
+ * @property {CopyPath} path
+ * @property {string[]} files
+ * @property {string} written_at - Of its newest file.
+ * @property {boolean} changed_since - The project file changed after it: write it again.
+ */
+
+/**
+ * A project's exports by name (`GET /projects/{project}/exports`).
+ *
+ * @typedef {object} ProjectExports
+ * @property {ProjectExportItem[]} items
+ */
+
 // Settings (9a) --------------------------------------------------------------
 
 /**

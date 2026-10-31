@@ -30,6 +30,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
 | stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
+| a project's exports from its pins, `pliki.txt` and `ATRYBUCJE.txt` in `zestawy/NAZWA/` (A-ADR-049), and their list | `archiwista project-export PROJEKT NAZWA [--group GRUPA …]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports` |
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
 | team mode (v0.4): how a session starts, signing in (with a password or through the company's reverse proxy), changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `POST /session/proxy`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
@@ -359,8 +360,8 @@ cursor is safe in a URL).
 - **Changing (A-ADR-049):** projects are kept in Archiwista's own
   `archiwista-project.json`; the producers' manifests are no longer read, and
   the routes and commands of their tasks, status and jobs are gone. Pinning
-  (`project-pin`, `project-unpin`, `project-restore`), `/activity` and `/exports`
-  (SPEC 9.2) are added here phase by phase as
+  (`project-pin`, `project-unpin`, `project-restore`) and `/activity` (SPEC 9.2)
+  are added here phase by phase as
   [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
   lands.
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
@@ -415,6 +416,26 @@ cursor is safe in a URL).
   of a newer format is not changed (`409 invalid_project_file`,
   `unsupported_project_schema`), and a directory that cannot be written is
   `500 io_error` (`project_file_write_failed`).
+- `archiwista project-export PROJEKT NAZWA [--group GRUPA …]` / `POST
+  /projects/{project}/exports` (`{"name", "groups"?}`; `name` of 1 to 64 letters,
+  digits, `.`, `_` and `-`, not starting with `.`, else `400 validation_error`; an
+  unknown group is `404`): writes `zestawy/<name>/` in the project directory,
+  `pliki.txt` (each pinned version's file once, one per line, in the order of the
+  file's groups and pins; relative to the export directory when both lie below one
+  directory under the root or drive, else absolute as the server reads it) and
+  `ATRYBUCJE.txt` (each attribution text once, in the order of first use), UTF-8 with
+  LF, each file replaced whole. The answer `201 ProjectExport` has `name`, `path`
+  (the export directory as a copy path), `files`, `pins` (the versions listed) and
+  `skipped` (`no_store`: pins whose store matches no configured one; `missing`: pins
+  whose version is not present in the index or on the disk) and `written_at`. It
+  needs `project.write` like a change (`403 permission_denied`, `404` for a hidden
+  project; `409 invalid_project_file`, `unsupported_project_schema`; `500 io_error`)
+  and is logged as `project.export` (`details`: `name`, `pins`); the project file is
+  not written. `archiwista project-exports PROJEKT` / `GET
+  /projects/{project}/exports` (whoever sees the project) answers `ProjectExports
+  {items}`: each export of `zestawy/` with `name`, `path`, `files`, `written_at` and
+  `changed_since` (the project file changed after it: write it again). Archiwista
+  never removes an export.
 - `archiwista status` / `GET /health`: versions, sources, the index and every
   store: `status` (`unknown` not scanned yet, `available`, `unavailable`),
   counters, `last_scan` with the actor, `running_job` with its progress,

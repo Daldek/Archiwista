@@ -1809,6 +1809,29 @@ class IndexQueries:
             for row in rows
         )
 
+    def attributions(self, store: str, paths: Collection[str]) -> dict[str, str]:
+        """Return the attribution of each present version of a store by its path.
+
+        The text the source requires (``license.attribution`` of the
+        sidecar); a version without one, or that is not present, is left out.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        paths : Collection[str]
+            Version paths relative to the store.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            rows = connection.execute(
+                "SELECT path, attribution FROM versions"
+                f" WHERE store_id = ? AND state = 'present' AND path IN ({_IDS})"
+                " AND attribution IS NOT NULL AND attribution <> ''",
+                (_store_id(stores, store), json.dumps(list(paths))),
+            ).fetchall()
+        return {str(row["path"]): str(row["attribution"]) for row in rows}
+
     def status(self) -> IndexStatus:
         """Return the index's state and each store's index state and jobs."""
         with self._read() as connection:

@@ -9,6 +9,19 @@ command-line interface may change.
 
 ### Added
 
+- A project's exports (A-ADR-049 decision 13): "Eksportuj…" in the section "Zestawy" of
+  the project's card, `archiwista project-export PROJEKT NAZWA [--group GRUPA …]` and
+  `POST /projects/{project}/exports` write `zestawy/<name>/` in the project directory
+  from the pins of every group or of the chosen ones: `pliki.txt`, each pinned
+  version's file once, one per line (relative to the export on one share, else
+  absolute; for Hydrograf), and `ATRYBUCJE.txt`, each attribution the sources require
+  once; UTF-8 with LF, each file replaced whole when written again, never removed. Pins
+  whose store is not configured or whose version is not present are left out and
+  counted. Writing needs the owner or an administrator and is logged as
+  `project.export`. The card's list, `archiwista project-exports PROJEKT` and `GET
+  /projects/{project}/exports` say when the project changed after an export
+  ("projekt zmieniony po eksporcie — wygeneruj ponownie"). The QGIS project stays v1.1.
+
 - The user guide (A-ADR-048): "Instrukcja" in the top bar, its icon alone on a phone,
   opens `/instrukcja` in a new tab, a short guide in Polish of twelve slides with
   pictures of this interface: the window and its views, an area and what the store

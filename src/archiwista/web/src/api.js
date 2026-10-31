@@ -102,6 +102,9 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").ActionPlanInfo} ActionPlanInfo */
 /** @typedef {import("./types.js").ValidateRequest} ValidateRequest */
 /** @typedef {import("./types.js").ProjectRequest} ProjectRequest */
+/** @typedef {import("./types.js").ExportRequest} ExportRequest */
+/** @typedef {import("./types.js").ProjectExport} ProjectExport */
+/** @typedef {import("./types.js").ProjectExports} ProjectExports */
 
 /**
  * Abort a read: every function takes these options last.
@@ -791,6 +794,33 @@ export function setProjectArea(project, areaId) {
  */
 export function setProjectStore(project, producer, store) {
   return request("PUT", `/projects/${one(project)}/stores/${one(producer)}`, { json: { store } });
+}
+
+/**
+ * Write a project's export `zestawy/<name>/` from its pins (`export_project`):
+ * `pliki.txt` and `ATRYBUCJE.txt`.
+ *
+ * @param {string} project - Project id.
+ * @param {ExportRequest} body - The export's name; `groups` left out: every group.
+ * @returns {Promise<ProjectExport>} The export just written (`201`).
+ * @throws {ApiError} `400` (a name breaking the rule), `403` (`permission_denied`),
+ *   `404` (an unknown group), `409` (a project file Archiwista cannot read),
+ *   `500` (`io_error`).
+ */
+export function exportProject(project, body) {
+  return request("POST", `/projects/${one(project)}/exports`, { json: body });
+}
+
+/**
+ * A project's exports, each saying whether the project changed after it
+ * (`list_project_exports`).
+ *
+ * @param {string} project - Project id.
+ * @param {RequestOptions} [options]
+ * @returns {Promise<ProjectExports>}
+ */
+export function listProjectExports(project, { signal } = {}) {
+  return request("GET", `/projects/${one(project)}/exports`, { signal });
 }
 
 /**

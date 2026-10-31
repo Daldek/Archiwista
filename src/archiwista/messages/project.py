@@ -194,4 +194,8 @@ MESSAGES = {
         "text without control characters, or null",
         "tekst bez znaków sterujących albo null",
     ),
+    "group_not_found": Text(
+        'The project "{project}" has no group "{group}".',
+        "Projekt „{project}” nie ma grupy „{group}”.",
+    ),
 }

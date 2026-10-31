@@ -14,7 +14,10 @@ needs ``project.write`` (the owner or an administrator), takes the file's
 lock and answers the project's card as the index holds it right after the
 change. They translate only: ``archiwista.services.projects`` does the work,
 and ``archiwista project-init``, ``project-edit``, ``project-area`` and
-``project-store`` call the same functions. Nothing here uses the network or
+``project-store`` call the same functions. ``POST /projects/{project}/exports``
+writes an export ``zestawy/<name>/`` from the pins (``project.write``) and
+``GET /projects/{project}/exports`` lists them to whoever sees the project
+(``project-export``, ``project-exports``). Nothing here uses the network or
 writes a store.
 """
 
@@ -45,6 +48,12 @@ from archiwista.api.models import (
     ProjectRequest,
     StoreChoice,
     staleness,
+)
+from archiwista.api.models_exports import (
+    ExportRequest,
+    ProjectExport,
+    ProjectExportItem,
+    ProjectExports,
 )
 from archiwista.api.models_owndata import copy_path
 from archiwista.api.slots import checked_store
@@ -363,3 +372,108 @@ def set_project_store(
         visible=visible,
     )
     return _changed_card(decisions, principal, queries, config, preferences, key)
+
+
+def export_answer(
+    settings: AppSettings,
+    queries: IndexQueries,
+    decisions: Authorizer,
+    preferences: Preferences,
+    key: str,
+    body: ExportRequest,
+    *,
+    actor: Principal,
+    visible: ProjectVisibility,
+) -> ProjectExport:
+    """Write a project's export and return the route's answer (API and CLI)."""
+    done = project_service.export_project(
+        settings,
+        queries,
+        decisions,
+        key,
+        name=body.name,
+        groups=body.groups,
+        actor=actor,
+        visible=visible,
+    )
+    return ProjectExport.of(done, settings, preferences)
+
+
+def exports_answer(
+    settings: AppSettings,
+    queries: IndexQueries,
+    preferences: Preferences,
+    key: str,
+    *,
+    visible: ProjectVisibility,
+) -> ProjectExports:
+    """Return a project's exports as the route answers them (API and CLI)."""
+    listings = project_service.project_exports(settings, queries, key, visible=visible)
+    return ProjectExports(
+        items=[ProjectExportItem.of(item, settings, preferences) for item in listings]
+    )
+
+
+@router.post(
+    "/{project}/exports",
+    response_model=ProjectExport,
+    status_code=201,
+    responses=problem_responses(400, 403, 404, 409, 500),
+)
+def export_project(
+    project: _Project,
+    body: ExportRequest,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    settings: _Settings,
+    preferences: _Preferences,
+    queries: _Queries,
+) -> ProjectExport:
+    """Write the export `zestawy/<name>/` of a project from its pins (`project.export`).
+
+    `pliki.txt` lists each pinned version's file once, in the order of the
+    groups and their pins, relative to the export when both lie on one
+    share, else absolute; `ATRYBUCJE.txt` each attribution the sources require
+    once. Both UTF-8 with LF, each replaced whole when written again. A pin
+    whose store is not configured, or whose version is not present, is left
+    out and counted in `skipped`. Needs the project's owner or an
+    administrator (`403 permission_denied`). Refused: an unknown group
+    (`404`), a project file Archiwista cannot read (`409`,
+    `invalid_project_file`, `unsupported_project_schema`) and a file that
+    cannot be written (`500`, `io_error`). Offline; the project file is not
+    written.
+    """
+    return export_answer(
+        settings.get(),
+        queries,
+        decisions,
+        preferences,
+        project,
+        body,
+        actor=principal,
+        visible=visible,
+    )
+
+
+@router.get(
+    "/{project}/exports",
+    response_model=ProjectExports,
+    responses=problem_responses(403, 404),
+)
+def list_project_exports(
+    project: _Project,
+    visible: _Visible,
+    settings: _Settings,
+    preferences: _Preferences,
+    queries: _Queries,
+) -> ProjectExports:
+    """List a project's exports, each saying whether the project changed after it.
+
+    `changed_since`: the project file was written after the export, so the
+    export may no longer show its pins; write it again. For whoever sees the
+    project.
+    """
+    return exports_answer(
+        settings.get(), queries, preferences, project, visible=visible
+    )

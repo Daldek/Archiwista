@@ -250,8 +250,8 @@ versions a scan has just indexed.
 > Archiwista's own file `archiwista-project.json`, with an area, the stores of its
 > producers and groups of pinned versions; the producers' manifests are no longer read,
 > and a directory holding only one of them is no project (nothing is migrated). The
-> file, its discovery, its commands and routes and the views below are in this build;
-> pinning versions into a project, the project's jobs and its exports follow (the next
+> file, its discovery, its commands and routes, its exports and the views below are in
+> this build; pinning versions into a project and the project's jobs follow (the next
 > steps of
 > [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)).
 > Own data and snapshots stay as described below.
@@ -269,6 +269,19 @@ versions a scan has just indexed.
   5 s for another one (the lock `.archiwista-project.lock`) and is then refused naming
   the lock and its owner; a file broken by hand or of a newer Archiwista is listed with
   its problem and not changed.
+- **Exports** ("Zestawy" on the project's card; the owner or an administrator writes
+  one): "Eksportuj…" asks a name (letters, digits, `.`, `_` and `-`) and the groups, and
+  writes `zestawy/<name>/` in the project directory: `pliki.txt`, each pinned version's
+  file once, one per line in the order of the groups and their pins (for Hydrograf and
+  other scripts; relative to the export when the store and the project lie on one
+  share, else absolute), and `ATRYBUCJE.txt`, each attribution text the sources require
+  once. A pin whose store is not configured or whose version is not in the store is
+  left out and counted. The list of the project's exports says "projekt zmieniony po
+  eksporcie — wygeneruj ponownie" once the project file changes after an export;
+  "Wygeneruj ponownie…" opens the form on its name, and writing it again replaces each
+  file whole. Archiwista never removes an export. At the terminal: `archiwista
+  project-export PROJEKT NAZWA [--group GRUPA …]` and `project-exports PROJEKT`. The
+  QGIS project and the other files of SPEC 8.4 come with v1.1.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 

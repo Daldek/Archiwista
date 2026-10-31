@@ -1,4 +1,4 @@
-"""``archiwista project-init``, ``project-edit``, ``project-area``, ``project-store``.
+"""``archiwista project-init``, ``-edit``, ``-area``, ``-store``, ``-export(s)``.
 
 Projects are Archiwista's own file ``archiwista-project.json`` (A-ADR-049).
 ``project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id
@@ -9,7 +9,11 @@ relative directory is taken from the current one), ``project-edit PROJEKT
 --clear)`` its area (``PUT /projects/{project}/area``) and ``project-store
 PROJEKT PRODUCENT --store MAGAZYN`` the store of a producer's pins (``PUT
 /projects/{project}/stores/{producer}``): each prints the project's card as
-the index holds it right after the change (``ProjectCard``). They call
+the index holds it right after the change (``ProjectCard``). ``project-export
+PROJEKT NAZWA [--group GRUPA …]`` writes an export ``zestawy/NAZWA/`` from the
+pins (``POST /projects/{project}/exports``, ``ProjectExport``) and
+``project-exports PROJEKT`` lists them (``GET …/exports``,
+``ProjectExports``). They call
 ``archiwista.services.projects`` and ``archiwista.api.projects`` without
 HTTP, as the owner of the installation (``LOCAL_OWNER``, an administrator,
 who may change every project) through the ``Authorizer`` over the state
@@ -37,7 +41,8 @@ from archiwista.api.models import (
     ProjectRequest,
     StoreChoice,
 )
-from archiwista.api.projects import project_card
+from archiwista.api.models_exports import ExportRequest, ProjectExport, ProjectExports
+from archiwista.api.projects import export_answer, exports_answer, project_card
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
 from archiwista.commands import Commands, add_parser
@@ -64,7 +69,16 @@ from archiwista.services.preferences import read_preferences
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
 
-COMMANDS = frozenset({"project-init", "project-edit", "project-area", "project-store"})
+COMMANDS = frozenset(
+    {
+        "project-init",
+        "project-edit",
+        "project-area",
+        "project-store",
+        "project-export",
+        "project-exports",
+    }
+)
 
 # What an action prints: the route's model with ``--json``, else text for people.
 type _Output = tuple[BaseModel, str]
@@ -108,7 +122,7 @@ class _InvalidBody(Exception):
 
 
 def add_commands(commands: Commands) -> None:
-    """Add ``project-init``, ``project-edit``, ``project-area``, ``project-store``.
+    """Add the project commands (``COMMANDS``).
 
     Parameters
     ----------
@@ -146,6 +160,22 @@ def add_commands(commands: Commands) -> None:
         metavar=message("metavar.store"),
         help=message("cli.project_store_help"),
     )
+    exported = add_parser(commands, "project-export", "cli.project_export_help")
+    _project(exported)
+    exported.add_argument(
+        "name",
+        metavar=message("metavar.name"),
+        help=message("cli.project_export_name_help"),
+    )
+    exported.add_argument(
+        "--group",
+        action="append",
+        dest="groups",
+        metavar=message("metavar.group"),
+        help=message("cli.project_export_group_help"),
+    )
+    listed = add_parser(commands, "project-exports", "cli.project_exports_help")
+    _project(listed)
 
 
 def main(
@@ -279,11 +309,74 @@ def _changed(place: _Place, key: str) -> _Output:
     return card, f"{done}\n{project_text(card)}"
 
 
+def _export(args: argparse.Namespace, place: _Place) -> _Output:
+    """Write an export as ``POST /projects/{project}/exports`` does."""
+    body = _body(ExportRequest, {"name": args.name, **_given(args, "groups")})
+    answer = export_answer(
+        place.settings,
+        place.queries,
+        place.decisions,
+        place.preferences(),
+        args.project,
+        body,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return answer, _export_text(args.project, answer)
+
+
+def _exports(args: argparse.Namespace, place: _Place) -> _Output:
+    """List the exports as ``GET /projects/{project}/exports`` does."""
+    answer = exports_answer(
+        place.settings,
+        place.queries,
+        place.preferences(),
+        args.project,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return answer, _exports_text(answer)
+
+
+def _export_text(project: str, answer: ProjectExport) -> str:
+    """Return what ``project-export`` prints for people."""
+    return message(
+        "cli.project_exported",
+        name=answer.name,
+        project=project,
+        path=answer.path.local,
+        versions=answer.pins,
+        no_store=answer.skipped.no_store,
+        missing=answer.skipped.missing,
+    )
+
+
+def _exports_text(answer: ProjectExports) -> str:
+    """Return what ``project-exports`` prints for people."""
+    if not answer.items:
+        return message("cli.no_project_exports")
+    lines = []
+    for item in answer.items:
+        lines.append(
+            message(
+                "cli.project_export_line",
+                name=item.name,
+                written_at=item.written_at.isoformat(timespec="seconds"),
+                files=", ".join(item.files),
+            )
+        )
+        lines.append(message("cli.project_path_line", path=item.path.local))
+        if item.changed_since:
+            lines.append(message("cli.project_export_changed"))
+    return "\n".join(lines)
+
+
 _ACTIONS: dict[str, _Action] = {
     "project-init": _init,
     "project-edit": _edit,
     "project-area": _area,
     "project-store": _store,
+    "project-export": _export,
+    "project-exports": _exports,
 }
 
 # What keeps a command from opening the settings, the state or the index.
