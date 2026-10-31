@@ -112,10 +112,9 @@ export const actions = {
     submit_unplanned: "Pobierz",
     cancel: "Anuluj",
     close: "Zamknij",
-    close_title: "Zamknij okno; pobieranie trwa dalej, a jego wynik zostaje na liście pod „Pobieranie” na górnym pasku",
-    minimise: "Zwiń",
-    minimise_title: "Schowaj okno; wraca przyciskiem „Pokaż okno planu” na liście pod „Pobieranie” na górnym pasku",
+    close_title:
+      "Zamknij okno; pobieranie trwa dalej, a okno wraca przyciskiem „Pokaż okno planu” na liście pod „Pobieranie” na górnym pasku",
     background:
-      "Pobieranie trwa w tle: zwinięcie ani zamknięcie okna go nie przerywa, a mapa i inne widoki działają dalej. Postęp i wynik pokazuje „Pobieranie” na górnym pasku.",
+      "Pobieranie trwa w tle: zamknięcie okna go nie przerywa, a mapa i inne widoki działają dalej. Postęp i wynik pokazuje „Pobieranie” na górnym pasku.",
   },
 };

@@ -31,10 +31,11 @@
  *
  * The shell opens the window (`openPlan` of downloads.js), so it outlives the
  * view. Planning and the confirmation are modal; once something started the
- * window is not, and the map and the other views stay usable: „Zwiń” hides
- * it (the list under the top bar's „Pobieranie” shows it again), „Zamknij”
- * and `Esc` close it, at any time and without cancelling anything. A download
- * stops only by its „Anuluj pobieranie”.
+ * window is not, and the map and the other views stay usable: „Zamknij” and
+ * `Esc` hide it, while it runs and after, without cancelling anything, and
+ * the list under the top bar's „Pobieranie” shows it again until its
+ * download is removed from the list. A download stops only by its „Anuluj
+ * pobieranie”.
  */
 
 import { getJobPlan, parseCommand, startJob, watchJob } from "../api.js";
@@ -78,7 +79,7 @@ const LEVELS = { current: "ok", newer: "info", missing: "info", unverifiable: "p
  *
  * @param {object} props
  * @param {number} props.windowKey - The shell's key of the window (`openPlan`).
- * @param {boolean} props.visible - Shown, or hidden by „Zwiń” or another window.
+ * @param {boolean} props.visible - Shown, or hidden by „Zamknij” or another window.
  * @param {string} props.producer
  * @param {{id: string, name: string}} props.store - Where the run writes.
  * @param {string} props.title - What is downloaded, e.g. „NMT · 2023 · PL-2000”.
@@ -86,8 +87,8 @@ const LEVELS = { current: "ok", newer: "info", missing: "info", unverifiable: "p
  *   lines by format; none with `line`.
  * @param {string|null} [props.line] - One pasted line of the producer (no format
  *   to choose).
- * @param {() => void} props.onClose
- * @param {() => void} props.onMinimise - Hide the window; what it started goes on.
+ * @param {() => void} props.onClose - Close the window; once something
+ *   started it only hides and what it started goes on.
  */
 export function DownloadPlan({
   windowKey,
@@ -98,7 +99,6 @@ export function DownloadPlan({
   variant = null,
   line = null,
   onClose,
-  onMinimise,
 }) {
   const { session, settings } = useApp();
   const projects = useWritableProjects();
@@ -138,6 +138,8 @@ export function DownloadPlan({
   };
   const settled = runs !== null && runs.every((run) => run.problem || (run.job && isOver(followed(run))));
   const started = runs !== null;
+  // Closed, a window the list refers to comes back from there (`PlanWindows`).
+  const handed = downloads.entries.some((entry) => entry.window === windowKey);
   const ready =
     planned &&
     (sum.todo > 0 || pinning) &&
@@ -288,17 +290,14 @@ export function DownloadPlan({
           )}</div>`
         : null}
       ${started && !settled ? html`<p class="hint plan-background">${L.background}</p>` : null}
-      <div class=${started && !settled ? "plan-actions running" : "plan-actions"}>
-        ${settled
-          ? html`<button type="button" class="btn" autofocus onClick=${onClose}>${L.close}</button>`
-          : started
-            ? html`<button type="button" class="btn" title=${L.close_title} onClick=${onClose}>${L.close}</button>
-                <button type="button" class="btn" autofocus title=${L.minimise_title} onClick=${onMinimise}>
-                  <${Icon} name="down" size=${14} />${L.minimise}</button>`
-            : html`<button type="button" class="btn" onClick=${onClose}>${L.cancel}</button>
-                <button type="submit" class="btn primary" disabled=${!ready}>
-                  <${Icon} name="check" size=${14} />${label}
-                </button>`}
+      <div class="plan-actions">
+        ${started
+          ? html`<button type="button" class="btn" autofocus title=${handed ? L.close_title : null}
+              onClick=${onClose}>${L.close}</button>`
+          : html`<button type="button" class="btn" onClick=${onClose}>${L.cancel}</button>
+              <button type="submit" class="btn primary" disabled=${!ready}>
+                <${Icon} name="check" size=${14} />${label}
+              </button>`}
       </div>
     </form>
   </dialog>`;

@@ -33,7 +33,6 @@
 .plan-run-actions { display: flex; justify-content: flex-end; }
 .plan-background { margin: 0; }
 .plan-actions { display: flex; justify-content: space-between; gap: 8px; }
-.plan-actions.running { justify-content: flex-end; }
 .plan-actions .btn:only-child { margin-left: auto; }
 
 @media (max-width: 860px) {

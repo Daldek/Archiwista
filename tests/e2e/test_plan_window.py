@@ -12,11 +12,11 @@ files (ADR-044). A session without the permission to write the stores sees
 the plan with the action disabled and the reason; offline mode keeps the
 report and disables what needs the network.
 Downloads go on in the background (ADR-043): while the store holds the
-stand-in's ``HOLD`` a run waits after its first file, its window is closed or
-minimised, the map pans and zooms, the Catalog opens and the page reloads,
-and the top bar's „Pobieranie” follows the session's downloads all along,
-lists them with their files at the end and toasts each end; a download stops
-only by its „Anuluj pobieranie”.
+stand-in's ``HOLD`` a run waits after its first file, its window is closed
+and opened again from the top bar, the map pans and zooms, the Catalog opens
+and the page reloads, and the top bar's „Pobieranie” follows the session's
+downloads all along, lists them with their files at the end and toasts each
+end; a download stops only by its „Anuluj pobieranie”.
 With ``ARCHIWISTA_SCREENSHOTS=<directory>`` the steps keep screenshots there,
 the local paths covered (``docs/reports/v0.3-screenshots/``).
 """
@@ -471,7 +471,7 @@ def test_offline_mode_keeps_the_report_and_disables_the_network_actions(
 def test_downloads_go_on_in_the_background_across_views_and_a_reload(
     serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
 ) -> None:
-    """Windows closed and minimised mid-run; map, Catalog, reload; the top bar."""
+    """Windows closed mid-run and opened again; map, Catalog, reload; the top bar."""
     # Arrange: the runs wait after their first file while the store holds HOLD.
     served = serve_store(serve, tmp_path)
     page = tab.page
@@ -490,12 +490,12 @@ def test_downloads_go_on_in_the_background_across_views_and_a_reload(
     expect(indicator(page)).to_have_text("Pobieranie 0/1 · 50%")
 
     # Act: a second one from the other row, its three lines in one download;
-    # its window is minimised, shown again from the list and minimised again.
+    # its window is closed, shown again from the list and closed again.
     open_plan(page, rows.nth(1), "12 pozycji")
     second = plan_window(page, 2022)
     second.get_by_role("button", name="Pobierz 6 pozycji").click()
     expect(second.locator(".job-progress")).to_contain_text("polecenie 1 z 3 · 1 z 2")
-    second.get_by_role("button", name="Zwiń").click()
+    second.get_by_role("button", name="Zamknij").click()
     expect(second).to_be_hidden()
     expect(indicator(page)).to_be_focused()
     # The share of the row: half the units of the first of its three lines.
@@ -507,7 +507,7 @@ def test_downloads_go_on_in_the_background_across_views_and_a_reload(
     expect(listed.nth(1)).to_contain_text("dem · 2023")
     listed.nth(0).get_by_role("button", name="Pokaż okno planu").click()
     expect(second.locator(".job-progress")).to_contain_text("polecenie 1 z 3 · 1 z 2")
-    second.get_by_role("button", name="Zwiń").click()
+    second.get_by_role("button", name="Zamknij").click()
     expect(second).to_be_hidden()
 
     # Act: the map pans and zooms, the Catalog opens, the map comes back.
@@ -570,6 +570,71 @@ def test_downloads_go_on_in_the_background_across_views_and_a_reload(
         names = sorted(path.name for path in folder.iterdir())
         assert names == ["2024.csv", "2025.csv"], station
     tab.assert_clean()
+
+
+def test_a_closed_window_comes_back_from_the_top_bar_until_its_download_is_dismissed(
+    serve: Serve, engine_tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """„Zamknij” and `Esc` hide a run's window; the list shows it again, as it was."""
+    # Arrange: a run held after its first file.
+    served = serve_store(serve, tmp_path)
+    page = engine_tab.page
+    rows = check_at_source(open_area(page, served, served.token_url()))
+    hold = tmp_path / STORE / standin.HOLD
+    hold.touch()
+    dialog = open_plan(page, rows.nth(0))
+    dialog.get_by_role("button", name="Pobierz 2 pozycje").click()
+    expect(dialog.locator(".job-progress")).to_contain_text("1 z 2")
+
+    # Act: closed while it runs, then shown again from the top bar.
+    dialog.get_by_role("button", name="Zamknij").click()
+    expect(dialog).to_be_hidden()
+    expect(indicator(page)).to_be_focused()
+    indicator(page).click()
+    downloads(page).nth(0).get_by_role("button", name="Pokaż okno planu").click()
+
+    # Assert: the same window with its progress; one way to close it.
+    expect(dialog.locator(".job-progress")).to_contain_text("1 z 2")
+    expect(dialog.get_by_role("button", name="Zwiń")).to_have_count(0)
+    expect(dialog.get_by_role("button", name="Zamknij")).to_have_attribute(
+        "title",
+        "Zamknij okno; pobieranie trwa dalej, a okno wraca przyciskiem „Pokaż okno"
+        " planu” na liście pod „Pobieranie” na górnym pasku",
+    )
+
+    # Act: `Esc` closes it the same way; the run ends meanwhile.
+    page.keyboard.press("Escape")
+    expect(dialog).to_be_hidden()
+    hold.unlink()
+    expect(indicator(page)).to_have_text("Pobrano 1/1")
+    indicator(page).click()
+    downloads(page).nth(0).get_by_role("button", name="Pokaż okno planu").click()
+
+    # Assert: the window shows the run's result.
+    result = "Pliki: 2 (nowe 2, bez zmian 0, z nową etykietą 0); jednostki z błędem: 0."
+    expect(dialog).to_contain_text(result)
+    files = dialog.get_by_role("list", name="Pliki w magazynie").locator("> li")
+    expect(files).to_have_count(2)
+
+    # Act: closed after the end, then shown again.
+    dialog.get_by_role("button", name="Zamknij").click()
+    expect(dialog).to_be_hidden()
+    indicator(page).click()
+    downloads(page).nth(0).get_by_role("button", name="Pokaż okno planu").click()
+
+    # Assert: the same result.
+    expect(dialog).to_contain_text(result)
+    expect(files).to_have_count(2)
+
+    # Act: closed, and the download dismissed from the list.
+    dialog.get_by_role("button", name="Zamknij").click()
+    indicator(page).click()
+    downloads(page).nth(0).get_by_role("button", name="Usuń z listy").click()
+
+    # Assert: the window went with it.
+    expect(downloads(page)).to_have_count(0)
+    expect(page.locator("dialog.plan-window")).to_have_count(0)
+    engine_tab.assert_clean()
 
 
 def test_a_download_stops_only_by_its_cancel(

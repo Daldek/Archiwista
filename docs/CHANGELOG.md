@@ -1011,6 +1011,12 @@ command-line interface may change.
 
 ### Changed
 
+- The plan window of a download has one "Zamknij" instead of "Zwiń" and "Zamknij" (the
+  author's decision of 2026-10-31). Once a download started, "Zamknij" and `Esc` only
+  hide the window, while the download runs and after it ended: "Pokaż okno planu" in
+  the list under the top bar's "Pobieranie" and a toast's "Pokaż wynik" show it again
+  with its progress or result until the download is removed from the list. The old
+  "Zamknij" let the window go for good.
 - Projects are to become Archiwista's own (A-ADR-049; the author's decision of 2026-10-31,
   ECO-054): a project directory will hold `archiwista-project.json`
   (`archiwista-project/1`), written only by Archiwista under its lock

@@ -124,17 +124,18 @@ The panel "Wybór" (selection) leads through four steps:
    ![Plan window of a download](reports/v0.3-screenshots/02-okno-planu.webp)
 
    A download runs in the background. Once it starts, the window no longer
-   holds the page: it floats in a corner, "Zwiń" (minimise) hides it and
-   "Zamknij" (close) or `Esc` closes it, and neither stops the download; the
-   map and the other views stay usable. "Pobieranie 2/6 · 45%" in the top bar
+   holds the page: it floats in a corner, and "Zamknij" (close) or `Esc`
+   hides it without stopping the download; the map and the other views stay
+   usable. "Pobieranie 2/6 · 45%" in the top bar
    sums the downloads started together (those that ended of all, and how far
    their units got), also after a change of the view or a reload of the page
    and for a download of the session started elsewhere (another tab). It opens
    "Pobrania w tle" (downloads in the
    background): each download's progress, its files when done or why it
    failed, "Anuluj pobieranie" (the only way to stop one; what is already
-   downloaded stays), "Pokaż okno planu" while its window is kept, and "Usuń
-   z listy" once it ended. Each end shows a toast ("Pobrano: …", "Pobieranie
+   downloaded stays), "Pokaż okno planu" (its closed window again, with its
+   progress or result, until the page reloads), and "Usuń z listy" once it
+   ended, which also lets its window go. Each end shows a toast ("Pobrano: …", "Pobieranie
    nie powiodło się: …") with "Pokaż wynik", and the map and the step read the
    store again.
 

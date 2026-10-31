@@ -5,8 +5,9 @@
  * window, the view and a reload of the page.
  *
  * The shell hosts the plan windows (views/plan.js, `openPlan`), so a window
- * outlives the view that opened it; hidden („Zwiń”) it comes back from the
- * list, closed („Zamknij”) it is gone, and neither cancels anything. Each
+ * outlives the view that opened it; closed („Zamknij”) after it started a
+ * download it only hides and comes back from the list until that download
+ * is removed from it, and closing cancels nothing. Each
  * download started here (`track`), and each queued or running one of the
  * session that `GET /jobs` lists when the page opens or comes back into
  * view, is followed through its event stream; a queued one beyond the second
@@ -382,10 +383,7 @@ function createDownloads(label) {
         windows: now.windows.map((item) => (item.key === key ? { ...item, visible: false } : item)),
       })),
     closePlan: (key) =>
-      change((now) => ({
-        windows: now.windows.filter((item) => item.key !== key),
-        entries: now.entries.map((item) => (item.window === key ? { ...item, window: null } : item)),
-      })),
+      change((now) => ({ windows: now.windows.filter((item) => item.key !== key) })),
     /** Show what came of a download: its kept window, else the list at it. */
     show: (id) => {
       const window = entry(id)?.window ?? null;
@@ -700,8 +698,9 @@ function loadPlan() {
 }
 
 /**
- * The plan windows opened over the shell (`openPlan`); a hidden one keeps
- * its plan and its runs.
+ * The plan windows opened over the shell (`openPlan`). Closed, a window
+ * that started a download only hides and keeps its plan and its runs, so
+ * the list shows it again; any other window goes.
  */
 export function PlanWindows() {
   const downloads = useDownloads();
@@ -725,14 +724,13 @@ export function PlanWindows() {
   const { DownloadPlan } = module;
   return downloads.windows.map(
     (item) => html`<${DownloadPlan} key=${item.key} windowKey=${item.key} visible=${item.visible} ...${item.props}
-      onMinimise=${() => {
-        downloads.hidePlan(item.key);
-        focusIndicator();
-      }}
       onClose=${() => {
-        const handed = downloads.entries.some((download) => download.window === item.key);
-        downloads.closePlan(item.key);
-        if (handed) focusIndicator();
+        if (downloads.entries.some((download) => download.window === item.key)) {
+          downloads.hidePlan(item.key);
+          focusIndicator();
+        } else {
+          downloads.closePlan(item.key);
+        }
       }} />`,
   );
 }
