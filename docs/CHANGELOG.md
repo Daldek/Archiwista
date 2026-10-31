@@ -1326,6 +1326,11 @@ command-line interface may change.
   area as a GeoPackage (`<data-dir>/areas/<id>.gpkg`) and passes it as Kartograf's geometry;
   command lines accept only such a file as a path, and pinned plan calls name its project copy
   `obszary/<id>.gpkg` (A-ADR-035 erratum 2, A-ADR-049 erratum 3).
+- The Katalog cut the text of its rows with an ellipsis: in "Produkt i wariant" a DTM's
+  name ("Digital Terrain Model 1 m (ASC grid) · PL-1992 · EVRF2007") ended right after
+  the variant, and long sheet codes, file names and version labels were cut as well. A
+  row's text now wraps in its column and the row grows, at every width (the list still
+  draws only the rows near the view: it measures the drawn rows).
 - "Dodaj do projektu…" of "Stan lokalny" pinned the current versions whatever the
   filters said, so with "Wersje: wszystkie" and an older year ("Lata danych: 2019") it
   found none and "Przypnij" stayed disabled; and a year chosen on the map (the years on

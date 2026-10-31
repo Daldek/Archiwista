@@ -39,7 +39,10 @@ const PREFETCH_ROWS = 120;
  *   (catalog.css).
  * @property {(props: {item: *, index: number, props: object}) => *} Cells - A row's
  *   cells.
- * @property {(item: *, narrow: boolean) => number} height - A row's height, px.
+ * @property {(item: *, narrow: boolean) => number} height - A row's height, px;
+ *   with `grows` its least height.
+ * @property {boolean} [grows] - Rows wrap their text, so a drawn row's own
+ *   height is measured and kept by its key (until the row is drawn, `height`).
  * @property {(item: *) => string} key - A row's identity.
  * @property {(item: *) => string} [className] - More classes of a row.
  * @property {(item: *) => boolean} mappable - The row can be shown on the map (M).
@@ -87,16 +90,48 @@ export function CatalogGrid(props) {
   const focusNext = useRef(null);
   const [view, setView] = useState({ top: 0, height: 0 });
   const [active, setActive] = useState(0);
+  // Measured heights of growing rows by key; `measured` counts their changes.
+  const sizes = useRef(new Map());
+  const resizes = useRef(null);
+  const [measured, setMeasured] = useState(0);
   const head = narrow ? 0 : HEAD;
   // The top of each row and, last, the height of them all.
   const offsets = useMemo(() => {
     const tops = new Array(items.length + 1);
     tops[0] = 0;
     for (let index = 0; index < items.length; index += 1) {
-      tops[index + 1] = tops[index] + rows.height(items[index], narrow);
+      const least = rows.height(items[index], narrow);
+      const own = rows.grows ? sizes.current.get(rows.key(items[index])) : undefined;
+      tops[index + 1] = tops[index] + Math.max(least, own ?? least);
     }
     return tops;
-  }, [items, narrow, rows]);
+  }, [items, narrow, rows, measured]);
+
+  function measureRows(elements) {
+    let changed = false;
+    for (const element of elements) {
+      if (!element.isConnected) continue;
+      const height = element.offsetHeight;
+      if (sizes.current.get(element.dataset.key) !== height) {
+        sizes.current.set(element.dataset.key, height);
+        changed = true;
+      }
+    }
+    if (changed) setMeasured((value) => value + 1);
+  }
+
+  // Drawn growing rows are measured before they are painted and again when
+  // their width changes their height (a window or a panel resized).
+  useLayoutEffect(() => {
+    if (!rows.grows) return undefined;
+    const drawn = [...scroller.current.querySelectorAll(".cat-rows > [data-key]")];
+    measureRows(drawn);
+    resizes.current ??= new ResizeObserver((entries) => measureRows(entries.map((entry) => entry.target)));
+    resizes.current.disconnect();
+    for (const element of drawn) resizes.current.observe(element);
+    return undefined;
+  });
+  useEffect(() => () => resizes.current?.disconnect(), []);
 
   useLayoutEffect(() => {
     const element = scroller.current;
@@ -217,10 +252,13 @@ export function CatalogGrid(props) {
           const item = items[index];
           const selected = props.isSelected(item);
           const more = rows.className ? rows.className(item) : "";
+          const size = rows.grows
+            ? { height: "auto", minHeight: `${rows.height(item, narrow)}px` }
+            : { height: `${offsets[index + 1] - offsets[index]}px` };
           return html`<div key=${rows.key(item)} class=${`cat-row${selected ? " selected" : ""}${more ? ` ${more}` : ""}`}
             role="row" aria-rowindex=${index + 2} aria-selected=${selected ? "true" : "false"}
-            tabindex=${index === current ? 0 : -1} data-index=${index}
-            style=${{ transform: `translateY(${offsets[index]}px)`, height: `${offsets[index + 1] - offsets[index]}px` }}
+            tabindex=${index === current ? 0 : -1} data-index=${index} data-key=${rows.key(item)}
+            style=${{ transform: `translateY(${offsets[index]}px)`, ...size }}
             onClick=${(event) => click(event, item)} onFocusIn=${() => setActive(index)}>
             <${Cells} item=${item} index=${index} props=${props} />
           </div>`;
@@ -257,7 +295,10 @@ function rowAt(offsets, y) {
   return low;
 }
 
-/** Row height in px of a file on a computer and on a phone (two lines each; catalog.css). */
+/**
+ * Least row height in px of a file on a computer and on a phone (two lines
+ * each; catalog.css): a long name, unit, product or label wraps and the row grows.
+ */
 const FILE_ROW = 44;
 const FILE_ROW_NARROW = 58;
 
@@ -265,10 +306,11 @@ const FILE_ROW_NARROW = 58;
 export const FILE_ROWS = {
   label: L.grid.label,
   columns: (props) => (props.storeNames ? 9 : 8),
-  layout: (props) => (props.storeNames ? "with-store" : ""),
+  layout: (props) => (props.storeNames ? "files with-store" : "files"),
   Header: FileHeader,
   Cells: FileCells,
   height: (_item, narrow) => (narrow ? FILE_ROW_NARROW : FILE_ROW),
+  grows: true,
   key: (item) => `${item.store}/${item.slot}#${item.version?.path ?? ""}`,
   className: (item) => (item.status === "ok" ? "" : "problem-row"),
   mappable: onMapOf,

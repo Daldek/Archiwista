@@ -11,6 +11,7 @@ import re
 import sys
 import time
 from collections.abc import Callable
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
@@ -41,6 +42,36 @@ RENDERED_ROWS = """
   row.querySelector("a.cat-name").getAttribute("href"),
 ])
 """
+# Text cut in the cells of the drawn rows: a cell or a box of it whose content
+# is wider or taller than it (an ellipsis, a clipped line).
+CLIPPED = """
+(grid) => [...grid.querySelectorAll(".cat-rows .cell, .cat-rows .cell > *")]
+  .filter((element) => getComputedStyle(element).display !== "inline")
+  .filter((element) => element.scrollWidth > element.clientWidth + 1
+    || element.scrollHeight > element.clientHeight + 1)
+  .map((element) => element.textContent.trim())
+"""
+# The top and bottom of each drawn row, in the rows' order.
+ROW_BOXES = """
+(grid) => [...grid.querySelectorAll(".cat-rows [role=row][data-index]")]
+  .sort((a, b) => a.dataset.index - b.dataset.index)
+  .map((row) => [row.getBoundingClientRect().top, row.getBoundingClientRect().bottom])
+"""
+# Rows wholly inside the scrolled area, below the header.
+IN_VIEW = """
+() => {
+  const bottom = document.querySelector(".cat-scroll").getBoundingClientRect().bottom;
+  const top = document.querySelector(".cat-head").getBoundingClientRect().bottom;
+  const drawn = document.querySelectorAll(".cat-rows [role=row][data-index]");
+  return [...drawn].filter((row) => {
+    const box = row.getBoundingClientRect();
+    return box.top >= top - 0.5 && box.bottom <= bottom + 0.5;
+  }).length;
+}
+"""
+# Width of a computer and of a narrow window (px).
+WIDTHS = (1400, 1024)
+LONG_PRODUCT = "Digital Terrain Model 1 m (ASC grid)"
 
 
 def start_store(
@@ -317,13 +348,7 @@ def test_variant_rows_filter_card_and_current_hint(
     „Wariant” keeps one variant (``segment`` in the address), the file card
     names it, and the hint says what „bieżąca” means.
     """
-    store = make_variant_store(tmp_path / "store")
-    config = StoreConfig(id="zespol", name="Zespół", kartograf=store.root, kind="local")
-    served = serve(
-        AppSettings(
-            offline=True, stores=(config,), project_dirs=(store.manifest.projects_dir,)
-        )
-    )
+    served = serve_variants(serve, tmp_path)
     page = tab.page
     open_catalog(page, served, {"product": "nmt"})
     variants = grid(page).locator(".cat-variant")
@@ -353,6 +378,46 @@ def test_variant_rows_filter_card_and_current_hint(
     ]
     assert year == "2025"
     tab.assert_clean()
+
+
+def test_file_rows_wrap_long_text(serve: Serve, tab: Tab, tmp_path: Path) -> None:
+    """A long product name with its variant wraps; nothing is cut, the row grows.
+
+    At the width of a computer and of a narrow window (resized in place).
+    """
+    served = serve_variants(serve, tmp_path)
+    page = tab.page
+    found = {}
+    for width in WIDTHS:
+        page.set_viewport_size({"width": width, "height": 800})
+        if width == WIDTHS[0]:
+            open_catalog(page, served, {"product": "nmt"})
+        expect(grid(page).locator(".cat-variant")).to_have_count(3)
+        product = grid(page).locator(".cat-rows .c-prod").first
+        expect(product).to_contain_text(LONG_PRODUCT)
+        page.wait_for_function(
+            "(width) => document.documentElement.clientWidth === width", arg=width
+        )
+        page.wait_for_timeout(100)
+        found[width] = (grid(page).evaluate(CLIPPED), grid(page).evaluate(ROW_BOXES))
+
+    for width, (clipped, boxes) in found.items():
+        assert clipped == [], width
+        assert len(boxes) == 3, width
+        assert all(top >= above - 0.5 for (_, above), (top, _) in pairwise(boxes))
+        assert min(bottom - top for top, bottom in boxes) > 44, width
+    tab.assert_clean()
+
+
+def serve_variants(serve: Serve, tmp_path: Path) -> Served:
+    """Serve the store of one sheet in three variants as ``zespol``."""
+    store = make_variant_store(tmp_path / "store")
+    config = StoreConfig(id="zespol", name="Zespół", kartograf=store.root, kind="local")
+    return serve(
+        AppSettings(
+            offline=True, stores=(config,), project_dirs=(store.manifest.projects_dir,)
+        )
+    )
 
 
 def test_ctrl_k_search(serve: Serve, tab: Tab, tmp_path: Path) -> None:
@@ -407,6 +472,7 @@ def test_ctrl_k_search(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     at_end = page.evaluate(focused)
     page.keyboard.press("Home")
     at_start = page.evaluate(focused)
+    in_view = page.evaluate(IN_VIEW)
     page.keyboard.press("PageDown")
     one_page_down = int(page.evaluate(focused))
 
@@ -414,7 +480,10 @@ def test_ctrl_k_search(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     assert card["file"] == f"zespol/{target['slot']}"
     assert card["q"] == prefix
     assert (at_end, at_start) == (str(len(rows) + 1), "2")
-    assert one_page_down > 10
+    # A page down is the row a view's height below, less one (rows wrap, so
+    # their heights differ): row index in_view - 2 or in_view - 1.
+    assert in_view > 2
+    assert in_view <= one_page_down <= in_view + 1
     tab.assert_clean()
 
 

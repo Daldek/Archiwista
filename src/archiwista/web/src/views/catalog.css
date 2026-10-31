@@ -76,7 +76,12 @@
 .cat-rows .cat-row:hover .cat-map, .cat-rows .cat-row:focus-visible .cat-map, .cat-rows .cat-row.selected .cat-map { color: var(--accent-2); }
 .c-size { align-items: flex-end; text-align: right; }
 .cat-rows .c-size { color: var(--text-2); font-size: 12px; }
-.cat-variant { flex: none; margin-right: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.cat-variant { display: inline-block; max-width: 100%; margin-right: 6px; padding: 0 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 11.5px; font-weight: 600; }
+/* Rows of files wrap their text (catalog-grid.js `grows`): a long file name,
+   unit, product with its variant or label is never cut; the row grows. */
+.cat-grid.files .cat-rows .cat-row { padding-top: 5px; padding-bottom: 5px; }
+.cat-grid.files .cat-rows .cell :is(.ell, .cell-sub, .cat-name) { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.cat-grid.files .cat-rows .cell-sub { flex-wrap: wrap; }
 
 .cat-loc { display: inline-flex; align-items: center; align-self: flex-start; height: 18px; padding: 0 7px; border-radius: 999px; border: 1px solid transparent; font-size: 11px; font-weight: 500; white-space: nowrap; }
 .cat-loc.footprint { background: var(--ok-bg); color: var(--ok-ink); }
