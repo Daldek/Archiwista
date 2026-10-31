@@ -62,7 +62,7 @@ def _keep_report(paths: AppPaths, standin: ModuleType, *, age: timedelta) -> Non
     """
     adapter = actions(load_registry(cache_dir=paths.cache_dir), "standin")
     report = adapter.availability(
-        "dem", area_file=paths.areas_dir / "area.gpkg", countries=AREA.countries
+        "dem", area_file=paths.areas_dir / "area.geojson", countries=AREA.countries
     )
     aged = replace(report, checked_at=report.checked_at - age)
     with IndexWriter(paths.index_file) as writer:

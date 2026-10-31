@@ -9,20 +9,20 @@ Archiwista's own metadata cache; its network part is stood in for, its
 refusals before the network are Kartograf's own.
 """
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
 import kartograf
-import pyogrio.raw
 import pytest
 import shapely
+from shapely.geometry import shape
 
 import archiwista.adapter.kartograf.actions as actions_module
 from archiwista.adapter.kartograf import load
-from archiwista.areas import area_from_geometry, write_area_package
+from archiwista.areas import area_from_geometry, write_area_geojson
 from archiwista.errors import ProducerError
-from archiwista.index.coverage import PlanarMover
 from archiwista.sources import (
     ActionAdapter,
     AvailabilityArea,
@@ -220,8 +220,8 @@ def test_availability_asks_kartograf_with_archiwistas_cache_and_the_area_file(
 ) -> None:
     """The cache is ``metadata.db`` of the adapter's cache, never ``cache=True``.
 
-    The area goes as its GeoPackage (``geometry``) with its country, never as
-    a box (ADR-035 erratum 2). The report and its notices come back in
+    The area goes as its GeoJSON (``geometry``) with its country, never as a
+    box (ADR-035 erratum 2). The report and its notices come back in
     Archiwista's types.
     """
     received: list[dict[str, object]] = []
@@ -235,7 +235,7 @@ def test_availability_asks_kartograf_with_archiwistas_cache_and_the_area_file(
 
     monkeypatch.setattr(actions_module, "check_availability", recording)
     said: list[AvailabilityNotice] = []
-    area_file = tmp_path / "areas" / "0123456789abcdef.gpkg"
+    area_file = tmp_path / "areas" / "0123456789abcdef.geojson"
 
     with no_network() as attempts:
         report = adapter.availability(
@@ -329,7 +329,7 @@ def test_an_area_of_two_countries_is_auto(
         return _kartograf_report()
 
     monkeypatch.setattr(actions_module, "check_availability", recording)
-    area_file = tmp_path / "0123456789abcdef.gpkg"
+    area_file = tmp_path / "0123456789abcdef.geojson"
 
     adapter.availability("laz", area_file=area_file, countries=countries)
 
@@ -346,11 +346,11 @@ def test_an_area_reaches_kartograf_as_its_polygon_not_its_box(
 ) -> None:
     """Kartograf reads the area itself, so its runs select by the polygon.
 
-    An area of two small squares at the corners of a diagonal: its GeoPackage
-    holds each part as it is in EPSG:2180, and Kartograf's own offline sheet
-    selection of that file picks the sheets of the parts only, never those of
-    the envelope between them, the box Archiwista sent before ADR-035
-    erratum 2.
+    An area of two small squares at the corners of a diagonal: its GeoJSON
+    holds the parts as they are in WGS84 (RFC 7946), and Kartograf's own
+    offline sheet selection of that file picks the sheets of the parts only,
+    never those of the envelope between them, the box Archiwista sent before
+    ADR-035 erratum 2.
     """
     received: list[dict[str, object]] = []
 
@@ -369,46 +369,40 @@ def test_an_area_reaches_kartograf_as_its_polygon_not_its_box(
         adapter=geo,
         source="drawn",
     )
-    written = write_area_package(tmp_path / "areas", area, transformer=geo.transformer)
+    written = write_area_geojson(tmp_path / "areas", area)
 
     adapter.availability("nmt", area_file=written, countries=area.countries)
 
     (call,) = received
     area_file = call["geometry"]
     assert isinstance(area_file, Path)
-    meta, _, read, _ = pyogrio.raw.read(area_file)
-    mover = PlanarMover("EPSG:2180", geo.transformer)
-    planar = [mover.move(part, "EPSG:4326") for part in parts]
-    assert (call["country"], meta["crs"]) == ("pl", "EPSG:2180")
-    assert [
-        shapely.equals_exact(
-            shapely.normalize(shapely.from_wkb(found)),
-            shapely.normalize(part),
-            tolerance=1e-6,
-        )
-        for found, part in zip(read, planar, strict=True)
-    ] == [True, True]
+    collection = json.loads(area_file.read_text(encoding="utf-8"))
+    (feature,) = collection["features"]
+    assert (call["country"], collection["type"], "crs" in collection) == (
+        "pl",
+        "FeatureCollection",
+        False,
+    )
+    union = shapely.union_all([shape(part) for part in parts])
+    assert shapely.equals(shape(feature["geometry"]), union)
+
+    def box(bounds: tuple[float, float, float, float]) -> kartograf.BBox:
+        return kartograf.BBox(bounds[0], bounds[1], bounds[2], bounds[3], "EPSG:4326")
+
     by_file = kartograf.find_sheets_for_geometry(
         area_file, "1:10000", sheet_system="1992"
     )
     by_parts = {
         sheet
-        for part in planar
+        for part in parts
         for sheet in kartograf.find_sheets_for_bbox(
-            kartograf.BBox(
-                part.bounds[0],
-                part.bounds[1],
-                part.bounds[2],
-                part.bounds[3],
-                "EPSG:2180",
-            ),
+            box(shape(part).bounds),
             "1:10000",
             sheet_system="1992",
         )
     }
-    min_x, min_y, max_x, max_y = shapely.union_all(planar).bounds
     by_box = kartograf.find_sheets_for_bbox(
-        kartograf.BBox(min_x, min_y, max_x, max_y, "EPSG:2180"),
+        box(union.bounds),
         "1:10000",
         sheet_system="1992",
     )
@@ -434,9 +428,7 @@ def test_kartograf_refuses_a_product_or_an_area_before_the_network(
     """An unknown product and an area in neither country are Kartograf's refusals."""
     geo = cast(GeoAdapter, adapter)
     record = area_from_geometry(area, adapter=geo, source="drawn")
-    area_file = write_area_package(
-        tmp_path / "areas", record, transformer=geo.transformer
-    )
+    area_file = write_area_geojson(tmp_path / "areas", record)
 
     with no_network() as attempts, pytest.raises(ProducerError) as refused:
         adapter.availability(product, area_file=area_file, countries=countries)

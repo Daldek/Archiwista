@@ -16,13 +16,15 @@ dependencies = [
     # (`store_root()`), `kartograf.testing` (ADR-054), `find_sheet_outlines`
     # (PL-2000 zones of powiats, Kartograf ADR-055), the refresh TTL of the
     # metadata cache with the index answers shared by the availability report and
-    # the plans (Kartograf ADR-056), `store_state()`, and Kartograf without
-    # projects, with `command_for_file` (KB-6, Kartograf ADR-057; A-ADR-049)
-    # (Archiwista's requests) have no release yet; the commit is on GitHub.
+    # the plans (Kartograf ADR-056), `store_state()`, Kartograf without
+    # projects, with `command_for_file` (KB-6, Kartograf ADR-057; A-ADR-049),
+    # and `--geometry` selecting by the features' shape, GeoJSON accepted
+    # (Kartograf ADR-058; A-ADR-035 erratum 2) (Archiwista's requests) have no
+    # release yet; the commit is on GitHub.
     # The release pull request replaces the commit with the tag (REL-2.1) and
     # narrows `SUPPORTED_VERSIONS` to `>=0.8.0` (REL-5.6). The versions the
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`.
-    "kartograf @ git+https://github.com/Daldek/Kartograf@8ad55ab67b1e6e2e2ef3eb52cb6930ed92fecc06",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@26ee45924b719b4f357ab02c88cda58aa806843f",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.

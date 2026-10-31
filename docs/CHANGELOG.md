@@ -1022,6 +1022,9 @@ command-line interface may change.
 
 ### Changed
 
+- Kartograf is re-pinned to `26ee4592` (`pyproject.toml`, `uv.lock`; the supported range is
+  unchanged): `--geometry` selects the sheets each feature's geometry meets, not its
+  envelope's, and reads GeoJSON (Kartograf ADR-058; A-ADR-035 erratum 2).
 - The plan window of a download has one "Zamknij" instead of "Zwiń" and "Zamknij" (the
   author's decision of 2026-10-31). Once a download started, "Zamknij" and `Esc` only
   hide the window, while the download runs and after it ended: "Pokaż okno planu" in
@@ -1323,9 +1326,11 @@ command-line interface may change.
 
 - A polygon area reached Kartograf as its bounding box, so the report's command lines carried
   `--bbox` and a plan or download selected sheets outside the polygon. Archiwista now writes the
-  area as a GeoPackage (`<data-dir>/areas/<id>.gpkg`) and passes it as Kartograf's geometry;
-  command lines accept only such a file as a path, and pinned plan calls name its project copy
-  `obszary/<id>.gpkg` (A-ADR-035 erratum 2, A-ADR-049 erratum 3).
+  area as GeoJSON in WGS84 (RFC 7946, `<data-dir>/areas/<id>.geojson`, the same bytes as a
+  project's area file) and passes it as Kartograf's geometry, which selects by its shape;
+  command lines accept only such a file as a path, and pinned plan calls name the project's
+  `obszary/<id>.geojson` (its area file, else a copy) (A-ADR-035 erratum 2, A-ADR-049
+  erratum 3).
 - The Katalog cut the text of its rows with an ellipsis: in "Produkt i wariant" a DTM's
   name ("Digital Terrain Model 1 m (ASC grid) · PL-1992 · EVRF2007") ended right after
   the variant, and long sheet codes, file names and version labels were cut as well. A

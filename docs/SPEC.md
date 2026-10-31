@@ -234,7 +234,7 @@ The sample area "Kraków" is the bbox `561000,239000,573000,249000`
 1. In the "Mapa" (Map) view she selects an area: she draws a rectangle or polygon, enters a sheet code or TERYT, or loads `zlewnia.gpkg`.
 2. From the product list she picks "NMT" (DEM) (group "Wysokości" (Elevations)) and in the variant chips sets "układ arkuszy: PL-1992" (sheet layout: PL-1992), because she wants files in EPSG:2180.
 3. Archiwista immediately shows the state of the store (from the index, no network), and in the background starts a check at the source: `check_availability(product="nmt",
-   country="pl", geometry=…)`, the area being Archiwista's GeoPackage of it (6.3 point 1).
+   country="pl", geometry=…)`, the area being Archiwista's GeoJSON of it (6.3 point 1).
 4. The result appears as year layers on the map and in the "Zestawienie" (Summary) panel: 2023 "pełne · 2 kampanie" (complete · 2 campaigns) with a badge "pobrane 5/12" (downloaded 5/12), 2022 "częściowe ·
    58%" (partial · 58%), and next to 2019 a note "1 ark. niepełny" (1 sheet incomplete) (definitions: section 6.4). Ola
    switches the panel to "Oś czasu" (the Timeline) and the view to "Wachlarz" (the Fan) to see
@@ -1872,11 +1872,11 @@ the state of the sources and how to install the missing ones (`archiwista[imgw]`
    name after KB-7), geometry file (GPKG, SHP, GeoJSON — copied to
    Archiwista's local working directory and read in a separate process, 10.1),
    country. Whatever its origin, the area goes to Kartograf as Archiwista's
-   GeoPackage of it, `<data-dir>/areas/<area id>.gpkg`: the polygon as it is, one
-   feature per part, in the planar CRS of its first country (EPSG:2180 for PL,
-   EPSG:5514 for CZ alone); it stays as long as the area, and the command lines
-   of the report name it, so a download selects by the polygon wherever
-   Kartograf does (A-ADR-035 erratum 2). Above the map sits a badge "Obszar: Kraków · 120 km² · PL" with "Zmień"
+   GeoJSON of it, `<data-dir>/areas/<area id>.geojson`: the polygon as it is,
+   in WGS84 (RFC 7946), the same file a project keeps as its area; it stays as
+   long as the area, and the command lines of the report name it, so a plan or
+   download selects the sheets the polygon meets, not those of its envelope
+   (A-ADR-035 erratum 2, Kartograf ADR-058). Above the map sits a badge "Obszar: Kraków · 120 km² · PL" with "Zmień"
    (Change), "Wyczyść" (Clear) and "Ustaw jako obszar projektu…" (Set as a project's area: the
    area is written as GeoJSON into the project's `obszary/`, 4.7, 10.1). The country (PL, CZ, both) follows from the area
    (`countries_for_bbox`); an area crossing the border gives PL and CZ results
@@ -3305,7 +3305,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
   the same JSON form as the `options` of a call of a pin group of origin `plan` in the project file (`bbox`
   as 4 numbers with `bbox_crs`, per-country values as an object
   `{"pl": …, "cz": …}`, lists as arrays, `geometry` as the path of the area's
-  GeoPackage: in a pin group its copy `obszary/<area id>.gpkg`, relative to the
+  GeoJSON: in a pin group `obszary/<area id>.geojson`, relative to the
   project directory), and IMGWTools options have the form
   from its command catalog (IMGW-11).
 - **Coverage labels are computed by the server** and returned alongside the

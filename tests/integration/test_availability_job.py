@@ -16,8 +16,8 @@ from datetime import timedelta
 from pathlib import Path
 from types import ModuleType
 
-import pyogrio.raw
 import pytest
+from shapely.geometry import shape
 
 from archiwista.auth import LOCAL_OWNER
 from archiwista.config import AppPaths
@@ -59,11 +59,10 @@ def held(paths: AppPaths) -> Iterator[JobSupervisor]:
 def test_the_job_asks_the_producer_and_keeps_the_report(
     paths: AppPaths, standin: ModuleType
 ) -> None:
-    """The producer gets the area's GeoPackage; the report is kept whole.
+    """The producer gets the area's GeoJSON; the report is kept whole.
 
-    The file is the area as the index keeps it, in the planar CRS of its
-    country, where the calls of the report's lines name it (A-ADR-035
-    erratum 2).
+    The file is the area as the index keeps it, in WGS84 (RFC 7946), where
+    the calls of the report's lines name it (A-ADR-035 erratum 2).
     """
     stream = io.StringIO()
 
@@ -73,7 +72,7 @@ def test_the_job_asks_the_producer_and_keeps_the_report(
     with IndexQueries(paths.index_file) as queries:
         stored = queries.availability(AREA.id, "dem", producer="standin")
     received = standin.CALLS
-    area_file = paths.areas_dir / f"{AREA.id}.gpkg"
+    area_file = paths.areas_dir / f"{AREA.id}.geojson"
 
     assert received == [
         (
@@ -82,9 +81,10 @@ def test_the_job_asks_the_producer_and_keeps_the_report(
             {"geometry": str(area_file), "countries": ["PL"], "refresh": True},
         )
     ]
-    meta, _, parts, _ = pyogrio.raw.read(area_file)
-    assert pyogrio.list_layers(area_file).tolist() == [["area", "Polygon"]]
-    assert (meta["crs"], len(parts)) == ("EPSG:2180", 1)
+    collection = json.loads(area_file.read_text(encoding="utf-8"))
+    (feature,) = collection["features"]
+    assert collection["type"] == "FeatureCollection"
+    assert shape(feature["geometry"]).equals(shape(AREA.geometry))
     assert stored is not None
     report = stored.report
     assert (stored.checked_at, stored.job_id) == (

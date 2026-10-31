@@ -486,7 +486,7 @@ def _group_calls(
 ) -> _GroupCalls:
     """Return a group's calls: a plan group's origin, a local group's pins'.
 
-    A plan group's call naming its area's GeoPackage in the project's
+    A plan group's call naming its area's GeoJSON in the project's
     ``obszary/`` (A-ADR-035 erratum 2) names it in the project directory.
     The call of a local pin comes from the index's ``version_calls`` of the
     installed producer, else from the producer (``command_for_version``),

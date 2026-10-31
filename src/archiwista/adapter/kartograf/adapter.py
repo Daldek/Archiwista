@@ -505,7 +505,7 @@ class KartografAdapter:
     ) -> AvailabilityReport:
         """Ask GUGiK and CUZK what they have for an area (``check_availability``).
 
-        The area's GeoPackage goes as ``geometry``, with Archiwista's own
+        The area's GeoJSON goes as ``geometry``, with Archiwista's own
         metadata cache in ``cache_dir``, never Kartograf's default one (D5);
         ``force`` asks the services again.
         """

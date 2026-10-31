@@ -13,11 +13,12 @@ this uses the network.
 
 ``check_availability`` asks GUGiK and CUZK what they have for an area (plan of
 2026-10-25, A2; ADR-035 erratum 2). The area goes to Kartograf as Archiwista's
-GeoPackage of it (``geometry``, ``areas.write_area_package``), with the
+GeoJSON of it in WGS84 (``geometry``, ``areas.write_area_geojson``), with the
 country (``auto`` for both), so the command lines of the report name that file
-and their runs select by its features; the metadata cache is Archiwista's own,
-``metadata.db`` in the adapter's cache directory: never ``cache=True``, which
-would be Kartograf's default cache (D5). ``check_command`` plans a run in the
+and their runs select by its shape (Kartograf ADR-058); the metadata cache is
+Archiwista's own, ``metadata.db`` in the adapter's cache directory: never
+``cache=True``, which would be Kartograf's default cache (D5).
+``check_command`` plans a run in the
 configured store the same way (A4, ADR-036): with ``root=`` and Archiwista's
 cache, whose answers of the source younger than ``PLAN_REFRESH_TTL_S`` stand for
 asking it again (Kartograf ADR-056: the plan of a report's row right after the
@@ -256,7 +257,7 @@ def availability(
 ) -> AvailabilityReport:
     """Ask GUGiK and CUZK what they have for an area (``check_availability``).
 
-    The area is its GeoPackage ``area_file`` (``geometry``), with the country
+    The area is its GeoJSON ``area_file`` (``geometry``), with the country
     of ``area_country``. ``cache_dir`` holds Archiwista's own metadata cache
     of Kartograf (``METADATA_CACHE_FILE``); ``force`` asks the services again
     and writes the answers over the cached ones.

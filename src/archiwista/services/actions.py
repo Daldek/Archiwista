@@ -9,7 +9,7 @@ configured (``404``), a command outside the producer's catalog (``400``,
 ``unknown_command``), one that works on no store or has no plan without
 effects (``422 unsupported``, ``no_store``, ``no_check``: every run goes
 through its plan), an option that is a file path (``403``,
-``path_outside_root``; an input naming an area's GeoPackage Archiwista wrote
+``path_outside_root``; an input naming an area's GeoJSON Archiwista wrote
 is none, A-ADR-035 erratum 2), the producer's own refusal of the options
 (``400``, its text) and the plans of other calls (``409``, ``plan_mismatch``);
 a refusal of one call names its place (``details.call``). Offline mode refuses
@@ -109,7 +109,7 @@ def start(
     visible : ProjectVisibility
         The projects ``actor`` sees: a ``plan_job`` must be a job they see.
     areas : Path
-        Where the areas' GeoPackages are (``AppPaths.areas_dir``): an input
+        Where the areas' GeoJSON files are (``AppPaths.areas_dir``): an input
         option of a call may name one of them.
     plan_job : str or None, optional
         ``download`` only: the ``check`` job whose kept plans the run runs, a
@@ -148,7 +148,7 @@ def start(
         (``store_without_producer``).
     PathOutsideRootError
         An option that is a file path is given (``details.option``), other
-        than an input naming an area's GeoPackage in ``areas``.
+        than an input naming an area's GeoJSON in ``areas``.
     ProducerError
         The producer refused a call's options (its code, text and
         ``details.option``).

@@ -115,7 +115,7 @@ def start_job(
     store without a directory of the producer (`400`,
     `store_without_producer`), a command on no store or without a check
     (`422`, `no_store`, `no_check`), an option that is a file path (`403`,
-    `path_outside_root`; an input naming an area's GeoPackage Archiwista
+    `path_outside_root`; an input naming an area's GeoJSON Archiwista
     wrote, as the command lines of `/availability` do, is none), the
     producer's refusal of the options (`400` with
     its text and `details.option`), each refusal of a call naming its place

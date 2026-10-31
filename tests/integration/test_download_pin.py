@@ -221,20 +221,31 @@ def test_a_planned_download_pins_its_files_and_the_plans_held_positions(
     )
 
 
-def test_a_pinned_call_names_its_area_copied_into_the_project(place: Place) -> None:
-    """A call naming an area's GeoPackage names its copy in ``obszary/``.
+@pytest.mark.parametrize("project_area", [False, True])
+def test_a_pinned_call_names_its_area_in_the_project(
+    place: Place, project_area: bool
+) -> None:
+    """A call naming an area's GeoJSON names ``obszary/<area id>.geojson``.
 
-    The command lines of an availability report name the area's GeoPackage
-    in Archiwista's data directory (A-ADR-035 erratum 2); the plan group keeps
-    a copy in the project and the path relative to the project directory, so
-    its calls hold wherever the project lies, and a check of the project
-    gives the producer the copy.
+    The command lines of an availability report name the area's GeoJSON in
+    Archiwista's data directory (A-ADR-035 erratum 2); the plan group names
+    the project's file of the area, relative to the project directory, so its
+    calls hold wherever the project lies, and a check of the project gives
+    the producer that file. The id is a digest of the geometry, so the
+    project's own area file of that id is the same polygon and stays as the
+    project file records it; without one, the area's GeoJSON is copied.
     """
     # Arrange
-    package = place.paths.areas_dir / "0123456789abcdef.gpkg"
-    package.parent.mkdir(parents=True, exist_ok=True)
-    package.write_bytes(b"GPKG of the area")
-    options = {**STATION, "area": str(package)}
+    area_file = place.paths.areas_dir / "0123456789abcdef.geojson"
+    area_file.parent.mkdir(parents=True, exist_ok=True)
+    area_file.write_bytes(b'{"type": "FeatureCollection", "features": []}\n')
+    copy = place.directory / "obszary" / area_file.name
+    expected = area_file.read_bytes()
+    if project_area:
+        copy.parent.mkdir(exist_ok=True)
+        expected = b'{"type": "FeatureCollection", "name": "project"}\n'
+        copy.write_bytes(expected)
+    options = {**STATION, "area": str(area_file)}
     body = {**CHECK_BODY, "calls": [{"command": "series fetch", "options": options}]}
     checked = _run(place, place.owner, body)
 
@@ -254,17 +265,16 @@ def test_a_pinned_call_names_its_area_copied_into_the_project(place: Place) -> N
     # Assert
     assert detail["state"] == "succeeded", detail
     (group,) = _file(place)["groups"]
-    copy = place.directory / "obszary" / package.name
     assert group["origin"]["calls"] == [
         {
             "command": "series fetch",
-            "options": {**STATION, "area": f"obszary/{package.name}"},
+            "options": {**STATION, "area": f"obszary/{area_file.name}"},
         }
     ]
-    assert copy.read_bytes() == package.read_bytes()
+    assert copy.read_bytes() == expected
     (section,) = project_check["result"]["calls"]
     assert str(copy) in section["line"]
-    assert str(package) not in section["line"]
+    assert str(area_file) not in section["line"]
 
 
 def test_a_partial_download_pins_nothing_and_says_so(place: Place) -> None:

@@ -73,13 +73,11 @@ LOCK_WAIT_S = 5.0
 LOCK_POLL_S = 0.1
 # The file inside a lock naming who holds it.
 LOCK_OWNER = "owner"
-# An area file Archiwista writes: ``<area id>.geojson`` (the project's area) or
-# ``<area id>.gpkg`` (the area a ``plan`` group's calls name), the id 16
-# hexadecimal digits (``archiwista.areas.AREA_ID_CHARS``; that module imports
-# the index).
-_AREA_FILE = re.compile(r"[0-9a-f]{16}\.(?:geojson|gpkg)")
-# How a ``plan`` group's call names its area's GeoPackage (``copy_area_package``).
-_AREA_PACKAGE_REF = re.compile(rf"{AREAS_DIR}/[0-9a-f]{{16}}\.gpkg")
+# An area file Archiwista writes: ``<area id>.geojson``, the id 16 hexadecimal
+# digits (``archiwista.areas.AREA_ID_CHARS``; that module imports the index).
+_AREA_FILE = re.compile(r"[0-9a-f]{16}\.geojson")
+# How a ``plan`` group's call names its area's file (``copy_area_geojson``).
+_AREA_FILE_REF = re.compile(rf"{AREAS_DIR}/[0-9a-f]{{16}}\.geojson")
 
 type ProjectChange = Callable[[dict[str, Any]], None]
 type AreaState = Literal["missing", "changed", "invalid"]
@@ -248,12 +246,12 @@ def remove_project_files(
 
     Under the lock, the file is read first: Archiwista removes no file it
     cannot read, as it writes over none. Then ``eksport/`` (the exports) goes
-    whole, the area files of ``obszary/`` (``<area id>.geojson`` and
-    ``<area id>.gpkg``) go and the folder with them when nothing else is in
-    it, and the project file goes last. Any other entry stays: the own data
-    (``dane/`` and its ``.wersje/``) and any file a person put there. A
-    symbolic link named ``eksport`` or ``obszary`` is left as it is. After
-    the lock is released, the directory itself is removed when it is empty.
+    whole, the area files of ``obszary/`` (``<area id>.geojson``) go and the
+    folder with them when nothing else is in it, and the project file goes
+    last. Any other entry stays: the own data (``dane/`` and its ``.wersje/``)
+    and any file a person put there. A symbolic link named ``eksport`` or
+    ``obszary`` is left as it is. After the lock is released, the directory
+    itself is removed when it is empty.
 
     Parameters
     ----------
@@ -385,40 +383,48 @@ def write_area_file(directory: Path, area: "AreaRecord") -> AreaRef:
     return ref
 
 
-def copy_area_package(directory: Path, source: Path) -> str:
-    """Copy an area's GeoPackage into the project's ``obszary/``; return its path.
+def copy_area_geojson(directory: Path, source: Path) -> str:
+    """Put an area's GeoJSON into the project's ``obszary/``; return its path.
 
-    The calls of a ``plan`` group name the copy (A-ADR-035 erratum 2), so they
-    hold with the project wherever it lies: ``obszary/<area id>.gpkg``,
-    relative to the project directory. Written as ``write_area_file`` writes
-    (a name of its own, then moved into place; one of the same name and
-    content is kept); no other file is touched.
+    The calls of a ``plan`` group name the file (A-ADR-035 erratum 2), so they
+    hold with the project wherever it lies: ``obszary/<area id>.geojson``,
+    relative to the project directory, the name and format of the project's
+    area file (``write_area_file``). The id is a digest of the geometry, so a
+    file of that name already there (the project's area) holds the same
+    polygon and is kept as it is: its bytes are what the project file
+    records. Otherwise the source is written as ``write_area_file`` writes (a
+    name of its own, then moved into place); no other file is touched.
 
     Parameters
     ----------
     directory : Path
         The project directory.
     source : Path
-        The area's GeoPackage (``areas.write_area_package``).
+        The area's GeoJSON (``areas.write_area_geojson``).
 
     Raises
     ------
     PathOutsideRootError
         ``obszary/`` leads out of the project directory (a symbolic link).
     ProjectFileWriteError
-        The GeoPackage could not be read or its copy written.
+        The GeoJSON could not be read or its copy written.
     """
     target = directory / AREAS_DIR / source.name
     try:
         content = source.read_bytes()
     except OSError as error:
         raise _write_failed(target, error) from error
-    _write_area(directory, target, content)
+    _write_area(directory, target, content, keep_any=True)
     return f"{AREAS_DIR}/{source.name}"
 
 
-def _write_area(directory: Path, target: Path, content: bytes) -> None:
-    """Write an area file in ``obszary/``; one of the same content is kept."""
+def _write_area(
+    directory: Path, target: Path, content: bytes, *, keep_any: bool = False
+) -> None:
+    """Write an area file in ``obszary/``; one of the same content is kept.
+
+    ``keep_any`` keeps any regular file of that name (no link) already there.
+    """
     try:
         target.parent.mkdir(exist_ok=True)
         inside = target.parent.resolve().is_relative_to(directory.resolve())
@@ -427,6 +433,8 @@ def _write_area(directory: Path, target: Path, content: bytes) -> None:
     if not inside:
         raise PathOutsideRootError(message("ref.path_outside_root", path=target.parent))
     with suppress(OSError):
+        if keep_any and target.is_file() and not target.is_symlink():
+            return
         if target.is_file() and target.read_bytes() == content:
             return
     _write_atomic(target, content)
@@ -437,9 +445,9 @@ def project_area_options(
 ) -> dict[str, object]:
     """Return a ``plan`` group's call options, its area files in ``directory``.
 
-    An option naming ``obszary/<area id>.gpkg`` (``copy_area_package``) names
-    that file of the project directory by its absolute path, as the producer
-    reads it; the other options stay as they are.
+    An option naming ``obszary/<area id>.geojson`` (``copy_area_geojson``)
+    names that file of the project directory by its absolute path, as the
+    producer reads it; the other options stay as they are.
 
     Raises
     ------
@@ -449,7 +457,7 @@ def project_area_options(
     """
     resolved: dict[str, object] = {}
     for name, value in options.items():
-        if isinstance(value, str) and _AREA_PACKAGE_REF.fullmatch(value):
+        if isinstance(value, str) and _AREA_FILE_REF.fullmatch(value):
             path = directory / value
             if not path.resolve().is_relative_to(directory.resolve()):
                 raise PathOutsideRootError(message("ref.path_outside_root", path=path))

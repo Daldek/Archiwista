@@ -56,7 +56,7 @@ def paths(tmp_path: Path, standin: ModuleType) -> AppPaths:
     ConfigStore(created.config_file).save(AppSettings(stores=(store,)))
     adapter = actions(load_registry(cache_dir=created.cache_dir), "standin")
     report = adapter.availability(
-        "dem", area_file=created.areas_dir / "area.gpkg", countries=AREA.countries
+        "dem", area_file=created.areas_dir / "area.geojson", countries=AREA.countries
     )
     with IndexWriter(created.index_file) as writer:
         writer.write_availability(AREA.id, report, product="dem", job_id=None)

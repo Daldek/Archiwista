@@ -824,7 +824,7 @@ producer's canonical line of a call, which parses back into the same call. A
 command that works on a store is checked with the directory of a configured
 store (`store`), never with the producer's default root, and an option that is a
 file path is refused (`403`, `path_outside_root`), except an input naming an
-area's GeoPackage Archiwista wrote (`<data-dir>/areas/<area id>.gpkg`), which
+area's GeoJSON Archiwista wrote (`<data-dir>/areas/<area id>.geojson`), which
 the command lines of an availability report name (A-ADR-035 erratum 2); the
 same rule holds for the calls of `POST /jobs`. The producer's own refusal is
 `400 validation_error` with its text and hint and the option in
@@ -844,12 +844,13 @@ curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
 `{"area_id": "…", "product": "nmt"}` (`producer` is `kartograf` by default; the
 products a producer checks are listed in the `422` that refuses another one) asks
 what the source has for a kept area. The producer gets the area as
-Archiwista's GeoPackage of it, the polygon as it is with one feature per part
-(`<data-dir>/areas/<area id>.gpkg`, kept as long as the area), so the command
-lines of the report name that file (`--country pl --geometry …`) and a
-download selects by the polygon wherever the producer does; a download pinned
-into a project keeps a copy in the project's `obszary/`, which its group's calls
-name relative to the project directory. A report the index keeps that is younger
+Archiwista's GeoJSON of it in WGS84 (RFC 7946), the polygon as it is
+(`<data-dir>/areas/<area id>.geojson`, kept as long as the area), so the
+command lines of the report name that file (`--country pl --geometry …`) and a
+plan or download selects the sheets the polygon meets, not those of its
+envelope; a download pinned into a project names the project's
+`obszary/<area id>.geojson` (its area file, else a copy) in its group's calls,
+relative to the project directory. A report the index keeps that is younger
 than seven days answers at once: `200` with `AvailabilityInfo`, the area,
 `checked_at` (when the source was asked), `job_id` and `report` (the producer's
 report: the parts of the area by country with their land, the combinations of a

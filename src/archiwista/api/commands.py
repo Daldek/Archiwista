@@ -120,8 +120,8 @@ def validate_command(
     (`store_required`), a store without a directory of the producer `400`
     (`store_without_producer`), an unknown one `404`. An option that is a file
     path (`path_role`) is `403` (`path_outside_root`, `details.option`): the
-    producer would open it on the server; an input naming an area's
-    GeoPackage Archiwista wrote, as the command lines of `/availability` do,
+    producer would open it on the server; an input naming an area's GeoJSON
+    Archiwista wrote, as the command lines of `/availability` do,
     is none. A command outside the catalog is `400` (`unknown_command`). The
     producer's refusal is `400 validation_error` with its own text and hint
     and the option in `details.option`. The answer is the call with the

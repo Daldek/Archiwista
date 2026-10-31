@@ -397,7 +397,7 @@ def test_areas_more_than_100000_vertices_refused_never_simplified(
 def test_areas_copies_older_than_7_days_pruned_at_start_up(tmp_path: Path) -> None:
     """Old copies go at start-up; the areas stay in the index.
 
-    So do the areas' GeoPackages, however old: a kept plan, a job or a
+    So do the areas' GeoJSON files, however old: a kept plan, a job or a
     project's group may name one (A-ADR-035 erratum 2).
     """
     # Arrange
@@ -410,13 +410,13 @@ def test_areas_copies_older_than_7_days_pruned_at_start_up(tmp_path: Path) -> No
     now = datetime.now(UTC)
     leftover = paths.areas_dir / ".incoming" / "crashed"
     leftover.mkdir(parents=True)
-    package = paths.areas_dir / f"{old['id']}.gpkg"
-    package.write_bytes(b"GPKG")
+    area_file = paths.areas_dir / f"{old['id']}.geojson"
+    area_file.write_bytes(b"{}")
     for path, age in (
         (paths.areas_dir / old["id"], timedelta(days=7, minutes=1)),
         (paths.areas_dir / recent["id"], timedelta(days=6)),
         (leftover, timedelta(days=8)),
-        (package, timedelta(days=400)),
+        (area_file, timedelta(days=400)),
     ):
         stamp = (now - age).timestamp()
         os.utime(path, (stamp, stamp))
@@ -427,7 +427,7 @@ def test_areas_copies_older_than_7_days_pruned_at_start_up(tmp_path: Path) -> No
         kept_old = owner.request("GET", f"/areas/{old['id']}")
 
         # Assert
-        assert _copies(api) == sorted([package.name, recent["id"]])
+        assert _copies(api) == sorted([area_file.name, recent["id"]])
         assert kept_old.status_code == 200
         assert kept_old.json()["geometry"] == old["geometry"]
 

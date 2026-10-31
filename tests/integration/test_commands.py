@@ -181,28 +181,30 @@ def test_validate_refuses_what_archiwista_adds_before_the_producer_sees_it(
     assert standin.CALLS == []
 
 
-def test_validate_takes_as_a_path_only_an_area_package_archiwista_wrote(
+def test_validate_takes_as_a_path_only_an_area_file_archiwista_wrote(
     tmp_path: Path, standin: ModuleType
 ) -> None:
-    """An input may name an area's GeoPackage of the areas directory, no other file.
+    """An input may name an area's GeoJSON of the areas directory, no other file.
 
     The command lines of an availability report name that file (A-ADR-035
     erratum 2). A file of the same name elsewhere, a link to it, a file of
-    another name and a GeoPackage that is not there stay paths the producer
-    would open (``path_outside_root``).
+    another name, a GeoPackage of an area id and a GeoJSON that is not there
+    stay paths the producer would open (``path_outside_root``).
     """
     registry = load_registry(cache_dir=tmp_path / "cache")
     settings = _settings(tmp_path)
     areas = tmp_path / "areas"
     areas.mkdir()
+    area_file = areas / "0123456789abcdef.geojson"
+    area_file.write_bytes(b"{}")
+    elsewhere = tmp_path / area_file.name
+    elsewhere.write_bytes(b"{}")
+    link = areas / "fedcba9876543210.geojson"
+    link.symlink_to(area_file)
+    named = areas / "obszar.geojson"
+    named.write_bytes(b"{}")
     package = areas / "0123456789abcdef.gpkg"
     package.write_bytes(b"GPKG")
-    elsewhere = tmp_path / package.name
-    elsewhere.write_bytes(b"GPKG")
-    link = areas / "fedcba9876543210.gpkg"
-    link.symlink_to(package)
-    named = areas / "obszar.gpkg"
-    named.write_bytes(b"GPKG")
 
     def validated(path: Path) -> CommandCall:
         options = {**STATION, "area": str(path)}
@@ -214,15 +216,15 @@ def test_validate_takes_as_a_path_only_an_area_package_archiwista_wrote(
             areas=areas,
         )
 
-    checked = validated(package)
+    checked = validated(area_file)
     refused = []
-    for path in (elsewhere, link, named, areas / "0000000000000000.gpkg"):
+    for path in (elsewhere, link, named, package, areas / "0000000000000000.geojson"):
         with pytest.raises(PathOutsideRootError) as error:
             validated(path)
         refused.append(error.value.details["option"])
 
-    assert checked.options["area"] == str(package)
-    assert refused == ["area"] * 4
+    assert checked.options["area"] == str(area_file)
+    assert refused == ["area"] * 5
 
 
 def test_a_missing_producer_refuses_only_its_own_commands(

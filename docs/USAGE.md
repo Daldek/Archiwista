@@ -115,9 +115,9 @@ The panel "Wybór" (selection) leads through four steps:
    ("aktualne", "nowsze u źródła", "brak w magazynie", "nie do sprawdzenia"),
    what will be downloaded and its size ("co najmniej …" when the producer
    tells only some sizes), the store and the producer's command line to copy.
-   The line names the area's GeoPackage that Archiwista keeps
-   (`--geometry <data-dir>/areas/<area id>.gpkg`): the producer reads the
-   polygon itself, not its bounding box.
+   The line names the area's GeoJSON that Archiwista keeps
+   (`--geometry <data-dir>/areas/<area id>.geojson`): the producer reads the
+   polygon itself and selects the sheets it meets, not its bounding box.
    Nothing is written before "Pobierz N pozycji"; above 5 GB or 500 positions
    it asks for a confirmation. The window then shows the progress, the files
    by status and the units that failed. Without the permission "zapis do
@@ -153,7 +153,7 @@ The panel "Wybór" (selection) leads through four steps:
    store, and its text for a mistake shows at the field. "Zaplanuj…" opens the
    same plan window for that line, which writes to the target store instead of
    the line's `-o` or `--root`. A line naming a file is refused, unless the
-   file is an area's GeoPackage Archiwista wrote (as the lines of a report do).
+   file is an area's GeoJSON Archiwista wrote (as the lines of a report do).
 
 File footprints are visible at once; with more than 5,000 footprints in view
 the map shows a density grid, and clicking a cell zooms in. Clicking a

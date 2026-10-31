@@ -407,11 +407,10 @@ class ActionAdapter(Protocol):
 
         Uses the network (SPEC 6.3). ``area_file`` is the area as a file
         Archiwista keeps for as long as the area (A-ADR-035 erratum 2): a
-        GeoPackage of one layer with a polygon feature per part of the area,
-        in the planar CRS of the first of ``countries`` (EPSG:2180 for PL,
-        EPSG:5514 for CZ alone; WGS84 for an area in neither), the countries
-        the area meets (``AreaRecord``). The adapter gives its producer that
-        file, so the command lines of the report may name it. The producer's
+        GeoJSON (RFC 7946, WGS84) of one feature with the area's polygon as
+        it is; ``countries`` are those the area meets (``AreaRecord``). The
+        adapter gives its producer that file, so the command lines of the
+        report may name it. The producer's
         metadata cache stands for its answers of the last days; ``force`` asks
         the source again. ``on_notice`` receives each notice when it is said.
 

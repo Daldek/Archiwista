@@ -172,9 +172,10 @@ class JobSpec:
         Root of the scratch directories of processes reading files
         (``AppPaths.work_dir``).
     areas_dir : Path
-        Where the areas' GeoPackages are (``AppPaths.areas_dir``,
-        ``areas.write_area_package``): ``availability`` writes its area's
-        there, and a ``download`` that pins copies those its calls name.
+        Where the areas' GeoJSON files are (``AppPaths.areas_dir``,
+        ``areas.write_area_geojson``): ``availability`` writes its area's
+        there, and a ``download`` that pins puts those its calls name into
+        the project.
     settings : AppSettings
         Settings in effect when the job started.
     claimed : tuple of str or None, optional

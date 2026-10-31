@@ -12,9 +12,9 @@ the root of the configured store for a command that works on a store, never
 the producer's default root (Decision 1 of the plan), and refuses an option of
 the request that is a file path: the producer would open that file in this
 process (SPEC 10.1). The one file path it takes is an input naming an area's
-GeoPackage Archiwista wrote (``areas.write_area_package``, A-ADR-035 erratum
-2): the command lines of an availability report name it. Nothing here uses
-the network or writes.
+GeoJSON Archiwista wrote (``areas.write_area_geojson``, A-ADR-035 erratum 2):
+the command lines of an availability report name it. Nothing here uses the
+network or writes.
 
 ``version_command`` gives the call that selects a stored version again
 (A-ADR-049 D-10, ``VersionCommandAdapter``) and its command line with the
@@ -27,7 +27,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from archiwista.areas import area_package_id
+from archiwista.areas import area_geojson_id
 from archiwista.auth import ProjectVisibility
 from archiwista.config import AppSettings
 from archiwista.errors import (
@@ -137,7 +137,7 @@ def validate_command(
         works on a store (``CommandInfo.store``) is checked with; not used for
         another command.
     areas : Path
-        Where the areas' GeoPackages are (``AppPaths.areas_dir``): an input
+        Where the areas' GeoJSON files are (``AppPaths.areas_dir``): an input
         option may name one of them.
 
     Returns
@@ -156,7 +156,7 @@ def validate_command(
         ``store`` is not configured.
     PathOutsideRootError
         An option that is a file path is given (``details.option``), other
-        than an input naming an area's GeoPackage.
+        than an input naming an area's GeoJSON.
     ProducerError
         The producer refused the call (``validation_error``, its text and
         ``details.option``).
@@ -184,7 +184,7 @@ def checked_call(
     ------
     PathOutsideRootError
         An option that is a file path is given (``details.option``), other
-        than an input naming an area's GeoPackage in ``areas``.
+        than an input naming an area's GeoJSON in ``areas``.
     CommandRequestError, NotFoundError
         As ``store_root``, for a command that works on a store.
     ProducerError
@@ -202,8 +202,8 @@ def refuse_path_options(
     """Refuse an option of the command ``info`` that is a file path.
 
     The producer would open the file in this process (SPEC 10.1). An input
-    naming an area's GeoPackage Archiwista wrote in ``areas``
-    (``areas.area_package_id``) is no such option: the command lines of an
+    naming an area's GeoJSON Archiwista wrote in ``areas``
+    (``areas.area_geojson_id``) is no such option: the command lines of an
     availability report name it (A-ADR-035 erratum 2).
 
     Raises
@@ -215,7 +215,7 @@ def refuse_path_options(
         if option.path_role is None or option.name not in options:
             continue
         value = options[option.name]
-        if option.path_role == "input" and area_package_id(value, areas) is not None:
+        if option.path_role == "input" and area_geojson_id(value, areas) is not None:
             continue
         raise PathOutsideRootError(
             message("command.path_option", option=option.name),
