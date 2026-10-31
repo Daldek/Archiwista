@@ -20,9 +20,10 @@ import { map as M } from "../labels/map.js";
 import { previews as P } from "../labels/previews.js";
 import { setDetails as S } from "../labels/set-details.js";
 import { slotName } from "../map/canvas.js";
-import { CAMPAIGN_GROUP, readVersionRef, variantName } from "../map/previews.js";
+import { CAMPAIGN_GROUP, readVersionRef } from "../map/previews.js";
 import { Link } from "../router.js";
 import { html, Icon, loadStylesheet, Tech, useState } from "../ui.js";
+import { layerVariantName } from "../variant.js";
 import { FileLink, JobStatus, storeName } from "./cards.js";
 
 await loadStylesheet(new URL("./set-details.css", import.meta.url));
@@ -74,7 +75,7 @@ export function layerFacts(layer) {
  * @returns {string}
  */
 export function describeLayer(layer) {
-  return [layer.title, layer.coverage?.label, variantName(layer.variant), layer.variant.formats.join(", "), layerFacts(layer)]
+  return [layer.title, layer.coverage?.label, layerVariantName(layer.variant), layer.variant.formats.join(", "), layerFacts(layer)]
     .filter(Boolean)
     .join(" · ");
 }
@@ -127,7 +128,7 @@ export function SetDetails({ set, layer, job = null, onMap = null, onChoose = nu
     <div class="det-head">
       <span class="sd-title">${layer.title}</span>
       <div class="sd-head">
-        <${Tech} value=${technical}><b>${variantName(layer.variant)}</b></${Tech}>
+        <${Tech} value=${technical}><b>${layerVariantName(layer.variant)}</b></${Tech}>
         <div class="sd-badges">
           ${layer.coverage ? html`<${CoverageBadge} coverage=${layer.coverage} />` : null}
           <${Formats} formats=${layer.variant.formats} />
@@ -165,7 +166,7 @@ export function SetDetails({ set, layer, job = null, onMap = null, onChoose = nu
           <div class="section-title det-sec">${t(S.variants, { title: layer.title })}</div>
           ${variants.map(
             (other) => html`<button type="button" key=${other.key} class="sd-variant" onClick=${() => onChoose(other.key)}>
-              <span class="sd-variant-name">${variantName(other.variant)}</span>
+              <span class="sd-variant-name">${layerVariantName(other.variant)}</span>
               ${other.coverage ? html`<${CoverageBadge} coverage=${other.coverage} />` : null}
             </button>`,
           )}
@@ -192,7 +193,7 @@ function Compare({ set, layer }) {
     <ul class="sd-list">
       ${others.map(
         (other) => html`<li key=${other.key}>
-          <${Link} view="compare" params=${params(other)}>${other.title}<span class="faint"> · ${variantName(other.variant)}</span></${Link}>
+          <${Link} view="compare" params=${params(other)}>${other.title}<span class="faint"> · ${layerVariantName(other.variant)}</span></${Link}>
         </li>`,
       )}
     </ul>

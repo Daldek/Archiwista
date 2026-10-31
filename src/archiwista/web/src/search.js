@@ -18,6 +18,7 @@ export const SLOT_PARAMS = Object.freeze([
   "q",
   "store",
   "product",
+  "segment",
   "country",
   "years",
   "unit",

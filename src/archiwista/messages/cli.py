@@ -498,6 +498,10 @@ MESSAGES = {
         "product, e.g. nmt",
         "produkt, np. nmt",
     ),
+    "search_segment_help": Text(
+        "store segment, the product's variant, e.g. nmt/pl_1992_1m_evrf2007",
+        "segment magazynu, czyli wariant produktu, np. nmt/pl_1992_1m_evrf2007",
+    ),
     "search_country_help": Text(
         "country code, e.g. PL",
         "kod kraju, np. PL",

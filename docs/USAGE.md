@@ -200,12 +200,20 @@ versions a scan has just indexed.
   code, TERYT, KU, file name, product, version label, request number or
   campaign, without Polish diacritics. 8 to 64 hexadecimal characters are the
   beginning of a SHA-256 sum.
-- **Filters:** store, product with variants, country, data year (from to: the
+- **Filters:** store, product, "Wariant" (variant: resolution and height
+  system, e.g. "1 m · EVRF2007", "5 m · EVRF2007", "1 m · Kronsztadt 86"; the
+  `segment` of `GET /slots`), country, data year (from to: the
   year of the flight or release, never the year of download), unit (exact
   code), versions (current, all, full sheets `full_sheet/`, pinned in
   projects, non-current and unpinned), state, and an area or a rectangle in
   the chosen coordinate system. `Ctrl+K` from the map carries its filters and
   area over.
+- **Variants:** the store keeps each variant of a product (a resolution and a
+  height system) in its own directory with its own current version, so one
+  sheet can be several rows under "bieżące", one per variant: "bieżąca =
+  najnowsza w swoim wariancie" (current = the newest in its variant), as the
+  hint under "Wersje" says. Each row, and the header of the file card, names
+  its variant; the map's "Produkt i filtry" uses the same names.
 - **Location:** "Wszystkie" (all), "Z położeniem" (with location), "Bez
   obrysu" (without footprint); the counters cover the whole result. Files
   without a footprint are only here; the reason is in the column

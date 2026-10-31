@@ -208,7 +208,7 @@ def test_two_formats_one_timeline_row(
     rows = grid(page).get_by_role("row").filter(has=inside)
     expect(rows).to_have_count(1)
     head = rows.get_by_role("rowheader")
-    expect(head).to_contain_text("1m · PL-1992 · PL-EVRF2007-NH")
+    expect(head).to_contain_text("1 m · EVRF2007")
     for name in both["variant"]["formats"]:
         expect(
             head.locator(".fmt").filter(has_text=re.compile(f"^{name}$"))

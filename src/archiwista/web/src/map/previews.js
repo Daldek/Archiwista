@@ -49,6 +49,7 @@ import { previews as P } from "../labels/previews.js";
 import { PreviewLegend, PreviewReason, styleName } from "../previews.js";
 import { Link, useRoute } from "../router.js";
 import { html, Icon, ProblemView, Seg, Spinner, Tech, useEffect, useState } from "../ui.js";
+import { heightName, resolutionName } from "../variant.js";
 import { crsName, JobStatus, loadCardStyles, useJob } from "../views/cards.js";
 import { slotName } from "./canvas.js";
 import { bboxText, unionBounds, widenBounds } from "./geo.js";
@@ -76,6 +77,8 @@ const STORE_ID = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 const VERSION_REF = /^version:([^:]+):([^\0]+)$/;
 // Parts of a variant telling apart two layers of one year (A-ADR-017).
 const VARIANT_FIELDS = ["resolution", "horizontal_crs", "vertical_crs"];
+// Each part for people, as the variant's name (variant.js) gives it.
+const FIELD_NAMES = { resolution: resolutionName, horizontal_crs: crsName, vertical_crs: heightName };
 const NO_FEATURES = { data: null, problem: null, loading: false };
 // Least width and height of a view asked for features: the API refuses a
 // box without area, which rounding to 6 places must not produce.
@@ -524,24 +527,6 @@ function describeLayer(layer) {
 }
 
 /**
- * A layer's variant for people, without the file format (A-ADR-017): its
- * resolution and systems, e.g. „1m · PL-1992 · PL-EVRF2007-NH”; a variant
- * keyed by its segment (a field missing in the metadata) adds the segment.
- *
- * @param {import("../types.js").LayerVariant} variant
- * @returns {string}
- */
-export function variantName(variant) {
-  const parts = [
-    variant.resolution,
-    variant.horizontal_crs ? crsName(variant.horizontal_crs) : null,
-    variant.vertical_crs ? crsName(variant.vertical_crs) : null,
-  ].filter(Boolean);
-  if (parts.length === 3) return parts.join(" · ");
-  return [...parts, ...variant.segments].join(" · ") || L.layers.no_meta;
-}
-
-/**
  * Short names of the variants of layers sharing a title (two variants of
  * one year): the parts of the variant in which they differ, else their
  * segments.
@@ -558,9 +543,8 @@ function variantHints(layers) {
     const fields = VARIANT_FIELDS.filter((field) => new Set(same.map((layer) => layer.variant[field])).size > 1);
     for (const layer of same) {
       const parts = fields
-        .map((field) => layer.variant[field])
-        .filter((value) => value !== null)
-        .map((value) => (value.startsWith("EPSG:") ? crsName(value) : value));
+        .filter((field) => layer.variant[field] !== null)
+        .map((field) => FIELD_NAMES[field](layer.variant[field]));
       hints.set(layer.key, fields.length ? parts.join(" · ") || L.layers.no_meta : layer.variant.segments.join(", "));
     }
   }

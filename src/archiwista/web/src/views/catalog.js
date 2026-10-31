@@ -51,6 +51,7 @@ import {
   useRef,
   useState,
 } from "../ui.js";
+import { segmentVariantNames } from "../variant.js";
 import { CatalogFilters, FILTERS } from "./catalog-filters.js";
 import { CatalogGrid, FILE_ROWS, onMapOf } from "./catalog-grid.js";
 import { activeStationFilters, CatalogStations, stationFamily, stationQuery } from "./catalog-stations.js";
@@ -294,7 +295,8 @@ export default function Catalog({ route }) {
                 <span class="faint">${L.result.api}</span></${Tech}></span>
             </div>`}
         ${!panel && activeFilters.length
-          ? html`<${ActiveFilters} names=${activeFilters} query=${query} stores=${stores} />`
+          ? html`<${ActiveFilters} names=${activeFilters} query=${query} stores=${stores}
+              products=${products.data?.items ?? []} />`
           : null}
         ${timeline ? null : html`<${Notes} query=${query} location=${location} pages=${pages} />`}
       </div>
@@ -446,13 +448,13 @@ function Summary({ total, loaded, versions }) {
 }
 
 /** Active filters as chips while the panel is closed; × removes one. */
-function ActiveFilters({ names, query, stores }) {
+function ActiveFilters({ names, query, stores, products }) {
   return html`<div class="chip-row cat-active" role="group" aria-label=${L.filters.active}>
     ${names.map((name) => {
       const label = L.filters[name] ?? name;
       return html`<button type="button" key=${name} class="chip" onClick=${() => setParams({ [name]: null })}
         title=${t(L.filters.remove, { name: label })} aria-label=${t(L.filters.remove, { name: label })}>
-        <span class="muted">${label}:</span> <b>${filterValue(name, query[name], stores)}</b>
+        <span class="muted">${label}:</span> <b>${filterValue(name, query[name], stores, products)}</b>
         <${Icon} name="x" size=${12} />
       </button>`;
     })}
@@ -667,10 +669,14 @@ function storeList(app) {
   return (app.settings?.stores ?? []).map((item) => ({ store: item.id, name: item.name }));
 }
 
-function filterValue(name, value, stores) {
+function filterValue(name, value, stores, products) {
   if (name === "versions") return L.versions[value] ?? value;
   if (name === "status") return L.status[value] ?? value;
   if (name === "country") return L.countries[value] ? `${L.countries[value]} (${value})` : value;
   if (name === "store") return stores.find((item) => item.store === value)?.name ?? value;
+  if (name === "segment") {
+    const product = products.find((item) => item.segments.some((segment) => segment.segment.path === value));
+    return (product && segmentVariantNames(product).get(value)) ?? value;
+  }
   return value;
 }

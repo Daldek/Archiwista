@@ -44,11 +44,12 @@ def served_store(
     tmp_path: Path,
     *,
     slots: int = 24,
+    written: StoreManifest | None = None,
     seed: int = 7,
     before_scan: Callable[[StoreManifest], object] | None = None,
 ) -> Iterator[ServedStore]:
-    """Generate a store, scan it fully into a fresh index and serve the API."""
-    store = make_store(tmp_path / "store", slots=slots, seed=seed)
+    """Write a store (or take ``written``), scan it fully and serve the API."""
+    store = written or make_store(tmp_path / "store", slots=slots, seed=seed)
     paths = local_paths(tmp_path)
     settings = store_settings(store)
     ConfigStore(paths.config_file).save(settings)

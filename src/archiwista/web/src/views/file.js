@@ -57,6 +57,7 @@ import {
   useMemo,
   useRef,
 } from "../ui.js";
+import { variantFacts, variantName } from "../variant.js";
 import {
   Badge,
   CopyAction,
@@ -207,11 +208,15 @@ function CardHeading({ card }) {
   const product = segment.known
     ? segment.label
     : t(L.unknown_product, { producer: segment.producer });
+  // A slot is one variant: its current version tells, else its newest.
+  const facts = card.versions.find((version) => version.is_current) ?? card.versions[0] ?? null;
+  const variant = facts ? variantName(variantFacts(facts)) : null;
   return html`<div class="fc-heading">
     <p class=${segment.known ? "fc-product" : "fc-product unknown"}>
       <${Tech} value=${segmentValues(card)}>${product}</${Tech}>
     </p>
     <div class="chip-row">
+      ${variant ? html`<span class="chip static fc-variant">${L.variant} <b>${variant}</b></span>` : null}
       ${card.unit
         ? html`<span class="chip static">${L.unit} <b class="mono">${card.unit}</b></span>`
         : null}

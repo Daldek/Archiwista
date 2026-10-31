@@ -206,7 +206,7 @@ def test_selected_layer_fully_visible_and_enlarged(
     for text in [
         chosen["title"],
         chosen["coverage"]["label"],
-        "1m · PL-1992 · PL-EVRF2007-NH",
+        "1 m · EVRF2007",
         *chosen["variant"]["formats"],
         "2 kampanie",
         f"podglądy: {chosen['preview']['ready']} z {chosen['preview']['total']}",

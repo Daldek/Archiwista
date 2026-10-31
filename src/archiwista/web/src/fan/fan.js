@@ -29,7 +29,7 @@ import { useSize } from "../hooks.js";
 import { fan as F } from "../labels/fan.js";
 import { t } from "../labels/index.js";
 import { map as M } from "../labels/map.js";
-import { CAMPAIGN_GROUP, variantName } from "../map/previews.js";
+import { CAMPAIGN_GROUP } from "../map/previews.js";
 import { usePreviewImage } from "../previews.js";
 import {
   html,
@@ -44,6 +44,7 @@ import {
   useRef,
   useState,
 } from "../ui.js";
+import { layerVariantName } from "../variant.js";
 import { JobStatus } from "../views/cards.js";
 import { CoverageBadge, describeLayer, Formats, layerFacts, staleText } from "../views/set-details.js";
 import { fanLayout, PREVIEW_HEAD, thumbnailSize } from "./layout.js";
@@ -231,7 +232,7 @@ function Caption({ layer, detail, chosen, short }) {
         : null}
       ${detail === "line"
         ? null
-        : html`<span class="fan-line sub"><span class="ell">${variantName(layer.variant)}</span>
+        : html`<span class="fan-line sub"><span class="ell">${layerVariantName(layer.variant)}</span>
             <${Formats} formats=${layer.variant.formats} /></span>`}
       ${detail === "full" ? html`<span class="fan-line sub"><span class="ell">${layerFacts(layer)}</span></span>` : null}
     </span>`;
@@ -248,7 +249,7 @@ function Large({ layer, frame, box, job }) {
   else if (preview?.state === "building" && !following) note = M.previews.layer_building;
   return html`<div class="fan-large" style=${`left:${box.x}px;top:${box.y - PREVIEW_HEAD}px;width:${box.width}px`}>
     <div class="fan-large-head">
-      <span class="fan-yr big">${layer.title}</span><span class="ell muted">${variantName(layer.variant)}</span>
+      <span class="fan-yr big">${layer.title}</span><span class="ell muted">${layerVariantName(layer.variant)}</span>
     </div>
     <div class="fan-card chosen large" style=${`height:${box.height}px`}>
       <${Plate} layer=${layer} frame=${frame} size=${thumbnailSize(box.width, box.height)} />

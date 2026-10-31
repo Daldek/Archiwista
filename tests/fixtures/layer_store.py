@@ -76,6 +76,8 @@ CUTOUT_BOUNDS: Bounds = (770_500.0, 509_000.0, 771_500.0, 510_000.0)
 
 _CRS = "EPSG:2180"
 _EVRF2007 = "EPSG:9651"
+# Kartograf's height systems by its name (``FileStorage``'s ``vertical_crs``).
+_VERTICAL = {"EVRF2007": _EVRF2007, "KRON86": "EPSG:9650"}
 _LICENSE = {"id": "fixture", "attribution": "Archiwista test store", "url": None}
 
 
@@ -159,6 +161,49 @@ def make_layer_store(base: Path) -> LayerStore:
     return LayerStore(StoreManifest(base, 0, 0, (), ()), tuple(versions))
 
 
+def make_variant_store(base: Path) -> LayerStore:
+    """Write one sheet, ``SHEET_NW``, in three variants of NMT (decision 2026-10-31).
+
+    Each variant is its own segment with its own current version, as in a
+    real store: ``nmt/pl_1992_1m_kron86`` of 2014, ``nmt/pl_1992_5m_evrf2007``
+    of 2020 and, current, 2025, and ``nmt/pl_1992_1m_evrf2007`` of 2024.
+    """
+    base = base.absolute()
+    root = base / STORE_DIR
+    root.mkdir(parents=True)
+    mark_store(root)
+    (base / PROJECTS_DIR).mkdir()
+    versions = [
+        add_campaign(
+            root,
+            SHEET_NW,
+            "2014-07-01",
+            "21001",
+            downloaded="2025-02-03",
+            vertical="KRON86",
+        ),
+        add_campaign(
+            root,
+            SHEET_NW,
+            "2020-05-12",
+            "52002",
+            downloaded="2025-02-03",
+            resolution="5m",
+        ),
+        add_campaign(
+            root,
+            SHEET_NW,
+            "2025-04-26",
+            "92003",
+            downloaded="2026-01-15",
+            resolution="5m",
+        ),
+        add_campaign(root, SHEET_NW, "2024-06-02", "82004", downloaded="2026-01-15"),
+    ]
+    _verify(root, versions)
+    return LayerStore(StoreManifest(base, 0, 0, (), ()), tuple(versions))
+
+
 @contextmanager
 def served_layer_store(directory: Path) -> Iterator[ServedLayers]:
     """Write the store under ``directory``, scan it fully and serve it."""
@@ -183,19 +228,25 @@ def add_campaign(
     *,
     downloaded: str,
     described: bool = True,
+    resolution: str = "1m",
+    vertical: str = "EVRF2007",
 ) -> StoredVersion:
     """Write an ASC version of a flight over an NMT sheet and link it.
 
     The standard path names it from then on, as after its download.
     ``downloaded`` is the day of the download; ``described`` ``False``
-    leaves ``resolution`` and ``vertical_crs`` out of the sidecar. The
-    flight's number is the first cell, so every flight has its own content.
+    leaves ``resolution`` and ``vertical_crs`` out of the sidecar;
+    ``resolution`` and ``vertical`` (Kartograf's name) choose the variant,
+    its segment. The flight's number is the first cell, so every flight has
+    its own content.
     """
-    storage = FileStorage(root, resolution="1m", vertical_crs="EVRF2007")
+    storage = FileStorage(root, resolution=resolution, vertical_crs=vertical)
+    link = storage.get_path(sheet, ".asc")
+    segment = "/".join(link.relative_to(root).parts[:2])
     meta = _meta(
-        NMT,
-        resolution="1m" if described else None,
-        vertical_crs=_EVRF2007 if described else None,
+        segment,
+        resolution=resolution if described else None,
+        vertical_crs=_VERTICAL[vertical] if described else None,
         request={"sheet": sheet},
         extra=_campaign_extra(sheet, day, campaign),
         downloaded=downloaded,
@@ -203,11 +254,11 @@ def add_campaign(
     path = _put(
         root,
         storage.get_versions_root(sheet),
-        storage.get_path(sheet, ".asc"),
+        link,
         store_files.asc_grid(sheet_bounds(sheet), int(campaign)),
         meta,
     )
-    return StoredVersion(path, NMT, sheet, int(day[:4]), campaign=campaign)
+    return StoredVersion(path, segment, sheet, int(day[:4]), campaign=campaign)
 
 
 def survey_work(campaign: str, day: str) -> str:

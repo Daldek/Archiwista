@@ -20,6 +20,17 @@ command-line interface may change.
   `project.delete` with what stayed (`kept`). The card's dialog names what goes and
   what stays and waits for the project's name typed; the command needs `--yes`
   (`validation_error`, reason `confirmation_required`).
+- The Katalog names each row's variant (author's decision 2026-10-31): a store keeps
+  each variant of a product in its own directory with its own current version, so one
+  sheet can be several rows under "bieżące". A chip before the product's name, the file
+  card's header ("Wariant") and the map's variants of a product say it in plain words,
+  one name everywhere: resolution and height system, e.g. "1 m · EVRF2007", "5 m ·
+  EVRF2007", "1 m · Kronsztadt 86" (the fan, the timeline and the set's details use the
+  same words, no longer "1m · PL-1992 · PL-EVRF2007-NH"). The filter "Wariant" keeps one
+  variant: the new parameter `segment` of `GET /slots` (`archiwista search --segment`,
+  the `query` of a pin request); the segments of `GET /products` carry `resolution` and
+  `crs`, and a row's version carries `resolution`. Under "Wersje" a hint: "bieżąca =
+  najnowsza w swoim wariancie (rozdzielczość, układ wysokości)".
 - A project's groups are called "zestawy" (sets) in the Polish interface, the CLI's
   Polish texts (`ZESTAW` in the usage of `project-pin`, `project-unpin`,
   `project-verify`, `project-check`, `project-repin`, `project-restore` and `jobs start

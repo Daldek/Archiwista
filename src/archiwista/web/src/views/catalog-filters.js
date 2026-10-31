@@ -26,6 +26,7 @@ import { catalog as L } from "../labels/catalog.js";
 import { t } from "../labels/index.js";
 import { METEO_KINDS, STATION_STATES } from "../map/stations.js";
 import { html, Icon, Seg, Tech, useEffect, useState } from "../ui.js";
+import { segmentVariantNames } from "../variant.js";
 import { STATION_FILTERS } from "./catalog-stations.js";
 import { useYearType, YEAR_TYPES } from "./year-type.js";
 
@@ -38,6 +39,7 @@ const STATUSES = ["ok", "missing", "no_sidecar", "unreadable", "unrecognized"];
 export const FILTERS = [
   "store",
   "product",
+  "segment",
   "country",
   "years",
   "unit",
@@ -108,7 +110,8 @@ export function CatalogFilters({ query, stores, products, stations, errors, onCh
         </${Field}>`
       : null}
     <${Field} name="product" label=${F.product} errors=${errors}>
-      <select id="cat-f-product" value=${query.product ?? ""} onChange=${select("product")}>
+      <select id="cat-f-product" value=${query.product ?? ""}
+        onChange=${(event) => onChange({ product: event.currentTarget.value || null, segment: null })}>
         <option value="">${F.product_any}</option>
         ${withCurrent(items.map((item) => item.product), query.product).map((code) => {
           const item = items.find((candidate) => candidate.product === code);
@@ -118,8 +121,8 @@ export function CatalogFilters({ query, stores, products, stations, errors, onCh
           return html`<option value=${code}>${text}</option>`;
         })}
       </select>
-      ${chosen ? html`<${Segments} product=${chosen} />` : null}
     </${Field}>
+    ${stations ? null : html`<${VariantField} product=${chosen} query=${query} errors=${errors} select=${select} />`}
     ${stations
       ? html`<${StationFields} query=${query} stations=${stations} errors=${errors} onChange=${onChange} />`
       : html`<${FileFields} query=${query} errors=${errors} onChange=${onChange} select=${select}
@@ -168,7 +171,7 @@ function FileFields({ query, errors, onChange, select, countries, from, to }) {
       <${TextFilter} id="cat-f-unit" value=${query.unit ?? ""} placeholder=${F.unit_placeholder} mono
         invalid=${Boolean(errors.unit)} onCommit=${(value) => onChange({ unit: value || null })} />
     </${Field}>
-    <${Field} name="versions" label=${F.versions} errors=${errors}>
+    <${Field} name="versions" label=${F.versions} errors=${errors} hint=${F.versions_hint}>
       <select id="cat-f-versions" value=${query.versions ?? "current"}
         onChange=${(event) => {
           const value = event.currentTarget.value;
@@ -388,21 +391,28 @@ function TextFilter({ id, label, value, placeholder, numeric, mono, invalid, onC
     }} />`;
 }
 
-/** Variants (segments) of the chosen product: the producer's names and paths. */
-function Segments({ product }) {
-  return html`<div class="cat-segments">
-    <span class="field-hint">${F.product_hint}</span>
-    <ul>
-      ${product.segments.map(
-        (item) => html`<li key=${`${item.store}/${item.segment.path}`}>
-          <${Tech} value=${[["segment", item.segment.path ?? "–"], ["store", item.store]]}>
-            <span class="cat-segment-label">${item.segment.label}</span>
-          </${Tech}>
-          <span class="faint tabular">${int(item.slots)}</span>
-        </li>`,
+/**
+ * „Wariant” (`segment`): the variants of the chosen product by the names of
+ * variant.js, as the map names them, each with its files; shown while the
+ * product has more than one, or the address names one.
+ */
+function VariantField({ product, query, errors, select }) {
+  const names = product ? segmentVariantNames(product) : new Map();
+  if (names.size < 2 && !query.segment) return null;
+  const slots = new Map();
+  for (const item of product?.segments ?? []) {
+    slots.set(item.segment.path, (slots.get(item.segment.path) ?? 0) + item.slots);
+  }
+  return html`<${Field} name="segment" label=${F.segment} errors=${errors}>
+    <select id="cat-f-segment" value=${query.segment ?? ""} onChange=${select("segment")}>
+      <option value="">${F.segment_any}</option>
+      ${withCurrent([...names.keys()], query.segment).map(
+        (path) => html`<option value=${path} title=${path}>${names.has(path)
+          ? t(F.segment_option, { name: names.get(path), count: int(slots.get(path)) })
+          : path}</option>`,
       )}
-    </ul>
-  </div>`;
+    </select>
+  </${Field}>`;
 }
 
 /** The area of the map (`area_id`) or a typed rectangle (`bbox`, `bbox_crs`). */

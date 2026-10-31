@@ -499,6 +499,7 @@
  *
  * @typedef {CommonFilters & {
  *   location?: LocationFilter,
+ *   segment?: string,
  *   area_id?: string,
  *   bbox?: string,
  *   bbox_crs?: string,
@@ -637,6 +638,7 @@
  * @property {string|null} sha256
  * @property {number|null} size_bytes
  * @property {boolean|null} full_sheet - Producer's claim that the sheet is complete.
+ * @property {string|null} resolution - E.g. `1m`.
  * @property {Crs} crs
  * @property {boolean} is_current - Held by the slot's standard path.
  * @property {boolean} is_full_sheet - Held by the slot's `full_sheet/` link.
@@ -751,6 +753,8 @@
  * @property {Segment} segment
  * @property {number} slots
  * @property {number} versions
+ * @property {string|null} resolution - The variant's, as most of its versions give.
+ * @property {Crs} crs - The variant's, as most of its versions give.
  */
 
 /**

@@ -22,6 +22,7 @@ import {
   useRef,
   useState,
 } from "../ui.js";
+import { segmentVariantNames } from "../variant.js";
 import { LocalState } from "./coverage.js";
 import { bboxText } from "./geo.js";
 import { productTitle } from "./products.js";
@@ -459,15 +460,17 @@ function datasetTitle(item) {
 function Variants({ product, stores }) {
   const several = new Set(product.segments.map((segment) => segment.store)).size > 1;
   const storeName = (id) => stores.find((store) => store.id === id)?.name ?? id;
+  const names = segmentVariantNames(product);
   return html`<details class="variants">
     <summary>${L.product.variants} (${product.segments.length})</summary>
     <ul>
       ${product.segments.map(
         (item) => html`<li key=${`${item.store}:${item.segment.path}`}>
           <${Tech} value=${[
+            [L.product.producer_name, item.segment.label],
             [L.product.segment, item.segment.path ?? T.common.empty],
             [L.product.dataset_key, item.segment.dataset_key ?? T.common.empty],
-          ]}>${item.segment.label}<//>
+          ]}>${names.get(item.segment.path)}<//>
           <span class="faint">${[
             several ? storeName(item.store) : null,
             count(item.slots, L.units.slots),

@@ -20,9 +20,10 @@ import { count, int } from "../format.js";
 import { useResource } from "../hooks.js";
 import { T, t } from "../labels/index.js";
 import { timeline as L } from "../labels/timeline.js";
-import { CAMPAIGN_GROUP, GROUP_PARAM, LAYER_PARAM, useLayers, variantName } from "../map/previews.js";
+import { CAMPAIGN_GROUP, GROUP_PARAM, LAYER_PARAM, useLayers } from "../map/previews.js";
 import { productNames, productStores } from "../map/products.js";
 import { html, loadStylesheet, ProblemView, Seg, Spinner, useId, useMemo, useRef, useState } from "../ui.js";
+import { layerVariantName, variantNames } from "../variant.js";
 import { describeLayer, Formats, staleText } from "./set-details.js";
 
 await loadStylesheet(new URL("./timeline.css", import.meta.url));
@@ -123,6 +124,15 @@ export function CatalogTimeline({ shared, onChoose, onGroup }) {
 function Grid({ set, chosen, onChoose }) {
   const id = useId();
   const model = useMemo(() => timelineModel(set.layers, set.group === CAMPAIGN_GROUP), [set]);
+  const rowNames = useMemo(
+    () =>
+      variantNames(
+        model.rows,
+        (row, options) => layerVariantName(row.variant, options),
+        (row) => row.variant.segments.join(", "),
+      ),
+    [model],
+  );
   const grid = useRef(null);
   const [focused, setFocused] = useState(null);
   const area = Boolean(set.area);
@@ -162,7 +172,7 @@ function Grid({ set, chosen, onChoose }) {
       ${model.rows.map(
         (row, at) => html`<div key=${row.key} class="tl-row" role="row" aria-rowindex=${at + 2}>
           <span class="tl-rowhead" role="rowheader" aria-colindex="1">
-            <span class="tl-variant">${variantName(row.variant)}</span>
+            <span class="tl-variant">${rowNames.get(row)}</span>
             <${Formats} formats=${[...row.formats].sort()} />
           </span>
           ${model.columns.map((column, place) => {
@@ -299,7 +309,7 @@ function campaignOf(layer) {
 /** A cell for screen readers: its layer, variant and bar. */
 function cellName(layer, area) {
   const value = area ? (layer.coverage?.label ?? T.common.empty) : count(layer.versions_count, T.common.units.versions);
-  return `${layer.title} · ${variantName(layer.variant)} · ${value}`;
+  return `${layer.title} · ${layerVariantName(layer.variant)} · ${value}`;
 }
 
 /** The coverage under a bar, e.g. „83%”. */

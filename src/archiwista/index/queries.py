@@ -262,6 +262,7 @@ _VERSION_COLUMNS = """
     v.data_date AS data_date, v.downloaded_at AS downloaded_at,
     v.sha256 AS sha256, v.size_bytes AS size_bytes, v.full_sheet AS full_sheet,
     v.horizontal_crs AS horizontal_crs, v.vertical_crs AS vertical_crs,
+    v.resolution AS resolution,
     v.state AS version_state, v.missing_since AS missing_since,
     v.location AS location, v.location_reason AS location_reason,
     v.location_source AS location_source,
@@ -350,6 +351,7 @@ class _Filters:
     versions: VersionsMode
     status: RowStatus | None
     project: str | None
+    segment: str | None = None
 
 
 @dataclass(slots=True)
@@ -1134,13 +1136,18 @@ class IndexQueries:
                 " ORDER BY g.product IS NULL, g.product, g.segment, g.store_id",
                 where.params,
             ).fetchall()
+            facts = _variant_facts(connection)
         products: dict[str | None, list[SegmentSummary]] = {}
         for row in rows:
+            resolution, horizontal, vertical = facts.get(row["id"], (None, None, None))
             summary = SegmentSummary(
                 store=stores[row["store_id"]],
                 segment=_segment(row),
                 slots=int(row["slots"]),
                 versions=int(row["versions"]),
+                resolution=resolution,
+                horizontal_crs=horizontal,
+                vertical_crs=vertical,
             )
             products.setdefault(row["segment_product"], []).append(summary)
         return tuple(
@@ -2469,6 +2476,7 @@ def _filters(query: SlotQuery | MapQuery) -> _Filters:
         versions=query.versions,
         status=query.status,
         project=query.project,
+        segment=query.segment if isinstance(query, SlotQuery) else None,
     )
 
 
@@ -2548,6 +2556,8 @@ def _where(
         where.add("s.store_id = ?", _store_id(stores, filters.store))
     if filters.product is not None:
         where.add("s.product = ?", filters.product)
+    if filters.segment is not None:
+        where.add("g.segment = ?", filters.segment)
     if filters.country is not None:
         where.add("s.country = ?", filters.country)
     if filters.unit is not None:
@@ -2713,6 +2723,7 @@ def _fingerprint(query: SlotQuery) -> str:
         query.q,
         query.store,
         query.product,
+        query.segment,
         query.country,
         list(query.years) if query.years else None,
         query.unit,
@@ -3390,6 +3401,27 @@ def _date_ranges(value: str) -> tuple[DateRange, ...]:
     )
 
 
+def _variant_facts(
+    connection: sqlite3.Connection,
+) -> dict[int, tuple[str | None, str | None, str | None]]:
+    """Return the resolution and CRSs most versions of each segment give.
+
+    One pass over the versions; a tie keeps the combination that sorts
+    first, so the answer does not depend on the scan's order.
+    """
+    rows = connection.execute(
+        "SELECT segment_id, resolution, horizontal_crs, vertical_crs, count(*) AS n"
+        " FROM versions GROUP BY segment_id, resolution, horizontal_crs, vertical_crs"
+        " ORDER BY segment_id, n DESC, resolution, horizontal_crs, vertical_crs"
+    ).fetchall()
+    facts: dict[int, tuple[str | None, str | None, str | None]] = {}
+    for row in rows:
+        facts.setdefault(
+            int(row[0]), (row["resolution"], row["horizontal_crs"], row["vertical_crs"])
+        )
+    return facts
+
+
 def _segment_columns() -> str:
     return (
         "g.segment AS segment, g.name AS segment_name, g.producer AS producer,"
@@ -3434,6 +3466,7 @@ def _summary(
         full_sheet=None if full_sheet is None else bool(full_sheet),
         horizontal_crs=row["horizontal_crs"],
         vertical_crs=row["vertical_crs"],
+        resolution=row["resolution"],
         is_current=bool(row["is_current"]),
         is_full_sheet=bool(row["is_full_sheet"]),
         state=row["version_state"],

@@ -109,6 +109,7 @@ export const map = {
     search: "Szukaj produktu",
     list: "Produkty w indeksie",
     variants: "Warianty (segmenty)",
+    producer_name: "nazwa producenta",
     segment: "segment",
     dataset_key: "klucz zbioru",
     empty: "Indeks nie ma jeszcze produktów — poczekaj na koniec skanu magazynu.",

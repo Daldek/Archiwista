@@ -23,6 +23,7 @@ from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.jobs import scheduler
 from archiwista.sources.registry import load_registry
 from tests.fixtures.browser import Served, Tab, session_headers
+from tests.fixtures.layer_store import make_variant_store
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.make_store import StoreManifest, make_store
 
@@ -32,6 +33,7 @@ Row = tuple[str, str | None]
 SECOND_SOURCE = Path(__file__).parents[1] / "fixtures" / "second_source"
 FIXTURE_MODULES = ("external_source_plugin", "external_producer")
 INDEX_TIMEOUT_S = 60.0
+FIVE_M = "nmt/pl_1992_5m_evrf2007"
 # Rows of the scrolled area with their file card links, by row index.
 RENDERED_ROWS = """
 () => [...document.querySelectorAll(".cat-rows [role=row][data-index]")].map((row) => [
@@ -304,6 +306,52 @@ def test_no_outline_in_catalog_not_on_map(
     }
     assert address(page)["store"] == "zespol"
     assert "location" not in address(page)
+    tab.assert_clean()
+
+
+def test_variant_rows_filter_card_and_current_hint(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """One sheet in three variants: three rows, each named by its variant.
+
+    „Wariant” keeps one variant (``segment`` in the address), the file card
+    names it, and the hint says what „bieżąca” means.
+    """
+    store = make_variant_store(tmp_path / "store")
+    config = StoreConfig(id="zespol", name="Zespół", kartograf=store.root, kind="local")
+    served = serve(
+        AppSettings(
+            offline=True, stores=(config,), project_dirs=(store.manifest.projects_dir,)
+        )
+    )
+    page = tab.page
+    open_catalog(page, served, {"product": "nmt"})
+    variants = grid(page).locator(".cat-variant")
+    expect(variants).to_have_count(3)
+    every = sorted(variants.all_inner_texts())
+    hint = page.get_by_text(
+        "bieżąca = najnowsza w swoim wariancie (rozdzielczość, układ wysokości)"
+    )
+    expect(hint).to_be_visible()
+    field = page.get_by_label("Wariant", exact=True)
+    options = field.locator("option").all_inner_texts()
+
+    field.select_option(FIVE_M)
+    expect(page).to_have_url(re.compile("segment=nmt%2Fpl_1992_5m_evrf2007"))
+    expect(grid(page)).to_have_attribute("aria-rowcount", "2")
+    expect(variants).to_have_text(["5 m · EVRF2007"])
+    year = grid(page).locator(".c-year").last.inner_text()
+    page.locator("a.cat-name").first.click()
+    expect(page.locator(".fc-variant")).to_have_text("Wariant 5 m · EVRF2007")
+
+    assert every == ["1 m · EVRF2007", "1 m · Kronsztadt 86", "5 m · EVRF2007"]
+    assert options == [
+        "Wszystkie warianty",
+        "1 m · EVRF2007 · 1",
+        "1 m · Kronsztadt 86 · 1",
+        "5 m · EVRF2007 · 1",
+    ]
+    assert year == "2025"
     tab.assert_clean()
 
 

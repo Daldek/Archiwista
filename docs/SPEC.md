@@ -2617,7 +2617,10 @@ and product, not only IMGW (sketches 6.5 d, m).
   remembered per product kind (M5). A card shows the year, the thumbnail from the
   previews when the data is local (otherwise a sheet schema), the coverage label, the
   formats, the sheet count and size, and the store badge. Columns: name, identifier,
-  producer and product, location (source or reason for absence with a hint,
+  producer and product with the variant in plain words (resolution and height system,
+  e.g. "1 m · EVRF2007", "1 m · Kronsztadt 86"; nothing for a product without
+  variants: a store segment is one variant and keeps its own current version, so one
+  sheet in three variants is three rows), location (source or reason for absence with a hint,
   4.3), coverage labels separately for each variable (in the "Lista" consecutive
   variable rows, in the "Karty" a list of variables; P16) and store badge,
   current version. Stations are

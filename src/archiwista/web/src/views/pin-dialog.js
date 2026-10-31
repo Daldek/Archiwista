@@ -43,6 +43,7 @@ const QUERY_FILTERS = [
   "q",
   "store",
   "product",
+  "segment",
   "country",
   "years",
   "unit",

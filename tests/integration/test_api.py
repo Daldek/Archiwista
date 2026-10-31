@@ -32,6 +32,7 @@ from archiwista.sources import SourceAdapter, SourceState
 from archiwista.sources.registry import source_error
 from tests.fixtures.api_session import assert_problem, running_api
 from tests.fixtures.api_store import ALIAS, STORE, ServedStore, served_store
+from tests.fixtures.layer_store import SHEET_NW, make_variant_store
 from tests.fixtures.local_server import NoSources, local_paths, serving
 
 pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
@@ -199,6 +200,51 @@ def test_api_slots_filters_limit_and_cursor(served: ServedStore) -> None:
     assert_problem(misspelt, 400, "validation_error")
     assert_problem(unknown, 400, "validation_error")
     assert_problem(reversed_years, 400, "validation_error")
+
+
+def test_api_slots_segment_keeps_one_variant_of_a_sheet(tmp_path: Path) -> None:
+    """Each variant keeps its own current version; ``segment`` keeps one variant."""
+    # Arrange
+    store = make_variant_store(tmp_path / "store")
+    five_m = "nmt/pl_1992_5m_evrf2007"
+    with served_store(tmp_path, written=store.manifest) as served:
+        # Act
+        current = _get(served, f"/slots?unit={SHEET_NW}")["items"]
+        one_variant = _get(served, f"/slots?unit={SHEET_NW}&segment={five_m}")["items"]
+        its_versions = _get(
+            served, f"/slots?unit={SHEET_NW}&segment={five_m}&versions=all"
+        )["items"]
+        unknown = _get(served, "/slots?segment=nmt/pl_1992_9m_evrf2007")["items"]
+        products = _get(served, "/products")["items"]
+
+    # Assert
+    assert {
+        (
+            row["segment"]["path"],
+            row["version"]["data_year"],
+            row["version"]["resolution"],
+            row["version"]["crs"]["vertical"],
+        )
+        for row in current
+    } == {
+        ("nmt/pl_1992_1m_kron86", 2014, "1m", "EPSG:9650"),
+        (five_m, 2025, "5m", "EPSG:9651"),
+        ("nmt/pl_1992_1m_evrf2007", 2024, "1m", "EPSG:9651"),
+    }
+    assert [
+        (row["segment"]["path"], row["version"]["data_year"]) for row in one_variant
+    ] == [(five_m, 2025)]
+    assert sorted(row["version"]["data_year"] for row in its_versions) == [2020, 2025]
+    assert unknown == []
+    assert {
+        item["segment"]["path"]: (item["resolution"], item["crs"]["vertical"])
+        for product in products
+        for item in product["segments"]
+    } == {
+        "nmt/pl_1992_1m_kron86": ("1m", "EPSG:9650"),
+        five_m: ("5m", "EPSG:9651"),
+        "nmt/pl_1992_1m_evrf2007": ("1m", "EPSG:9651"),
+    }
 
 
 def test_api_problems_for_routes_methods_and_unknown_files(served: ServedStore) -> None:
@@ -445,7 +491,7 @@ def test_api_openapi_documents_routes_examples_and_problems(
         item["name"] for item in operations[("get", "/api/v1/slots")]["parameters"]
     }
     assert names == {
-        "q", "store", "product", "country", "years", "unit", "location",
+        "q", "store", "product", "segment", "country", "years", "unit", "location",
         "versions", "status", "project", "area_id", "bbox", "bbox_crs", "limit",
         "cursor",
     }  # fmt: skip

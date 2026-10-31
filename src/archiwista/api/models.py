@@ -181,6 +181,7 @@ _VERSION_EXAMPLE = {
     "sha256": _SHA256,
     "size_bytes": 37798349,
     "full_sheet": True,
+    "resolution": "1m",
     "crs": {"horizontal": "EPSG:2180", "vertical": "EPSG:9651"},
     "is_current": True,
     "is_full_sheet": True,
@@ -431,6 +432,8 @@ _PRODUCT_EXAMPLE = {
             "segment": _SEGMENT_EXAMPLE,
             "slots": 31000,
             "versions": 52000,
+            "resolution": "1m",
+            "crs": {"horizontal": "EPSG:2180", "vertical": "EPSG:9651"},
         }
     ],
 }
@@ -820,6 +823,15 @@ class SlotFilters(CommonFilters):
             " the catalog). `groups` counts every group whatever is chosen."
         ),
     )
+    segment: str | None = Field(
+        default=None,
+        description=(
+            "Store segment, the product's variant (`segments[].segment.path` of"
+            " /products): only its rows. A Kartograf segment is"
+            " `<product>/<variant>`; each keeps its own current version."
+        ),
+        examples=["nmt/pl_1992_1m_evrf2007"],
+    )
     area_id: str | None = Field(
         default=None,
         description="Area kept by POST /areas; rows meeting it, its countries' files.",
@@ -868,6 +880,7 @@ class CatalogFilters(SlotFilters):
             q=self.q,
             store=self.store,
             product=self.product,
+            segment=self.segment,
             country=self.country,
             years=self.year_range(),
             unit=self.unit,
@@ -1074,6 +1087,9 @@ class Version(BaseModel):
     full_sheet: bool | None = Field(
         description="Producer's claim that the sheet is complete."
     )
+    resolution: str | None = Field(
+        description="Resolution of a raster, as the producer writes it, e.g. `1m`."
+    )
     crs: Crs
     is_current: bool = Field(description="Held by the slot's standard path.")
     is_full_sheet: bool = Field(description="Held by the slot's `full_sheet/` link.")
@@ -1098,6 +1114,7 @@ class Version(BaseModel):
             sha256=version.sha256,
             size_bytes=version.size_bytes,
             full_sheet=version.full_sheet,
+            resolution=version.resolution,
             crs=Crs(horizontal=version.horizontal_crs, vertical=version.vertical_crs),
             is_current=version.is_current,
             is_full_sheet=version.is_full_sheet,
@@ -1505,6 +1522,8 @@ class ProductSegment(BaseModel):
             "segment": _SEGMENT_EXAMPLE,
             "slots": 31000,
             "versions": 52000,
+            "resolution": "1m",
+            "crs": {"horizontal": "EPSG:2180", "vertical": "EPSG:9651"},
         }
     )
 
@@ -1512,6 +1531,15 @@ class ProductSegment(BaseModel):
     segment: Segment
     slots: int
     versions: int
+    resolution: str | None = Field(
+        description=(
+            "The variant's resolution: what most of the segment's versions give"
+            " (one segment is one variant), e.g. `1m`."
+        )
+    )
+    crs: Crs = Field(
+        description="The variant's coordinate systems, as most of its versions give."
+    )
 
 
 class Product(BaseModel):
@@ -1541,6 +1569,8 @@ class Product(BaseModel):
                     segment=Segment.of(item.segment),
                     slots=item.slots,
                     versions=item.versions,
+                    resolution=item.resolution,
+                    crs=Crs(horizontal=item.horizontal_crs, vertical=item.vertical_crs),
                 )
                 for item in product.segments
             ],

@@ -18,6 +18,7 @@ import { int, plural, size } from "../format.js";
 import { catalog as L } from "../labels/catalog.js";
 import { t } from "../labels/index.js";
 import { html, Icon, Spinner, useEffect, useLayoutEffect, useMemo, useRef, useState } from "../ui.js";
+import { variantFacts, variantName } from "../variant.js";
 
 /** Height of the header row in px (catalog.css `.cat-head`). */
 const HEAD = 32;
@@ -297,6 +298,7 @@ function FileHeader({ storeNames }) {
 function FileCells({ item, props }) {
   const G = L.grid;
   const version = item.version;
+  const variant = version ? variantName(variantFacts(version)) : null;
   const located = onMapOf(item);
   return html`<div role="gridcell" class="cell c-name">
       <a class="cat-name" href=${props.cardHref(item)} tabindex="-1" title=${item.slot}
@@ -308,7 +310,9 @@ function FileCells({ item, props }) {
       <span class="cell-sub">${countryText(item.country)}</span>
     </div>
     <div role="gridcell" class="cell c-prod">
-      <span class="ell" title=${item.segment.label}>${item.segment.label}</span>
+      <span class="ell" title=${item.segment.label}>${variant
+        ? html`<span class="cat-variant">${variant}</span>`
+        : null}${item.segment.label}</span>
       <span class="cell-sub mono ell" title=${technical(item)}>${technical(item)}</span>
     </div>
     <div role="gridcell" class="cell c-year tabular">${version?.data_year ?? "–"}</div>

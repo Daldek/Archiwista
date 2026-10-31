@@ -272,6 +272,7 @@ same model checks the values, so the errors are identical.
 | `q` | `QUERY` | text; every word must match: sheet code, TERYT, KU, file name, segment and product, version label, job request number, campaign, edition (word prefix, no Polish diacritics); a word of 8–64 hexadecimal digits also matches the start of a SHA-256 |
 | `store` | `--store` | store id (`/stores`); an unknown one → `400` |
 | `product` | `--product` | product (`/products`), for example `nmt` |
+| `segment` | `--segment` | store segment, the product's variant (`segments[].segment.path` of `/products`, e.g. `nmt/pl_1992_1m_evrf2007`); each segment keeps its own current version, so `current` lists one row per variant of a sheet |
 | `country` | `--country` | country code, for example `PL` |
 | `years` | `--years` | year of the data (not of the download): `2023`, `2020-2023`, `2020-`, `-2023` |
 | `unit` | `--unit` | exact unit code: sheet code, TERYT, KU |

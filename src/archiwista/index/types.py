@@ -170,6 +170,8 @@ class SlotQuery:
         matches the beginning of a version's SHA-256.
     store, product, country : str or None
         Exact store id, product (e.g. ``"nmt"``) and country (``"PL"``).
+    segment : str or None
+        Exact segment (``SegmentRef.segment``), the product's variant.
     years : tuple[int | None, int | None] or None
         Inclusive range of the data year (never the download year); an open
         end is ``None``. Rows without a data year never match.
@@ -204,6 +206,7 @@ class SlotQuery:
     q: str | None = None
     store: str | None = None
     product: str | None = None
+    segment: str | None = None
     country: str | None = None
     years: tuple[int | None, int | None] | None = None
     unit: str | None = None
@@ -350,6 +353,7 @@ class VersionSummary:
     full_sheet: bool | None
     horizontal_crs: str | None
     vertical_crs: str | None
+    resolution: str | None
     is_current: bool
     is_full_sheet: bool
     state: VersionState
@@ -543,12 +547,19 @@ class FootprintPage:
 
 @dataclass(frozen=True, slots=True)
 class SegmentSummary:
-    """An indexed segment with its counts."""
+    """An indexed segment with its counts and its variant's facts.
+
+    ``resolution``, ``horizontal_crs`` and ``vertical_crs`` are what most of
+    the segment's versions give (a segment is one variant of its product).
+    """
 
     store: str
     segment: SegmentRef
     slots: int
     versions: int
+    resolution: str | None
+    horizontal_crs: str | None
+    vertical_crs: str | None
 
 
 @dataclass(frozen=True, slots=True)

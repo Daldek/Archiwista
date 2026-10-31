@@ -11,6 +11,7 @@ export const file = {
   bad_address: "Adres karty pliku „{value}” nie wskazuje magazynu i ścieżki pliku.",
   unknown_product: "Nieznany produkt — segment nierozpoznany przez wtyczkę {producer}",
   unit: "Jednostka",
+  variant: "Wariant",
   versions_count: ["wersja", "wersje", "wersji"],
   status: {
     ok: "ok",
