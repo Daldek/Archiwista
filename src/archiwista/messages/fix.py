@@ -88,6 +88,26 @@ MESSAGES = {
             " jej nie usuwa."
         ),
     ),
+    "unsupported_project_schema": Text(
+        (
+            "A newer Archiwista wrote the project: update Archiwista to read and"
+            " change it."
+        ),
+        (
+            "Projekt zapisała nowsza wersja Archiwisty: zaktualizuj Archiwistę, by"
+            " go czytać i zmieniać."
+        ),
+    ),
+    "project_file_write_failed": Text(
+        (
+            "Check that the directory {path} can be written and that its disk has"
+            " free space, then try again."
+        ),
+        (
+            "Sprawdź, czy do katalogu {path} można pisać i czy jego dysk ma wolne"
+            " miejsce, i spróbuj ponownie."
+        ),
+    ),
     "data_dir": Text(
         "grant write permission to the local data directory.",
         "nadaj prawo zapisu do katalogu danych lokalnych.",

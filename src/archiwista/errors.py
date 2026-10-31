@@ -12,7 +12,7 @@ translatable, so each interface renders them in the language of its reader.
 
 import copy
 from collections.abc import Mapping
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from archiwista._errors import BY_CODE
 from archiwista.messages import message
@@ -463,28 +463,98 @@ class JobConflictError(ConflictError):
 
 
 class ProjectLockedError(ConflictError):
-    """A project's manifest lock stayed past its producer's wait (``409 conflict``).
+    """A project's lock stayed past the wait of a change (``409 conflict``).
 
-    The lock was left by a change of the manifest that was interrupted, or
-    another process holds it. Reason ``project_locked``; ``details["lock"]``
-    names the lock and the hint says how to remove it: Archiwista never
-    removes it itself (SPEC 5.6, 14).
+    The lock ``.archiwista-project.lock`` beside the project file is held by
+    another change, or was left by one that was interrupted (A-ADR-049
+    decision 3). Reason ``project_locked``; ``details["lock"]`` names the
+    lock, ``details["owner"]`` the process that made it (``<host>_<pid>``)
+    when it is known and ``details["owner_ended"]`` whether that is a
+    process of this computer that has ended; the hint says how to remove
+    it: Archiwista never removes it itself (SPEC 5.6, 14).
 
     Parameters
     ----------
     message : str
-        Description naming the lock, with the producer's own text.
+        Description naming the lock and its owner.
     lock : str
         The lock's path.
     hint : str
         How to remove a lock that no process holds.
+    owner : str or None, optional
+        The lock's owner as it wrote itself in the lock; ``None`` when unknown.
+    owner_ended : bool, optional
+        The owner is a process of this computer that has ended.
     """
 
     default_reason = "project_locked"
 
-    def __init__(self, message: str, *, lock: str, hint: str) -> None:
-        super().__init__(message, details={"lock": lock}, hint=hint)
+    def __init__(
+        self,
+        message: str,
+        *,
+        lock: str,
+        hint: str,
+        owner: str | None = None,
+        owner_ended: bool = False,
+    ) -> None:
+        details: dict[str, object] = {"lock": lock}
+        if owner is not None:
+            details.update(owner=owner, owner_ended=owner_ended)
+        super().__init__(message, details=details, hint=hint)
         self.lock = lock
+
+
+class ProjectFileError(ConflictError):
+    """A project file Archiwista cannot read, or must not write (``409 conflict``).
+
+    Reason ``invalid_project_file``: the file breaks a rule of
+    ``archiwista-project/1``; ``details["pointer"]`` (RFC 6901, ``""`` for
+    the whole file) and ``details["rule"]`` say where and which, and
+    Archiwista never writes over such a file. ``unsupported_project_schema``:
+    the file is of a newer format (``details["schema"]``), with the hint to
+    update Archiwista. ``project_exists``: a new project's directory holds a
+    project file already.
+    """
+
+    default_reason = "invalid_project_file"
+
+
+class ProjectFileWriteError(ArchiwistaError):
+    """A project file or an area file could not be written (``io_error``).
+
+    Reason ``project_file_write_failed``: a read-only share, no space; the
+    file stays as it was and the message holds the system's text.
+    """
+
+    default_code = "io_error"
+    default_reason = "project_file_write_failed"
+
+
+class ProjectAreaError(ArchiwistaError):
+    """A project's area file cannot be used (``data_error``, reason ``project_area``).
+
+    ``state`` (also ``details["state"]``) is ``missing`` (no file),
+    ``changed`` (other bytes than the project file's ``sha256``) or
+    ``invalid`` (no polygon of GeoJSON within the limits); the project then
+    keeps no area and shows the state (A-ADR-049 decision 4).
+
+    Parameters
+    ----------
+    message : str
+        Description naming the file.
+    state : {"missing", "changed", "invalid"}
+        Why the file cannot be used.
+    """
+
+    default_code = "data_error"
+    default_reason = "project_area"
+
+    def __init__(
+        self, message: str, *, state: Literal["missing", "changed", "invalid"]
+    ) -> None:
+        super().__init__(message, details={"state": state})
+        self.state = state
 
 
 class OfflineModeError(ArchiwistaError):

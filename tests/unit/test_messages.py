@@ -96,6 +96,7 @@ _DATA = frozenset(
         ("index/writer.py", "ł"),
         ("index/writer.py", "Ł"),
         ("index/writer.py", "projekt"),
+        ("projects/document.py", "obszary"),
     }
 )
 
