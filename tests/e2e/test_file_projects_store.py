@@ -2,8 +2,8 @@
 
 Every test serves a generated Kartograf store offline, waits for the
 scheduler's first full scan and checks what a person sees against what the
-producer wrote — Kartograf's own sidecars, segment names and manifest
-messages — and against the generator's manifest of the store.
+producer wrote — Kartograf's own sidecars and segment names — and against
+the generator's manifest of the store and its project files.
 """
 
 import time
@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import httpx
-from kartograf import ValidationError, describe_segment, open_project, read_sidecar
+from kartograf import describe_segment, read_sidecar
 from playwright.sync_api import Locator, Page, expect
 
 from archiwista.auth import LOCAL_OWNER
@@ -220,9 +220,9 @@ def test_pinned_old_version_visible(serve: Serve, tab: Tab, tmp_path: Path) -> N
         )
 
     page.goto(f"{served.base}/?view=projects&project=projekt-01")
-    task = page.locator(".pc-task").filter(has_text="archiwum")
-    expect(task).to_contain_text("starsza wersja")
-    task.get_by_role("link", name=pin.label).click()
+    group = page.locator(".pc-group").filter(has_text="archiwum")
+    expect(group).to_contain_text("starsza wersja")
+    group.get_by_role("link", name=pin.label).click()
     opened = page.get_by_role("dialog", name=PurePosixPath(pin.path).name)
 
     # The axis only: the version's copy button names its path, which holds the label.
@@ -282,28 +282,23 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
     tab.assert_clean()
 
 
-def test_manifest_error_visible(serve: Serve, tab: Tab, tmp_path: Path) -> None:
-    """An invalid manifest shows Kartograf's own message and how to fix it."""
+def test_invalid_project_file_visible(serve: Serve, tab: Tab, tmp_path: Path) -> None:
+    """A project file breaking a rule: listed with why; its card says how to fix it."""
     store, served, page = served_store(serve, tab, tmp_path)
     broken = next(p for p in store.projects if p.case == "invalid_project_file")
-    try:
-        open_project(store.base / broken.path)
-    except ValidationError as error:
-        message = str(error)
-    else:
-        raise AssertionError("the generated manifest is valid")
 
     page.goto(f"{served.base}/?view=projects")
     row = page.get_by_role("row").filter(has_text=broken.name)
-    expect(row).to_contain_text(f"Błędny manifest: {message}")
+    expect(row).to_contain_text("Błędny plik projektu: Archiwista nie używa żadnej")
     row.get_by_role("link", name=broken.name).click()
     panel = page.get_by_role("complementary", name="Projekt")
 
-    expect(row).to_contain_text("nie sprawdzono")
     expect(panel.get_by_role("heading", name=broken.name)).to_be_visible()
-    expect(panel.locator(".issue")).to_contain_text(message)
-    expect(panel.locator(".issue")).to_contain_text("Jak naprawić: Popraw manifest")
-    expect(panel).to_contain_text("Manifest nie ma zadań.")
+    issue = panel.locator(".issue")
+    expect(issue).to_contain_text("Niepoprawny plik projektu")
+    expect(issue).to_contain_text("/groups/0/name")
+    expect(issue).to_contain_text("Jak naprawić: Popraw archiwista-project.json")
+    expect(panel).to_contain_text("Archiwista nie czyta grup tego pliku projektu.")
     assert query(page) == {"view": "projects", "project": broken.name}
     tab.assert_clean()
 

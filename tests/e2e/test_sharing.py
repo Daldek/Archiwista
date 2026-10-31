@@ -200,8 +200,7 @@ def test_a_data_folder_outside_the_project_is_refused_at_its_field(
     kasia = team_tab()
     page = team.person(kasia, "kasia")
     directory = team.projects / PROJECT
-    body = {"producer": "kartograf", "path": str(directory), "store": STORE}
-    created = call(page, "POST", "/projects", body)
+    created = call(page, "POST", "/projects", {"path": str(directory)})
     assert created["status"] == 201, created
     outside = tmp_path / "obce-dane"
     outside.mkdir()

@@ -360,14 +360,12 @@ def browse_every_view(page: Page, base: str, store: StoreManifest) -> None:
     page.goto(f"{base}/?view=projects&project={project.name}")
     panel = page.get_by_role("complementary", name="Projekt")
     expect(panel.get_by_role("heading", name=project.name)).to_be_visible()
-    expect(value(panel, "Stan teraz")).to_contain_text(
-        "sprawdzono", timeout=READ_TIMEOUT_MS
-    )
-    for task in project.groups:
-        pins = panel.locator(".pc-task").filter(
-            has=page.locator(".pc-task-head b").get_by_text(task.name, exact=True)
+    expect(value(panel, "Magazyny")).to_contain_text(f"kartograf: {STORE_NAME}")
+    for group in project.groups:
+        pins = panel.locator(".pc-group").filter(
+            has=page.locator(".pc-group-head b").get_by_text(group.name, exact=True)
         )
-        expect(pins.locator(".pc-pin")).to_have_count(len(task.pins))
+        expect(pins.locator(".pc-pin")).to_have_count(len(group.pins))
 
     detail = api(page, base, f"/stores/{STORE}")
     page.goto(f"{base}/?view=store")
@@ -498,15 +496,13 @@ def test_acceptance_first_run_to_every_view(
     page.get_by_role("link", name=project.name, exact=True).click()
     panel = page.get_by_role("complementary", name="Projekt")
     expect(panel.get_by_role("heading", name=project.name)).to_be_visible()
-    expect(value(panel, "Stan teraz")).to_contain_text(
-        "sprawdzono", timeout=READ_TIMEOUT_MS
-    )
-    for task in project.groups:
-        pins = panel.locator(".pc-task").filter(
-            has=page.locator(".pc-task-head b").get_by_text(task.name, exact=True)
+    expect(value(panel, "Magazyny")).to_contain_text(f"kartograf: {STORE_NAME}")
+    for group in project.groups:
+        pins = panel.locator(".pc-group").filter(
+            has=page.locator(".pc-group-head b").get_by_text(group.name, exact=True)
         )
-        expect(pins.locator(".pc-pin")).to_have_count(len(task.pins))
-        for pin in task.pins:
+        expect(pins.locator(".pc-pin")).to_have_count(len(group.pins))
+        for pin in group.pins:
             expect(pins.get_by_role("link", name=pin.label)).to_be_visible()
 
     detail = api(page, base, f"/stores/{STORE}")

@@ -52,7 +52,6 @@ export const jobs = {
     store: "magazyn „{store}”",
     full_scan: "pełny",
     project: "projekt „{project}”",
-    task: "projekt „{project}”, zadanie „{task}”",
     every_project: "wszystkie projekty",
     calls: "{producer} · {command}",
     calls_many: "{producer} · {command} · {count} {lines}",

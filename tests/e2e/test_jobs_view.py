@@ -20,6 +20,7 @@ import os
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -27,7 +28,6 @@ from urllib.parse import urlsplit
 
 import httpx
 import pytest
-from kartograf import init_project
 from playwright.sync_api import Locator, Page, expect
 
 from archiwista.auth import LOCAL_OWNER, SCHEDULER, Principal, access_key
@@ -41,6 +41,7 @@ from archiwista.config import (
 from archiwista.index import IndexWriter, initialize
 from archiwista.index.projects import record_project
 from archiwista.jobs import JobSupervisor
+from archiwista.projects import ProjectDocument, StoreRoot, change_project_file
 from archiwista.security import CSRF_HEADER, fragment_url, issue_one_time_token
 from archiwista.sources.registry import load_registry
 from archiwista.state import StateStore, Visibility
@@ -102,7 +103,17 @@ def team_paths(
     root.mkdir()
     projects = tmp_path / "projekty"
     directory = projects / "tajny"
-    init_project(directory, root=root)
+    directory.mkdir(parents=True)
+    change_project_file(
+        directory,
+        create=ProjectDocument(
+            name="tajny",
+            description="",
+            created_at=datetime(2026, 10, 1, 9, 0, tzinfo=UTC),
+            created_by=OWNER,
+            stores=(StoreRoot("kartograf", str(root)),),
+        ),
+    )
     store = StoreConfig(id=STORE, name="Pomiary", kartograf=root, kind="local")
     settings = AppSettings(
         offline=False, basemaps=(), stores=(store,), project_dirs=(projects,)

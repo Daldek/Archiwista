@@ -2,10 +2,8 @@
 
 SPEC 13 v0.3 without the network: UC-01 with the stand-in producer
 (``tests/fixtures/action_source``, its store ``pomiary``, the kept area
-"Kraków") and UC-06 over Kartograf's fixture store and project
-(``kartograf.testing``; the stand-in has no project operations, ADR-040) with
-workers that refuse every connection. Each test walks one path a person
-takes and asserts the criteria on it:
+"Kraków"). Each test walks one path a person takes and asserts the criteria
+on it:
 
 - criterion 3: the coverage labels of the area's years are the ones computed
   here by hand from the report the index keeps (SPEC 6.4: the share rounded
@@ -17,8 +15,12 @@ takes and asserts the criteria on it:
   ``interrupted``, and its retry (``POST /jobs/{job}/retry``; „Ponów” of
   „Zadania” is ``test_jobs_view.py``) fetches only what the stopped run had not;
 - criterion 7: without ``store_writer`` (and without ``store_write_for_all``)
-  a download and a project's download are disabled with the reason, and the
-  API answers ``403 permission_denied`` with no job.
+  a download is disabled with the reason, and the API answers ``403
+  permission_denied`` with no job.
+
+UC-06 (a project's jobs through its producer) left with the producers'
+project manifests (A-ADR-049); the plan's P4 and P5 bring the project's jobs
+and their acceptance back.
 
 Criteria 1, 2 and 6 need the network and real stores:
 ``tests/integration/test_live_actions.py`` (marker ``live``, run by the
@@ -36,15 +38,11 @@ from types import ModuleType
 from typing import Any
 from urllib.parse import urlencode, urlsplit
 
-import kartograf
 import pytest
-from kartograf.testing import build_fixture_store, build_project
 from playwright.sync_api import Locator, Page, expect
 
-from archiwista.auth import access_key
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
-from archiwista.index import IndexQueries, IndexWriter, initialize
-from archiwista.index.projects import record_project
+from archiwista.index import IndexQueries, IndexWriter
 from archiwista.jobs import JobSupervisor
 from archiwista.security import fragment_url, issue_one_time_token
 from archiwista.sources import AvailabilityCombination
@@ -53,31 +51,16 @@ from archiwista.state import StateStore
 from tests.fixtures.actions import ACTION_WORKER, standin_in_settings
 from tests.fixtures.availability import AREA, register_standin
 from tests.fixtures.browser import Served, Tab
-from tests.fixtures.job_worker import NO_NETWORK_ENV
-from tests.fixtures.jobs import TEST_WORKER, worker_path
+from tests.fixtures.jobs import worker_path
 from tests.fixtures.local_server import local_paths, serving
-from tests.fixtures.permissions import add_people, principal, share
+from tests.fixtures.permissions import add_people, principal
 
 Serve = Callable[..., Served]
 
 STORE = "pomiary"
 PRODUCT = "standin/dem"
-TEAM = "zespol"
-PROJECT = "raba"
-TASKS = ["nmt-pl", "nmt-cz"]
 WAIT_S = 60.0
 FINISHED = ("succeeded", "partial", "failed", "interrupted", "cancelled")
-# The task UC-06 adds from a command: the year 2025 of a box of 1 km².
-YEAR_LINE = (
-    "kartograf elevation download --product nmt --country pl"
-    " --bbox 500000,250000,501000,251000 --bbox-crs EPSG:2180 --sheet-system 1992"
-    " --resolution 1m --vertical-crs EVRF2007 --year 2025"
-)
-YEAR_TASK = "teren-2025"
-NO_STORE_WRITE = (
-    "Pobieranie i przepinanie zapisują magazyn, a ta sesja nie ma uprawnienia"
-    " „zapis do magazynu” (rola store_writer)."
-)
 API = """async ([method, path, body]) => {
   const headers = { "X-Archiwista-CSRF": sessionStorage.getItem("archiwista_csrf") };
   if (body !== null) headers["Content-Type"] = "application/json";
@@ -96,18 +79,6 @@ def standin(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     assert defaults is not None
     monkeypatch.setitem(defaults, "worker_command", ACTION_WORKER)
     return module
-
-
-@pytest.fixture
-def attempts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Give the server workers that refuse the network; return their record."""
-    worker_path(monkeypatch)
-    record = tmp_path / "network.log"
-    monkeypatch.setenv(NO_NETWORK_ENV, str(record))
-    defaults = JobSupervisor.__init__.__kwdefaults__
-    assert defaults is not None
-    monkeypatch.setitem(defaults, "worker_command", TEST_WORKER)
-    return record
 
 
 def call(
@@ -135,22 +106,6 @@ def jobs_of(page: Page, kind: str) -> list[dict[str, Any]]:
     page_of_jobs = call(page, "GET", f"/jobs?kind={kind}")["body"]
     items: list[dict[str, Any]] = page_of_jobs["items"]
     return items
-
-
-def open_projects(page: Page, served: Served, url: str, project: str) -> None:
-    """Open a project with the session of ``url`` once the stores are scanned."""
-    page.goto(f"{served.base}/?view=projects#{urlsplit(url).fragment}")
-    expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
-    deadline = time.monotonic() + WAIT_S
-    while True:
-        health = call(page, "GET", "/health")["body"]
-        states = [item["state"] for item in health["stores"]]
-        if all(s["last_scan"] and s["running_job"] is None for s in states):
-            break
-        assert time.monotonic() < deadline, "the stores were not scanned in time"
-        page.wait_for_timeout(200)
-    page.goto(f"{served.base}/?view=projects&project={project}")
-    expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
 
 
 def standin_paths(tmp_path: Path) -> tuple[AppPaths, Path]:
@@ -364,84 +319,4 @@ def test_uc01_without_the_permission_to_write_the_stores_nothing_is_written(
     )
     assert jobs_of(page, "download") == []
     assert list(root.iterdir()) == []
-    tab.assert_clean()
-
-
-def test_uc06_a_project_is_verified_downloaded_and_given_a_year_by_its_owner(
-    serve: Serve, tab: Tab, tmp_path: Path, attempts: Path
-) -> None:
-    """Status, verification, download of the pins, a task added; criterion 7."""
-    # Arrange: Kartograf's fixture project, owned by olga, indexed and scanned.
-    built = build_fixture_store(tmp_path / "nas" / "kartograf")
-    projects = tmp_path / "nas" / "projekty"
-    directory = build_project(projects / PROJECT, built)
-    config = StoreConfig(id=TEAM, name="Zespół", kartograf=built.root, kind="local")
-    settings = AppSettings(
-        offline=False, basemaps=(), stores=(config,), project_dirs=(projects,)
-    )
-    paths = local_paths(tmp_path)
-    initialize(paths.index_file)
-    with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({TEAM: config.roots()})
-        key = record_project(writer, directory, stores=settings.stores, geo=None)
-    served = serve(settings)
-    state = StateStore(served.paths.state_file)
-    add_people(state)
-    share(state, access_key(directory), "private")
-    page = tab.page
-    open_projects(page, served, served.token_url(), key)
-    card = page.get_by_role("complementary", name="Projekt")
-    actions = card.get_by_role("group", name="Działania projektu")
-
-    # Act: the administrator's status, verification and download.
-    expect(card.locator(".pc-task-statuses li")).to_have_count(2)
-    actions.get_by_role("button", name="Weryfikuj").click()
-    status = card.locator(".job-status").first
-    expect(status).to_contain_text(
-        "Pliki: 2 (nienaruszone 2); zadania bez przypięć: 0."
-    )
-    actions.get_by_role("button", name="Pobierz", exact=True).click()
-    expect(status).to_contain_text("Zadania projektu: 2 (bez zmian 2).")
-
-    # Act: the year 2025 as a task, from a producer's command.
-    actions.get_by_role("button", name="Zadanie", exact=True).click()
-    adding = card.get_by_role("form", name="Nowe zadanie")
-    adding.get_by_label("Polecenie producenta").fill(YEAR_LINE)
-    adding.get_by_label("Nazwa zadania").fill(YEAR_TASK)
-    adding.get_by_role("button", name="Dodaj zadanie").click()
-
-    # Assert: Kartograf's manifest has the task, not downloaded yet.
-    expect(card.locator(".pc-done")).to_have_text(f"Dodano zadanie „{YEAR_TASK}”.")
-    tasks = kartograf.open_project(directory).tasks
-    assert [task.name for task in tasks] == [*TASKS, YEAR_TASK]
-    assert dict(tasks[-1].options) == dict(kartograf.parse_command(YEAR_LINE).options)
-    assert not tasks[-1].files
-
-    # Act (criterion 7): the owner without `store_writer`.
-    issued = issue_one_time_token(
-        served.paths.index_file, "startup", minted_by=principal(state, "owner")
-    )
-    open_projects(page, served, fragment_url(served.base, issued.token), key)
-    downloads = len(jobs_of(page, "project_download"))
-    refused = {
-        kind: call(page, "POST", f"/projects/{key}/jobs", body)
-        for kind, body in (
-            ("download", {"kind": "download"}),
-            ("repin", {"kind": "repin", "tasks": [TASKS[0]]}),
-        )
-    }
-
-    # Assert: she changes her project's tasks; writing the store is refused.
-    expect(actions.get_by_role("button", name="Zadanie", exact=True)).to_be_enabled()
-    download = actions.get_by_role("button", name="Pobierz", exact=True)
-    expect(download).to_be_disabled()
-    expect(download).to_have_accessible_description(NO_STORE_WRITE)
-    repin = card.locator(".pc-task").first.get_by_role("button", name="Przepnij")
-    expect(repin).to_have_accessible_description(NO_STORE_WRITE)
-    for answer in refused.values():
-        assert answer["status"] == 403, answer
-        assert answer["body"]["details"]["reason"] == "permission_denied"
-    assert len(jobs_of(page, "project_download")) == downloads
-    assert jobs_of(page, "project_repin") == []
-    assert not attempts.exists()
     tab.assert_clean()

@@ -1957,12 +1957,7 @@ class JobDetail(BaseModel):
             " area and a product, over the network), `check` (what a run of"
             " a producer's command would do in the store, over the network),"
             " `download` (a run of a producer's command in the store, over the"
-            " network), `project_download` (a project's tasks downloaded, pinned"
-            " and restored by its producer, over the network), `project_repin`"
-            " (one task of a project pinned anew to the source's newer"
-            " versions, over the network), `project_check` (a project's pins"
-            " compared with the source, over the network), `project_verify`"
-            " (a project's pinned files checked in its store) or `preview_warm`"
+            " network) or `preview_warm`"
             " (the first look at current versions prepared in the preview"
             " cache ahead)."
         )
@@ -1996,8 +1991,7 @@ class JobDetail(BaseModel):
     store: str | None = Field(
         description=(
             "Store id; `null` for `preview`, `own_scan`, `snapshot`,"
-            " `availability`, the `project_*` kinds (the project's manifest"
-            " names its store) and `preview_warm` (its `params.store`)."
+            " `availability` and `preview_warm` (its `params.store`)."
         )
     )
     params: dict[str, Any] = Field(
@@ -2008,9 +2002,7 @@ class JobDetail(BaseModel):
             " and `note`; `availability`: `area_id`, `producer`, `product` and"
             " `force`; `check`: `producer` and `calls` (each `command` and"
             " `options`, in their order); `download`: those and `plan_job` (the"
-            " `check` job whose plans it runs, or `null`); the `project_*` kinds:"
-            " `project` (its key) and `tasks`"
-            " (task names, `null` for every task; one for `project_repin`);"
+            " `check` job whose plans it runs, or `null`);"
             " `preview_warm`: `store`, `product`, `segment`, `project`,"
             " `area_id` and `since` (each `null` when not given; `since` only"
             " from the warm-up after a scan)."
@@ -2029,8 +2021,7 @@ class JobDetail(BaseModel):
             " `read`, `snapshot` adds `phase`; a `check` counts its calls"
             " planned; a `download` counts the units of the call it runs and"
             " adds `call` (its place in `calls`, from 0) and `calls` (their"
-            " number), `project_download` and `project_repin` count units; the"
-            " three add the producer's `unit` (or `null`), `status` and"
+            " number) with the producer's `unit` (or `null`), `status` and"
             " `message`; `preview_warm` counts files and"
             " adds `warmed`, `cached`, `failed` and `skipped`."
         )
@@ -2073,19 +2064,6 @@ class JobDetail(BaseModel):
             " (the positions to download another active download of the store"
             " fetches, left out of this one: `path`, `unit`, `job`, `actor`),"
             " `rescanned` (units read again into the index) and `seconds`;"
-            " `project_download` and `project_repin`: `producer`, `project`,"
-            " `store`, `root`, `upgrade` (true for a repin), `ok`, `counts`"
-            " (tasks `pinned`, `unchanged`, `restored`, `updated`, `failed`),"
-            " `tasks` (`name`, `outcome`, the `pinned` and `unpinned` versions"
-            " with `path` and `version_path` below the root, `unit`, `label`,"
-            " `sha256`, `size_bytes`; `errors`, `code`, `reason` of a failed"
-            " task), `failed`, `rescanned` and `seconds`; `project_check` and"
-            " `project_verify`: `producer`, `project`, `root`, `ok`, `counts`"
-            " (files of each state), `files` (`task`, `unit`, `path`, `status`:"
-            " `ok`, `missing` or `corrupt` in the store; `current`, `newer`,"
-            " `added`, `removed`, `missing`, `unverifiable`, `check_failed` or"
-            " `conflict` at the source; `pinned_label`, `available_label`,"
-            " `detail`), `not_downloaded` (tasks without pins) and `seconds`;"
             " `preview_warm`: `versions` and `files` (own files) selected,"
             " `warmed` (prepared now), `cached` (ready before), `needs_build`"
             " (map tiles waiting for a `preview` job), `failed`, `failures`"
@@ -2567,8 +2545,8 @@ class StoreDetail(BaseModel):
     unused: Unused
     projects: list[ProjectItem] = Field(
         description=(
-            "Projects the principal sees with a manifest naming the store, with all"
-            " their manifests."
+            "Projects the principal sees whose file names the store for one of"
+            " its producers."
         )
     )
     problems: list[Issue]

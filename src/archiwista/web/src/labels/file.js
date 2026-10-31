@@ -30,9 +30,7 @@ export const file = {
     no_label: "bez etykiety",
     no_year: "–",
     pinned: "Przypięta w:",
-    pin: "{name} ({task})",
-    pin_no_task: "{name}",
-    pin_state: "{name} ({task}) — {state}",
+    pin: "{name} ({group})",
   },
   tabs: {
     label: "Widok wersji",

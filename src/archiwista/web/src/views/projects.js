@@ -1,56 +1,46 @@
 /**
- * The Projects view (docs/SPEC.md UC-06, 6.5 g; plan v0.1 step 11, v0.2
- * step 15, plan 2026-10-25 A13 and I7, plan v0.4 T7): the projects found in
- * the project directories that the session sees — as the API filters them
- * (step 8b), nothing filtered here — with their manifests (a project
- * directory holds Kartograf's, IMGWTools' or both: each with its producer,
- * store, status when it was read and problem) and their missing pins, and
- * „Nowy projekt…”: every person creates a project of a producer in a project
- * directory of the settings, bound to a configured store, and owns it. The
- * chosen project (`?view=projects&project=<id>`) is in the side panel with
- * the tasks of each manifest and their existing commands, the producers'
- * status now, the pinned versions (older ones too) leading to their file
- * cards, and its problems.
+ * The Projects view (docs/SPEC.md UC-06, 6.5 g; plan v0.4 T7; A-ADR-049): the
+ * projects found in the project directories that the session sees — as the
+ * API filters them, nothing filtered here — each a directory with
+ * Archiwista's file `archiwista-project.json`: its name and description, the
+ * store of each producer whose versions it pins, its groups of pinned
+ * versions, the missing ones, and an invalid or newer file. „Nowy projekt…”:
+ * every person creates a project in a project directory of the settings
+ * (its directory, name, description and area; Archiwista writes the file)
+ * and owns it.
  *
- * The card's actions go through a manifest's producer — of a project with
- * two manifests, the one chosen at the actions, of a task its own —:
- * „Weryfikuj”, „Sprawdź aktualizacje” and „Pobierz” start a job of the
- * manifest's tasks, „Przepnij” one of a task, each followed to its end with
- * its tasks or files and, when it fails, the producer's instruction (a left
- * lock of the manifest); a job of the project already running is followed
- * instead. A download and a repin also go to the downloads of the top bar
- * (downloads.js), so they stay in sight after the card or the view closes.
- * „+ Zadanie” adds a pasted producer's command as a task (the producer reads
- * and checks it without the network; its text for a mistake shows at the
- * field) and „Usuń” removes a task after a confirmation. „Udostępnij…” opens
- * the sharing screen (views/sharing.js): who sees the project, its owner and
- * its data folder. An action the session may not do is disabled with the
- * reason: a project is changed and shared by its owner or an administrator
- * (`project_write`), a download and a repin write the store (`store_write`)
- * the manifest names, and they and a check need the network. Beside the
- * producers' tasks, the group „Dane własne” (SPEC 4.7.1): the project's data
- * folder with its state, files, sizes and problems, each file with its change
- * since its last snapshot leading to its card (views/own.js), „Odśwież” (an
- * `own_scan` of the folder, followed to its end; after the sharing screen
- * changed the folder, the scan the server started) and „Pokaż na mapie” (the
- * project's map: its own data and pinned versions).
+ * The chosen project (`?view=projects&project=<id>`) is in the side panel:
+ * its directory to copy, the store of each producer with its match or that
+ * it matches no configured one, its area with the state of the area file,
+ * when and by whom it was created, its problems, and its groups in the file's
+ * order — each with where its versions came from (a plan's commands to copy,
+ * or the requests that chose them from the store) and its pins with their
+ * state, leading to their file cards. „Zmień…” changes the name, the
+ * description, the area and the store of a producer; „Udostępnij…” opens the
+ * sharing screen (views/sharing.js): who sees the project, its owner and its
+ * data folder. Both are the owner's or an administrator's
+ * (`project_write`); otherwise they are disabled with the reason. Beside the
+ * groups, „Dane własne” (SPEC 4.7.1): the project's data folder with its
+ * state, files, sizes and problems, each file with its change since its last
+ * snapshot leading to its card (views/own.js), „Odśwież” (an `own_scan` of
+ * the folder, followed to its end; after the sharing screen changed the
+ * folder, the scan the server started) and „Pokaż na mapie” (the project's
+ * map: its own data and pinned versions).
  */
 
 import {
-  addProjectTask,
   createProject,
   getProject,
-  getProjectStatus,
   listJobs,
   listOwnFiles,
   listProjects,
-  parseCommand,
-  removeProjectTask,
-  startProjectJob,
+  setProjectArea,
+  setProjectStore,
   startProjectScan,
+  updateProject,
+  uploadArea,
 } from "../api.js";
 import { useApp } from "../context.js";
-import { downloadName, useDownloadActions } from "../downloads.js";
 import { count, int, size, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { projects as L } from "../labels/projects.js";
@@ -79,11 +69,8 @@ import {
   loadCardStyles,
   pathToCopy,
   pinStateName,
-  projectSummary,
   ServerPath,
   StaleNote,
-  statusLevel,
-  statusName,
   storeName,
   useJob,
 } from "./cards.js";
@@ -95,19 +82,7 @@ const ALL = "";
 // Own files of one page of the group (the API's largest).
 const OWN_PAGE = 200;
 const FOLDER_LEVEL = { ok: "ok", missing: "bad", unreadable: "bad", invalid: "bad" };
-// Why an action of a project is disabled, in the order a reason is told
-// (labels `why`): who may change the project, a store to write, the
-// permission to write it, the network, a job of the project running.
-const REASONS = ["write", "store", "store_write", "offline", "busy"];
-// The reasons each action can have.
-const ACTION_REASONS = {
-  verify: ["busy"],
-  check: ["offline", "busy"],
-  download: ["write", "store", "store_write", "offline", "busy"],
-  repin: ["write", "store", "store_write", "offline", "busy"],
-  change: ["write"],
-  share: ["write"],
-};
+const AREA_LEVEL = { ok: "ok", missing: "bad", changed: "warn", invalid: "bad" };
 
 /**
  * The Projects view (route `projects`).
@@ -126,7 +101,9 @@ export default function ProjectsView({ route }) {
     label: L.panel,
     open: chosen !== null,
     onClose: () => setParams({ project: null }),
-    content: chosen ? html`<${ProjectCard} key=${chosen} id=${chosen} onChanged=${list.reload} />` : null,
+    content: chosen
+      ? html`<${ProjectCard} key=${chosen} id=${chosen} onChanged=${list.reload} />`
+      : null,
   };
   return html`<${ViewLayout} id="projects" right=${panel}>
     <${ProjectList} list=${list} chosen=${chosen} store=${store} route=${route} />
@@ -157,9 +134,12 @@ function ProjectList({ list, chosen, store, route }) {
         : null}
       <div class="pc-new-open">
         <button type="button" class="btn sm" disabled=${createWhy !== null || creating}
-          title=${createWhy ?? L.create.open_title} aria-describedby=${createWhy ? `${id}-why` : null}
+          title=${createWhy ?? L.create.open_title}
+          aria-describedby=${createWhy ? `${id}-why` : null}
           onClick=${() => setCreating(true)}><${Icon} name="plus" size=${14} />${L.create.open}</button>
-        ${createWhy ? html`<span class="faint pc-why-inline" id=${`${id}-why`}>${createWhy}</span>` : null}
+        ${createWhy
+          ? html`<span class="faint pc-why-inline" id=${`${id}-why`}>${createWhy}</span>`
+          : null}
       </div>
     </div>
     <div class="cards-scroll">
@@ -186,10 +166,8 @@ function ProjectList({ list, chosen, store, route }) {
             <table class="projects-table">
               <thead><tr>
                 <th scope="col">${L.columns.name}</th>
-                <th scope="col">${L.columns.producer}</th>
-                <th scope="col">${L.columns.store}</th>
-                <th scope="col">${L.columns.status}</th>
-                <th scope="col" class="num">${L.columns.tasks}</th>
+                <th scope="col">${L.columns.stores}</th>
+                <th scope="col" class="num">${L.columns.groups}</th>
                 <th scope="col" class="num">${L.columns.pins}</th>
                 <th scope="col" class="num">${L.columns.missing_pins}</th>
                 <th scope="col">${L.columns.scanned_at}</th>
@@ -205,16 +183,23 @@ function ProjectList({ list, chosen, store, route }) {
                       <${Link} view="projects" params=${{ ...route.params, project: item.project }}
                         class="row-link" aria-current=${item.project === chosen ? "true" : null}>
                         ${item.name}</${Link}>
-                      ${item.project !== item.name ? html` <span class="faint mono">${item.project}</span>` : null}
-                      <${ManifestProblems} manifests=${item.manifests} />
+                      ${item.project !== item.name
+                        ? html` <span class="faint mono">${item.project}</span>`
+                        : null}
+                      ${item.description
+                        ? html`<p class="faint pc-row-description">${item.description}</p>`
+                        : null}
+                      ${item.problem
+                        ? html`<p class="row-problem"><${Icon} name="alert" size=${13} />
+                            <span>${fileProblem(item.problem)}</span></p>`
+                        : null}
                     </td>
-                    <td class="mono">${producers(item.manifests)}</td>
-                    <td>${storeLines(health, item.manifests)}</td>
-                    <td>${byManifest(item.manifests, statusBadge)}</td>
-                    <td class="num tabular">${int(item.tasks)}</td>
+                    <td><${StoreLines} stores=${item.stores} /></td>
+                    <td class="num tabular">${int(item.groups)}</td>
                     <td class="num tabular">${int(item.pins)}</td>
-                    <td class=${item.missing_pins ? "num tabular bad-text" : "num tabular"}>${int(item.missing_pins)}</td>
-                    <td class="nw">${byManifest(item.manifests, scannedAt)}</td>
+                    <td class=${item.missing_pins ? "num tabular bad-text" : "num tabular"}>
+                      ${int(item.missing_pins)}</td>
+                    <td class="nw">${stamp(item.scanned_at)}</td>
                   </tr>`,
                 )}
               </tbody>
@@ -224,196 +209,307 @@ function ProjectList({ list, chosen, store, route }) {
     </div>`;
 }
 
+/** The text of a project file that is not used: invalid, or of a newer format. */
+function fileProblem(problem) {
+  return L.file_problem[problem] ?? problem;
+}
+
 /**
- * The values of a project's manifests, one line each led by its producer; a
- * project of one manifest (the usual one) shows its value alone.
+ * The store of each producer of a project: the configured store its root
+ * matches, or that it matches none (with the root the file writes).
  *
- * @param {import("../types.js").ProjectManifest[]} manifests
- * @param {(manifest: import("../types.js").ProjectManifest) => *} render
+ * @param {{stores: import("../types.js").ProjectStore[]}} props
  */
-function byManifest(manifests, render) {
-  if (manifests.length === 1) return render(manifests[0]);
-  return manifests.map(
-    (manifest) => html`<div key=${manifest.producer}>
-      <span class="faint mono">${manifest.producer}:</span>${" "}${render(manifest)}</div>`,
+function StoreLines({ stores }) {
+  const { health } = useApp();
+  if (!stores.length) return html`<span class="faint">${T.common.empty}</span>`;
+  return stores.map(
+    (item) => html`<div key=${item.producer}>
+      <span class="faint mono">${item.producer}:</span>${" "}
+      <${Tech} value=${[["producer", item.producer], ["root", item.root], ["store", item.store ?? "–"]]}>
+        ${item.store
+          ? storeName(health, item.store)
+          : html`<span class="warn-text">${L.unknown_store}</span>`}
+      </${Tech}>
+    </div>`,
   );
 }
 
-/** The producers of a project's manifests, Kartograf's first. */
-function producers(manifests) {
-  return manifests.map((manifest) => manifest.producer).join(", ");
-}
-
-/** The store each manifest names, or that it names none of the settings. */
-function storeLines(health, manifests) {
-  return byManifest(manifests, (manifest) =>
-    manifest.store
-      ? storeName(health, manifest.store)
-      : html`<span class="warn-text">${L.no_store}</span>`,
-  );
-}
-
-function statusBadge(manifest) {
-  const level = statusLevel(manifest.status);
-  return html`<${Badge} level=${level}>${statusName(manifest.status)}</${Badge}>`;
-}
-
-function scannedAt(manifest) {
-  return stamp(manifest.scanned_at);
-}
-
-/** The producer's message of each invalid manifest of a project's row. */
-function ManifestProblems({ manifests }) {
-  const several = manifests.length > 1;
-  return manifests
-    .filter((manifest) => manifest.problem)
-    .map(
-      (manifest) => html`<p key=${manifest.producer} class="row-problem">
-        <${Icon} name="alert" size=${13} />
-        <span><b>${L.invalid}:</b>${" "}${several ? `${manifest.producer}: ` : ""}${
-          manifest.problem}</span></p>`,
-    );
+/** The first value of a new project's directory: the first project directory of the settings. */
+function initialPath(dirs) {
+  return dirs.length ? `${dirs[0]}/` : "";
 }
 
 /**
- * „Nowy projekt”: a producer with a directory in some store, that store and
- * the project's directory in a project directory of the settings; the
- * producer writes the manifest (`POST /projects`).
+ * Keep the area of a chosen geometry file (`POST /areas`), `null` without one.
+ *
+ * @param {File|null} file
+ * @returns {Promise<string|null>} The area's id.
+ */
+async function keptArea(file) {
+  if (!file) return null;
+  const area = await uploadArea(file, { name: file.name });
+  return area.id;
+}
+
+/**
+ * „Nowy projekt”: the project's directory in a project directory of the
+ * settings, its name, description and area (a geometry file kept as an area
+ * first); Archiwista writes the project file (`POST /projects`).
  *
  * @param {{onClose: () => void,
  *   onCreated: (card: import("../types.js").ProjectCard) => void}} props
  */
 function NewProject({ onClose, onCreated }) {
-  const { health, settings } = useApp();
+  const { settings } = useApp();
   const id = useId();
-  const [form, setForm] = useState({ producer: null, store: null, path: null });
-  const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState(null);
-  const stores = health?.stores ?? [];
-  const producers = (health?.sources ?? [])
-    .filter((source) => source.status === "available")
-    .map((source) => source.producer)
-    .filter((name) => stores.some((item) => item.producers.includes(name)));
-  const producer = producers.includes(form.producer) ? form.producer : (producers[0] ?? "");
-  const choices = stores.filter((item) => item.producers.includes(producer));
-  const store = choices.some((item) => item.store === form.store) ? form.store : (choices[0]?.store ?? "");
   const dirs = settings?.project_dirs ?? [];
-  const path = form.path ?? (dirs.length ? `${dirs[0]}/` : "");
-  const field = problem?.details?.option === "path" || problem?.details?.option === "store" ? problem.details.option : null;
-  const ready = producer !== "" && store !== "" && path.trim() !== "" && !saving;
+  const [form, setForm] = useState({ path: initialPath(dirs), name: "", description: "", area: null });
+  const [saving, setSaving] = useState(false);
+  const [refusal, setRefusal] = useState(null);
+  const ready = form.path.trim() !== "" && !saving;
   const change = (patch) => {
     setForm((now) => ({ ...now, ...patch }));
-    setProblem(null);
+    setRefusal(null);
   };
   const submit = async (event) => {
     event.preventDefault();
     if (!ready) return;
     setSaving(true);
-    setProblem(null);
+    setRefusal(null);
+    let stage = "area";
     try {
-      const card = await createProject({ producer, store, path: path.trim() });
-      onCreated(card);
+      const areaId = await keptArea(form.area);
+      stage = "create";
+      const body = { path: form.path.trim() };
+      if (form.name.trim()) body.name = form.name.trim();
+      if (form.description.trim()) body.description = form.description.trim();
+      if (areaId) body.area_id = areaId;
+      onCreated(await createProject(body));
     } catch (error) {
       if (!error.problem) throw error;
-      setProblem(error.problem);
+      const option = error.problem.details?.option ?? null;
+      const field = stage === "area" ? "area" : option === "path" ? "path" : null;
+      setRefusal({ problem: error.problem, field });
     } finally {
       setSaving(false);
     }
   };
+  const at = (field) => (refusal?.field === field ? refusal.problem : null);
   return html`<form class="pc-form pc-new" aria-labelledby=${`${id}-title`} onSubmit=${submit}>
     <h2 class="section-title" id=${`${id}-title`}>${L.create.title}</h2>
-    ${producers.length
-      ? html`<div class="pc-form-row">
-          <div class="field">
-            <label for=${`${id}-producer`}>${L.create.producer}</label>
-            <select id=${`${id}-producer`} value=${producer}
-              onChange=${(event) => change({ producer: event.currentTarget.value })}>
-              ${producers.map((name) => html`<option key=${name} value=${name}>${name}</option>`)}
-            </select>
-          </div>
-          <div class=${`field${field === "store" ? " invalid" : ""}`}>
-            <label for=${`${id}-store`}>${L.create.store}</label>
-            <select id=${`${id}-store`} value=${store} aria-invalid=${field === "store" ? "true" : null}
-              aria-describedby=${`${id}-store-note`}
-              onChange=${(event) => change({ store: event.currentTarget.value })}>
-              ${choices.map((item) => html`<option key=${item.store} value=${item.store}>${item.name}</option>`)}
-            </select>
-            ${field === "store"
-              ? html`<span class="field-error" id=${`${id}-store-note`} role="alert">${problem.detail}</span>`
-              : html`<span class="field-hint" id=${`${id}-store-note`}>${L.create.store_hint}</span>`}
-          </div>
-        </div>`
-      : html`<p class="hint warn" role="note">${L.create.no_producer}</p>`}
-    <div class=${`field${field === "path" ? " invalid" : ""}`}>
+    <div class=${`field${at("path") ? " invalid" : ""}`}>
       <label for=${`${id}-path`}>${L.create.path}</label>
-      <input id=${`${id}-path`} class="mono" value=${path} autocomplete="off" spellcheck="false"
-        aria-invalid=${field === "path" ? "true" : null} aria-describedby=${`${id}-path-note`}
+      <input id=${`${id}-path`} class="mono" value=${form.path} autocomplete="off" spellcheck="false"
+        aria-invalid=${at("path") ? "true" : null} aria-describedby=${`${id}-path-note`}
         onInput=${(event) => change({ path: event.currentTarget.value })} />
-      ${field === "path"
-        ? html`<span class="field-error" id=${`${id}-path-note`} role="alert">${problem.detail}</span>`
-        : html`<span class="field-hint" id=${`${id}-path-note`}>${t(L.create.path_hint, { dirs: dirs.join(", ") || "–" })}</span>`}
+      ${at("path")
+        ? html`<span class="field-error" id=${`${id}-path-note`} role="alert">${at("path").detail}</span>`
+        : html`<span class="field-hint" id=${`${id}-path-note`}>
+            ${t(L.create.path_hint, { dirs: dirs.join(", ") || "–" })}</span>`}
     </div>
-    ${problem && field === null ? html`<${ProblemView} problem=${problem} compact />` : null}
+    <${TextFields} id=${id} form=${form} onChange=${change} nameHint=${L.create.name_hint} />
+    <${AreaField} id=${id} file=${form.area} problem=${at("area")}
+      onChange=${(area) => change({ area })} />
+    ${refusal && refusal.field === null ? html`<${ProblemView} problem=${refusal.problem} compact />` : null}
     <div class="pc-form-actions">
       <button type="submit" class="btn sm primary" disabled=${!ready}>
-        ${saving ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="plus" size=${14} />`}
+        ${saving
+          ? html`<span class="spinner" aria-hidden="true"></span>`
+          : html`<${Icon} name="plus" size=${14} />`}
         ${L.create.submit}</button>
-      <button type="button" class="btn sm ghost" disabled=${saving} onClick=${onClose}>${L.create.cancel}</button>
+      <button type="button" class="btn sm ghost" disabled=${saving} onClick=${onClose}>
+        ${L.create.cancel}</button>
+    </div>
+  </form>`;
+}
+
+/** The name and the description of a project's form. */
+function TextFields({ id, form, onChange, nameHint }) {
+  return html`<div class="pc-form-row">
+      <div class="field">
+        <label for=${`${id}-name`}>${L.form.name}</label>
+        <input id=${`${id}-name`} value=${form.name} autocomplete="off"
+          aria-describedby=${`${id}-name-note`}
+          onInput=${(event) => onChange({ name: event.currentTarget.value })} />
+        <span class="field-hint" id=${`${id}-name-note`}>${nameHint}</span>
+      </div>
+    </div>
+    <div class="field">
+      <label for=${`${id}-description`}>${L.form.description}</label>
+      <textarea id=${`${id}-description`} class="pc-description" rows="2" value=${form.description}
+        onInput=${(event) => onChange({ description: event.currentTarget.value })}></textarea>
+    </div>`;
+}
+
+/** A geometry file to keep as the project's area, with the server's refusal of it. */
+function AreaField({ id, file, problem, label = L.form.area, onChange }) {
+  return html`<div class=${`field${problem ? " invalid" : ""}`}>
+    <label for=${`${id}-area`}>${label}</label>
+    <input id=${`${id}-area`} type="file" accept=".geojson,.json,.gpkg,.zip"
+      aria-invalid=${problem ? "true" : null} aria-describedby=${`${id}-area-note`}
+      onChange=${(event) => onChange(event.currentTarget.files?.[0] ?? null)} />
+    ${problem
+      ? html`<span class="field-error" id=${`${id}-area-note`} role="alert">${problem.detail}</span>`
+      : html`<span class="field-hint" id=${`${id}-area-note`}>
+          ${file ? file.name : L.form.area_hint}</span>`}
+  </div>`;
+}
+
+/**
+ * The producers whose store a project may name: those of its file and the
+ * available ones with a directory in some configured store.
+ */
+function storeProducers(card, health) {
+  const stores = health?.stores ?? [];
+  const names = card.stores.map((item) => item.producer);
+  for (const source of health?.sources ?? []) {
+    const held = stores.some((item) => item.producers.includes(source.producer));
+    if (source.status === "available" && held && !names.includes(source.producer)) {
+      names.push(source.producer);
+    }
+  }
+  return names;
+}
+
+/**
+ * „Zmień projekt”: its name, description, area (a new geometry file, or none)
+ * and the store of each producer; each change goes by its own route
+ * (`PATCH /projects/{project}`, `PUT …/area`, `PUT …/stores/{producer}`) and
+ * the first refusal stops the rest.
+ *
+ * @param {{card: import("../types.js").ProjectCard, onClose: () => void,
+ *   onSaved: () => void, onChanged: () => void}} props - `onChanged`: some
+ *   change was written before a refusal.
+ */
+function EditProject({ card, onClose, onSaved, onChanged }) {
+  const { health } = useApp();
+  const id = useId();
+  const producers = storeProducers(card, health);
+  const current = Object.fromEntries(card.stores.map((item) => [item.producer, item.store]));
+  const [form, setForm] = useState({
+    name: card.name,
+    description: card.description,
+    area: null,
+    clearArea: false,
+    stores: Object.fromEntries(producers.map((name) => [name, current[name] ?? ""])),
+  });
+  const [saving, setSaving] = useState(false);
+  const [refusal, setRefusal] = useState(null);
+  const change = (patch) => {
+    setForm((now) => ({ ...now, ...patch }));
+    setRefusal(null);
+  };
+  const text = {};
+  if (form.name.trim() && form.name.trim() !== card.name) text.name = form.name.trim();
+  if (form.description.trim() !== card.description) text.description = form.description.trim();
+  const stores = producers.filter((name) => form.stores[name] && form.stores[name] !== current[name]);
+  const changes = Object.keys(text).length + stores.length + (form.area || form.clearArea ? 1 : 0);
+  const ready = changes > 0 && !saving;
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!ready) return;
+    setSaving(true);
+    setRefusal(null);
+    let written = false;
+    let field = null;
+    try {
+      if (Object.keys(text).length) {
+        await updateProject(card.project, text);
+        written = true;
+      }
+      if (form.area) {
+        field = "area";
+        const areaId = await keptArea(form.area);
+        field = null;
+        await setProjectArea(card.project, areaId);
+        written = true;
+      } else if (form.clearArea) {
+        await setProjectArea(card.project, null);
+        written = true;
+      }
+      for (const producer of stores) {
+        field = `store-${producer}`;
+        await setProjectStore(card.project, producer, form.stores[producer]);
+        written = true;
+      }
+      onSaved();
+    } catch (error) {
+      if (!error.problem) throw error;
+      setRefusal({ problem: error.problem, field });
+      if (written) onChanged();
+    } finally {
+      setSaving(false);
+    }
+  };
+  const at = (name) => (refusal?.field === name ? refusal.problem : null);
+  return html`<form class="pc-form" aria-labelledby=${`${id}-title`} onSubmit=${submit}>
+    <h3 class="section-title" id=${`${id}-title`}>${L.edit.title}</h3>
+    <${TextFields} id=${id} form=${form} onChange=${change} nameHint=${L.edit.name_hint} />
+    <${AreaField} id=${id} file=${form.area} problem=${at("area")}
+      label=${card.area ? L.edit.area_new : L.form.area}
+      onChange=${(area) => change({ area, clearArea: false })} />
+    ${card.area
+      ? html`<label class="check-field">
+          <input type="checkbox" checked=${form.clearArea} disabled=${form.area !== null}
+            onChange=${(event) => change({ clearArea: event.currentTarget.checked })} />
+          <span>${L.edit.area_clear}</span>
+        </label>`
+      : null}
+    ${producers.length
+      ? html`<div class="pc-form-row">${producers.map(
+          (producer) => html`<${StoreField} key=${producer} id=${`${id}-store-${producer}`}
+            producer=${producer} value=${form.stores[producer] ?? ""} current=${current[producer] ?? null}
+            problem=${at(`store-${producer}`)}
+            onChange=${(value) => change({ stores: { ...form.stores, [producer]: value } })} />`,
+        )}</div>`
+      : null}
+    ${refusal && refusal.field === null ? html`<${ProblemView} problem=${refusal.problem} compact />` : null}
+    <div class="pc-form-actions">
+      <button type="submit" class="btn sm primary" disabled=${!ready}>
+        ${saving
+          ? html`<span class="spinner" aria-hidden="true"></span>`
+          : html`<${Icon} name="check" size=${14} />`}
+        ${L.edit.submit}</button>
+      <button type="button" class="btn sm ghost" disabled=${saving} onClick=${onClose}>
+        ${L.edit.cancel}</button>
     </div>
   </form>`;
 }
 
 /**
- * The reason each action on a project's manifest is disabled now, or `null`.
- *
- * @param {import("../types.js").ProjectCard} card
- * @param {import("../types.js").ProjectManifest} manifest - The manifest acted on.
- * @param {{store_write: boolean}|null} session
- * @param {boolean} offline
- * @param {boolean} busy - A job of the project is being started or runs.
- * @returns {Object<string, string|null>} Per action (`ACTION_REASONS`), a key of `REASONS`.
+ * The store of one producer's pins: a configured store with the producer's
+ * directory; „—” only while the project names none that matches.
  */
-function blocked(card, manifest, session, offline, busy) {
-  const holds = {
-    write: !card.project_write,
-    store: manifest.store === null,
-    store_write: !session?.store_write,
-    offline,
-    busy,
-  };
-  return Object.fromEntries(
-    Object.entries(ACTION_REASONS).map(([action, reasons]) => [
-      action,
-      reasons.find((reason) => holds[reason]) ?? null,
-    ]),
-  );
-}
-
-/** The store every manifest of a project names, else `null`. */
-function commonStore(manifests) {
-  const stores = new Set(manifests.map((manifest) => manifest.store));
-  return stores.size === 1 ? manifests[0].store : null;
+function StoreField({ id, producer, value, current, problem, onChange }) {
+  const { health } = useApp();
+  const choices = (health?.stores ?? []).filter((item) => item.producers.includes(producer));
+  return html`<div class=${`field${problem ? " invalid" : ""}`}>
+    <label for=${id}>${t(L.edit.store, { producer })}</label>
+    <select id=${id} value=${value} aria-invalid=${problem ? "true" : null}
+      aria-describedby=${`${id}-note`} onChange=${(event) => onChange(event.currentTarget.value)}>
+      ${current ? null : html`<option value="">${L.edit.store_none}</option>`}
+      ${choices.map((item) => html`<option key=${item.store} value=${item.store}>${item.name}</option>`)}
+    </select>
+    ${problem
+      ? html`<span class="field-error" id=${`${id}-note`} role="alert">${problem.detail}</span>`
+      : html`<span class="field-hint" id=${`${id}-note`}>${L.edit.store_hint}</span>`}
+  </div>`;
 }
 
 function ProjectCard({ id, onChanged }) {
-  const { health, session, settings } = useApp();
   const cardId = useId();
   const resource = useResource((signal) => getProject(id, { signal }), [id]);
-  const [round, setRound] = useState(0);
-  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [done, setDone] = useState(null);
-  const [producer, setProducer] = useState(null);
   const [sharing, setSharing] = useState(false);
   // Each change of the data folder on the sharing screen: „Dane własne” reads
   // the folder again and follows the scan the server started.
   const [folderRound, setFolderRound] = useState(0);
   const changed = () => {
     resource.reload();
-    setRound((n) => n + 1);
     onChanged();
   };
-  const job = useJob({ onEnd: changed });
-  const { track } = useDownloadActions();
   const { data: card, error } = resource;
   if (!card) {
     if (!error) return html`<${Spinner} />`;
@@ -421,117 +517,45 @@ function ProjectCard({ id, onChanged }) {
       ? html`<p class="hint warn">${t(L.not_found, { project: id })}</p>`
       : html`<${ProblemView} problem=${error.problem} />`;
   }
-  // A project of two manifests acts on the one chosen at the actions, and a
-  // task through its own; the API needs the producer only then.
-  const several = card.manifests.length > 1;
-  const manifestOf = (name) =>
-    card.manifests.find((manifest) => manifest.producer === name) ?? card.manifests[0];
-  const acting = manifestOf(producer);
-  const busy = job.starting || job.running;
-  const whyOf = (manifest) => blocked(card, manifest, session, Boolean(settings?.offline), busy);
-  const why = whyOf(acting);
-  const taskWhy = Object.fromEntries(
-    card.manifests.map((manifest) => [manifest.producer, whyOf(manifest)]),
-  );
-  const reasonId = (reason) => `${cardId}-why-${reason}`;
-  const told = REASONS.filter((reason) =>
-    [why, ...Object.values(taskWhy)].some((each) => Object.values(each).includes(reason)),
-  );
-  const start = (kind, tasks = null, by = acting.producer) => {
-    setDone(null);
-    const body = { kind, ...(tasks ? { tasks } : {}), ...(several ? { producer: by } : {}) };
-    job.run(async () => {
-      const started = await startProjectJob(card.project, body);
-      track(started, { title: downloadName(started, card.name) });
-      return started;
-    }, `project_${kind}`);
-  };
-  const values = [["project", card.project]];
-  for (const manifest of card.manifests) {
-    values.push(["producer", manifest.producer]);
-    if (manifest.store) values.push(["store", manifest.store]);
-  }
-  const invalid = card.manifests.filter((manifest) => manifest.problem);
+  const why = card.project_write ? null : L.why.write;
+  const whyId = `${cardId}-why`;
   return html`<article class="project-card" aria-labelledby="project-card-title">
     <h2 class="pc-title" id="project-card-title">
-      <${Tech} value=${values}>${card.name}</${Tech}>
+      <${Tech} value=${[["project", card.project], ["path", card.path.local]]}>${card.name}</${Tech}>
     </h2>
+    ${card.description ? html`<p class="pc-description-text">${card.description}</p>` : null}
     <${StaleNote} stores=${card.stale_stores} />
-    <dl class="kv">
-      <dt>${L.card.producer}</dt><dd>${producers(card.manifests)}</dd>
-      <dt>${L.card.store}</dt>
-      <dd>${storeLines(health, card.manifests)}</dd>
-      <dt>${L.card.scanned_at}</dt><dd>${byManifest(card.manifests, scannedAt)}</dd>
-      <dt>${L.card.stored_status}</dt>
-      <dd>${byManifest(card.manifests, statusBadge)}</dd>
-      ${invalid.length ? null : html`<${LiveStatus} id=${card.project} round=${round} />`}
-      ${card.missing_pins
-        ? html`<dt>${L.card.missing_pins}</dt><dd class="bad-text tabular">${int(card.missing_pins)}</dd>`
-        : null}
-    </dl>
-    ${invalid.length && !card.problems.some((issue) => issue.code === "invalid_manifest")
-      ? invalid.map(
-          (manifest) => html`<div key=${manifest.producer} class="problem compact" role="alert">
-            <div class="problem-head"><${Icon} name="alert" /><b>${L.card.manifest_error}</b></div>
-            <p class="problem-producer"><code>${manifest.problem}</code></p>
-          </div>`,
-        )
-      : null}
+    <${ProjectFacts} card=${card} />
     <div class="pc-actions" role="group" aria-label=${L.actions.label}>
-      ${several
-        ? html`<label class="pc-producer">${L.actions.producer}${" "}
-            <select value=${acting.producer}
-              onChange=${(event) => setProducer(event.currentTarget.value)}>
-              ${card.manifests.map(
-                (manifest) => html`<option key=${manifest.producer} value=${manifest.producer}>
-                  ${manifest.producer}</option>`,
-              )}
-            </select></label>`
-        : null}
-      <${ActionButton} icon="check" label=${L.actions.verify} title=${L.actions.verify_title}
-        reason=${why.verify} reasonId=${reasonId} onClick=${() => start("verify")} />
-      <${ActionButton} icon="search" label=${L.actions.check} title=${L.actions.check_title}
-        reason=${why.check} reasonId=${reasonId} onClick=${() => start("check")} />
-      <${ActionButton} icon="database" label=${L.actions.download} title=${L.actions.download_title}
-        reason=${why.download} reasonId=${reasonId} onClick=${() => start("download")} />
-      <${ActionButton} icon="plus" label=${L.actions.add} title=${L.actions.add_title}
-        reason=${adding ? "" : why.change} reasonId=${reasonId}
+      <${ActionButton} icon="settings" label=${L.edit.open} title=${L.edit.open_title}
+        why=${editing ? "" : why} whyId=${whyId}
         onClick=${() => {
           setDone(null);
-          setAdding(true);
+          setEditing(true);
         }} />
       <${ActionButton} icon="users" label=${L.actions.share} title=${L.actions.share_title}
-        reason=${why.share} reasonId=${reasonId} onClick=${() => setSharing(true)} />
+        why=${why} whyId=${whyId} onClick=${() => setSharing(true)} />
     </div>
-    ${told.length
-      ? html`<ul class="pc-why">${told.map(
-          (reason) => html`<li key=${reason} id=${reasonId(reason)}>${L.why[reason]}</li>`,
-        )}</ul>`
+    ${why ? html`<p class="pc-why" id=${whyId}>${why}</p>` : null}
+    ${editing
+      ? html`<${EditProject} card=${card} onClose=${() => setEditing(false)}
+          onChanged=${changed}
+          onSaved=${() => {
+            setEditing(false);
+            setDone(L.edit.saved);
+            changed();
+          }} />`
       : null}
-    <${JobStatus} job=${job} summary=${projectSummary} />
     ${done
       ? html`<p class="pc-done" role="status"><${Icon} name="check" size=${15} /><span>${done}</span></p>`
       : null}
     ${card.problems.length
       ? html`<section class="det-sec">
           <h3 class="section-title">${count(card.problems.length, T.common.units.problems)}</h3>
-          <${IssueList} issues=${card.problems} store=${commonStore(card.manifests)}
-            currentProject=${card.project} />
+          <${IssueList} issues=${card.problems} currentProject=${card.project} />
         </section>`
       : null}
-    <${Tasks} card=${card} why=${taskWhy} reasonId=${reasonId}
-      adding=${adding ? html`<${AddTask} card=${card} producer=${acting.producer}
-        onClose=${() => setAdding(false)}
-        onAdded=${(name) => {
-          setAdding(false);
-          setDone(t(L.task.added, { name }));
-          changed();
-        }} />` : null}
-      onRepin=${(task) => start("repin", [task.task], task.producer)}
-      onRemoved=${(name) => {
-        setDone(t(L.task.removed, { name }));
-        changed();
-      }} />
+    <${Groups} card=${card} />
     <${OwnData} key=${card.project} project=${card.project} round=${folderRound} />
     ${sharing
       ? html`<${SharingDialog} project=${card.project} name=${card.name}
@@ -539,8 +563,7 @@ function ProjectCard({ id, onChanged }) {
             if (what === "folder") {
               setFolderRound((n) => n + 1);
             } else {
-              resource.reload();
-              onChanged();
+              changed();
             }
           }}
           onClose=${() => setSharing(false)} />`
@@ -548,258 +571,105 @@ function ProjectCard({ id, onChanged }) {
   </article>`;
 }
 
+/** The project's directory, stores, area, creation and reading of its file. */
+function ProjectFacts({ card }) {
+  const { first, server } = pathToCopy(card.path);
+  return html`<dl class="kv">
+    <dt>${L.card.path}</dt>
+    <dd class="pc-path">
+      <code class="path">${first}</code>
+      <${CopyButton} text=${first} label=${L.card.copy_path} />
+      <${ServerPath} path=${server} />
+    </dd>
+    <dt>${L.card.stores}</dt>
+    <dd>${card.stores.length
+      ? html`<${StoreLines} stores=${card.stores} />`
+      : html`<span class="faint">${L.card.no_stores}</span>`}</dd>
+    <dt>${L.card.area}</dt>
+    <dd><${AreaValue} area=${card.area} /></dd>
+    ${card.created_at
+      ? html`<dt>${L.card.created}</dt>
+          <dd>${t(L.card.created_value, { at: stamp(card.created_at), by: card.created_by ?? "–" })}</dd>`
+      : null}
+    <dt>${L.card.scanned_at}</dt><dd>${stamp(card.scanned_at)}</dd>
+    ${card.missing_pins
+      ? html`<dt>${L.card.missing_pins}</dt><dd class="bad-text tabular">${int(card.missing_pins)}</dd>`
+      : null}
+  </dl>`;
+}
+
+/** A project's area: its file's state and, when it is used, a link to the map. */
+function AreaValue({ area }) {
+  if (!area) return html`<span class="faint">${L.card.no_area}</span>`;
+  const state = area.state ?? "unread";
+  return html`<span class="pc-area">
+    <${Badge} level=${AREA_LEVEL[state] ?? "plain"}>
+      <${Tech} value=${[["path", area.path], ["sha256", area.sha256], ["state", state]]}>
+        ${L.card.area_states[state] ?? state}</${Tech}>
+    </${Badge}>
+    <code class="path">${area.path}</code>
+    ${area.state === "ok" && area.area_id
+      ? html`<${Link} class="btn ghost sm" view="map" params=${{ area_id: area.area_id }}>
+          <${Icon} name="map" size=${13} />${L.card.area_on_map}</${Link}>`
+      : null}
+  </span>`;
+}
+
 /**
- * A button of a project's action: disabled with its reason (`reason`, a key
- * of `REASONS`, told in the card's list of reasons; `""`: disabled while its
- * form is open) or `null` when it may be used.
+ * A button of a project's action: disabled with its reason (`why`, told in
+ * the card's note; `""`: disabled while its form is open) or `null` when it
+ * may be used.
  */
-function ActionButton({ icon, label, title, reason, reasonId, onClick }) {
-  const told = reason ? L.why[reason] : null;
-  return html`<button type="button" class="btn sm" disabled=${reason !== null}
-    title=${told ?? title} aria-describedby=${told ? reasonId(reason) : null} onClick=${onClick}>
+function ActionButton({ icon, label, title, why, whyId, onClick }) {
+  return html`<button type="button" class="btn sm" disabled=${why !== null}
+    title=${why || title} aria-describedby=${why ? whyId : null} onClick=${onClick}>
     <${Icon} name=${icon} size=${14} />${label}</button>`;
 }
 
-function LiveStatus({ id, round }) {
-  const { data, error, loading, reload } = useResource(
-    (signal) => getProjectStatus(id, { signal }),
-    [id, round],
-  );
-  const recheck = html`<button type="button" class="btn ghost sm icon-btn" onClick=${reload}
-    disabled=${loading} title=${L.card.recheck_hint} aria-label=${L.card.recheck}>
-    <${Icon} name="rotate" size=${14} /></button>`;
-  let value;
-  if (data) {
-    value = byManifest(
-      data.manifests,
-      (manifest) => html`${statusBadge(manifest)}
-        <span class="faint">${manifest.stale
-          ? t(L.card.stale_status, { at: stamp(manifest.checked_at) })
-          : t(L.card.checked_at, { at: stamp(manifest.checked_at) })}</span>`,
-    );
-  } else if (error) {
-    value = html`<${ProblemView} problem=${error.problem} compact />`;
-  } else {
-    value = html`<${Spinner} quiet />`;
-  }
-  return html`<dt>${L.card.live_status}</dt>
-    <dd class="pc-live">${value}${recheck}
-      ${data ? html`<${TaskStatuses} manifests=${data.manifests} />` : null}
-    </dd>`;
-}
-
-/** Each manifest's tasks as its producer checked them, led by it when several. */
-function TaskStatuses({ manifests }) {
-  const several = manifests.length > 1;
-  const tasks = manifests.flatMap((manifest) =>
-    manifest.tasks.map((task) => ({ ...task, producer: manifest.producer })),
-  );
-  if (!tasks.length) return null;
-  return html`<ul class="pc-task-statuses">
-    ${tasks.map(
-      (task) => html`<li key=${`${task.producer}/${task.task}`}>
-        <span class="mono">${task.task}</span>
-        ${several ? html`<span class="faint mono">${task.producer}</span>` : null}
-        <${Badge} level=${statusLevel(task.status)}>${statusName(task.status)}</${Badge}>
-      </li>`,
-    )}
-  </ul>`;
-}
-
-/**
- * The tasks of each manifest with their commands, pins and actions, and the
- * pins of no task; `why` holds the reasons of each manifest by producer.
- */
-function Tasks({ card, why, reasonId, adding, onRepin, onRemoved }) {
-  const several = card.manifests.length > 1;
-  const named = new Set(card.tasks.map((task) => `${task.producer}/${task.task}`));
-  const loose = card.pins.filter((pin) => !named.has(`${pin.producer}/${pin.task}`));
-  return html`<section class="det-sec">
-    <h3 class="section-title">${L.card.tasks}</h3>
-    ${adding}
-    ${card.tasks.length
-      ? html`<ul class="pc-tasks">
-          ${card.tasks.map(
-            (task) => html`<li key=${`${task.producer}/${task.task}`} class="pc-task">
-              <div class="pc-task-head">
-                <b class="mono">${task.task}</b>
-                ${several ? html`<span class="faint mono">${task.producer}</span>` : null}
-                <${Badge} level=${statusLevel(task.status)}>${statusName(task.status)}</${Badge}>
+/** The groups of pinned versions in the file's order, each with its origin and pins. */
+function Groups({ card }) {
+  return html`<section class="det-sec" aria-labelledby="pc-groups-title">
+    <h3 class="section-title" id="pc-groups-title">${L.card.groups}</h3>
+    ${card.groups.length
+      ? html`<ul class="pc-groups">
+          ${card.groups.map(
+            (group) => html`<li key=${group.name} class="pc-group">
+              <div class="pc-group-head">
+                <b>${group.name}</b>
+                <${Origin} origin=${group.origin} />
+                <span class="faint">${count(group.pins.length, L.card.pin_count)}</span>
               </div>
-              <${Command} task=${task} producer=${task.producer} />
-              <${PinList} store=${storeOf(card, task.producer)}
-                pins=${card.pins.filter(
-                  (pin) => pin.producer === task.producer && pin.task === task.task,
-                )} />
-              <${TaskActions} project=${card.project} task=${task}
-                producer=${several ? task.producer : null} why=${why[task.producer]}
-                reasonId=${reasonId} onRepin=${() => onRepin(task)}
-                onRemoved=${() => onRemoved(task.task)} />
+              ${group.origin.kind === "plan"
+                ? (group.origin.calls ?? []).map(
+                    (call, index) => html`<${Command} key=${index} producer=${group.origin.producer}
+                      call=${call} />`,
+                  )
+                : null}
+              <${PinList} pins=${group.pins} />
             </li>`,
           )}
         </ul>`
-      : html`<p class="faint">${L.card.no_tasks}</p>`}
-    ${loose.length
-      ? html`<h4 class="section-title">${L.card.other_pins}</h4>
-          ${card.manifests.map((manifest) => {
-            const pins = loose.filter((pin) => pin.producer === manifest.producer);
-            return pins.length
-              ? html`<${PinList} key=${manifest.producer} store=${manifest.store} pins=${pins} />`
-              : null;
-          })}`
-      : null}
+      : html`<p class="faint">${card.state === "ok" ? L.card.no_groups : L.card.groups_unread}</p>`}
   </section>`;
 }
 
-/** The store a project's manifest of `producer` names, or `null`. */
-function storeOf(card, producer) {
-  return card.manifests.find((manifest) => manifest.producer === producer)?.store ?? null;
+/** Where a group's versions came from: a plan of a producer, or the store. */
+function Origin({ origin }) {
+  if (origin.kind === "plan") {
+    return html`<${Badge} level="info">${t(L.card.origin_plan, { producer: origin.producer })}</${Badge}>`;
+  }
+  const sources = [...new Set((origin.selections ?? []).map((item) => item.source))];
+  const named = sources.map((source) => L.card.sources[source] ?? source).join(", ");
+  return html`<${Badge} level="plain">
+    ${named ? t(L.card.origin_local_from, { sources: named }) : L.card.origin_local}</${Badge}>`;
 }
 
-/**
- * „Przepnij” and „Usuń” of a task; a removal asks to be confirmed first.
- * `producer` names the task's manifest for a project of several, else `null`.
- */
-function TaskActions({ project, task, producer, why, reasonId, onRepin, onRemoved }) {
-  const id = useId();
-  const [confirming, setConfirming] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [problem, setProblem] = useState(null);
-  const remove = async () => {
-    setRemoving(true);
-    setProblem(null);
-    try {
-      await removeProjectTask(project, task.task, producer);
-      setConfirming(false);
-      onRemoved();
-    } catch (error) {
-      if (!error.problem) throw error;
-      setProblem(error.problem);
-    } finally {
-      setRemoving(false);
-    }
-  };
-  return html`<div class="pc-task-actions">
-    <div class="pc-task-buttons" role="group" aria-label=${t(L.task.actions, { name: task.task })}>
-      <${ActionButton} icon="rotate" label=${L.actions.repin} title=${L.actions.repin_title}
-        reason=${why.repin} reasonId=${reasonId} onClick=${onRepin} />
-      <${ActionButton} icon="trash" label=${L.actions.remove} title=${L.actions.remove_title}
-        reason=${confirming ? "" : why.change} reasonId=${reasonId}
-        onClick=${() => {
-          setProblem(null);
-          setConfirming(true);
-        }} />
-    </div>
-    ${confirming
-      ? html`<div class="pc-confirm" role="group" aria-labelledby=${`${id}-confirm`}>
-          <p id=${`${id}-confirm`}>${t(L.task.confirm, { name: task.task })}</p>
-          <div class="pc-form-actions">
-            <button type="button" class="btn sm danger" disabled=${removing} onClick=${remove}>
-              ${removing ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="trash" size=${14} />`}
-              ${L.task.confirm_remove}</button>
-            <button type="button" class="btn sm ghost" disabled=${removing}
-              onClick=${() => setConfirming(false)}>${L.task.confirm_cancel}</button>
-          </div>
-        </div>`
-      : null}
-    ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
-  </div>`;
-}
-
-/**
- * „+ Zadanie”: a pasted command of `producer` and the task's name. The
- * producer reads the line (`POST /commands/parse`) and adds the task to its
- * manifest after checking it without the network (`POST
- * /projects/{project}/tasks`, naming the producer for a project of several);
- * its text for a mistake shows at the line, or at the name for a refused name.
- */
-function AddTask({ card, producer, onAdded, onClose }) {
-  const id = useId();
-  const [line, setLine] = useState("");
-  const [name, setName] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [refusal, setRefusal] = useState(null);
-  const ready = line.trim() !== "" && name.trim() !== "" && !saving;
-  const submit = async (event) => {
-    event.preventDefault();
-    if (!ready) return;
-    const task = name.trim();
-    let stage = "parse";
-    setSaving(true);
-    setRefusal(null);
-    try {
-      const call = await parseCommand(producer, line.trim());
-      stage = "add";
-      const named = card.manifests.length > 1 ? { producer } : {};
-      await addProjectTask(card.project, {
-        name: task,
-        command: call.command,
-        options: call.options,
-        ...named,
-      });
-      onAdded(task);
-    } catch (error) {
-      if (!error.problem) throw error;
-      const option = error.problem.details?.option ?? null;
-      const field = stage === "parse" ? "line" : option === "name" ? "name" : option !== null ? "line" : null;
-      setRefusal({ problem: error.problem, field });
-    } finally {
-      setSaving(false);
-    }
-  };
-  const at = (field) => (refusal?.field === field ? refusal.problem : null);
-  return html`<form class="pc-form pc-add" aria-labelledby=${`${id}-title`} onSubmit=${submit}>
-    <h4 class="section-title" id=${`${id}-title`}>${L.task.title}</h4>
-    <div class=${`field${at("line") ? " invalid" : ""}`}>
-      <label for=${`${id}-line`}>${L.task.line}</label>
-      <textarea id=${`${id}-line`} class="mono pc-add-line" rows="2" value=${line} spellcheck="false"
-        autocomplete="off" placeholder=${L.task.line_placeholder}
-        aria-invalid=${at("line") ? "true" : null} aria-describedby=${`${id}-line-note`}
-        onInput=${(event) => {
-          setLine(event.currentTarget.value);
-          setRefusal(null);
-        }}></textarea>
-      ${at("line")
-        ? html`<${FieldError} id=${`${id}-line-note`} problem=${at("line")} />`
-        : html`<span class="field-hint" id=${`${id}-line-note`}>${t(L.task.line_hint, { producer })}</span>`}
-    </div>
-    <div class=${`field${at("name") ? " invalid" : ""}`}>
-      <label for=${`${id}-name`}>${L.task.name}</label>
-      <input id=${`${id}-name`} type="text" class="mono" value=${name} spellcheck="false" autocomplete="off"
-        placeholder=${L.task.name_example} aria-invalid=${at("name") ? "true" : null}
-        aria-describedby=${`${id}-name-note`}
-        onInput=${(event) => {
-          setName(event.currentTarget.value);
-          setRefusal(null);
-        }} />
-      ${at("name")
-        ? html`<${FieldError} id=${`${id}-name-note`} problem=${at("name")} />`
-        : html`<span class="field-hint" id=${`${id}-name-note`}>${L.task.name_hint}</span>`}
-    </div>
-    ${refusal && refusal.field === null ? html`<${ProblemView} problem=${refusal.problem} compact />` : null}
-    <div class="pc-form-actions">
-      <button type="submit" class="btn sm primary" disabled=${!ready}>
-        ${saving ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="plus" size=${14} />`}
-        ${L.task.submit}</button>
-      <button type="button" class="btn sm ghost" disabled=${saving} onClick=${onClose}>${L.task.cancel}</button>
-    </div>
-  </form>`;
-}
-
-/** The producer's text for a field, its code and option a click away. */
-function FieldError({ id, problem }) {
-  const values = problem.code ? [["code", problem.code]] : [];
-  if (problem.details?.option) values.push(["option", problem.details.option]);
-  return html`<span class="field-error" id=${id} role="alert">
-    ${values.length ? html`<${Tech} value=${values}>${problem.detail}</${Tech}>` : problem.detail}</span>`;
-}
-
-function Command({ task, producer }) {
-  const options = Object.entries(task.options);
-  const text = JSON.stringify({ command: task.command, options: task.options });
+function Command({ producer, call }) {
+  const options = Object.entries(call.options);
+  const text = JSON.stringify({ command: call.command, options: call.options });
   return html`<div class="cmd pc-cmd">
     <code>
-      <span class="pc-cmd-name">${producer} ${task.command}</span>
+      <span class="pc-cmd-name">${producer} ${call.command}</span>
       ${options.map(
         ([name, value]) => html`<span key=${name} class="pc-opt">
           <span class="pc-opt-name">${name}</span>=${typeof value === "string" ? value : JSON.stringify(value)}
@@ -810,13 +680,13 @@ function Command({ task, producer }) {
   </div>`;
 }
 
-function PinList({ store, pins }) {
+function PinList({ pins }) {
   if (!pins.length) return html`<p class="faint pc-no-pins">${L.card.no_pins}</p>`;
   return html`<ul class="pc-pins" aria-label=${L.card.pins}>
     ${pins.map(
-      (pin) => html`<li key=${pin.version} class="pc-pin">
-        ${pin.slot && store
-          ? html`<${FileLink} store=${store} slot=${pin.slot} version=${pin.version}
+      (pin) => html`<li key=${`${pin.producer}/${pin.version}`} class="pc-pin">
+        ${pin.slot && pin.store
+          ? html`<${FileLink} store=${pin.store} slot=${pin.slot} version=${pin.version}
               title=${L.card.pin_open}>
               <${Icon} name="file" size=${13} /><span class="mono">${pin.label ?? pin.version}</span>
             </${FileLink}>`
@@ -826,11 +696,18 @@ function PinList({ store, pins }) {
               ${pin.is_current ? L.card.pin_current : L.card.pin_older}</${Badge}>`
           : null}
         <${Badge} level=${pin.state === "ok" ? "ok" : "bad"}>
-          <${Tech} value=${[["state", pin.state], ["version", pin.version], ["sha256", pin.sha256 ?? "–"]]}>
+          <${Tech} value=${[
+            ["state", pin.state],
+            ["producer", pin.producer],
+            ["version", pin.version],
+            ["sha256", pin.sha256],
+            ["pinned_at", pin.pinned_at],
+            ["pinned_by", pin.pinned_by],
+          ]}>
             ${pinStateName(pin.state)}
           </${Tech}>
         </${Badge}>
-        ${pin.size_bytes !== null ? html`<span class="faint tabular">${size(pin.size_bytes)}</span>` : null}
+        <span class="faint tabular">${size(pin.size_bytes)}</span>
       </li>`,
     )}
   </ul>`;

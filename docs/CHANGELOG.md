@@ -933,8 +933,21 @@ command-line interface may change.
   has `project.update`, `project.area` and `project.store` instead of `project.task_add`
   and `project.task_remove`, and `project.create` names the project's `name` instead of
   the producer. The local index is rebuilt (schema 15): its project files are read again
-  by the next scan. `archiwista doctor` no longer names `kartograf-project/1`. The
-  interface shows the new projects in a later step.
+  by the next scan. `archiwista doctor` no longer names `kartograf-project/1`.
+
+- **Breaking:** the Projects view follows the project file (A-ADR-049, plan P2): the list
+  shows each project's description, the store of each producer, its groups, pinned and
+  missing versions, and an invalid or newer file with the reason; "Nowy projekt…" asks
+  the directory, a name, a description and an optional area file (copied into the
+  project's `obszary/`); the card shows the directory, the stores, the area and its
+  state, who created the project, its problems and its groups of pinned versions with
+  their origin (a plan's commands, or where the versions were chosen) and the state of
+  each pin; "Zmień…" changes the name, the description, the area and the store of a
+  producer. Gone until the project's jobs come back: "Stan teraz", "Weryfikuj",
+  "Sprawdź aktualizacje", "Pobierz", "Przepnij", "+ Zadanie", "Usuń" and the producer
+  selector of a project, and the plan window's "Dodaj jako zadanie projektu". The file
+  card says "Przypięta w: {project} ({group})"; the Store view lists a project with its
+  pinned and missing versions.
 
 - **Breaking:** the year types are each person's preference (v0.4, ADR-047 erratum 1):
   `year_types` left `GET` and `PUT /api/v1/settings`, and `PUT

@@ -28,32 +28,14 @@
  * it (the list under the top bar's „Pobieranie” shows it again), „Zamknij”
  * and `Esc` close it, at any time and without cancelling anything. A download
  * stops only by its „Anuluj pobieranie”.
- *
- * „Dodaj jako zadanie projektu” adds the one call as a task of a project of
- * the producer in the same store that the session may change (`POST
- * /projects/{project}/tasks`, checked without the network), and with
- * something to download starts that project's download of the task instead
- * (`POST /projects/{project}/jobs`), which downloads and pins it. When the
- * option cannot be had it says why: several lines, no project of the producer
- * in the store, none the session may change, a line not read.
  */
 
-import {
-  addProjectTask,
-  getJobPlan,
-  listProjects,
-  parseCommand,
-  startJob,
-  startProjectJob,
-  watchJob,
-} from "../api.js";
+import { getJobPlan, parseCommand, startJob, watchJob } from "../api.js";
 import { useApp } from "../context.js";
 import { CancelDownload, downloadActive, DownloadStatus, useDownloads } from "../downloads.js";
 import { bytes, count, int, plural } from "../format.js";
-import { useResource } from "../hooks.js";
 import { actions } from "../labels/actions.js";
 import { t } from "../labels/index.js";
-import { Link } from "../router.js";
 import {
   CopyButton,
   html,
@@ -120,30 +102,19 @@ export function DownloadPlan({
   const items = check.items;
   const [confirmed, setConfirmed] = useState(false);
   const [runs, setRuns] = useState(null);
-  const projects = useResource((signal) => listProjects({ store: store.id }, { signal }), [store.id]);
-  const [task, setTask] = useState({ on: false, project: "", name: "" });
-  const [added, setAdded] = useState(null);
   const sum = planSum(check.info);
   const planned = check.ended;
   const large = sum.todo > LARGE_POSITIONS || sum.known > LARGE_BYTES;
   const allowed = Boolean(session?.store_write);
-  const offer = taskOffer(projects, producer, store, lines, items);
-  const call = items[0]?.call ?? null;
-  const asTask = task.on && offer.reason === null;
-  const fetching = planned && sum.todo > 0 && allowed;
   const followed = (run) => {
     if (!run.job) return null;
     const item = downloads.entries.find((entry) => entry.id === run.job.id) ?? seen.current.get(run.job.id) ?? null;
     if (item) seen.current.set(run.job.id, item);
     return item;
   };
-  const ranAll = runs !== null && runs.every((run) => run.problem || (run.job && isOver(followed(run))));
-  const settled = ranAll || (added?.state === "added" && !added.download);
-  const started = runs !== null || (added !== null && added.state !== "failed");
-  const taskReady = Boolean(call) && task.project !== "" && task.name.trim() !== "";
-  const ready = asTask
-    ? planned && taskReady && (!fetching || !large || confirmed) && !started
-    : planned && sum.todo > 0 && allowed && (!large || confirmed) && !started;
+  const settled = runs !== null && runs.every((run) => run.problem || (run.job && isOver(followed(run))));
+  const started = runs !== null;
+  const ready = planned && sum.todo > 0 && allowed && (!large || confirmed) && !started;
   // Modal while planning; not once something started, so the page stays usable.
   useEffect(() => {
     const element = dialog.current;
@@ -163,9 +134,6 @@ export function DownloadPlan({
       if (element.open) element.close();
     };
   }, []);
-  useEffect(() => {
-    if (offer.options.length === 1 && task.project === "") setTask((now) => ({ ...now, project: offer.options[0].project }));
-  }, [offer.options.length]);
   const choose = (value) => {
     if (started) return;
     setFormat(value);
@@ -190,44 +158,14 @@ export function DownloadPlan({
       record(0, { problem: error.problem });
     }
   };
-  const addTask = async () => {
-    const name = task.name.trim();
-    const chosen = offer.options.find((item) => item.project === task.project);
-    setAdded({ state: "adding", download: fetching, name, project: chosen, problem: null });
-    try {
-      await addProjectTask(task.project, { name, command: call.command, options: call.options, producer });
-    } catch (error) {
-      if (!error.problem) throw error;
-      setAdded({ state: "failed", download: fetching, name, project: chosen, problem: error.problem });
-      return;
-    }
-    if (fetching) setRuns([{ key: "project", kind: "project_download", job: null, problem: null }]);
-    setAdded({ state: "added", download: fetching, name, project: chosen, problem: null });
-    if (!fetching) return;
-    try {
-      // A project of several manifests names the one whose task downloads.
-      const named = chosen.manifests.length > 1 ? { producer } : {};
-      const body = { kind: "download", tasks: [name], ...named };
-      const job = await startProjectJob(task.project, body);
-      downloads.track(job, { title, window: windowKey });
-      record(0, { job });
-    } catch (error) {
-      if (!error.problem) throw error;
-      record(0, { problem: error.problem });
-    }
-  };
   const submit = (event) => {
     event.preventDefault();
-    if (ready) (asTask ? addTask : download)();
+    if (ready) download();
   };
   const reason = !planned || !sum.plans.length ? null : !sum.todo ? L.nothing : !allowed ? L.no_write : null;
-  const label = asTask
-    ? fetching
-      ? t(L.submit_task_download, { count: int(sum.todo), positions: plural(sum.todo, L.positions_accusative) })
-      : L.submit_task
-    : planned
-      ? t(L.submit, { count: int(sum.todo), positions: plural(sum.todo, L.positions_accusative) })
-      : L.submit_unplanned;
+  const label = planned
+    ? t(L.submit, { count: int(sum.todo), positions: plural(sum.todo, L.positions_accusative) })
+    : L.submit_unplanned;
   return html`<dialog class="plan-window" ref=${dialog} aria-labelledby=${titleId}
     onCancel=${(event) => {
       event.preventDefault();
@@ -275,8 +213,6 @@ export function DownloadPlan({
       ${items.map((item) => html`<${LineProblem} key=${item.line} item=${item} />`)}
       ${check.failure ? html`<${CheckFailure} failure=${check.failure} count=${check.calls.length} />` : null}
       ${sum.plans.length ? html`<${PlanSummary} sum=${sum} />` : null}
-      <${TaskChoice} offer=${offer} task=${task} added=${added} disabled=${started}
-        onChange=${(patch) => setTask((now) => ({ ...now, ...patch }))} />
       ${large && planned && sum.todo > 0
         ? html`<label class="check-field plan-confirm">
             <input type="checkbox" checked=${confirmed} disabled=${started}
@@ -314,74 +250,6 @@ export function DownloadPlan({
 /** A run that ended, or can no longer be followed. */
 function isOver(item) {
   return item !== null && !downloadActive(item);
-}
-
-/**
- * Whether the call can be added as a task, and to which projects: those with
- * a manifest of the producer naming the store that the session may change
- * (`project_write`).
- *
- * @returns {{options: import("../types.js").ProjectItem[], reason: string|null}}
- */
-function taskOffer(projects, producer, store, lines, items) {
-  if (lines !== null && lines.length > 1) {
-    return { options: [], reason: t(L.task_lines, { count: int(lines.length), commands: plural(lines.length, L.lines) }) };
-  }
-  if (projects.error) return { options: [], reason: projects.error.problem?.detail ?? L.task_no_project_list };
-  if (!projects.data) return { options: [], reason: L.task_loading };
-  const ours = (manifest) => manifest.producer === producer && manifest.store === store.id;
-  const own = projects.data.items.filter((item) => item.manifests.some(ours));
-  const options = own.filter((item) => item.project_write);
-  if (!own.length) return { options, reason: t(L.task_no_project, { producer, store: store.name }) };
-  if (!options.length) return { options, reason: L.task_no_write };
-  if (items.length && items.every(settledLine) && !items[0].call) return { options, reason: L.task_no_call };
-  return { options, reason: null };
-}
-
-/** „Dodaj jako zadanie projektu”: the project, the task's name, what came of it. */
-function TaskChoice({ offer, task, added, disabled, onChange }) {
-  const id = useId();
-  const off = offer.reason !== null;
-  const problem = added?.state === "failed" ? added.problem : null;
-  const nameError = problem?.details?.option === "name" ? problem : null;
-  return html`<fieldset class="plan-task" disabled=${disabled}>
-    <legend class="visually-hidden">${L.task}</legend>
-    <div class="check-field">
-      <input type="checkbox" id=${`${id}-on`} checked=${task.on && !off} disabled=${off}
-        aria-describedby=${off ? `${id}-why` : null}
-        onChange=${(event) => onChange({ on: event.currentTarget.checked })} />
-      <label for=${`${id}-on`}>${L.task}</label>
-    </div>
-    ${off ? html`<p class="field-hint plan-task-why" id=${`${id}-why`}>${offer.reason}</p>` : null}
-    ${task.on && !off
-      ? html`<div class="plan-task-fields">
-          <div class="field">
-            <label for=${`${id}-project`}>${L.task_project}</label>
-            <select id=${`${id}-project`} value=${task.project}
-              onChange=${(event) => onChange({ project: event.currentTarget.value })}>
-              <option value="" disabled>${L.task_project_choose}</option>
-              ${offer.options.map((item) => html`<option key=${item.project} value=${item.project}>${item.name}</option>`)}
-            </select>
-          </div>
-          <div class=${`field${nameError ? " invalid" : ""}`}>
-            <label for=${`${id}-name`}>${L.task_name}</label>
-            <input id=${`${id}-name`} type="text" class="mono" value=${task.name} spellcheck="false" autocomplete="off"
-              placeholder=${L.task_name_example} aria-invalid=${nameError ? "true" : null}
-              aria-describedby=${nameError ? `${id}-name-error` : `${id}-name-hint`}
-              onInput=${(event) => onChange({ name: event.currentTarget.value })} />
-            ${nameError
-              ? html`<span class="field-error" id=${`${id}-name-error`} role="alert">${nameError.detail}</span>`
-              : html`<span class="field-hint" id=${`${id}-name-hint`}>${L.task_name_hint}</span>`}
-          </div>
-        </div>`
-      : null}
-    ${problem && !nameError ? html`<${ProblemView} problem=${problem} compact />` : null}
-    ${added?.state === "added"
-      ? html`<p class="plan-line plan-task-done" role="status"><${Icon} name="check" size=${15} />
-          <span>${t(L.task_added, { name: added.name })}${" "}
-            <${Link} view="projects" params=${{ project: added.project.project }}>${added.project.name}</${Link}></span></p>`
-      : null}
-  </fieldset>`;
 }
 
 /** What a window knows of its check before a format is chosen. */
@@ -670,7 +538,7 @@ function CheckFailure({ failure, count: lines }) {
 }
 
 /**
- * One download, or a project's download, started here: its state as the
+ * The download started here: its state as the
  * downloads of the shell follow it, with its explicit cancel while it runs.
  */
 function RunStatus({ item }) {

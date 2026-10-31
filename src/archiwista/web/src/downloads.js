@@ -1,8 +1,8 @@
 /**
  * Downloads in the background (docs/SPEC.md 5.6, 6.2 „Zadania”, 6.5 f and h;
  * ADR-043): the session's runs that write a store over the network
- * (`download`, `project_download`, `project_repin`) are followed by the
- * shell, so they outlive the plan window, the view and a reload of the page.
+ * (`download` jobs) are followed by the shell, so they outlive the plan
+ * window, the view and a reload of the page.
  *
  * The shell hosts the plan windows (views/plan.js, `openPlan`), so a window
  * outlives the view that opened it; hidden („Zwiń”) it comes back from the
@@ -42,17 +42,10 @@ import {
   useRef,
   useState,
 } from "./ui.js";
-import {
-  downloadSummary,
-  FINAL_STATES,
-  JobStatus,
-  loadCardStyles,
-  projectSummary,
-  storeName,
-} from "./views/cards.js";
+import { downloadSummary, FINAL_STATES, JobStatus, loadCardStyles, storeName } from "./views/cards.js";
 
-/** Kinds of the session's jobs followed here: runs that write a store over the network. */
-export const DOWNLOAD_KINDS = new Set(["download", "project_download", "project_repin"]);
+/** The kind of the session's jobs followed here: runs that write a store over the network. */
+const DOWNLOAD_KIND = "download";
 const ACTIVE_STATES = ["queued", "running"];
 const STORAGE_KEY = "archiwista_downloads";
 /** Event streams opened for queued downloads; a running one always gets its own. */
@@ -155,25 +148,18 @@ export function downloadActive(item) {
 }
 
 /**
- * The name of a download no plan window named: the producer's command (with
- * the number of its lines when it has several), or the project and its task.
+ * The name of a download no plan window named: the producer's command, with
+ * the number of its lines when it has several.
  *
  * @param {import("./types.js").JobDetail} job
- * @param {string|null} [project] - The project's name, else its key.
  * @returns {string}
  */
-export function downloadName(job, project = null) {
-  const params = job.params ?? {};
-  if (job.kind === "download") {
-    const calls = params.calls ?? [];
-    const values = { producer: params.producer, command: calls[0]?.command ?? "" };
-    if (calls.length < 2) return t(L.name.download, values);
-    const lines = plural(calls.length, L.name.lines);
-    return t(L.name.download_calls, { ...values, count: int(calls.length), lines });
-  }
-  const name = project ?? params.project;
-  const task = job.kind === "project_repin" && params.tasks?.length === 1 ? params.tasks[0] : null;
-  return task ? t(L.name.task, { project: name, task }) : t(L.name.project, { project: name });
+function downloadName(job) {
+  const calls = job.params?.calls ?? [];
+  const values = { producer: job.params?.producer, command: calls[0]?.command ?? "" };
+  if (calls.length < 2) return t(L.name.download, values);
+  const lines = plural(calls.length, L.name.lines);
+  return t(L.name.download_calls, { ...values, count: int(calls.length), lines });
 }
 
 /**
@@ -208,7 +194,7 @@ function createDownloads(label) {
         item.id === id ? { ...item, ...(typeof values === "function" ? values(item) : values) } : item,
       ),
     }));
-  const mine = (job) => job.session === label && DOWNLOAD_KINDS.has(job.kind);
+  const mine = (job) => job.session === label && job.kind === DOWNLOAD_KIND;
   const waiting = () =>
     state.entries.filter((item) => item.state === "queued" && !item.stream && !streams.has(item.id));
 
@@ -354,7 +340,7 @@ function createDownloads(label) {
      *   name and the plan window that started it.
      */
     track: (job, options) => {
-      if (DOWNLOAD_KINDS.has(job.kind) && !stopped) add(job, options);
+      if (job.kind === DOWNLOAD_KIND && !stopped) add(job, options);
     },
     /** Ask the server to cancel a download (`POST /jobs/{job}/cancel`). */
     cancel: async (id) => {
@@ -648,7 +634,7 @@ function DownloadItem({ item, store }) {
  */
 export function DownloadStatus({ item }) {
   return html`<${JobStatus} job=${{ events: item, problem: item.refused, kind: item.kind }}
-    summary=${item.kind === "download" ? downloadSummary : projectSummary} />`;
+    summary=${downloadSummary} />`;
 }
 
 /**

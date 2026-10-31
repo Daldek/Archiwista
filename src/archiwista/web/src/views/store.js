@@ -24,17 +24,7 @@ import { store as L } from "../labels/store.js";
 import { T, t } from "../labels/index.js";
 import { Link, setParams } from "../router.js";
 import { html, Icon, ProblemView, Seg, Spinner, Tech, useEffect, useState } from "../ui.js";
-import {
-  actorName,
-  Badge,
-  IssueList,
-  JobStatus,
-  loadCardStyles,
-  seconds,
-  statusLevel,
-  statusName,
-  useJob,
-} from "./cards.js";
+import { actorName, Badge, IssueList, JobStatus, loadCardStyles, seconds, useJob } from "./cards.js";
 
 await loadCardStyles();
 
@@ -356,18 +346,11 @@ function ProjectsSection({ projects }) {
           ${projects.map(
             (project) => html`<li key=${project.project}>
               <${Link} view="projects" params=${{ project: project.project }}>${project.name}</${Link}>
-              ${project.manifests.map(
-                (manifest) => html`<${Badge} key=${manifest.producer}
-                  level=${statusLevel(manifest.status)}>${project.manifests.length > 1
-                    ? `${manifest.producer}: `
-                    : ""}${statusName(manifest.status)}</${Badge}>`,
-              )}
+              <span class="faint">${t(L.projects.pins, { count: int(project.pins) })}</span>
               ${project.missing_pins
                 ? html`<span class="bad-text">${t(L.projects.missing, { count: int(project.missing_pins) })}</span>`
                 : null}
-              ${project.manifests.some((manifest) => manifest.problem)
-                ? html`<span class="bad-text">${L.projects.invalid}</span>`
-                : null}
+              ${project.problem ? html`<span class="bad-text">${L.projects.invalid}</span>` : null}
             </li>`,
           )}
         </ul>`

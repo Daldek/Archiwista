@@ -4,9 +4,9 @@ Archiwista 0.3 "Actions" shows a Kartograf store, and the files of an IMGWTools
 store, on a map, in a catalog and in file cards, with previews, the Fan, the
 Timeline and comparison; projects have a folder of own data and snapshots. It
 acts through the producer: it asks the source what it has for an area, plans and
-runs a download into a configured store, creates and changes projects, and
-downloads, checks, verifies and repins their tasks, all as background jobs, and
-it prepares the first look at current versions ahead. Archiwista writes no file
+runs a download into a configured store and creates and changes projects, all as
+background jobs where they take time, and it prepares the first look at current
+versions ahead. Archiwista writes no file
 of a store itself: the producer writes it, and only for a person with the
 permission "zapis do magazynu"; snapshots are made only on the command of an
 authorised person, in the project folder. The interface text is Polish; the
@@ -37,9 +37,8 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
      `nogat.toml`, else `<data_dir>/kartograf` or `<data_dir>/imgw`) exists and holds
      the producer's marker, the wizard offers it under the empty field of that
      producer with the button "Użyj tego katalogu"; it is entered only by your click.
-   - **Projects** ("Projekty"): directories with the projects of Kartograf
-     (`kartograf-project.json`) and IMGWTools (`imgw-project.json`); they can be
-     added later.
+   - **Projects** ("Projekty"): directories in which Archiwista finds its project
+     files (`archiwista-project.json`); they can be added later.
    - **Mode** ("Tryb pracy"): offline mode means the browser sends no request
      outside Archiwista, so the map has no basemap.
    - **Save** ("Zapis"): a summary and "Zapisz i zindeksuj" (save and index).
@@ -127,8 +126,8 @@ The panel "Wybór" (selection) leads through four steps:
    map and the other views stay usable. "Pobieranie 2/6 · 45%" in the top bar
    sums the downloads started together (those that ended of all, and how far
    their units got), also after a change of the view or a reload of the page
-   and for a download of the session started elsewhere (a project's download
-   or repin, another tab). It opens "Pobrania w tle" (downloads in the
+   and for a download of the session started elsewhere (another tab). It opens
+   "Pobrania w tle" (downloads in the
    background): each download's progress, its files when done or why it
    failed, "Anuluj pobieranie" (the only way to stop one; what is already
    downloaded stays), "Pokaż okno planu" while its window is kept, and "Usuń
@@ -144,18 +143,7 @@ The panel "Wybór" (selection) leads through four steps:
    the producer reads and checks it without the network against the target
    store, and its text for a mistake shows at the field. "Zaplanuj…" opens the
    same plan window for that line, which writes to the target store instead of
-   the line's `-o` or `--root`. In the plan window "Dodaj jako zadanie
-   projektu" (add as a project task) adds the one command as a task of a
-   project with a manifest of the producer in that store ("Projekt", "Nazwa
-   zadania"); with
-   something to download the button reads "Dodaj zadanie i pobierz N
-   pozycji" and the project's download of the new task downloads and pins
-   it. The option is disabled with the reason when the variant has several
-   commands, when the store has no project of the producer, or when you may
-   change none of them (the project's owner or an administrator may). Adding
-   a task needs no network, so it works offline too.
-
-   ![A pasted command as a project task](reports/v0.3-screenshots/10-zadanie-projektu.webp)
+   the line's `-o` or `--root`.
 
 File footprints are visible at once; with more than 5,000 footprints in view
 the map shows a density grid, and clicking a cell zooms in. Clicking a
@@ -262,12 +250,11 @@ versions a scan has just indexed.
 > Archiwista's own file `archiwista-project.json`, with an area, the stores of its
 > producers and groups of pinned versions; the producers' manifests are no longer read,
 > and a directory holding only one of them is no project (nothing is migrated). The
-> file, its discovery and the commands and routes that write it are in this build; the
-> views below still show the producers' tasks and their actions until the interface
-> follows (the next step of
-> [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)),
-> and those actions are refused meanwhile. Own data and snapshots stay as described
-> below.
+> file, its discovery, its commands and routes and the views below are in this build;
+> pinning versions into a project, the project's jobs and its exports follow (the next
+> steps of
+> [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)).
+> Own data and snapshots stay as described below.
 
 - **Creating and editing a project** (any person creates one where none is; the owner
   or an administrator changes it): `archiwista project-init KATALOG [--name NAZWA]
@@ -285,40 +272,28 @@ versions a scan has just indexed.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 
-- **The list** of projects shows the producer ("Producent"), the store, the
-  tasks, the pinned and missing versions and the own data. A project is its
-  directory: it may hold the manifest of Kartograf, of IMGWTools or both, and a
-  project of both shows each manifest's store, state at the scan and reading
-  time on its own line, led by its producer. An invalid manifest shows the
-  producer's message and hides nothing of the other. Hidden projects are
-  not visible. "Nowy projekt…" takes a
-  producer, a store with a directory of that producer and the project's
-  directory in a project directory of the settings (made when missing); the
-  producer writes the manifest, which names that store's directory, and the
-  person who created the project owns it.
-- **The project card** shows the producers' "Stan teraz" (state now), the
-  tasks and the pins of each manifest (with their producer when there are two),
-  and its actions,
-  each run by the producer: "Weryfikuj" (verify: checksums of the pinned files
-  in the store, no network), "Sprawdź aktualizacje" (check the pins against the
-  source), "Pobierz" (download and pin the tasks not downloaded yet, restore
-  missing pinned files) and, at a task, "Przepnij" (repin the task to the
-  source's newer versions); the job shows its progress, then its tasks by
-  outcome or its files by state. In a project of two manifests "Manifest
-  producenta" chooses the manifest the card's actions and "+ Zadanie" act on;
-  a task's actions act on its own manifest. A task name in both manifests is
-  a problem of the project. "+ Zadanie" adds a pasted producer's command
-  as a task (the producer checks it without the network; its text for a
-  mistake shows at the field) and "Usuń" removes a task and its pins after a
-  question; the files stay in the store. "Udostępnij…" (share) opens the
-  project's sharing screen (see "Projects in a team" below). A project is
-  changed and shared by its owner or an administrator, a download and a repin
-  also need the permission "zapis do magazynu" and, like a check, the network:
-  an action you may not do is disabled and the card says why. When a change
-  stops at a lock of the manifest that an interrupted change left, the message
-  names the lock directory to remove; Archiwista never removes it.
-
-  ![Project actions after a verification](reports/v0.3-screenshots/11-akcje-projektu.webp)
+- **The list** of projects shows each project's name and description, the store of
+  each producer whose versions it pins ("żaden magazyn z ustawień" when the file names
+  a directory that no configured store has), its groups, the pinned and the missing
+  versions and when its file was read. A file broken by hand, or of a newer Archiwista,
+  is listed with the reason and not used. Hidden projects are not visible.
+  "Nowy projekt…" takes the project's directory in a project directory of the settings
+  (made when missing), a name (empty: the directory's), a description and, optionally,
+  an area file (GeoJSON, GeoPackage or a zipped Shapefile, kept as an area and copied
+  into the project's `obszary/`); Archiwista writes `archiwista-project.json`, and the
+  person who created the project owns it. A directory outside the project directories
+  is refused at its field.
+- **The project card** shows the project's directory (to copy), the store of each
+  producer, its area with the state of the area file ("Pokaż na mapie" when it is in
+  order), who created it and when, its problems with how to fix them, and its groups of
+  pinned versions in the file's order: each with where its versions came from (a plan
+  of a producer, with its commands to copy, or the store, with where they were chosen)
+  and its versions with their state ("w magazynie", "brak w magazynie", "inna treść niż
+  przypięta") leading to their file cards. "Zmień…" changes the name, the description,
+  the area (a new file, or none) and the store of a producer's pins; "Udostępnij…"
+  (share) opens the project's sharing screen (see "Projects in a team" below). Both are
+  the project owner's or an administrator's: for anyone else they are disabled and the
+  card says why.
 
 - **The data folder** is `<project folder>/dane/` by default; the project's owner
   or an administrator can point to another folder on the sharing screen ("Folder
@@ -906,9 +881,8 @@ turns the permission log into the action log.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It indexes the files of an IMGWTools store (archives, series, station
-  catalogs) and its projects, and shows its stations on the map, in the Catalog and
+  catalogs), and shows its stations on the map, in the Catalog and
   in the station card and through `archiwista stations` and the API, but has no
-  chart or comparison of stations in the interface and no IMGW actions yet (v0.5):
-  an action on an IMGWTools manifest is refused as not supported.
+  chart or comparison of stations in the interface and no IMGW actions yet (v0.5).
 - It does not show object differences between snapshots and has no sign-in or
   team work (v0.4).

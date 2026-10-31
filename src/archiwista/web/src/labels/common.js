@@ -41,10 +41,6 @@ export const common = {
     availability: "dostępność u źródła",
     check: "plan pobrania",
     download: "pobranie",
-    project_download: "pobranie projektu",
-    project_repin: "ponowne przypięcie zadania projektu",
-    project_check: "sprawdzenie projektu u źródła",
-    project_verify: "weryfikacja projektu",
     preview_warm: "przygotowanie podglądów",
   },
   job_state: {

@@ -2,7 +2,7 @@
  * Texts of the actions at the source (map/source.js, views/plan.js; docs/SPEC.md
  * 6.3, 6.4, 6.5 h, UC-15): the step „U źródła” of the „Wybór” panel with the
  * rows of a report and their variants and the pasted command, and the „Okno
- * planu” of a download with „Dodaj jako zadanie projektu”. Coverage labels
+ * planu” of a download. Coverage labels
  * („pełne · 2 kampanie”) and store badges („pobrane 5/12”) come from the
  * server's dictionary; the words of a plan follow it
  * (archiwista/messages/job.py), so the interface and `archiwista jobs` say the
@@ -117,24 +117,5 @@ export const actions = {
     minimise_title: "Schowaj okno; wraca przyciskiem „Pokaż okno planu” na liście pod „Pobieranie” na górnym pasku",
     background:
       "Pobieranie trwa w tle: zwinięcie ani zamknięcie okna go nie przerywa, a mapa i inne widoki działają dalej. Postęp i wynik pokazuje „Pobieranie” na górnym pasku.",
-    task: "Dodaj jako zadanie projektu",
-    task_project: "Projekt",
-    task_project_choose: "Wybierz projekt…",
-    task_name: "Nazwa zadania",
-    task_name_example: "teren-2023",
-    task_name_hint: "Nazwa zadania w manifeście projektu; jej zasady sprawdza producent.",
-    task_added: "Dodano zadanie „{name}” do projektu",
-    /** After „ma”: the accusative („1 polecenie”, „2 polecenia”, „5 poleceń”). */
-    lines: ["polecenie", "polecenia", "poleceń"],
-    task_lines: "Zadanie projektu to jedno polecenie, a ten format wariantu ma {count} {commands}.",
-    task_loading: "Wczytywanie projektów magazynu…",
-    task_no_project_list: "Nie udało się wczytać projektów magazynu.",
-    task_no_project:
-      "W magazynie „{store}” nie ma projektu producenta {producer}; projekt zakłada administrator w widoku Projekty.",
-    task_no_write:
-      "Zadania dodaje właściciel projektu albo administrator, a ta sesja nie może zmienić żadnego projektu tego producenta w tym magazynie.",
-    task_no_call: "Polecenia nie udało się odczytać, więc nie można go dodać jako zadania.",
-    submit_task: "Dodaj zadanie",
-    submit_task_download: "Dodaj zadanie i pobierz {count} {positions}",
   },
 };

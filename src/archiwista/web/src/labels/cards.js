@@ -1,8 +1,8 @@
 /**
  * Texts shared by the file card, the Projects view and the Store view
  * (views/cards.js): problems with their fixes, background jobs followed
- * live, statuses of projects and pins, names of coordinate systems and the
- * stale-answer note. Status names follow Kartograf's own wording.
+ * live, states of pins, names of coordinate systems and the stale-answer
+ * note.
  */
 
 export const cards = {
@@ -17,7 +17,7 @@ export const cards = {
     },
     open_file: "Karta pliku",
     open_project: "Projekt „{project}”",
-    task: "zadanie {task}",
+    group: "grupa „{group}”",
     path: "ścieżka",
     details: "Szczegóły techniczne",
   },
@@ -78,44 +78,12 @@ export const cards = {
     download_taken_title: "Pobierane przez inne zadania",
     download_taken: "{count} {positions} pobiera {actor} (zadanie {job})",
     positions: ["pozycję", "pozycje", "pozycji"],
-    /** A project's job, as `archiwista jobs show` says it (archiwista/messages). */
-    project_tasks: "Zadania projektu: {tasks} ({counts}).",
-    project_tasks_title: "Wynik dla zadań projektu",
-    task_pins: "przypięte pliki: {count}",
-    task_outcome: {
-      pinned: "przypięte",
-      unchanged: "bez zmian",
-      restored: "przywrócone",
-      updated: "przypięte na nowo",
-      failed: "z błędem",
-    },
-    project_files: "Pliki: {files} ({counts}); zadania bez przypięć: {not_downloaded}.",
-    project_files_title: "Pliki projektu wymagające uwagi",
-    project_file: {
-      ok: "nienaruszone",
-      missing: "brak w magazynie",
-      corrupt: "uszkodzone",
-      current: "aktualne",
-      newer: "nowsze u źródła",
-      added: "nowe u źródła",
-      removed: "usunięte u źródła",
-      unverifiable: "nie do sprawdzenia",
-      check_failed: "niesprawdzone",
-      conflict: "zapis odmówiony",
-    },
   },
   pin_state: {
     ok: "w magazynie",
     missing: "brak w magazynie",
     sha256_mismatch: "inna treść niż przypięta (SHA-256)",
     unknown: "magazyn projektu nieznany",
-  },
-  status: {
-    ok: "w porządku",
-    not_downloaded: "nie pobrane",
-    missing: "brak przypiętego pliku w magazynie",
-    corrupt: "uszkodzony przypięty plik",
-    none: "nie sprawdzono",
   },
   stale: "Magazyn „{store}” jest niedostępny — stan z indeksu z {indexed_at}, nie dowód, że plików nie ma.",
   stale_never: "Magazyn „{store}” jest niedostępny i nie ma pełnego przejścia indeksu.",

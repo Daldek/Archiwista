@@ -436,14 +436,15 @@
  * @typedef {object} Issue
  * @property {string} code - Stable code: missing_sidecar, invalid_sidecar,
  *   unknown_segment, legacy_campaigns, stale_incoming, link_mismatch, orphan_sidecar,
- *   missing_pin, pin_sha256_mismatch, invalid_manifest, unknown_store…
+ *   missing_pin, pin_sha256_mismatch, invalid_project_file, unsupported_project_schema,
+ *   unknown_store, area_missing, area_changed, area_invalid…
  * @property {string} message - What is wrong, in Polish.
  * @property {string} instruction - How a person fixes it, in Polish.
  * @property {string|null} path - Store-relative path concerned.
  * @property {string|null} segment
  * @property {string|null} slot
  * @property {string|null} project - Project id of a project problem.
- * @property {string|null} task
+ * @property {string|null} group - Group of a project's pin problem.
  * @property {"scan"|"check"|null} origin - Found by a scan or by a check job.
  * @property {string|null} first_seen_at
  */
@@ -604,12 +605,12 @@
  */
 
 /**
- * A project task pinning a version (`Przypięta w: Raba (teren)`).
+ * A group of a project pinning a version (`Przypięta w: Raba (NMT 2023)`).
  *
  * @typedef {object} Pin
  * @property {string} project - Project id, as in /projects/{project}.
  * @property {string} name - Project name.
- * @property {string|null} task - Task of the project.
+ * @property {string} group - Group of the project that pins the version.
  * @property {string|null} sha256 - Content the project pinned.
  * @property {PinState} state - `ok`; `missing` (not in the store); `sha256_mismatch`
  *   (other content); `unknown` (the project's store is not configured).
@@ -1314,34 +1315,49 @@
 // Projects (9a) --------------------------------------------------------------
 
 /**
- * One producer's manifest in a project directory, as the last scan read it.
+ * The store of one producer's pins as the project file writes it.
  *
- * @typedef {object} ProjectManifest
- * @property {string} producer - `kartograf` (`kartograf-project.json`) or `imgw`
- *   (`imgw-project.json`).
- * @property {string|null} store - Configured store the manifest names; null when none
- *   matches.
- * @property {string|null} status - Producer's status when the manifest was read: `ok`,
- *   `not_downloaded`, `missing` or `corrupt`; null when not checked.
- * @property {string|null} problem - Producer's message for an invalid manifest, whose
- *   tasks and pins are not read; the other manifest is read all the same.
- * @property {string} scanned_at - When the manifest was read.
+ * @typedef {object} ProjectStore
+ * @property {string} producer
+ * @property {string} root - The producer's directory of the store as the file writes it:
+ *   relative to the project directory or absolute.
+ * @property {string|null} store - The configured store `root` matches (by path or
+ *   alias); null when none does (`unknown_store`).
  */
 
 /**
- * A discovered project the session's principal sees: a directory with the manifest
- * of one producer or of both.
+ * A project's area file and what the index made of it.
+ *
+ * @typedef {object} ProjectArea
+ * @property {string} path - The area file, relative to the project directory.
+ * @property {string} sha256 - SHA-256 of the file as the project records it.
+ * @property {"ok"|"missing"|"changed"|"invalid"|null} state - `ok` (kept as the area
+ *   `area_id`), `missing`, `changed` (other bytes: not used) or `invalid`; null while
+ *   it was not read.
+ * @property {string|null} area_id - The area of `/areas` it was read into.
+ */
+
+/**
+ * A discovered project the session's principal sees: a directory with
+ * `archiwista-project.json`.
  *
  * @typedef {object} ProjectItem
  * @property {string} project - Project id: /projects/{project}.
- * @property {string} name
- * @property {ProjectManifest[]} manifests - Kartograf's first.
- * @property {number} tasks - Tasks of every manifest.
- * @property {number} pins - Pins of every manifest.
+ * @property {string} name - The file's name; the directory's when the file is invalid.
+ * @property {string} description
+ * @property {"ok"|"invalid"|"unsupported_schema"} state - `invalid`: the file breaks a
+ *   rule and nothing of it is used; `unsupported_schema`: a newer format.
+ * @property {string|null} problem - `invalid_project_file` or
+ *   `unsupported_project_schema`.
+ * @property {ProjectStore[]} stores - The store of each producer.
+ * @property {ProjectArea|null} area
+ * @property {number} groups - Groups of pinned versions.
+ * @property {number} pins - Pins of every group.
  * @property {number} missing_pins - Pins missing from the store or other.
+ * @property {string} scanned_at - When the project file was read.
  * @property {boolean} project_write - Whether the session's principal may change the
- *   project now (its owner or an administrator): share it, give it a data folder, add
- *   and remove its tasks, and download and repin it with `store_write` of the session.
+ *   project now (its owner or an administrator): its name, description, area and
+ *   stores, its sharing and data folder.
  */
 
 /**
@@ -1354,116 +1370,91 @@
  */
 
 /**
- * A task of a project's manifest with its existing command and options.
- *
- * @typedef {object} ProjectTask
- * @property {string} producer - Producer of the manifest holding the task.
- * @property {string} task
- * @property {string} command - Producer command as in the manifest.
- * @property {Object<string, *>} options - Options as in the manifest.
- * @property {string|null} status
- */
-
-/**
- * A version a project task pinned (older versions too).
+ * A version a group of the project pins, joined with the index.
  *
  * @typedef {object} ProjectPin
- * @property {string} producer - Producer of the manifest that pins it.
- * @property {string|null} task
+ * @property {string} producer - The producer in whose directory of the store it lies.
+ * @property {string|null} store - The configured store of the project's entry of the
+ *   producer; null without one (`state` `unknown`).
  * @property {string} version - Pinned version path, relative to the producer's
  *   directory.
- * @property {string|null} sha256
+ * @property {string} sha256
+ * @property {string|null} content_sha256
+ * @property {number} size_bytes
+ * @property {string|null} unit
+ * @property {string|null} label
+ * @property {string} pinned_at
+ * @property {string} pinned_by - The account that pinned it; `local`.
  * @property {PinState} state
  * @property {string|null} slot
- * @property {string|null} label
- * @property {number|null} size_bytes
  * @property {boolean} is_current
  */
 
 /**
- * A project: its manifests, tasks with their commands, pinned versions and problems.
+ * Where a group's versions came from: `plan` (downloaded in the plan window by
+ * `calls`) or `local` (what the store held, chosen by `selections`).
+ *
+ * @typedef {object} GroupOrigin
+ * @property {"plan"|"local"} kind
+ * @property {string|null} producer - The producer of a plan group.
+ * @property {CommandCall[]|null} calls - The calls of a plan group.
+ * @property {{source: "local_state"|"catalog"|"file",
+ *   query: Object<string, *>|null}[]|null} selections - The requests of a local group.
+ */
+
+/**
+ * A group of pinned versions, in the file's order.
+ *
+ * @typedef {object} ProjectGroup
+ * @property {string} name
+ * @property {GroupOrigin} origin
+ * @property {ProjectPin[]} pins
+ */
+
+/**
+ * A project: its file's members, groups with their pins, and problems.
  *
  * @typedef {object} ProjectCard
  * @property {boolean} stale
  * @property {StaleStore[]} stale_stores
  * @property {string} project - Project id: /projects/{project}.
  * @property {string} name
- * @property {ProjectManifest[]} manifests - Kartograf's first.
- * @property {number} missing_pins - Pins missing from the store or other.
+ * @property {string} description
+ * @property {"ok"|"invalid"|"unsupported_schema"} state
+ * @property {string|null} problem
+ * @property {CopyPath} path - The project directory.
+ * @property {string|null} created_at
+ * @property {string|null} created_by
+ * @property {ProjectStore[]} stores
+ * @property {ProjectArea|null} area
+ * @property {ProjectGroup[]} groups - Groups in the file's order.
+ * @property {number} pins
+ * @property {number} missing_pins
+ * @property {string} scanned_at
  * @property {boolean} project_write - As in `ProjectItem`.
- * @property {ProjectTask[]} tasks - Tasks of each manifest in its order.
- * @property {ProjectPin[]} pins - Pinned versions, older ones too.
- * @property {Issue[]} problems - Invalid manifest, unknown store, a task name in the
- *   manifests of several producers (`duplicate_task`), missing or other pinned files.
+ * @property {Issue[]} problems - An invalid or newer file, a store that matches no
+ *   configured one, an area file not used, missing or other pinned versions.
  */
 
 /**
- * A task's state as the producer checked it.
- *
- * @typedef {object} TaskStatus
- * @property {string} task
- * @property {string|null} status - `ok`, `not_downloaded`, `missing` or `corrupt`
- *   (worst file).
- */
-
-/**
- * A producer's check of its manifest of a project now.
- *
- * @typedef {object} ManifestStatus
- * @property {string} producer
- * @property {string|null} status - The worst task status.
- * @property {string} checked_at - When the producer checked: now, or the last scan when
- *   stale.
- * @property {boolean} stale - True: the store is unavailable, the scan's check is
- *   shown.
- * @property {string|null} stale_reason
- * @property {TaskStatus[]} tasks
- */
-
-/**
- * The producers' checks of a project now (no network, no hashing).
- *
- * @typedef {object} ProjectStatus
- * @property {string} project
- * @property {ManifestStatus[]} manifests - In the order of the project's manifests.
- */
-
-/**
- * Body of `POST /projects`: a new project of a producer bound to a configured store.
+ * Body of `POST /projects`: Archiwista writes the project's file.
  *
  * @typedef {object} ProjectRequest
- * @property {string} producer - Producer that writes the project's manifest, e.g.
- *   `kartograf`.
  * @property {string} path - Absolute path of the project directory, made when missing: a
  *   project directory of the settings or a directory at most four levels below one, in no
  *   hidden directory and no store, where a scan finds it.
- * @property {string} store - Id of the configured store whose directory of the producer
- *   the manifest names.
+ * @property {string} [name] - Left out: the directory's name.
+ * @property {string} [description] - At most 2,000 characters.
+ * @property {string} [area_id] - An area of `/areas`, written into the project's
+ *   `obszary/`.
  */
 
 /**
- * Body of `POST /projects/{project}/tasks`: a task added by the project's producer.
+ * Body of `PATCH /projects/{project}`: one of the two at least.
  *
- * @typedef {object} TaskRequest
- * @property {string} name - Name of the new task; the producer's rules apply.
- * @property {string} command - Data command of the producer's catalog.
- * @property {Object<string, *>} [options] - Its options in the JSON form of the catalog,
- *   checked without the network; no option that is a file path.
- * @property {string} [producer] - The producer whose manifest gets the task; left out:
- *   the project's only one (needed for a project of several).
- */
-
-/**
- * Body of `POST /projects/{project}/jobs`: a job of a project's tasks.
- *
- * @typedef {object} ProjectJobRequest
- * @property {"download"|"repin"|"check"|"verify"} kind - `download` and `repin` write
- *   the store and the manifest (`project_write` and `store_write`); `check` and `verify`
- *   need only to see the project; all but `verify` use the network.
- * @property {string[]} [tasks] - The tasks by name; left out: every task. A `repin` names
- *   exactly one.
- * @property {string} [producer] - The producer whose manifest's tasks run; left out: the
- *   project's only one (needed for a project of several).
+ * @typedef {object} ProjectChange
+ * @property {string} [name]
+ * @property {string} [description]
  */
 
 // Settings (9a) --------------------------------------------------------------
@@ -1576,14 +1567,13 @@
 
 /**
  * A background job: `202` of POST …/scan, …/footprints, …/link-check, …/preview,
- * `/projects/{project}/scan`, …/snapshots and `/projects/{project}/jobs`, `GET
- * /jobs/{job}` and the items of `GET /jobs`.
+ * `/projects/{project}/scan` and …/snapshots, `GET /jobs/{job}` and the items of
+ * `GET /jobs`.
  *
  * @typedef {object} JobDetail
  * @property {string} id
  * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"
- *   |"availability"|"check"|"download"|"project_download"|"project_repin"
- *   |"project_check"|"project_verify"|"preview_warm"} kind
+ *   |"availability"|"check"|"download"|"preview_warm"} kind
  * @property {"queued"|"running"|"succeeded"|"partial"|"failed"|"interrupted"|"cancelled"} state -
  *   `partial`: part of its units failed, `result` names them.
  * @property {string} actor - Who started it.
@@ -1591,15 +1581,14 @@
  *   account, an agent for `actor`, or the scheduler.
  * @property {string|null} session - Label of the session it was started in.
  * @property {string|null} store - Null for `preview`, `own_scan`, `snapshot`,
- *   `availability`, the `project_*` kinds and `preview_warm`.
+ *   `availability` and `preview_warm`.
  * @property {Object<string, *>} params - `mode`/`segment` of a scan, `slot` of a link
  *   check, `refs` of a preview, `project` of an `own_scan` (none: every project),
  *   `project`, `file_id` and `note` of a snapshot, `area_id`, `producer`, `product`
  *   and `force` of an availability check, `producer` and `calls` (each `command` and
  *   `options`, in their order; all the lines of a row, ADR-044) of a plan (`check`),
- *   those and `plan_job` of a `download`, `project` and `tasks`
- *   (null: every task) of the `project_*` kinds, `store`, `product`, `segment`,
- *   `project`, `area_id` and `since` (null: not given) of a `preview_warm`.
+ *   those and `plan_job` of a `download`, `store`, `product`, `segment`, `project`,
+ *   `area_id` and `since` (null: not given) of a `preview_warm`.
  * @property {string} created_at
  * @property {string|null} started_at
  * @property {string|null} finished_at
@@ -1607,10 +1596,9 @@
  *   `current` of `total`; an `own_scan` adds `files` and `read`, a snapshot its `phase`
  *   (`copy`, `checksums`, `document`, `rename`, `published`), a `check` counts the
  *   calls it planned, a `download` counts the units of the call it runs and adds
- *   `call` (its place, from 0) and `calls` (their number), the three of a
- *   `download`, a `project_download` and a `project_repin` add the producer's
- *   `unit` (or null), `status` and `message`, a `preview_warm` `warmed`, `cached`,
- *   `failed` and `skipped`.
+ *   `call` (its place, from 0) and `calls` (their number) and the producer's `unit`
+ *   (or null), `status` and `message`, a `preview_warm` `warmed`, `cached`, `failed`
+ *   and `skipped`.
  * @property {Object<string, *>|null} result - Summary of a job that succeeded or ended
  *   `partial`; of an `own_scan` the counts `projects`, `files`, `new`, `changed`,
  *   `missing`, `unreadable`, `snapshots`, `problems`, `seconds`; of a snapshot
@@ -1629,17 +1617,9 @@
  *   `status` `ok`, `partial`, `failed` or `skipped`, `reason` of a skipped one
  *   `not_planned`, `nothing_to_download` or `taken`, `files`, `failed`, `error`),
  *   `taken` (positions another download fetches: `path`, `unit`, `job`, `actor`),
- *   `rescanned`, `seconds`; of a `project_download` or `project_repin`
- *   `producer`, `project`, `store`, `root`, `upgrade`, `ok`, `counts` of the tasks
- *   (`pinned`, `unchanged`, `restored`, `updated`, `failed`), `tasks` (`name`,
- *   `outcome`, `pinned`, `unpinned`, `errors`, `code`, `reason`), `failed`,
- *   `rescanned`, `seconds`; of a `project_check` or `project_verify` `producer`,
- *   `project`, `root`, `ok`, `counts` of the files, `files` (`task`, `unit`,
- *   `path`, `status`, `pinned_label`, `available_label`, `detail`),
- *   `not_downloaded`, `seconds`; of a `preview_warm` `versions`, `files`,
- *   `warmed`, `cached`, `needs_build`, `failed`, `failures` (`ref`, `code`,
- *   `detail`), `skipped`, `stopped` (`cache_full` or null), `room_bytes`,
- *   `seconds`.
+ *   `rescanned`, `seconds`; of a `preview_warm` `versions`, `files`, `warmed`,
+ *   `cached`, `needs_build`, `failed`, `failures` (`ref`, `code`, `detail`),
+ *   `skipped`, `stopped` (`cache_full` or null), `room_bytes`, `seconds`.
  * @property {JobFailure|null} error
  * @property {boolean} hidden - A job only of projects the session does not see, as
  *   `GET /jobs` lists it: empty `params`, null `session`, `result` and `error`,

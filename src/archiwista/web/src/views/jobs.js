@@ -45,7 +45,6 @@ import {
   downloadSummary,
   JobStatus,
   loadCardStyles,
-  projectSummary,
   storeName,
   TakenList,
   useJob,
@@ -63,11 +62,10 @@ const ACTIVE = new Set(["queued", "running"]);
 const ERRORS = new Set(["failed", "partial", "interrupted"]);
 /** States of a job „Ponów” runs again, as the server's `RETRY_STATES`. */
 const RETRY = new Set(["partial", "failed", "interrupted", "cancelled"]);
-/** Kinds whose retry writes a store: they need the permission to write the stores. */
-const WRITES = new Set(["download", "project_download", "project_repin"]);
+/** The kind whose retry writes a store: it needs the permission to write the stores. */
+const WRITES = "download";
 /** Kinds of a store's jobs, whose retry is an administrator's (`store.scan`), as the server's `STORE_SCAN_KINDS`. */
 const STORE_SCANS = new Set(["scan", "footprints", "link_check"]);
-const PROJECT_KINDS = new Set(["project_download", "project_repin", "project_check", "project_verify"]);
 const FILTERS = ["all", "active", "errors", "mine"];
 const LEVELS = {
   queued: "plain",
@@ -283,7 +281,7 @@ function RetryButton({ job, reasonId, busy, onRetry }) {
 function retryRefusal(job, session) {
   const scansStores = STORE_SCANS.has(job.kind) || (job.kind === "own_scan" && !job.params?.project);
   if (scansStores && !session.roles.includes("admin")) return L.actions.retry_admin_only;
-  if (WRITES.has(job.kind) && !session.store_write) return L.actions.retry_no_store_write;
+  if (job.kind === WRITES && !session.store_write) return L.actions.retry_no_store_write;
   return null;
 }
 
@@ -303,9 +301,7 @@ function Progress({ progress, running, label }) {
 function JobDetails({ job }) {
   const followed = useJob();
   useEffect(() => followed.follow(job.id, job.kind), [job.id]);
-  let summary;
-  if (job.kind === "download") summary = downloadSummary;
-  else if (PROJECT_KINDS.has(job.kind)) summary = projectSummary;
+  const summary = job.kind === "download" ? downloadSummary : undefined;
   return html`<div class="jobs-details"><${JobStatus} job=${followed} summary=${summary} /></div>`;
 }
 
@@ -358,9 +354,6 @@ function subject(job, health) {
   if (job.kind === "preview_warm") {
     const warmed = params.store ? t(L.subject.store, { store: storeName(health, params.store) }) : null;
     return [warmed, params.product, project].filter(Boolean).join(" · ") || null;
-  }
-  if (job.kind === "project_repin" && params.tasks?.length === 1) {
-    return t(L.subject.task, { project: params.project, task: params.tasks[0] });
   }
   return project ?? store;
 }

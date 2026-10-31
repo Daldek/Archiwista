@@ -33,8 +33,6 @@ export const downloads = {
     /** A download of a row's several lines (ADR-044): „standin · series fetch · 3 polecenia”. */
     download_calls: "{producer} · {command} · {count} {lines}",
     lines: ["polecenie", "polecenia", "poleceń"],
-    project: "Projekt „{project}”",
-    task: "Projekt „{project}”, zadanie „{task}”",
   },
   toast: {
     label: "Powiadomienia o pobieraniu",

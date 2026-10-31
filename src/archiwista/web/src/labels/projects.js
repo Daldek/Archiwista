@@ -1,13 +1,12 @@
 /**
  * Texts of the Projects view (views/projects.js, docs/SPEC.md UC-06 and
- * 6.5 g): the projects found in the project directories with their
- * manifests (Kartograf's, IMGWTools' or both), „Nowy projekt…” for every
- * person, their tasks with the producer's commands, pins, statuses and
- * problems, the actions through a manifest's producer (verify, check,
- * download, repin, add and remove a task) and „Udostępnij…” with the reason
- * when one is not allowed, and the group „Dane własne” (SPEC 4.7.1): the
- * project's data folder with its files and „Odśwież”. The sharing screen's
- * texts are in labels/sharing.js.
+ * 6.5 g; A-ADR-049): the projects found in the project directories, each a
+ * directory with Archiwista's file archiwista-project.json, „Nowy projekt…”
+ * for every person, the card with the project's directory, stores, area,
+ * problems and groups of pinned versions, „Zmień…” and „Udostępnij…” with
+ * the reason when they are not allowed, and the group „Dane własne” (SPEC
+ * 4.7.1): the project's data folder with its files and „Odśwież”. The
+ * sharing screen's texts are in labels/sharing.js.
  */
 
 export const projects = {
@@ -15,109 +14,104 @@ export const projects = {
   count: ["projekt", "projekty", "projektów"],
   empty: "Nie znaleziono projektów w katalogach projektów z ustawień.",
   empty_hint:
-    "Projekty to katalogi z manifestem kartograf-project.json lub imgw-project.json; " +
-    "dodaj ich katalog w Ustawieniach.",
+    "Projekt to katalog z plikiem archiwista-project.json, który Archiwista zapisuje przy „Nowy projekt…”; " +
+    "katalogi projektów dodasz w Ustawieniach.",
   settings: "Ustawienia",
   store_filter: "Magazyn",
   all_stores: "wszystkie",
   columns: {
     name: "Projekt",
-    producer: "Producent",
-    store: "Magazyn",
-    status: "Stan przy skanie",
-    tasks: "Zadania",
+    stores: "Magazyny",
+    groups: "Grupy",
     pins: "Przypięte",
     missing_pins: "Brakujące",
     scanned_at: "Odczytano",
   },
-  no_store: "nieznany magazyn",
-  invalid: "Błędny manifest",
+  unknown_store: "żaden magazyn z ustawień",
+  /** A project file that is not used; the card's problems say where and how to fix it. */
+  file_problem: {
+    invalid_project_file: "Błędny plik projektu: Archiwista nie używa żadnej jego części.",
+    unsupported_project_schema: "Plik projektu w nowszym formacie: Archiwista nie czyta jego grup.",
+  },
   panel: "Projekt",
-  select: "Wybierz projekt z listy, aby zobaczyć jego zadania, przypięcia i stan.",
   not_found: "Nie ma projektu „{project}” albo nie masz do niego dostępu.",
   create: {
     open: "Nowy projekt…",
-    open_title: "Załóż projekt producenta w katalogu projektów z ustawień, związany z magazynem",
+    open_title: "Załóż projekt w katalogu projektów z ustawień: Archiwista zapisze w nim plik archiwista-project.json",
     no_dirs: "Ustawienia nie mają katalogów projektów; dodaj katalog w Ustawieniach.",
     title: "Nowy projekt",
-    producer: "Producent",
-    no_producer: "Żaden magazyn nie ma katalogu dostępnego producenta; dodaj katalog magazynu w Ustawieniach.",
-    store: "Magazyn",
-    store_hint: "Manifest wskaże katalog producenta w tym magazynie; tam trafią pliki zadań.",
     path: "Katalog projektu",
     path_hint: "Ścieżka bezwzględna w katalogu projektów z ustawień ({dirs}); brakujący katalog powstanie.",
+    name_hint: "Pusta: nazwa katalogu.",
     submit: "Załóż projekt",
     cancel: "Anuluj",
-    created: "Założono projekt „{name}”.",
+  },
+  /** Fields of the forms of a new and of a changed project. */
+  form: {
+    name: "Nazwa",
+    description: "Opis",
+    area: "Obszar (opcjonalnie)",
+    area_hint: "Plik GeoJSON, GeoPackage albo spakowany Shapefile; jego kopia trafi do katalogu obszary/ projektu.",
+  },
+  edit: {
+    open: "Zmień…",
+    open_title: "Nazwa, opis, obszar i magazyny projektu",
+    title: "Zmień projekt",
+    name_hint: "Od 1 do 200 znaków.",
+    area_new: "Nowy obszar",
+    area_clear: "Usuń obszar projektu (jego plik zostaje w katalogu obszary/)",
+    store: "Magazyn: {producer}",
+    store_none: "— żaden —",
+    store_hint: "Katalog producenta w tym magazynie: tam leżą przypięte wersje.",
+    submit: "Zapisz",
+    cancel: "Anuluj",
+    saved: "Zapisano zmiany projektu.",
   },
   actions: {
     label: "Działania projektu",
-    producer: "Manifest producenta",
-    verify: "Weryfikuj",
-    verify_title: "Producent liczy sumy SHA-256 przypiętych plików w magazynie; bez sieci",
-    check: "Sprawdź aktualizacje",
-    check_title: "Producent porównuje przypięte wersje ze źródłem; nic nie zapisuje",
-    download: "Pobierz",
-    download_title:
-      "Producent pobiera i przypina zadania bez przypięć oraz przywraca brakujące przypięte pliki w magazynie",
-    repin: "Przepnij",
-    repin_title: "Producent przypina zadanie do nowszych wersji u źródła i pobiera je do magazynu",
-    add: "Zadanie",
-    add_title: "Dodaj polecenie producenta jako zadanie projektu; producent sprawdzi je bez sieci",
-    remove: "Usuń",
-    remove_title: "Usuń zadanie i jego przypięcia z manifestu; pliki zostają w magazynie",
     share: "Udostępnij…",
     share_title: "Kto widzi projekt, jego właściciel i folder danych własnych",
   },
-  /** Why an action of a project is disabled, in the order they are told. */
   why: {
-    write: "Zmienia projekt jego właściciel albo administrator.",
-    store: "Manifest nie wskazuje skonfigurowanego magazynu, więc producent nie pobierze ani nie przepnie zadań.",
-    store_write:
-      "Pobieranie i przepinanie zapisują magazyn, a ta sesja nie ma uprawnienia „zapis do magazynu” (rola store_writer).",
-    offline: "Tryb offline: sprawdzenie, pobieranie i przepinanie potrzebują sieci.",
-    busy: "Trwa zadanie projektu; następne można uruchomić po jego końcu.",
-  },
-  task: {
-    title: "Nowe zadanie",
-    line: "Polecenie producenta",
-    line_placeholder: "np. kartograf elevation download --product nmt --sheet N-34-130-D-d-2-4",
-    line_hint: "Wiersz polecenia producenta {producer}, jak w jego wierszu poleceń; producent sprawdzi go bez sieci.",
-    name: "Nazwa zadania",
-    name_example: "teren-2023",
-    name_hint: "Nazwa zadania w manifeście projektu; jej zasady sprawdza producent.",
-    submit: "Dodaj zadanie",
-    cancel: "Anuluj",
-    added: "Dodano zadanie „{name}”.",
-    confirm: "Usunąć zadanie „{name}” z manifestu? Jego przypięcia znikną, a pliki zostaną w magazynie.",
-    confirm_remove: "Usuń zadanie",
-    confirm_cancel: "Zostaw",
-    removed: "Usunięto zadanie „{name}”.",
-    actions: "Działania zadania {name}",
+    write: "Zmienia i udostępnia projekt jego właściciel albo administrator.",
   },
   card: {
-    producer: "Producent",
-    store: "Magazyn",
-    scanned_at: "Manifest odczytano",
-    stored_status: "Stan przy skanie",
-    live_status: "Stan teraz",
-    checked_at: "sprawdzono {at}",
-    stale_status: "magazyn niedostępny — stan z ostatniego skanu ({at})",
-    recheck: "Sprawdź stan ponownie",
-    recheck_hint: "Producent sprawdza przypięte pliki bez sieci i bez liczenia sum.",
-    manifest_error: "Producent nie odczytał manifestu:",
-    tasks: "Zadania",
-    no_tasks: "Manifest nie ma zadań.",
-    command: "Polecenie",
-    options: "Opcje",
-    copy_command: "polecenie zadania",
+    path: "Katalog",
+    copy_path: "ścieżka katalogu projektu",
+    stores: "Magazyny",
+    no_stores: "jeszcze żaden: wpisze go pierwsze przypięcie wersji",
+    area: "Obszar",
+    no_area: "brak",
+    area_states: {
+      ok: "w porządku",
+      missing: "brak pliku obszaru",
+      changed: "plik obszaru zmieniony: nieużywany",
+      invalid: "błędny plik obszaru",
+      unread: "nieodczytany",
+    },
+    area_on_map: "Pokaż na mapie",
+    created: "Utworzono",
+    created_value: "{at} · {by}",
+    scanned_at: "Plik projektu odczytano",
+    missing_pins: "Brakujące przypięcia",
+    groups: "Grupy przypiętych wersji",
+    no_groups: "Projekt nie ma jeszcze przypiętych wersji.",
+    groups_unread: "Archiwista nie czyta grup tego pliku projektu.",
+    origin_plan: "z planu pobrania · {producer}",
+    origin_local: "z magazynu",
+    origin_local_from: "z magazynu · {sources}",
+    sources: {
+      local_state: "stan lokalny",
+      catalog: "katalog",
+      file: "karta pliku",
+    },
+    copy_command: "polecenie grupy",
+    pin_count: ["wersja", "wersje", "wersji"],
     pins: "Przypięte wersje",
-    no_pins: "nic nie przypięto",
+    no_pins: "grupa jest pusta",
     pin_current: "bieżąca",
     pin_older: "starsza wersja",
     pin_open: "Karta pliku",
-    missing_pins: "Brakujące przypięcia",
-    other_pins: "Przypięcia bez zadania",
   },
   own: {
     title: "Dane własne",

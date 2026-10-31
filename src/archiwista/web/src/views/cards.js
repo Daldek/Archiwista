@@ -4,7 +4,7 @@
  * through its event stream (SSE), with the summaries of its result that the
  * plan window and the downloads of the top bar show too, links opening the
  * file card over the current view, labelled copy buttons, „Pobierz plik”,
- * the stale-answer note and the human names of statuses and coordinate
+ * the stale-answer note and the human names of pin states and coordinate
  * systems (docs/SPEC.md 6.1 „Przejrzystość”).
  */
 
@@ -41,19 +41,6 @@ export const SUMMARY_STATES = new Set(["succeeded", "partial"]);
 const SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 1 });
 const SHORT_SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
 const COPIED_MS = 1500;
-/** States of a project's file a job's summary does not list: nothing to do. */
-const QUIET_FILES = new Set(["ok", "current"]);
-/** The badge of each other state of a project's file. */
-const FILE_LEVELS = {
-  missing: "bad",
-  corrupt: "bad",
-  newer: "info",
-  added: "info",
-  removed: "warn",
-  unverifiable: "plain",
-  check_failed: "bad",
-  conflict: "bad",
-};
 /** The badge of each status of a download's file. */
 const DOWNLOAD_FILE_LEVELS = { new: "ok", unchanged: "plain", relabeled: "info" };
 
@@ -85,29 +72,6 @@ export function crsName(code) {
 export function Crs({ code }) {
   if (!code) return T.common.empty;
   return html`<${Tech} value=${code}>${crsName(code)}</${Tech}>`;
-}
-
-/**
- * The producer's status of a project or task for people (Kartograf's words).
- *
- * @param {string|null} status - `ok`, `not_downloaded`, `missing`, `corrupt` or null.
- * @returns {string}
- */
-export function statusName(status) {
-  return status === null ? L.status.none : (L.status[status] ?? status);
-}
-
-/**
- * Severity class of a producer status: `ok`, `warn` (not downloaded, not
- * checked) or `bad` (missing or corrupt files).
- *
- * @param {string|null} status
- * @returns {"ok"|"warn"|"bad"}
- */
-export function statusLevel(status) {
-  if (status === "ok") return "ok";
-  if (status === "missing" || status === "corrupt") return "bad";
-  return "warn";
 }
 
 /**
@@ -290,7 +254,7 @@ export function IssueList({ issues, store, currentSlot, currentProject, empty = 
           ${issue.project && issue.project !== currentProject
             ? html`<${Link} view="projects" params=${{ project: issue.project }} class="btn ghost sm">
                 <${Icon} name="folder" size=${13} />${t(L.issues.open_project, { project: issue.project })}
-                ${issue.task ? html`<span class="faint">${t(L.issues.task, { task: issue.task })}</span>` : null}
+                ${issue.group ? html`<span class="faint">${t(L.issues.group, { group: issue.group })}</span>` : null}
               </${Link}>`
             : null}
         </div>
@@ -307,7 +271,7 @@ function issueFound(issue) {
 
 function issueValues(issue) {
   const values = [["code", issue.code]];
-  for (const name of ["path", "segment", "slot", "project", "task", "origin", "first_seen_at"]) {
+  for (const name of ["path", "segment", "slot", "project", "group", "origin", "first_seen_at"]) {
     if (issue[name]) values.push([name, issue[name]]);
   }
   return values;
@@ -547,59 +511,6 @@ function defaultSummary(events) {
     })}</p>`;
   }
   return null;
-}
-
-/**
- * The summary of a project's job, as `archiwista jobs show` says it: a
- * download's or a repin's tasks by outcome, each task with its pins or
- * errors; a check's or a verification's files by state, each file that is not
- * in order with the producer's text.
- *
- * @param {JobEvents} events
- */
-export function projectSummary(events) {
-  const result = events.result;
-  if (!result) return null;
-  if ("tasks" in result) {
-    const named = Object.entries(L.job.task_outcome)
-      .filter(([outcome]) => result.counts[outcome])
-      .map(([outcome, word]) => `${word} ${int(result.counts[outcome])}`);
-    return html`<div class="job-project">
-      <p class="job-summary">${t(L.job.project_tasks, { tasks: int(result.tasks.length), counts: named.join(", ") })}</p>
-      <ul class="job-project-list" aria-label=${L.job.project_tasks_title}>${result.tasks.map(
-        (task) => html`<li key=${task.name}>
-          <span class="mono">${task.name}</span>
-          <${Badge} level=${task.outcome === "failed" ? "bad" : "ok"}>
-            <${Tech} value=${[["outcome", task.outcome], ["code", task.code ?? "–"]]}>
-              ${L.job.task_outcome[task.outcome] ?? task.outcome}</${Tech}></${Badge}>
-          ${task.pinned.length ? html`<span class="faint">${t(L.job.task_pins, { count: int(task.pinned.length) })}</span>` : null}
-          ${task.errors.map((text, index) => html`<span key=${index} class="bad-text">${text}</span>`)}
-        </li>`,
-      )}</ul>
-    </div>`;
-  }
-  const named = Object.entries(L.job.project_file)
-    .filter(([status]) => result.counts[status])
-    .map(([status, word]) => `${word} ${int(result.counts[status])}`);
-  const files = Object.values(result.counts).reduce((total, value) => total + value, 0);
-  const notable = result.files.filter((file) => !QUIET_FILES.has(file.status));
-  return html`<div class="job-project">
-    <p class="job-summary">${t(L.job.project_files, {
-      files: int(files),
-      counts: named.join(", "),
-      not_downloaded: int(result.not_downloaded.length),
-    })}</p>
-    ${notable.length
-      ? html`<ul class="job-project-list" aria-label=${L.job.project_files_title}>${notable.map(
-          (file, index) => html`<li key=${`${file.task}/${file.path}/${index}`}>
-            <span class="mono">${file.task}</span>
-            <${Tech} value=${[["unit", file.unit || "–"], ["status", file.status]]}><span class="mono">${file.path || file.unit || "–"}</span></${Tech}>
-            <${Badge} level=${FILE_LEVELS[file.status] ?? "warn"}>${L.job.project_file[file.status] ?? file.status}</${Badge}>
-            ${file.detail ? html`<span class="faint">${file.detail}</span>` : null}
-          </li>`,
-        )}</ul>`
-      : null}
-  </div>`;
 }
 
 /**

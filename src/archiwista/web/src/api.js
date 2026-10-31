@@ -70,7 +70,7 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").StationComparison} StationComparison */
 /** @typedef {import("./types.js").ProjectList} ProjectList */
 /** @typedef {import("./types.js").ProjectCard} ProjectCard */
-/** @typedef {import("./types.js").ProjectStatus} ProjectStatus */
+/** @typedef {import("./types.js").ProjectChange} ProjectChange */
 /** @typedef {import("./types.js").Settings} Settings */
 /** @typedef {import("./types.js").Preferences} Preferences */
 /** @typedef {import("./types.js").ScanRequest} ScanRequest */
@@ -102,8 +102,6 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").ActionPlanInfo} ActionPlanInfo */
 /** @typedef {import("./types.js").ValidateRequest} ValidateRequest */
 /** @typedef {import("./types.js").ProjectRequest} ProjectRequest */
-/** @typedef {import("./types.js").TaskRequest} TaskRequest */
-/** @typedef {import("./types.js").ProjectJobRequest} ProjectJobRequest */
 
 /**
  * Abort a read: every function takes these options last.
@@ -729,7 +727,7 @@ export function listProjects(filters = {}, { signal } = {}) {
 }
 
 /**
- * A project with its tasks, pins and problems (`get_project`).
+ * A project with its stores, area, groups of pins and problems (`get_project`).
  *
  * @param {string} project - Project id.
  * @param {RequestOptions} [options]
@@ -740,80 +738,59 @@ export function getProject(project, { signal } = {}) {
 }
 
 /**
- * The producer's check of a project now (`get_project_status`).
- *
- * @param {string} project - Project id.
- * @param {RequestOptions} [options]
- * @returns {Promise<ProjectStatus>}
- */
-export function getProjectStatus(project, { signal } = {}) {
-  return request("GET", `/projects/${one(project)}/status`, { signal });
-}
-
-/**
- * Create a project of a producer bound to a configured store
- * (`create_project`): the producer writes its manifest, and the person who
- * asked owns the project.
+ * Create a project (`create_project`): Archiwista writes its file
+ * `archiwista-project.json` in the directory, made when missing, and the
+ * person who asked owns the project.
  *
  * @param {ProjectRequest} body
  * @returns {Promise<ProjectCard>} The new project's card (`201`).
- * @throws {ApiError} `403` (`permission_denied`: a project already there that
+ * @throws {ApiError} `403` (`permission_denied`: a project of an access entry
  *   the session may not change; `path_outside_root`), `400`
- *   (`project_not_discoverable`, `project_dir_missing`, `store_without_producer`,
- *   the producer's refusal), `404` (a store that is not configured), `409`
- *   (`project_locked`), `422 unsupported`, `503 store_unavailable`.
+ *   (`project_not_discoverable`, `project_dir_missing`), `404` (an unknown
+ *   area), `409` (`project_exists`, `project_locked`), `422` (a name or
+ *   description out of its rules), `500 io_error` (`project_file_write_failed`).
  */
 export function createProject(body) {
   return request("POST", "/projects", { json: body });
 }
 
 /**
- * Add a task to a project through its producer (`add_project_task`): checked
- * without the network, nothing is downloaded.
+ * Change a project's name or description (`update_project`).
  *
  * @param {string} project - Project id.
- * @param {TaskRequest} body
- * @returns {Promise<ProjectCard>} The project's card with the task (`201`).
- * @throws {ApiError} `400` with the producer's text and `details.option` (an
- *   invalid or taken name, an invalid option), `403 permission_denied`, `404`,
- *   `409` (`project_locked`, `details.lock`).
+ * @param {ProjectChange} body
+ * @returns {Promise<ProjectCard>} The changed card.
+ * @throws {ApiError} `403 permission_denied`, `404`, `409` (`project_locked`,
+ *   `invalid_project_file`, `unsupported_project_schema`), `422`, `500 io_error`.
  */
-export function addProjectTask(project, body) {
-  return request("POST", `/projects/${one(project)}/tasks`, { json: body });
+export function updateProject(project, body) {
+  return request("PATCH", `/projects/${one(project)}`, { json: body });
 }
 
 /**
- * Remove a task and its pins from a project's manifest (`remove_project_task`);
- * its files stay in the store.
+ * Give a project an area of `/areas`, or clear it (`set_project_area`).
  *
  * @param {string} project - Project id.
- * @param {string} name - Task name.
- * @param {string|null} [producer] - The producer whose manifest holds the task;
- *   needed for a project with the manifests of several producers.
- * @returns {Promise<ProjectCard>} The project's card without the task.
- * @throws {ApiError} `400` (the producer's refusal, `producer_required`,
- *   `other_producer`), `403 permission_denied`, `404`, `409` (`project_locked`,
- *   `details.lock`).
+ * @param {string|null} areaId - The area; `null` clears the project's area.
+ * @returns {Promise<ProjectCard>} The changed card.
+ * @throws {ApiError} As `updateProject`, and `404` for an unknown area.
  */
-export function removeProjectTask(project, name, producer = null) {
-  const query = producer ? { producer } : {};
-  return request("DELETE", `/projects/${one(project)}/tasks/${one(name)}`, { query });
+export function setProjectArea(project, areaId) {
+  return request("PUT", `/projects/${one(project)}/area`, { json: { area_id: areaId } });
 }
 
 /**
- * Start a job of a project's tasks (`start_project_job`): `download`,
- * `repin`, `check` or `verify`.
+ * The store of a producer's pins in a project (`set_project_store`).
  *
  * @param {string} project - Project id.
- * @param {ProjectJobRequest} body
- * @returns {Promise<JobDetail>} The queued job (`202`).
- * @throws {ApiError} `403 permission_denied` (a download or a repin without
- *   `project_write` or `store_write`), `404`, `409 conflict` (`offline_mode`,
- *   `unknown_store`, another job of the project in `details.job`), `422
- *   unsupported`.
+ * @param {string} producer - The producer whose store it is.
+ * @param {string} store - Id of a configured store with the producer's directory.
+ * @returns {Promise<ProjectCard>} The changed card.
+ * @throws {ApiError} As `updateProject`, `400 store_without_producer` and `404`
+ *   for a store that is not configured.
  */
-export function startProjectJob(project, body) {
-  return request("POST", `/projects/${one(project)}/jobs`, { json: body });
+export function setProjectStore(project, producer, store) {
+  return request("PUT", `/projects/${one(project)}/stores/${one(producer)}`, { json: { store } });
 }
 
 /**

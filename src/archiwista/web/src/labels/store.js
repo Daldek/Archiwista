@@ -82,7 +82,8 @@ export const store = {
   projects: {
     title: "Projekty korzystające z magazynu",
     none: "Żaden widoczny projekt nie wskazuje tego magazynu.",
+    pins: "przypięte wersje: {count}",
     missing: "brakujące przypięcia: {count}",
-    invalid: "błędny manifest",
+    invalid: "błędny plik projektu",
   },
 };

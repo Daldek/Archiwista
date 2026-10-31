@@ -56,8 +56,8 @@ export const setup = {
   projects: {
     legend: "Katalogi projektów",
     hint:
-      "Archiwista szuka w nich manifestów kartograf-project.json i imgw-project.json " +
-      "(tylko odczyt). Możesz to pominąć i dodać je później.",
+      "Archiwista szuka w nich projektów: katalogów z plikiem archiwista-project.json, " +
+      "który zapisuje sama. Możesz to pominąć i dodać je później.",
     path: "Katalog projektów {number}",
     add: "Dodaj katalog",
     remove: "Usuń katalog",

@@ -275,10 +275,8 @@ function Pins({ pins }) {
   return html`<p class="fc-pins">
     <span class="faint">${L.axis.pinned}</span>${" "}
     ${pins.map((pin, index) => {
-      const name = pin.task
-        ? t(L.axis.pin, { name: pin.name, task: pin.task })
-        : t(L.axis.pin_no_task, { name: pin.name });
-      return html`<span key=${`${pin.project}:${pin.task}`} class="fc-pin">
+      const name = t(L.axis.pin, { name: pin.name, group: pin.group });
+      return html`<span key=${`${pin.project}:${pin.group}`} class="fc-pin">
         ${index ? ", " : ""}<${Link} view="projects" params=${{ project: pin.project }}>${name}</${Link}>
         ${pin.state !== "ok"
           ? html` <${Badge} level="bad">${pinStateName(pin.state)}</${Badge}>`
