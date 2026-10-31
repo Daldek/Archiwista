@@ -370,4 +370,42 @@ MESSAGES = {
             " jego dziennik usunięto z dawnymi (trzymane są 90 dni i do 1 GB)."
         ),
     ),
+    "kind_project_verify": Text("project verification", "weryfikacja projektu"),
+    "kind_project_check": Text("project check", "sprawdzenie projektu"),
+    "kind_project_repin": Text("project re-pin", "przepięcie grupy projektu"),
+    "kind_project_restore": Text("project restore", "przywrócenie projektu"),
+    "project_check_failed": Text(
+        "None of the {count} pins could be checked at the source.",
+        "Żadnej z {count} przypiętych wersji nie udało się sprawdzić u źródła.",
+    ),
+    "project_restore_failed": Text(
+        "None of the {count} missing pins was restored.",
+        "Nie przywrócono żadnej z {count} brakujących przypiętych wersji.",
+    ),
+    "project_not_indexed": Text(
+        (
+            "The new pins are in the project file, but the index was not updated;"
+            " the next scan reads them."
+        ),
+        (
+            "Nowe przypięcia są w pliku projektu, ale indeksu nie zaktualizowano;"
+            " odczyta je następny skan."
+        ),
+    ),
+    "pin_ok": Text("intact", "nienaruszone"),
+    "pin_corrupt": Text("other bytes", "inne bajty"),
+    "pin_missing": Text("missing", "brak"),
+    "pin_content_match": Text("same content", "ta sama treść"),
+    "pin_no_store": Text("store not configured", "magazyn nieskonfigurowany"),
+    "pin_current": Text("current", "aktualne"),
+    "pin_newer": Text("newer available", "dostępna nowsza"),
+    "pin_removed": Text("no longer selected", "już niewybierane"),
+    "pin_unverifiable": Text("unverifiable", "nie do sprawdzenia"),
+    "pin_check_failed": Text("check failed", "sprawdzenie nieudane"),
+    "pin_not_checkable": Text("no command", "bez polecenia"),
+    "pin_restored": Text("restored", "przywrócone"),
+    "pin_not_restored": Text("not restored", "nieprzywrócone"),
+    "pin_not_restorable": Text("no command", "bez polecenia"),
+    "repin_replaced": Text("pinned anew", "przypięta na nowo"),
+    "repin_unchanged": Text("unchanged", "bez zmian"),
 }

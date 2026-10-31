@@ -2,7 +2,7 @@
 
 Each module here (``previews``, and from later steps ``owndata``,
 ``compare``, ``layers``, ``producer_commands``, ``availability``, ``jobs``,
-``projects``, ``preview_warm``, ``stations`` and ``log``)
+``projects``, ``project_jobs``, ``preview_warm``, ``stations`` and ``log``)
 has ``COMMANDS`` (the names it adds), ``add_commands`` (adds them to the
 parser) and ``main`` (runs one of them),
 and is registered with one line in ``archiwista.cli.COMMAND_MODULES``. A

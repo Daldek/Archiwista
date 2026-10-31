@@ -1633,6 +1633,23 @@ class IndexQueries:
             ).fetchone()
         return None if row is None else _facts(store, row)
 
+    def slot_versions(self, store: str, slot: str) -> tuple[VersionFacts, ...]:
+        """Return the present versions of the slot at a standard path, by path.
+
+        Empty when the index holds no such slot or no present version of it.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            rows = connection.execute(
+                f"SELECT {_FACT_COLUMNS} FROM slots s"
+                " JOIN versions v ON v.slot_id = s.id"
+                " JOIN segments g ON g.id = v.segment_id"
+                " WHERE s.store_id = ? AND s.path = ? AND v.state = 'present'"
+                " ORDER BY v.path",
+                (_store_id(stores, store), slot),
+            ).fetchall()
+        return tuple(_facts(store, row) for row in rows)
+
     def unused_versions(self, store: str) -> UnusedVersions | None:
         """Report present versions no link names and no project pins.
 

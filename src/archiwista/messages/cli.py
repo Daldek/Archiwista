@@ -2652,4 +2652,69 @@ MESSAGES = {
         "outside the provider's country",
         "poza krajem dostawcy",
     ),
+    "project_verify_help": Text(
+        (
+            "Hashes the project's pinned files in their store, without the network,"
+            " and follows the job to its end (--json: the JobDetail model of the job"
+            " as it ended)."
+        ),
+        (
+            "Liczy skróty przypiętych plików projektu w magazynie, bez sieci, i śledzi"
+            " zadanie do końca (--json: model JobDetail zadania po jego końcu)."
+        ),
+    ),
+    "project_check_help": Text(
+        (
+            "Compares the project's pins with what the source has now, without"
+            " effects, and follows the job to its end (--json: the JobDetail model of"
+            " the job as it ended)."
+        ),
+        (
+            "Porównuje przypięcia projektu z tym, co ma teraz źródło, bez skutków, i"
+            " śledzi zadanie do końca (--json: model JobDetail zadania po jego końcu)."
+        ),
+    ),
+    "project_repin_help": Text(
+        (
+            "Downloads the source's newer versions of one group and pins the group"
+            " anew when every call succeeded; follows the job to its end (--json: the"
+            " JobDetail model of the job as it ended)."
+        ),
+        (
+            "Pobiera nowsze wersje ze źródła dla jednej grupy i przypina ją na nowo,"
+            " gdy każde wywołanie się udało; śledzi zadanie do końca (--json: model"
+            " JobDetail zadania po jego końcu)."
+        ),
+    ),
+    "project_restore_help": Text(
+        (
+            "Downloads the project's missing pinned versions again and follows the"
+            " job to its end (--json: the JobDetail model of the job as it ended)."
+        ),
+        (
+            "Pobiera ponownie brakujące przypięte wersje projektu i śledzi zadanie do"
+            " końca (--json: model JobDetail zadania po jego końcu)."
+        ),
+    ),
+    "project_job_groups_help": Text(
+        "names of the project's groups; none: every group",
+        "nazwy grup projektu; bez nich: wszystkie grupy",
+    ),
+    "project_repin_group_help": Text(
+        "name of the group to pin anew",
+        "nazwa grupy do przypięcia na nowo",
+    ),
+    "jobs_project_pins": Text(
+        "Pins: {pins} ({counts}).",
+        "Przypięcia: {pins} ({counts}).",
+    ),
+    "jobs_project_added": Text(
+        "Positions of the calls without a pin: {added}.",
+        "Pozycje wywołań bez przypięcia: {added}.",
+    ),
+    "jobs_project_repin": Text(
+        "Group {group}: {status}; pins kept {kept}, new {new}, dropped {dropped}.",
+        "Grupa {group}: {status}; przypięcia zachowane {kept}, nowe {new},"
+        " usunięte {dropped}.",
+    ),
 }

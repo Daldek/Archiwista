@@ -1645,7 +1645,8 @@
  * @typedef {object} JobDetail
  * @property {string} id
  * @property {"scan"|"footprints"|"link_check"|"preview"|"own_scan"|"snapshot"
- *   |"availability"|"check"|"download"|"preview_warm"} kind
+ *   |"availability"|"check"|"download"|"preview_warm"|"project_verify"
+ *   |"project_check"|"project_repin"|"project_restore"} kind
  * @property {"queued"|"running"|"succeeded"|"partial"|"failed"|"interrupted"|"cancelled"} state -
  *   `partial`: part of its units failed, `result` names them.
  * @property {string} actor - Who started it.
@@ -1653,14 +1654,15 @@
  *   account, an agent for `actor`, or the scheduler.
  * @property {string|null} session - Label of the session it was started in.
  * @property {string|null} store - Null for `preview`, `own_scan`, `snapshot`,
- *   `availability` and `preview_warm`.
+ *   `availability`, `preview_warm` and the `project_*` kinds.
  * @property {Object<string, *>} params - `mode`/`segment` of a scan, `slot` of a link
  *   check, `refs` of a preview, `project` of an `own_scan` (none: every project),
  *   `project`, `file_id` and `note` of a snapshot, `area_id`, `producer`, `product`
  *   and `force` of an availability check, `producer` and `calls` (each `command` and
  *   `options`, in their order; all the lines of a row, ADR-044) of a plan (`check`),
  *   those and `plan_job` of a `download`, `store`, `product`, `segment`, `project`,
- *   `area_id` and `since` (null: not given) of a `preview_warm`.
+ *   `area_id` and `since` (null: not given) of a `preview_warm`, `project` and
+ *   `groups` (null: every group) of the `project_*` kinds.
  * @property {string} created_at
  * @property {string|null} started_at
  * @property {string|null} finished_at
@@ -1694,7 +1696,12 @@
  *   `job_partial` or `error` `{code, reason, detail}`), `seconds`; of a
  *   `preview_warm` `versions`, `files`, `warmed`,
  *   `cached`, `needs_build`, `failed`, `failures` (`ref`, `code`, `detail`),
- *   `skipped`, `stopped` (`cache_full` or null), `room_bytes`, `seconds`.
+ *   `skipped`, `stopped` (`cache_full` or null), `room_bytes`, `seconds`; of a
+ *   `project_verify`, `project_check` or `project_restore` `project`, `groups`,
+ *   `ok`, `counts` and `pins` (`group`, `producer`, `version`, `status`, ...),
+ *   a check also `added` and `calls`, a restore `calls` and `rescanned`; of a
+ *   `project_repin` `project`, `group`, `status` (`replaced`, `unchanged`),
+ *   `written`, `calls`, `files`, `pins` (`kept`, `new`, `dropped`), `rescanned`.
  * @property {JobFailure|null} error
  * @property {boolean} hidden - A job only of projects the session does not see, as
  *   `GET /jobs` lists it: empty `params`, null `session`, `result` and `error`,

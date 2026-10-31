@@ -24,7 +24,7 @@ the scheduler as no one; a free network place goes to the oldest waiting job
 of the person with the fewest running ones, ADR-047), runs alone (one ``preview``
 at a time, one ``preview_warm``; the next ones wait in the queue), conflicts
 with active jobs (one job writing a store's index at a time, ``scan`` or
-``footprints``;
+``footprints``; one job of a project at a time, of the ``PROJECT_KINDS``;
 another one is a ``JobConflictError``), joins one (a ``preview`` of contents
 an active build already has adds its refs to that job; an ``availability``
 check of an area and product that an active check already asks returns that
@@ -112,6 +112,7 @@ from archiwista.jobs.protocol import (
     CODE_INTERNAL_ERROR,
     INTERRUPTED_EXIT,
     JOB_KINDS,
+    PROJECT_KINDS,
     REASON_INTERRUPTED,
     REASON_WORKER_CRASHED,
     STOP_TIMEOUT_S,
@@ -564,6 +565,10 @@ JOB_RULES: Mapping[JobKind, JobRule] = {
     "check": JobRule(store=True, network=True),
     "download": JobRule(store=True, network=True, overlap=_DOWNLOAD_OVERLAP),
     "preview_warm": JobRule(store=False, exclusive=True, join=_WARM_JOIN),
+    "project_verify": JobRule(store=False, conflict=_PROJECT_CONFLICT),
+    "project_check": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
+    "project_repin": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
+    "project_restore": JobRule(store=False, network=True, conflict=_PROJECT_CONFLICT),
 }
 
 
@@ -652,7 +657,9 @@ def action_details(
     """Return what the action log keeps of a job: its kind, store and project.
 
     The details of the entries ``job.start``, ``job.retry`` and ``job.cancel``
-    (A-ADR-047); a store or a project the job has not is left out.
+    (A-ADR-047); a store or a project the job has not is left out. A job of a
+    project's groups adds them (``groups``, ``None`` for every group), a
+    download that pins its ``group``.
     """
     details: dict[str, object] = {"kind": kind}
     if store is not None:
@@ -660,6 +667,8 @@ def action_details(
     project = params.get("project")
     if project is not None:
         details["project"] = project
+    if "groups" in params:
+        details["groups"] = params["groups"]
     pin = params.get("pin")
     if isinstance(pin, Mapping):
         details["project"] = pin.get("project")
@@ -874,7 +883,7 @@ class JobSupervisor:
             (``scan``, ``footprints``, ``link_check``, ``check``,
             ``download``), refused by one working on none (``preview``,
             ``own_scan``, ``snapshot``, ``availability``,
-            ``preview_warm``).
+            ``preview_warm``, the ``PROJECT_KINDS``).
         params : Mapping or None, optional
             ``scan``: ``mode`` (``incremental``, the default, or ``full``)
             and optional ``segment``; ``link_check``: ``slot`` (its path);
@@ -896,7 +905,10 @@ class JobSupervisor:
             ``product``, ``segment``,
             ``project``, ``area_id`` and ``since`` (``WARM_FILTERS``: each a
             non-empty text or ``None``, the default; ``since`` an ISO 8601
-            time with its offset).
+            time with its offset); the ``PROJECT_KINDS``: ``project`` (its
+            key) and ``groups`` (a list of group names, a name given twice
+            kept once, or ``None`` for every group, the default; exactly one
+            for ``project_repin``).
         actor : Principal
             Who asks; the job keeps its id, kind and session label. A person
             (any actor but the ``scheduler``) gets the action log's entry
@@ -932,8 +944,9 @@ class JobSupervisor:
         OfflineModeError
             A network job while offline mode is on; nothing is recorded.
         JobConflictError
-            Another job writes the store's index (``scan``, ``footprints``);
-            it names that job.
+            Another job writes the store's index (``scan``, ``footprints``),
+            or the project has an active job (the ``PROJECT_KINDS``); it
+            names that job.
         ValueError
             An unknown kind, a store missing or given against the kind's
             rule, or invalid parameters.
@@ -2047,6 +2060,8 @@ def _job_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
         return _check_params(params)
     if kind == "download":
         return _download_params(params)
+    if kind in PROJECT_KINDS:
+        return _project_params(kind, params)
     if kind == "preview_warm":
         return _warm_params(params)
     if params:
@@ -2065,6 +2080,33 @@ def _availability_params(params: Mapping[str, object]) -> JsonObject:
     ):
         raise ValueError(f"invalid availability parameters {dict(params)!r}"[:300])
     return {**{name: params[name] for name in names}, "force": force}
+
+
+def _project_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
+    """Check a project job's project and groups; a re-pin takes one group.
+
+    ``groups`` is a list of group names, a name given twice kept once, or
+    ``None``, every group of the project.
+    """
+    project = params.get("project")
+    groups = params.get("groups")
+    if (
+        set(params) - {"project", "groups"}
+        or not (isinstance(project, str) and project)
+        or not (
+            (groups is None and kind != "project_repin")
+            or (
+                isinstance(groups, list | tuple)
+                and groups
+                and all(isinstance(name, str) and name for name in groups)
+            )
+        )
+    ):
+        raise ValueError(f"invalid {kind} parameters {dict(params)!r}"[:300])
+    names = None if groups is None else list(dict.fromkeys(cast(list[str], groups)))
+    if kind == "project_repin" and (names is None or len(names) != 1):
+        raise ValueError(f"a project_repin job takes one group, got {groups!r}"[:300])
+    return {"project": project, "groups": names}
 
 
 def _warm_params(params: Mapping[str, object]) -> JsonObject:

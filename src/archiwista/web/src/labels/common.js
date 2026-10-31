@@ -42,6 +42,10 @@ export const common = {
     check: "plan pobrania",
     download: "pobranie",
     preview_warm: "przygotowanie podglądów",
+    project_verify: "weryfikacja projektu",
+    project_check: "sprawdzenie projektu",
+    project_repin: "przepięcie grupy projektu",
+    project_restore: "przywrócenie projektu",
   },
   job_state: {
     queued: "w kolejce",

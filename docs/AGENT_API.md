@@ -32,6 +32,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
 | a project's exports from its pins, `pliki.txt` and `ATRYBUCJE.txt` in `zestawy/NAZWA/` (A-ADR-049), and their list | `archiwista project-export PROJEKT NAZWA [--group GRUPA …]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports` |
 | pin versions the store holds into a project's group (offline, from the index), remove pins or a group (A-ADR-049) | `archiwista project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add]`, `project-unpin PROJEKT GRUPA [--pin PRODUCENT:WERSJA …]` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}` |
+| jobs over a project's groups (A-ADR-049): the pinned files hashed in the store (offline), the pins compared with the source, one group pinned anew to the source's newer versions, the missing pins downloaded again; in the foreground, exit 0, 10, 11 or 130 | `archiwista project-verify PROJEKT [GRUPA …]`, `project-check PROJEKT [GRUPA …]`, `project-repin PROJEKT GRUPA`, `project-restore PROJEKT [GRUPA …]` | `POST /projects/{project}/jobs` |
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
 | team mode (v0.4): how a session starts, signing in (with a password or through the company's reverse proxy), changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `POST /session/proxy`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
@@ -372,8 +373,10 @@ cursor is safe in a URL).
 - **Changing (A-ADR-049):** projects are kept in Archiwista's own
   `archiwista-project.json`; the producers' manifests are no longer read, and
   the routes and commands of their tasks, status and jobs are gone. Pinning
-  (`project-pin`, `project-unpin`, `project-restore`) and `/activity` (SPEC 9.2)
-  are added here phase by phase as
+  (`project-pin`, `project-unpin`) and the jobs over a project's groups
+  (`POST /projects/{project}/jobs`, `project-verify`, `project-check`,
+  `project-repin`, `project-restore`; section 9) are here; `/activity` (SPEC 9.2)
+  is added as
   [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
   lands.
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
@@ -979,6 +982,7 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 | `POST /previews/warm` | none, or any of `{"store": "…", "product": "…", "segment": "…", "project": "…", "area_id": "…"}` | the first look at current versions prepared in the preview cache (v0.3, ADR-041): the job `preview_warm` has no `store`, its `params` are the filters (and `since`, set only by the scheduler's warm-up after a scan); any session may ask; a store that is not configured, a project the session does not see and an unknown area → `404` before a job; a request of the filters of a waiting warm-up returns that job |
 | `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"`, and `"store"`, `"horizontal"`, `"resolution"`, `"vertical_crs"` for the rows of a `200` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`); a store that is not configured → `404` before a job |
 | `POST /jobs` | `{"kind": "check", "producer": "…", "store": "…", "calls": [{"command": "…", "options": {…}}, …]}` (1 to 1000 calls, in their order; one for one line); for a run `"kind": "download"`, optionally `"plan_job": "…"` (a `check` job of the same store, producer and calls in the same order) and `"pin": {"project": "…", "group": "…"}` (a new group of the project that the run's files and its plans' other positions are pinned into when it succeeds, section 5 at `jobs start download … --pin`) | a job of calls of commands of the producer's catalog that work on a store and have a check (v0.3): all the lines of a report's row, or of a pasted list, in one job (ADR-044). `check` plans a run of each call in the store's directory of the producer without its effects, one after the other, and keeps a plan of each; a call the producer refuses, or none of whose positions could be checked, keeps none and the job ends `partial` (it fails only when no call was planned, with the first call's error); `download` runs the calls there (with `plan_job` each call only its plan's positions to download, one whose source changed since a failed item, `stale_plan`; a call without a kept plan or with nothing to download is skipped), the next call running after one that failed; both over the network. `result.calls` says what became of each call (`status`, `line`, `error`; a download's `reason` of a skipped one), `files[]` and `items[]` of a download carry the `call`; with `pin`, `result.pin` says what was pinned. Refused before a job exists: a download by a session without `store_writer` (and without the setting `store_write_for_all`) `403` (`permission_denied`; an agent has the roles of the person who issued its token), a store that is not configured `404`, a command outside the catalog `400` (`unknown_command`), a store without a directory of the producer `400` (`store_without_producer`), a command on no store or without a check `422` (`no_store`, `no_check`), an option that is a file path `403` (`path_outside_root`), the producer's refusal of the options `400` (its text, `details.option`), each refusal of one call naming its place in `calls` (`details.call`, from 0), a `plan_job` the session does not see or that kept no plan `404`, one of another store, producer or calls `409` (`plan_mismatch`, `details.job`), `plan_job` or `pin` with `check` `400`, a `pin` the project refuses (`404`, `403`, `400 invalid_group_name`, `409 group_exists`, `other_store`, `unknown_store`), a missing plugin `503`, offline `409` (`offline_mode`); the job keeps the options as the producer read them. A download that shares a call (store, producer, command, options) with an active download starts with the warning notice `overlapping_job` |
+| `POST /projects/{project}/jobs` | `{"kind": "verify"}`, `"check"`, `"restore"` (optionally `"groups": ["…"]`, every group when left out) or `{"kind": "repin", "groups": ["…"]}` (exactly one) | a job over a project's groups (A-ADR-049 decision 11; the kinds `project_verify`, `project_check`, `project_repin`, `project_restore`, with no `store` and the `params` `project` and `groups`): who sees the project starts a verification or a check; a re-pin and a restore need `project.write` and `store.write` (`403`). Refused before a job: a group the project does not have (`404`), a re-pin of not exactly one group (`400`), a group whose producer offers no commands (`422 unsupported`, `no_commands`), a re-pin of a local group with a pin whose call cannot be rebuilt (`422 unsupported`, `command_not_rebuildable`), a project store matching no configured one (`409 conflict`, `unknown_store`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409`, `offline_mode`) |
 
 An unknown store gives `404 not_found`, a wrong body `400 validation_error`.
 When a job that writes the store's index (a scan or outlines) runs already, the
@@ -987,7 +991,7 @@ job instead of creating another.
 
 A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
 `link_check`, `preview`, `own_scan`, `snapshot`, `availability`, `check`, `download`,
-`preview_warm`), `state` (`queued`, `running`,
+`preview_warm`, `project_verify`, `project_check`, `project_repin`, `project_restore`), `state` (`queued`, `running`,
 `succeeded`, `partial` (part of its units failed: `result` names them), `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
 `session`, `store`, `params`, `created_at`, `started_at`, `finished_at`,
 `progress`, `result`, `error` and `hidden` (v0.4: a job only of projects the
@@ -1026,6 +1030,48 @@ root), `schema`, `checked_at`, `ok`, `counts`, `todo`, `size_bytes`,
 whose check failed has no plan; the job's `result.calls` says why. A job the
 session does not see, one that is no `check`, one still running and one that
 failed are `404`.
+
+**The jobs of a project (A-ADR-049 decisions 11 and 12).** Each works on the
+store the project names for each producer of a group; a job that runs calls
+needs that store readable (`store_unavailable` fails the job). Their `result`:
+
+- `project_verify` (no network, changes nothing; succeeds with `ok` false when
+  it found a problem): `project`, `groups`, `ok`, `counts` and `pins` (`group`,
+  `producer`, `version`, `status`, `found`): `ok`, `corrupt` (other bytes),
+  `missing`, `content_match` (missing, but another present version of its slot
+  holds its `content_sha256`: `found` names it) or `no_store` (its store is not
+  configured);
+- `project_check` (network; writes only the producer's metadata cache):
+  `project`, `groups`, `ok`, `counts`, `pins` (`group`, `producer`, `version`,
+  `unit`, `path` (its slot), `status`, `pinned_label`, `available_label`,
+  `detail`), `added` (positions of a plan group's calls without a pin: `group`,
+  `unit`, `path`, `available_label`) and `calls`. A pin is compared by its slot
+  and SHA-256, never by a count: `current`, `newer` (the source has a newer
+  version, or the store's current version of the slot is another one),
+  `missing`, `removed` (the call no longer selects the slot), `unverifiable`,
+  `check_failed` or `not_checkable` (a local pin whose call the producer cannot
+  rebuild, its text in `detail`: D5). It ends `partial` when some pins could not
+  be asked and fails (`source_unavailable`, `check_failed`) when none could;
+- `project_repin` (network; one group): runs the group's calls (a local group:
+  its pins' calls, `command_for_version`) in the producer's update mode;
+  `project`, `group`, `status` (`replaced`, `unchanged`), `written`, `calls`,
+  `files`, `pins` (`kept`, `new`, `dropped`) and `rescanned`. Only when every
+  call and unit succeeded are the pins replaced in the file under its lock (a
+  pin whose version and SHA-256 did not change keeps `pinned_at` and
+  `pinned_by`); anything less changes no pin and ends `partial` (`written`
+  false), the downloaded versions staying in the store;
+- `project_restore` (network; never writes the file): runs, for the groups with
+  pins missing from the store, their calls in the producer's default mode;
+  `project`, `groups`, `ok`, `counts`, `pins` (the missing ones: `group`,
+  `producer`, `version`, `status`, `reason`, `detail`, and `found` of a content
+  match), `calls`, `rescanned`: `restored` (its SHA-256 returned),
+  `content_match` (its `content_sha256` returned with other bytes, never
+  re-pinned silently), `not_restored` (`reason` `other_content` or
+  `not_returned`) or `not_restorable` (no call: D5). It ends `partial` when some
+  missing pins were not restored and fails (`run_failed`) when none was.
+
+After a run the slots of its files are read again into the index. A retry asks
+the permissions of the kind again.
 
 A job is controlled by (v0.3; ADR-038):
 

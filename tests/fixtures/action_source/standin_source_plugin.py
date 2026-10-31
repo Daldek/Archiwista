@@ -10,7 +10,11 @@ the options. Its availability takes the area, its countries and ``refresh``
 among the options too, and so do its plan and its run of a call the store
 root. Its store is the files a run fetched, ``<kind>/<station>/<file>``: each
 file a version of its own slot (its SHA-256 and size read by a scan, so a pin
-names it), its station the unit a scan reads it by. A plan is narrowed
+names it), its station the unit a scan reads it by; a file kept as
+``<kind>/<station>/<label>/<file>`` is another version of the slot
+``<kind>/<station>/<file>``. Each version's ``content_sha256`` is the SHA-256
+of its bytes with CRLF read as LF, so a file whose line ends changed holds the
+same content (as IMGWTools' canonical content). A plan is narrowed
 (``narrow``) by the ``file`` of its items. The call of a stored file
 (``command_for_version``) is its station's fetch; a file of
 ``standin_producer.DERIVED`` is refused as ``command_not_rebuildable``.
@@ -87,11 +91,13 @@ class StandinAdapter:
     ) -> Iterator[SourceEntry]:
         """Yield each fetched file as a version; a scope's units are stations."""
         units = None if scope is None or scope.units is None else set(scope.units)
-        for path in sorted(root.glob("*/*/*")):
+        for path in sorted([*root.glob("*/*/*"), *root.glob("*/*/*/*")]):
             relative = path.relative_to(root)
             station = relative.parts[1]
             if not path.is_file() or (units is not None and station not in units):
                 continue
+            parts = relative.parts
+            slot = None if len(parts) == 3 else Path(*parts[:2], parts[3])
             content = path.read_bytes()
             label = content.decode("utf-8").strip().rpartition(",")[2]
             meta = EntryMeta(
@@ -101,6 +107,9 @@ class StandinAdapter:
                 label=label,
                 unit=station,
                 sha256=hashlib.sha256(content).hexdigest(),
+                content_sha256=hashlib.sha256(
+                    content.replace(b"\r\n", b"\n")
+                ).hexdigest(),
                 size_bytes=len(content),
             )
             yield SourceEntry(
@@ -109,6 +118,7 @@ class StandinAdapter:
                 relative_path=relative,
                 kind="version",
                 version_path=relative,
+                slot_path=slot,
                 meta=meta,
             )
 

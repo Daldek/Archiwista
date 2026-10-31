@@ -44,7 +44,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppSettings
 
-PROTOCOL_VERSION = 12
+PROTOCOL_VERSION = 13
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -64,12 +64,26 @@ type JobKind = Literal[
     "check",
     "download",
     "preview_warm",
+    "project_verify",
+    "project_check",
+    "project_repin",
+    "project_restore",
 ]
 type MessageType = Literal["progress", "notice", "result", "partial", "error"]
 type NoticeLevel = Literal["info", "warning"]
 type JsonObject = dict[str, Any]
 
 JOB_KINDS: tuple[JobKind, ...] = get_args(JobKind.__value__)
+# The kinds of a job over the groups of one project (``params.project`` and
+# ``params.groups``, no store; A-ADR-049 decision 11): the pinned files
+# hashed in the store, the pins compared with the source, a group re-pinned to
+# the source's newer versions and the missing pins downloaded again.
+PROJECT_KINDS: tuple[JobKind, ...] = (
+    "project_verify",
+    "project_check",
+    "project_repin",
+    "project_restore",
+)
 # The filters of a ``preview_warm`` job (``archiwista.index.WarmQuery``), each
 # a text or ``None``: ``since`` (ISO 8601 with its offset) only from the
 # scheduler's warm-up after a scan.
@@ -127,7 +141,9 @@ class JobSpec:
     store : str or None
         Configured id of the store the job works on; ``None`` for a kind
         working on no store (``preview``, ``own_scan``, ``snapshot``,
-        ``availability``; ``preview_warm``: its filters name one).
+        ``availability``, the ``PROJECT_KINDS``: a project's store is the one
+        its file names for a group's producer; ``preview_warm``: its filters
+        name one).
     params : dict
         Parameters of the kind, validated by the supervisor (``scan``:
         ``mode`` and ``segment``; ``link_check``: ``slot``; ``preview``:
@@ -136,7 +152,9 @@ class JobSpec:
         ``availability``: ``area_id``, ``producer``, ``product`` and
         ``force``; ``check``: ``producer`` and ``calls``, each a ``command``
         and its ``options``; ``download``: those of ``check`` and
-        ``plan_job``; ``preview_warm``: the ``WARM_FILTERS``).
+        ``plan_job``; the ``PROJECT_KINDS``: ``project`` and ``groups``
+        (names, ``None`` for every group; one for ``project_repin``);
+        ``preview_warm``: the ``WARM_FILTERS``).
     actor : str
         Who asked for the job (``Principal.id``).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}

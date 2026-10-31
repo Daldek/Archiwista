@@ -24,6 +24,25 @@ command-line interface may change.
   the producer is asked). The source interface gains `VersionCommandAdapter`
   (`command_for_version(version, *, root)`) and `ActionAdapter.run(..., upgrade=)`, the
   update mode a re-pin runs in.
+- The jobs over a project's groups (A-ADR-049 decisions 11 and 12, plan P4):
+  `archiwista project-verify PROJEKT [GRUPA …]`, `project-check`, `project-repin PROJEKT
+  GRUPA` and `project-restore`, and `POST /projects/{project}/jobs` (`kind` `verify`,
+  `check`, `repin` or `restore`, `groups` left out for every group), start the job kinds
+  `project_verify` (the pinned files hashed in the store, offline: `ok`, `corrupt`,
+  `missing`, `content_match` when another version of the slot holds the same content,
+  `no_store`), `project_check` (the pins compared with the source by slot and SHA-256:
+  `current`, `newer`, `missing`, `removed`, `unverifiable`, `check_failed`,
+  `not_checkable`, and the positions without a pin), `project_repin` (one group's calls
+  in the producer's update mode; its pins replaced only after a whole success, an
+  unchanged pin keeping its time and author) and `project_restore` (the missing pins'
+  calls in the default mode: `restored`, `content_match`, `not_restored`,
+  `not_restorable`; the project file never written). A local pin's call is the
+  producer's command of its version; a version whose command cannot be rebuilt is
+  `not_checkable` or `not_restorable` with the producer's text, and its group cannot be
+  re-pinned (`422 command_not_rebuildable`). Verifying and checking need to see the
+  project; re-pinning and restoring need `project.write` and `store.write`, asked again
+  on a retry. One job of a project runs at a time. Pinning what the store holds now
+  keeps each version's command in the index at once.
 - Pinning versions into a project's groups (A-ADR-049, P3): `archiwista project-pin`,
   `project-unpin`, the routes `POST /projects/{project}/groups`, `…/pins`, `…/unpin` and
   `DELETE …/groups/{group}`, and `jobs start download … --pin PROJEKT --pin-group GRUPA`

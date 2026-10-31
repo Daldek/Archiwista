@@ -472,9 +472,10 @@ def _job_text(detail: JobDetail) -> str:
 
     A plan adds its counts and the line of each call (or why it has no
     plan), a download the files by status, the units that failed and the
-    calls that failed or were skipped, a project's download or repin its
-    tasks by outcome, a project's check or verification its files by state,
-    a warm-up of previews what it selected and how each file went.
+    calls that failed or were skipped, a project's verification, check or
+    restore its pins by state (a check also the positions without a pin), a
+    project's re-pin what became of its group's pins, a warm-up of previews
+    what it selected and how each file went.
     """
     kind = label("job.kind", detail.kind)
     state = label("job.state", detail.state)
@@ -514,6 +515,30 @@ def _job_text(detail: JobDetail) -> str:
                 needs_build=result["needs_build"],
                 failed=result["failed"],
                 skipped=result["skipped"],
+            )
+        )
+    if detail.kind in ("project_verify", "project_check", "project_restore"):
+        pins: Mapping[str, int] = result["counts"]
+        named = ", ".join(
+            f"{label('job.pin', status)} {count}"
+            for status, count in pins.items()
+            if count
+        )
+        lines.append(
+            message("cli.jobs_project_pins", pins=sum(pins.values()), counts=named)
+        )
+        if result.get("added"):
+            lines.append(message("cli.jobs_project_added", added=len(result["added"])))
+    if detail.kind == "project_repin":
+        repinned: Mapping[str, int] = result["pins"]
+        lines.append(
+            message(
+                "cli.jobs_project_repin",
+                group=result["group"],
+                status=label("job.repin", result["status"]),
+                kept=repinned["kept"],
+                new=repinned["new"],
+                dropped=repinned["dropped"],
             )
         )
     return "\n".join(lines)

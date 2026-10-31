@@ -1970,9 +1970,14 @@ class JobDetail(BaseModel):
             " area and a product, over the network), `check` (what a run of"
             " a producer's command would do in the store, over the network),"
             " `download` (a run of a producer's command in the store, over the"
-            " network) or `preview_warm`"
+            " network), `preview_warm`"
             " (the first look at current versions prepared in the preview"
-            " cache ahead)."
+            " cache ahead), or a job over a project's groups (A-ADR-049):"
+            " `project_verify` (the pinned files hashed in the store),"
+            " `project_check` (the pins compared with the source, over the"
+            " network), `project_repin` (a group pinned anew to the source's"
+            " newer versions) or `project_restore` (the missing pins downloaded"
+            " again)."
         )
     )
     state: JobState = Field(

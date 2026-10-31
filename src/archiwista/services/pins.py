@@ -12,7 +12,10 @@ store, or while the project's store matches no configured one, is refused.
 ``unpin`` removes pins of a group, or the whole group. Both need
 ``project.write``, write the file under its lock
 (``archiwista.projects.change_project_file``), log ``project.pin`` or
-``project.unpin`` and record the project in the index at once.
+``project.unpin`` and record the project in the index at once. ``pin_local``
+also keeps the producer's call of each version it pinned in the index
+(``version_calls``, A-ADR-049 D-10), so the card knows which pins a job can
+check, restore and re-pin.
 
 A download of the plan window that names ``pin`` (decision 9) is checked
 before its job exists by ``check_plan_pin`` (the project, its name and its
@@ -20,6 +23,7 @@ store), and its worker writes the ``plan`` group with ``pin_download`` when
 the job succeeded.
 """
 
+import logging
 import unicodedata
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -30,7 +34,12 @@ from typing import TYPE_CHECKING, Any, Literal
 from archiwista.auth import ALL_PROJECTS, Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings
-from archiwista.errors import ConflictError, InvalidChangeError, NotFoundError
+from archiwista.errors import (
+    ArchiwistaError,
+    ConflictError,
+    InvalidChangeError,
+    NotFoundError,
+)
 from archiwista.index import IndexQueries, IndexWriter, VersionFacts
 from archiwista.index.projects import match_store, record_project
 from archiwista.messages import message
@@ -43,6 +52,7 @@ from archiwista.projects import (
     read_project_json,
 )
 from archiwista.projects import document as project_document
+from archiwista.services.commands import version_calls, version_commands
 from archiwista.services.projects import (
     changed_project,
     project_directory,
@@ -56,6 +66,8 @@ if TYPE_CHECKING:
     from archiwista.api.models import SlotFilters
 
 type SkipReason = Literal["missing", "no_sha256"]
+
+logger = logging.getLogger("archiwista.services.pins")
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,6 +277,7 @@ def pin_local(
             data.setdefault("groups", []).append(target)
 
     document = change_project_file(directory, change)
+    _keep_calls(registry, settings, queries, index_path, candidates)
     written = next(item for item in document.groups if _same(item.name, name))
     authorizer.state.record(
         actor,
@@ -669,6 +682,48 @@ def _require_store(
             reason="other_store",
             details={"store": store, "producer": fact.producer},
         )
+
+
+def _keep_calls(
+    registry: PluginRegistry,
+    settings: AppSettings,
+    queries: IndexQueries,
+    index_path: Path,
+    facts: Sequence[VersionFacts],
+) -> None:
+    """Keep the producer's call of each pinned version in the index (D-10).
+
+    Offline: ``command_for_version`` of the versions whose answer the index
+    does not keep for the installed producer. A producer without the
+    capability, or one that refuses otherwise than D5, leaves its versions
+    unknown: a job asks again.
+    """
+    paths: dict[tuple[str, str], list[str]] = {}
+    for fact in facts:
+        paths.setdefault((fact.store, fact.producer), []).append(fact.path)
+    with IndexWriter(index_path) as writer:
+        for (store, producer), chosen in paths.items():
+            config = settings.store(store)
+            root = None if config is None else config.roots().get(producer)
+            if root is None:
+                continue
+            try:
+                version_calls(
+                    version_commands(registry, producer),
+                    registry.state(producer).package_version or "",
+                    queries,
+                    writer,
+                    store=store,
+                    root=root,
+                    paths=chosen,
+                )
+            except ArchiwistaError as error:
+                logger.info(
+                    "The calls of %d pinned versions of %s were not kept: %s",
+                    len(chosen),
+                    producer,
+                    error,
+                )
 
 
 def _pin_json(fact: VersionFacts, moment: str, account: str) -> dict[str, Any]:

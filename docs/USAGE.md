@@ -251,8 +251,8 @@ versions a scan has just indexed.
 > producers and groups of pinned versions; the producers' manifests are no longer read,
 > and a directory holding only one of them is no project (nothing is migrated). The
 > file, its discovery, its commands and routes, its exports and the views below are in
-> this build; pinning versions into a project and the project's jobs follow (the next
-> steps of
+> this build, as are pinning versions into a project and the project's jobs; the card's
+> activity and its job buttons follow (the next step of
 > [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)).
 > Own data and snapshots stay as described below.
 
@@ -302,6 +302,21 @@ versions a scan has just indexed.
   grupę" a group, each asked first. The plan window's option "Dodaj do projektu" names
   the project and the new group; the download's result in the top bar then says what
   was pinned and what was not.
+- **The jobs of a project** (from the command line; the card's buttons come in the next
+  step): `archiwista project-verify PROJEKT [GRUPA …]` hashes each pinned file in its
+  store without the network (`ok`, `corrupt`, `missing`, `content_match` when another
+  version of the slot holds the same content, `no_store`); `project-check PROJEKT
+  [GRUPA …]` asks the source and compares each pin by its slot (`current`, `newer`,
+  `missing`, `removed`, `unverifiable`, `check_failed`, `not_checkable` for a version
+  whose command the producer cannot rebuild), listing positions without a pin;
+  `project-repin PROJEKT GRUPA` downloads the source's newer versions of one group and
+  pins them only when every call succeeded (an unchanged pin keeps its time and
+  author); `project-restore PROJEKT [GRUPA …]` downloads the missing pinned versions
+  again (`restored`, `content_match`, `not_restored`, `not_restorable`) and never
+  changes the file. No group named is every group. Anyone who sees the project verifies
+  and checks it; a re-pin and a restore need the owner or an administrator and the
+  right to write the stores. One job of a project runs at a time; each follows the job
+  in the foreground and exits `0`, `10` (partial), `11` or `130`.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 

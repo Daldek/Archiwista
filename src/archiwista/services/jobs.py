@@ -20,6 +20,8 @@ other one as an unknown job (``404``, ``job.not_found``), for ``POST
   active (``job_active``). What the
   kind needs at its start is asked again: a ``download`` needs
   ``store.write``, a ``snapshot`` ``project.write`` of its project, a
+  ``project_repin`` and a ``project_restore`` ``project.write`` and
+  ``store.write``, a
   ``scan``, ``footprints``, ``link_check`` or an ``own_scan`` of every
   project ``store.scan``, and an ``own_scan`` of one project keeps to the
   limits of a person's scans (``scan_limits``); the project of a
@@ -42,6 +44,7 @@ from archiwista.errors import ConflictError, NotFoundError, PermissionDeniedErro
 from archiwista.index import IndexQueries
 from archiwista.jobs import (
     FINISHED_STATES,
+    PROJECT_KINDS,
     JobRecord,
     JobState,
     JobSupervisor,
@@ -51,6 +54,7 @@ from archiwista.jobs.supervisor import action_details
 from archiwista.messages import label, message
 from archiwista.services.owndata import scan_limits
 from archiwista.services.pins import check_plan_pin
+from archiwista.services.project_jobs import require as require_project_job
 
 # States of a job that a retry runs again: it did not succeed.
 RETRY_STATES: tuple[JobState, ...] = ("partial", "failed", "interrupted", "cancelled")
@@ -184,7 +188,9 @@ def retry(
     PermissionDeniedError
         A ``download`` without ``store.write`` (and, with ``pin``, without
         ``project.write`` of its project), a ``snapshot`` without
-        ``project.write`` of its project, a ``scan``, ``footprints``,
+        ``project.write`` of its project, a ``project_repin`` or a
+        ``project_restore`` without ``project.write`` or ``store.write``, a
+        ``scan``, ``footprints``,
         ``link_check`` or an ``own_scan`` of every project without
         ``store.scan``.
     ConflictError, InvalidChangeError
@@ -234,12 +240,15 @@ def retry(
             authorizer.require(actor, "store.scan")
         else:
             admit = scan_limits(jobs, actor, str(scanned))
-    if record.kind == "snapshot":
+    if record.kind == "snapshot" or record.kind in PROJECT_KINDS:
         project = str(record.params["project"])
         found = queries.project(project, visible=visible)
         if found is None:
             raise NotFoundError(message("project.not_found", project=project))
-        authorizer.require(actor, "project.write", found.project.access_key)
+        if record.kind == "snapshot":
+            authorizer.require(actor, "project.write", found.project.access_key)
+        else:
+            require_project_job(authorizer, actor, record.kind, found.project)
     submitted = jobs.submit(
         record.kind,
         store=record.store,

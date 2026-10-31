@@ -17,12 +17,15 @@ and ``archiwista project-init``, ``project-edit``, ``project-area`` and
 ``project-store`` call the same functions. ``POST /projects/{project}/exports``
 writes an export ``zestawy/<name>/`` from the pins (``project.write``) and
 ``GET /projects/{project}/exports`` lists them to whoever sees the project
-(``project-export``, ``project-exports``). Nothing here uses the network or
-writes a store.
+(``project-export``, ``project-exports``). ``POST /projects/{project}/jobs``
+starts a job over the project's groups (``archiwista.services.project_jobs``;
+``project-verify``, ``project-check``, ``project-repin`` and
+``project-restore``); it needs the job supervisor and is in ``job_router``.
+Nothing here uses the network or writes a store: the jobs' workers do.
 """
 
 from pathlib import Path as FilePath
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Path, Query, Response
 
@@ -37,10 +40,12 @@ from archiwista.api.dependencies import (
     visible_projects,
     writable_projects,
 )
-from archiwista.api.errors import problem_responses
+from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
+from archiwista.api.jobs import job_supervisor
 from archiwista.api.models import (
     AreaChoice,
     GroupRequest,
+    JobDetail,
     PinOutcome,
     PinsRequest,
     Preferences,
@@ -60,16 +65,18 @@ from archiwista.api.models_exports import (
     ProjectExports,
 )
 from archiwista.api.models_owndata import copy_path
+from archiwista.api.models_project_jobs import ProjectJobRequest
 from archiwista.api.slots import checked_store
 from archiwista.auth import Principal, ProjectVisibility, WritableProjects
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings, SettingsService
 from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries
+from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
 from archiwista.security import current_principal
 from archiwista.services import pins as pin_service
-from archiwista.services import project_detail
+from archiwista.services import project_detail, project_jobs
 from archiwista.services import projects as project_service
 from archiwista.sources.registry import PluginRegistry
 
@@ -692,3 +699,83 @@ def pin_outcome(
         decisions, principal, queries, settings, preferences, result.project
     )
     return PinOutcome.of(result, card)
+
+
+job_router = APIRouter(prefix="/projects", tags=["projects"])
+
+_Jobs = Annotated[JobSupervisor, Depends(job_supervisor)]
+_JOB_UNSUPPORTED: dict[int | str, dict[str, Any]] = {
+    422: {
+        "description": (
+            "`unsupported`: a group's producer offers no commands (`no_commands`),"
+            " or a local group to re-pin has a pin whose call the producer cannot"
+            " rebuild (`command_not_rebuildable`)."
+        ),
+        "content": {
+            PROBLEM_MEDIA_TYPE: {
+                "schema": {"$ref": "#/components/schemas/ProblemDetails"},
+                "example": problem_example(
+                    "unsupported",
+                    message("command.no_commands", "en", producer="imgw"),
+                    reason="no_commands",
+                ),
+            }
+        },
+    }
+}
+
+
+@job_router.post(
+    "/{project}/jobs",
+    response_model=JobDetail,
+    status_code=202,
+    responses={**problem_responses(400, 403, 404, 409, 503), **_JOB_UNSUPPORTED},
+)
+def start_project_job(
+    project: _Project,
+    body: ProjectJobRequest,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    registry: _Registry,
+    settings: _Settings,
+    queries: _Queries,
+    jobs: _Jobs,
+    response: Response,
+) -> JobDetail:
+    """Start a job over a project's groups; answer `202` with the job.
+
+    `groups` names the groups, every group when left out. `verify` hashes the
+    pinned files in their store without the network; `check` compares the
+    pins with the source, without effects; `repin` runs one group's calls in
+    the producer's update mode and pins the group anew only when every call
+    and unit succeeded; `restore` downloads the missing pinned versions
+    again in the default mode and never changes the file. The job has no
+    store (`store` `null`) and the parameters `project` and `groups`; its
+    `result` is described in AGENT_API 9. The answer has `Location:
+    /api/v1/jobs/{job}`; follow the job with `GET /jobs/{job}/events`. A
+    project the session does not see is `404`, as is a group it does not
+    have; `repin` and `restore` need `project.write` and `store.write` (`403
+    permission_denied`). Refused before a job exists: a `repin` without
+    exactly one group (`400`), a group whose producer offers no commands
+    (`422 no_commands`), a local group to re-pin with a pin known not
+    rebuildable (`422 command_not_rebuildable`), a group whose producer's
+    store the project names matches no configured store (`409
+    unknown_store`), a second job of the project (`409 conflict`, that job
+    in `details.job`), offline mode for all but `verify` (`409
+    offline_mode`) and a producer whose plugin is missing (`503`).
+    """
+    job = project_jobs.start(
+        registry,
+        settings.get(),
+        jobs,
+        queries,
+        decisions,
+        project,
+        kind=body.kind,
+        groups=body.groups,
+        actor=principal,
+        visible=visible,
+    )
+    response.headers["Location"] = f"{API_PREFIX}/jobs/{job.id}"
+    return JobDetail.of(job)

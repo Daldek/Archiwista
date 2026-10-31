@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from archiwista.jobs.error import JobError
     from archiwista.jobs.protocol import (
         JOB_KINDS,
+        PROJECT_KINDS,
         WARM_FILTERS,
         JobKind,
         JobSpec,
@@ -56,6 +57,7 @@ _MODULES: dict[str, str] = {
     **dict.fromkeys(
         (
             "JOB_KINDS",
+            "PROJECT_KINDS",
             "WARM_FILTERS",
             "JobKind",
             "JobSpec",
@@ -99,6 +101,7 @@ __all__ = [
     "JOB_STATES",
     "MAX_JOB_CALLS",
     "MAX_PREVIEW_REFS",
+    "PROJECT_KINDS",
     "WARM_FILTERS",
     "EventType",
     "JobConflict",

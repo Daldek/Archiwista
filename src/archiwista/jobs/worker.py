@@ -37,12 +37,18 @@ input, runs it and reports in JSON Lines on standard output
   thumbnail, the map's tiles at the smallest zoom) prepared in the preview
   cache ahead, at the lowest priority and within the room the cache has
   without evicting what people used lately
-  (``archiwista.previews.warm.warm_previews``, ADR-041).
+  (``archiwista.previews.warm.warm_previews``, ADR-041);
+- ``project_verify``, ``project_check``, ``project_repin`` and
+  ``project_restore``: the jobs over a project's groups
+  (``archiwista.jobs.project_jobs``, A-ADR-049 decision 11): the pinned
+  files hashed in the store, the pins compared with the source, a group
+  re-pinned to the source's newer versions, the missing pins downloaded
+  again.
 
 A worker imports what every job needs; the previews' modules, which bring the
 models of the API and the supervisor, are imported by the runners of
-``preview`` and ``preview_warm`` only, so the worker of a producer's job
-starts without them (ADR-044, decision C).
+``preview`` and ``preview_warm`` only, and the project jobs' module by theirs,
+so the worker of a producer's job starts without them (ADR-044, decision C).
 
 An interrupt (SIGINT; CTRL_BREAK_EVENT on Windows) stops the job like Ctrl+C:
 a scan abandons its pass, so nothing is marked missing, and the worker ends
@@ -922,6 +928,44 @@ def run_preview_warm(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult
     return summary
 
 
+def run_project_verify(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Hash a project's pinned files in their stores (``project_jobs.verify``)."""
+    from archiwista.jobs.project_jobs import verify
+
+    return _ended(*verify(spec, emit))
+
+
+def run_project_check(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Compare a project's pins with the source (``project_jobs.check``)."""
+    from archiwista.jobs.project_jobs import check
+
+    return _ended(*check(spec, emit))
+
+
+def run_project_repin(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Pin a project's group anew to the source's newer versions (``repin``)."""
+    from archiwista.jobs.project_jobs import repin
+
+    return _ended(*repin(spec, emit))
+
+
+def run_project_restore(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
+    """Download a project's missing pins again (``project_jobs.restore``)."""
+    from archiwista.jobs.project_jobs import restore
+
+    return _ended(*restore(spec, emit))
+
+
+def _ended(summary: JsonObject, ok: bool) -> JsonObject | PartialResult:
+    """Return the summary of a job that did all its work, else its partial one.
+
+    The project jobs' module answers ``ok`` rather than a ``PartialResult``:
+    in a worker process this module runs as ``__main__``, so that module's
+    import of it is another copy whose class this one would not know.
+    """
+    return summary if ok else PartialResult(summary)
+
+
 RUNNERS: Mapping[JobKind, Runner] = {
     "scan": run_scan,
     "footprints": run_footprints,
@@ -933,6 +977,10 @@ RUNNERS: Mapping[JobKind, Runner] = {
     "check": run_check,
     "download": run_download,
     "preview_warm": run_preview_warm,
+    "project_verify": run_project_verify,
+    "project_check": run_project_check,
+    "project_repin": run_project_repin,
+    "project_restore": run_project_restore,
 }
 
 
@@ -1017,13 +1065,15 @@ def _run_call(
     *,
     calls: int,
     emit: Emitter,
+    upgrade: bool = False,
 ) -> None:
     """Run one call of a ``download`` job; keep its result, or why it failed.
 
     Its progress events name the call (``call`` of ``calls``) besides the
     producer's ``unit``, ``status`` and ``message``. A call the producer
     refuses, or none of whose units succeeded, keeps its error and the job
-    goes on with the next call; any other exception ends the job.
+    goes on with the next call; any other exception ends the job. ``upgrade``
+    runs without a plan in the producer's update mode (a project's re-pin).
     """
 
     def progressed(event: ActionProgress) -> None:
@@ -1045,6 +1095,7 @@ def _run_call(
             call.options,
             root=root,
             plan=run.plan,
+            upgrade=upgrade,
             on_progress=progressed,
             on_notice=lambda notice: emit.notice(
                 notice.level, notice.code, notice.message
