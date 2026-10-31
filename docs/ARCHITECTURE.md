@@ -838,10 +838,11 @@ of the code):
 
 Step 6 has one exception (ADR-047 decision 5, `file_link`): a `GET` or `HEAD` of a
 file download (`…/versions/{version}/file`, `…/files/{file_id}/file`,
-`…/snapshots/{label}/file`) without `X-Archiwista-CSRF` passes with the session
-cookie when `Sec-Fetch-Site` is `same-origin` (a link of the interface) or `none`
-(an address typed in): a link cannot send the header, and step 3 refuses the other
-sites. A request with the header, or without fetch metadata, keeps step 6.
+`…/snapshots/{label}/file`, a project export's `…/exports/{name}/zip`) without
+`X-Archiwista-CSRF` passes with the session cookie when `Sec-Fetch-Site` is
+`same-origin` (a link of the interface) or `none` (an address typed in): a link
+cannot send the header, and step 3 refuses the other sites. A request with the
+header, or without fetch metadata, keeps step 6.
 
 A session starts with a one-time token: `archiwista serve` issues a
 startup token (`issue_one_time_token(…, "startup", minted_by=LOCAL_OWNER)`,

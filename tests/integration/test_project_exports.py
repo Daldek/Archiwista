@@ -239,6 +239,39 @@ def test_an_export_copies_two_sets_into_flat_folders(tmp_path: Path) -> None:
     )
 
 
+def test_the_zip_goes_to_a_link_of_the_interface_without_the_csrf_header(
+    tmp_path: Path,
+) -> None:
+    """„Pobierz ZIP” is a plain link: the cookie and ``Sec-Fetch-Site`` only."""
+    with _served(tmp_path) as served:
+        served.owner.request(
+            "POST", f"/projects/{YEARS}/exports", json={"name": "raba", "zip": True}
+        )
+        url = f"/api/v1/projects/{YEARS}/exports/raba/zip"
+        cookie = f"{served.owner.cookie}={served.owner.session_id}"
+
+        # Act
+        sites = {
+            site: served.owner.client.get(
+                url, headers={"cookie": cookie, "sec-fetch-site": site}
+            )
+            for site in ("same-origin", "none", "same-site", "cross-site")
+        }
+        bare = served.owner.client.get(url, headers={"cookie": cookie})
+        listed = served.owner.client.get(
+            f"/api/v1/projects/{YEARS}/exports",
+            headers={"cookie": cookie, "sec-fetch-site": "same-origin"},
+        )
+
+    # Assert
+    zip_path = _directory(served, YEARS) / "eksport" / "raba.zip"
+    for site in ("same-origin", "none"):
+        assert sites[site].status_code == 200, sites[site].text
+        assert sites[site].content == zip_path.read_bytes()
+    for answer in (sites["same-site"], sites["cross-site"], bare, listed):
+        assert_problem(answer, 403, "forbidden", "csrf_rejected")
+
+
 def test_an_export_of_one_set_replaces_the_export_and_its_zip(tmp_path: Path) -> None:
     """Written again: the old files and ZIP go; names match case-folded."""
     with _served(tmp_path) as served:

@@ -467,7 +467,9 @@ cursor is safe in a URL).
   project file changed after it: write it again). `GET
   /projects/{project}/exports/{name}/zip` (whoever sees the project) sends
   `eksport/<name>.zip` as an attachment (`application/zip`), `404 not_found` when
-  the export has none.
+  the export has none; like a file download, a link of the interface
+  (`Sec-Fetch-Site: same-origin`, or `none` for an address typed in) passes
+  with the session cookie alone, without `X-Archiwista-CSRF`.
 - `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` / `GET
   /projects/{project}/activity` (`?limit=` 1 to 100, by default 20; `?cursor=`
   the `next_cursor` of the page before; another parameter is `400

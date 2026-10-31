@@ -76,7 +76,8 @@ command-line interface may change.
   file (product, year and label, coordinate and height systems, size, SHA-256, the
   sets that pin it) and ends with "Źródła danych", each attribution the licences
   require once. With `zip` the same tree is also `eksport/<name>.zip`, downloaded with
-  `GET /projects/{project}/exports/{name}/zip`. An export of an existing name is
+  `GET /projects/{project}/exports/{name}/zip`, a link of the interface like a file
+  download (without `X-Archiwista-CSRF`). An export of an existing name is
   replaced whole, its ZIP too; a failed one leaves the old export. Pins whose store is
   not configured or whose version is not present are left out and counted. Writing
   needs the owner or an administrator and is logged as `project.export`. The card's

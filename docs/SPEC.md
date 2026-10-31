@@ -3144,7 +3144,8 @@ the missing location), not as points of the station layer (6.8; v1.1).
 
 **ZIP.** With `zip` the folder's content (the category folders and `README.txt`, no top
 directory) is also `<project directory>/eksport/<name>.zip`, written under a temporary name
-and renamed; `GET /projects/{project}/exports/{name}/zip` sends it as an attachment.
+and renamed; `GET /projects/{project}/exports/{name}/zip` sends it as an attachment, to a
+link of the interface without the CSRF header as a file download (A-ADR-047 decision 5).
 
 **Where it is saved.** `<project directory>/eksport/<name>/`, not in the store, without
 versions. Writing an export of an existing name replaces the folder and its ZIP: the new one

@@ -609,7 +609,8 @@ def get_project_export_zip(
     """Send the ZIP of a project's export, written with `zip` (`eksport/<name>.zip`).
 
     For whoever sees the project; `404 not_found` for an export without
-    one.
+    one. A link of the interface (`Sec-Fetch-Site: same-origin`) needs no
+    `X-Archiwista-CSRF`, as a file download.
     """
     found = project_service.project_export_zip(
         settings.get(), queries, project, name, visible=visible

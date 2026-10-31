@@ -140,10 +140,12 @@ _LABEL_BYTES = 4
 _AGENT_GENERATION = "agent_session_generation"
 # ``POST /api/v1/areas`` reads its body itself, up to its own limit.
 _AREAS_PATH = f"{API_PREFIX}/areas"
-# The file downloads (plan v0.4 C11): a version's, an own file's or a snapshot's.
+# The file downloads (plan v0.4 C11): a version's, an own file's or a snapshot's,
+# and a project export's ZIP (A-ADR-049 decision 13, erratum 1).
 _FILE_PATH = re.compile(
-    rf"{API_PREFIX}/(?:stores/[^/]+/versions/.+"
-    r"|projects/[^/]+/files/[0-9a-f]{16}(?:/snapshots/[^/]+)?)/file"
+    rf"{API_PREFIX}/(?:stores/[^/]+/versions/.+/file"
+    r"|projects/[^/]+/files/[0-9a-f]{16}(?:/snapshots/[^/]+)?/file"
+    r"|projects/[^/]+/exports/[^/]+/zip)"
 )
 _TOKEN_VALUE = re.compile(r"(?i)(token=)[^&;#\s\"']*")
 # Scheme, host and port only: anything else would break the policy syntax.
@@ -1090,9 +1092,10 @@ def file_link(method: str, path: str, headers: Headers) -> bool:
     """Return whether a request is a link to a file download (A-ADR-047 decision 5).
 
     A link cannot send ``X-Archiwista-CSRF``: a ``GET`` or ``HEAD`` of a
-    file download (``…/file``) without it passes with the session cookie
-    when ``Sec-Fetch-Site`` is ``same-origin`` (a link of the interface) or
-    ``none`` (an address typed in). A page of another origin or port sends
+    file download (``…/file``, an export's ``…/exports/{name}/zip``) without
+    it passes with the session cookie when ``Sec-Fetch-Site`` is
+    ``same-origin`` (a link of the interface) or ``none`` (an address typed
+    in). A page of another origin or port sends
     ``same-site`` or ``cross-site`` (``origin_rejection`` refuses it), and a
     client without fetch metadata keeps the header rule.
     """
