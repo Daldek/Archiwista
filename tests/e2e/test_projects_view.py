@@ -14,6 +14,7 @@ reason, „Nowy projekt…” is not.
 """
 
 import json
+import re
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -35,8 +36,8 @@ STORE = "zespol"
 STORE_NAME = "Zespół"
 INDEX_TIMEOUT_S = 60.0
 NO_WRITE = (
-    "Zmienia, udostępnia, przepina i przywraca projekt jego właściciel albo"
-    " administrator."
+    "Zmienia, udostępnia, usuwa, przepina i przywraca projekt jego właściciel"
+    " albo administrator."
 )
 # A square of about 1.4 km by 2.2 km in Kraków.
 AREA = {
@@ -258,10 +259,54 @@ def test_a_person_who_may_change_nothing_sees_new_project_only(
     # Assert
     expect(card(page).get_by_role("heading", name=project.name)).to_be_visible()
     actions = card(page).get_by_role("group", name="Działania projektu")
-    for name in ("Zmień…", "Udostępnij…"):
+    for name in ("Zmień…", "Udostępnij…", "Usuń projekt…"):
         button = actions.get_by_role("button", name=name)
         expect(button).to_be_disabled()
         expect(button).to_have_accessible_description(NO_WRITE)
     expect(card(page).locator(".pc-why li").first).to_have_text(NO_WRITE)
     expect(page.get_by_role("button", name="Nowy projekt…")).to_be_enabled()
+    tab.assert_clean()
+
+
+def test_the_owner_deletes_a_project_and_its_data_stays(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """„Usuń projekt…” → what goes and stays → the name typed → back to the list."""
+    # Arrange
+    store, served = served_store(serve, tmp_path)
+    project = store.project("projekt-01")
+    directory = store.base / project.path
+    (directory / "dane").mkdir()
+    (directory / "dane" / "pomiary.csv").write_text("a;b\n", encoding="utf-8")
+    page = tab.page
+    open_projects(page, served, served.token_url(), project.name)
+    actions = card(page).get_by_role("group", name="Działania projektu")
+
+    # Act
+    actions.get_by_role("button", name="Usuń projekt…").click()
+    dialog = page.get_by_role("dialog", name=f"Usuń projekt „{project.name}”")
+    submit = dialog.get_by_role("button", name="Usuń projekt")
+
+    # Assert: what goes and what stays; the button waits for the name.
+    expect(dialog).to_contain_text("archiwista-project.json")
+    expect(dialog).to_contain_text("dane własne w katalogu dane/")
+    expect(submit).to_be_disabled()
+    field = dialog.get_by_label(re.compile("wpisz nazwę projektu"))
+    field.fill(f"{project.name}x")
+    expect(submit).to_be_disabled()
+
+    # Act
+    field.fill(project.name)
+    submit.click()
+
+    # Assert
+    expect(dialog).to_have_count(0)
+    expect(card(page)).to_have_count(0)
+    expect(page.get_by_role("status").filter(has_text="Usunięto projekt")).to_have_text(
+        f"Usunięto projekt „{project.name}” z Archiwisty. Dane w jego katalogu zostały."
+    )
+    expect(page.locator(".projects-table tbody tr").first).to_be_visible()
+    expect(page.get_by_role("link", name=project.name, exact=True)).to_have_count(0)
+    assert not (directory / "archiwista-project.json").exists()
+    assert (directory / "dane" / "pomiary.csv").read_text(encoding="utf-8") == "a;b\n"
     tab.assert_clean()

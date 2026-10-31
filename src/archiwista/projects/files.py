@@ -17,6 +17,9 @@ validates the result, writes it beside the file under a name of its own,
 directory where the platform allows: a failed write leaves the file whole.
 The area files are written the same way, without the lock: a file of
 another area has another name, and one of the same name and content is kept.
+``remove_project_files`` removes, under the lock, only what Archiwista wrote
+in a project's directory (the file, the area files and ``eksport/``) and the
+directory itself when nothing else is left in it.
 
 ``archiwista.areas`` imports the index, which reads project files, so it is
 imported where an area file is read.
@@ -26,7 +29,9 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
+import shutil
 import sys
 import time
 from collections.abc import Callable, Iterator
@@ -45,6 +50,7 @@ from archiwista.errors import (
 from archiwista.messages import message, with_detail
 from archiwista.projects.document import (
     AREAS_DIR,
+    EXPORTS_DIR,
     LOCK_NAME,
     MAX_PROJECT_FILE_BYTES,
     PROJECT_FILE,
@@ -67,6 +73,9 @@ LOCK_WAIT_S = 5.0
 LOCK_POLL_S = 0.1
 # The file inside a lock naming who holds it.
 LOCK_OWNER = "owner"
+# An area file Archiwista writes: ``<area id>.geojson``, the id 16 hexadecimal
+# digits (``archiwista.areas.AREA_ID_CHARS``; that module imports the index).
+_AREA_FILE = re.compile(r"[0-9a-f]{16}\.geojson")
 
 type ProjectChange = Callable[[dict[str, Any]], None]
 type AreaState = Literal["missing", "changed", "invalid"]
@@ -226,6 +235,91 @@ def change_project_file(
             raise invalid_file("", "too_large")
         _write_atomic(path, content)
     return document
+
+
+def remove_project_files(
+    directory: Path, *, wait_s: float = LOCK_WAIT_S
+) -> tuple[str, ...]:
+    """Remove what Archiwista wrote in a project's directory; return what stays.
+
+    Under the lock, the file is read first: Archiwista removes no file it
+    cannot read, as it writes over none. Then ``eksport/`` (the exports) goes
+    whole, the area files of ``obszary/`` (``<area id>.geojson``) go and the
+    folder with them when nothing else is in it, and the project file goes
+    last. Any other entry stays: the own data (``dane/`` and its ``.wersje/``)
+    and any file a person put there. A symbolic link named ``eksport`` or
+    ``obszary`` is left as it is. After the lock is released, the directory
+    itself is removed when it is empty.
+
+    Parameters
+    ----------
+    directory : Path
+        The project directory.
+    wait_s : float, optional
+        How long a lock held by another writer is waited for.
+
+    Returns
+    -------
+    tuple of str
+        The names of the entries left in the directory, sorted; empty when
+        the directory was removed.
+
+    Raises
+    ------
+    ProjectFileError
+        The file is invalid (``invalid_project_file``) or of a newer format
+        (``unsupported_project_schema``); nothing is removed.
+    ProjectLockedError
+        Another writer held the lock past ``wait_s``.
+    ProjectFileWriteError
+        The lock could not be made or an entry could not be removed; the
+        project file stays while anything before it failed.
+    """
+    with project_lock(directory, wait_s=wait_s):
+        read_project_file(directory)
+        exports = directory / EXPORTS_DIR
+        if exports.is_dir() and not exports.is_symlink():
+            try:
+                shutil.rmtree(exports)
+            except OSError as error:
+                raise _removal_failed(exports, error) from error
+        _remove_area_files(directory / AREAS_DIR)
+        path = directory / PROJECT_FILE
+        try:
+            path.unlink()
+        except OSError as error:
+            raise _removal_failed(path, error) from error
+    try:
+        kept = tuple(sorted(entry.name for entry in os.scandir(directory)))
+    except OSError as error:
+        raise _removal_failed(directory, error) from error
+    if not kept:
+        try:
+            directory.rmdir()
+        except OSError as error:
+            # Another process may have put a file there just now: it stays.
+            logger.warning("cannot remove the project dir %s: %s", directory, error)
+    return kept
+
+
+def _remove_area_files(areas: Path) -> None:
+    """Remove the area files Archiwista wrote, and the folder when it is empty."""
+    if not areas.is_dir() or areas.is_symlink():
+        return
+    try:
+        with os.scandir(areas) as entries:
+            written = [
+                Path(entry.path)
+                for entry in entries
+                if _AREA_FILE.fullmatch(entry.name)
+                and entry.is_file(follow_symlinks=False)
+            ]
+        for path in written:
+            path.unlink()
+        if not any(areas.iterdir()):
+            areas.rmdir()
+    except OSError as error:
+        raise _removal_failed(areas, error) from error
 
 
 def area_file_bytes(area: "AreaRecord") -> bytes:
@@ -452,6 +546,16 @@ def _write_failed(path: Path, error: OSError) -> ProjectFileWriteError:
     return ProjectFileWriteError(
         with_detail(
             message("project.file_write_failed", path=path),
+            error.strerror or str(error),
+        ),
+        hint=message("fix.project_file_write_failed", path=path.parent),
+    )
+
+
+def _removal_failed(path: Path, error: OSError) -> ProjectFileWriteError:
+    return ProjectFileWriteError(
+        with_detail(
+            message("project.remove_failed", path=path),
             error.strerror or str(error),
         ),
         hint=message("fix.project_file_write_failed", path=path.parent),

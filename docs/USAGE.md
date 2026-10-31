@@ -322,6 +322,17 @@ and a directory holding only one of them is no project.
   older ones; a change made on the card appears at once. The client address and the
   session stay in "Dziennik" for administrators. At the terminal: `archiwista
   project-activity PROJEKT [--limit N] [--cursor ID]`.
+- **Deleting a project** ("Usuń projekt…" on the card; the owner or an
+  administrator): removes the project from Archiwista, never data. The dialog names
+  what goes — the project file `archiwista-project.json` (its sets and pins), the
+  area files in `obszary/` and the exports in `eksport/` — and what stays: the own
+  data in `dane/` with its versions in `.wersje/`, every other file of the directory
+  (e.g. an old `kartograf-project.json`) and the pinned versions in the store, which
+  is not touched. Its button waits for the project's name typed. The directory goes
+  only when nothing is left in it; the sharing goes too, and the project's activity
+  stays in "Dziennik". While a job of the project waits or runs the deletion is
+  refused, naming the job. At the terminal: `archiwista project-delete PROJEKT --yes`
+  (without `--yes` it removes nothing).
 - **Pinning what the store holds** (the owner or an administrator): `archiwista
   project-pin PROJEKT ZESTAW --version MAGAZYN:WERSJA` pins a version, an older one
   too, into a new set of the project, and `--query '{"store": "zespol", "product":

@@ -112,6 +112,7 @@ export const log = {
     "project.area": "zmiana obszaru projektu",
     "project.store": "zmiana magazynu projektu",
     "project.export": "eksport projektu",
+    "project.delete": "usunięcie projektu",
     "project.pin": "przypięcie wersji",
     "project.unpin": "odpięcie wersji",
     "settings.update": "zmiana ustawień",

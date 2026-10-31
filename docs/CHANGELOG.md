@@ -9,6 +9,17 @@ command-line interface may change.
 
 ### Added
 
+- "Usuń projekt…" on a project's card, `DELETE /projects/{project}` and `archiwista
+  project-delete PROJEKT --yes` remove a project from Archiwista, never data
+  (A-ADR-049 erratum 2): under the project's lock only `archiwista-project.json`, the
+  area files of `obszary/` and `eksport/` go, `dane/` with `.wersje/` and every
+  other file stay, and the directory goes only when it is then empty; the project's
+  access entry and index rows go, no store is touched. The owner or an administrator
+  may; refused while a job of the project waits or runs (`409 conflict` with
+  `details.job`) and for a project file Archiwista cannot read; logged as
+  `project.delete` with what stayed (`kept`). The card's dialog names what goes and
+  what stays and waits for the project's name typed; the command needs `--yes`
+  (`validation_error`, reason `confirmation_required`).
 - A project's groups are called "zestawy" (sets) in the Polish interface, the CLI's
   Polish texts (`ZESTAW` in the usage of `project-pin`, `project-unpin`,
   `project-verify`, `project-check`, `project-repin`, `project-restore` and `jobs start

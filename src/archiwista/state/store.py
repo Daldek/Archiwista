@@ -69,6 +69,7 @@ type ActionName = Literal[
     "project.area",
     "project.store",
     "project.export",
+    "project.delete",
     "project.pin",
     "project.unpin",
     "settings.update",
@@ -1131,6 +1132,42 @@ class StateStore:
                 },
             )
         return after
+
+    def remove_project(
+        self,
+        project: str,
+        *,
+        actor: Principal,
+        details: Mapping[str, object],
+    ) -> None:
+        """Forget a deleted project's access entry and log ``project.delete``.
+
+        The entry (``project_acl``) goes with its listed people and groups,
+        in the transaction that writes ``project.delete`` with ``before`` the
+        entry (``None`` for a project that kept none) and ``details``. The
+        project's earlier entries of the log stay.
+
+        Parameters
+        ----------
+        project : str
+            Project key (``access_key`` of its directory).
+        actor : Principal
+            Who deleted it.
+        details : Mapping[str, object]
+            What the entry says of it: its name, path and what stayed.
+        """
+        with self._write() as connection:
+            before = _access(connection, project)
+            connection.execute("DELETE FROM project_acl WHERE project = ?", (project,))
+            _record(
+                connection,
+                actor,
+                "project.delete",
+                project,
+                _now(),
+                before=None if before is None else _access_state(before),
+                details=details,
+            )
 
     # The action log.
 

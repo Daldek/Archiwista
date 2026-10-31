@@ -73,6 +73,20 @@ MESSAGES = {
         "Cannot write the file {path}",
         "Nie można zapisać pliku {path}",
     ),
+    "remove_failed": Text(
+        "Cannot remove {path}",
+        "Nie można usunąć {path}",
+    ),
+    "delete_job_running": Text(
+        (
+            "The project has a job ({kind}, {state}): a project is deleted when"
+            " none of its jobs waits or runs."
+        ),
+        (
+            "Projekt ma zadanie ({kind}, {state}): projekt usuwa się, gdy żadne"
+            " jego zadanie nie czeka ani nie trwa."
+        ),
+    ),
     "invalid_file": Text(
         "The project file cannot be used: it breaks the rule “{rule}”.",
         "Nie można użyć pliku projektu: łamie regułę „{rule}”.",

@@ -56,6 +56,7 @@ from archiwista.projects.files import (
     read_project_area,
     read_project_file,
     read_project_json,
+    remove_project_files,
     write_area_file,
 )
 
@@ -101,6 +102,7 @@ __all__ = [
     "read_project_file",
     "read_name",
     "read_project_json",
+    "remove_project_files",
     "rule_text",
     "store_json",
     "unsupported_schema",

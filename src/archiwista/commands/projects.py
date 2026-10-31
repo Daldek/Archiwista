@@ -1,4 +1,4 @@
-"""``archiwista project-init`` … ``-unpin``, ``-export(s)``, ``-activity``.
+"""The project commands: ``archiwista project-init`` … ``-activity``, ``-delete``.
 
 Projects are Archiwista's own file ``archiwista-project.json`` (A-ADR-049).
 ``project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id
@@ -22,8 +22,10 @@ the pins (``POST /projects/{project}/exports``, ``ProjectExport``) and
 ``project-exports PROJEKT`` lists them (``GET …/exports``,
 ``ProjectExports``); ``project-activity PROJEKT [--limit N]
 [--cursor ID]`` pages what was done to the project and its jobs (``GET
-…/activity``, ``ProjectActivity``). They call
-``archiwista.services.projects`` and ``archiwista.api.projects`` without
+…/activity``, ``ProjectActivity``); ``project-delete PROJEKT --yes``
+removes a project from Archiwista, never its data (``DELETE
+/projects/{project}``; without ``--yes`` it is refused, nothing asks). They
+call ``archiwista.services.projects`` and ``archiwista.api.projects`` without
 HTTP, as the owner of the installation (``LOCAL_OWNER``, an administrator,
 who may change every project) through the ``Authorizer`` over the state
 database; ``--json`` prints the route's model, a refusal prints no model and
@@ -80,8 +82,9 @@ from archiwista.error_document import (
     refuse,
     validation_problem,
 )
-from archiwista.errors import ArchiwistaError, StateError
+from archiwista.errors import ArchiwistaError, InvalidChangeError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
+from archiwista.jobs import JobSupervisor
 from archiwista.messages import label, lookup, message, with_detail
 from archiwista.projects import SELECTION_SOURCES
 from archiwista.reader import pin_text, project_text
@@ -100,13 +103,15 @@ COMMANDS = frozenset(
         "project-export",
         "project-exports",
         "project-activity",
+        "project-delete",
         "project-pin",
         "project-unpin",
     }
 )
 
-# What an action prints: the route's model with ``--json``, else text for people.
-type _Output = tuple[BaseModel, str]
+# What an action prints: the route's model with ``--json`` (``None``: nothing),
+# else text for people.
+type _Output = tuple[BaseModel | None, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -114,6 +119,8 @@ class _Place:
     """What every action works with: the settings, the index and the decisions."""
 
     registry: PluginRegistry
+    paths: AppPaths
+    service: SettingsService
     settings: AppSettings
     queries: IndexQueries
     index: Path
@@ -216,6 +223,11 @@ def add_commands(commands: Commands) -> None:
         metavar=message("metavar.cursor"),
         help=message("cli.project_activity_cursor_help"),
     )
+    deleted = add_parser(commands, "project-delete", "cli.project_delete_help")
+    _project(deleted)
+    deleted.add_argument(
+        "--yes", action="store_true", help=message("cli.project_delete_yes_help")
+    )
 
     pin = add_parser(commands, "project-pin", "cli.project_pin_help")
     _project(pin)
@@ -285,6 +297,8 @@ def main(
             service = SettingsService(ConfigStore(paths.config_file), registry)
             place = _Place(
                 registry=registry,
+                paths=paths,
+                service=service,
                 settings=service.get(),
                 queries=stack.enter_context(IndexQueries(paths.index_file)),
                 index=paths.index_file,
@@ -299,7 +313,10 @@ def main(
             return refuse(error.problem, err)
         except ArchiwistaError as error:
             return refuse(describe(error), err)
-    out.write((model.model_dump_json() if args.json else text) + "\n")
+    if not args.json:
+        out.write(text + "\n")
+    elif model is not None:
+        out.write(model.model_dump_json() + "\n")
     return 0
 
 
@@ -504,6 +521,35 @@ def _activity_text(answer: ProjectActivity) -> str:
     return "\n".join(lines)
 
 
+def _delete(args: argparse.Namespace, place: _Place) -> _Output:
+    """Remove a project as ``DELETE /projects/{project}`` does; ``--yes`` required.
+
+    The route answers no body, so ``--json`` prints nothing; the text names
+    what stayed in the project's directory.
+    """
+    if not args.yes:
+        raise InvalidChangeError(
+            message("cli.project_delete_yes_required", project=args.project),
+            reason="confirmation_required",
+            details={"option": "--yes"},
+        )
+    with JobSupervisor(place.paths, place.service) as jobs:
+        kept = project_service.delete_project(
+            place.settings,
+            place.queries,
+            place.index,
+            place.decisions,
+            jobs,
+            args.project,
+            actor=LOCAL_OWNER,
+            visible=place.decisions.visible_projects(LOCAL_OWNER),
+        )
+    done = message("cli.project_deleted", project=args.project)
+    if kept:
+        return None, f"{done}\n{message('cli.project_kept', kept=', '.join(kept))}"
+    return None, f"{done}\n{message('cli.project_dir_removed')}"
+
+
 def _pin(args: argparse.Namespace, place: _Place) -> _Output:
     """Pin versions as ``POST …/groups`` (``--add``: ``…/pins``); print the outcome."""
     given: dict[str, Any] = {
@@ -588,6 +634,7 @@ _ACTIONS: dict[str, _Action] = {
     "project-export": _export,
     "project-exports": _exports,
     "project-activity": _activity,
+    "project-delete": _delete,
     "project-pin": _pin,
     "project-unpin": _unpin,
 }

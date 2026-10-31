@@ -32,6 +32,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
 | a project's exports from its pins: copies in category folders with `README.txt` in `eksport/NAZWA/`, optionally a ZIP (A-ADR-049), their list and the ZIP | `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports`, `GET /projects/{project}/exports/{name}/zip` |
 | a project's activity from the action log: its changes and its jobs, newest first, without the client address (A-ADR-049) | `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
+| remove a project from Archiwista, never data: its file, area files and exports go, `dane/` and every other file stay (A-ADR-049 erratum 2) | `archiwista project-delete PROJEKT --yes` | `DELETE /projects/{project}` |
 | pin versions the store holds into a project's group (offline, from the index), remove pins or a group (A-ADR-049) | `archiwista project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add]`, `project-unpin PROJEKT ZESTAW [--pin PRODUCENT:WERSJA …]` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}` |
 | jobs over a project's groups (A-ADR-049): the pinned files hashed in the store (offline), the pins compared with the source, one group pinned anew to the source's newer versions, the missing pins downloaded again; in the foreground, exit 0, 10, 11 or 130 | `archiwista project-verify PROJEKT [ZESTAW …]`, `project-check PROJEKT [ZESTAW …]`, `project-repin PROJEKT ZESTAW`, `project-restore PROJEKT [ZESTAW …]` | `POST /projects/{project}/jobs` |
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
@@ -478,7 +479,7 @@ cursor is safe in a URL).
   log, newest first (A-ADR-049 decision 14). The entries `project.*` about the
   project (`project.create`, `project.update`, `project.area`, `project.store`,
   `project.access`, `project.data_dir`, `project.pin`, `project.unpin`,
-  `project.export`) and `job.start`, `job.retry` and `job.cancel` of a job whose
+  `project.export`, `project.delete`) and `job.start`, `job.retry` and `job.cancel` of a job whose
   `details.project` is the project (a project job, a download that pins into it,
   a warm-up of its previews), with the outcome `ok` or `failed`; a refusal and
   another project's entries never. The answer `ProjectActivity {items,
@@ -487,6 +488,25 @@ cursor is safe in a URL).
   and `details`, without the client address and the session (`GET /log` keeps
   them for administrators). For whoever sees the project (`404` for a hidden
   one).
+- `archiwista project-delete PROJEKT --yes` / `DELETE /projects/{project}`
+  (`204`, no body; the command prints what stayed, nothing with `--json`)
+  removes the project from Archiwista, never data (A-ADR-049 erratum 2). Under
+  the project's lock only what Archiwista wrote in the directory goes:
+  `archiwista-project.json`, the area files of `obszary/` (`<area id>.geojson`;
+  the folder when nothing else is left in it) and `eksport/`. The own data
+  (`dane/`, its snapshots `.wersje/`) and every other file stay; the directory
+  goes only when it is then empty. The project's access entry and its rows of
+  the index go; no store is touched, so its pinned versions stay there,
+  unused. Needs `project.write` (`403 permission_denied`; `404` for a hidden
+  project). Refused: a job of the project that waits or runs (`409 conflict`,
+  that job in `details.job`), a project file Archiwista cannot read (`409
+  invalid_project_file`, `unsupported_project_schema`), a lock another change
+  holds (`409 project_locked`) and an entry that cannot be removed (`500
+  io_error`). Without `--yes` the command removes nothing: `validation_error`,
+  reason `confirmation_required`, `details.option` `--yes` (nothing asks
+  interactively). Logged as `project.delete` (target the project's access key;
+  `before` its access entry; `details`: `name`, `path`, `kept`, the entries
+  left in the directory); the project's earlier entries stay in the log.
 - `archiwista project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … | --query
   JSON) [--from local_state|catalog|file] [--add]` / `POST
   /projects/{project}/groups` (`{"name", "from", "versions"?: [{"store",

@@ -23,9 +23,11 @@ writes an export ``eksport/<name>/`` (and its zip) from the pins
 to whoever sees it (A-ADR-049 decision 14, ``project-activity``).
 ``POST /projects/{project}/jobs`` starts a job over the project's groups
 (``archiwista.services.project_jobs``; ``project-verify``, ``project-check``,
-``project-repin`` and ``project-restore``); it needs the job supervisor and is
-in ``job_router``. Nothing here uses the network or writes a store: the jobs'
-workers do.
+``project-repin`` and ``project-restore``) and ``DELETE /projects/{project}``
+removes a project from Archiwista, never its data, refused while a job of
+the project waits or runs (``project-delete``): both need the job
+supervisor and are in ``job_router``. Nothing here uses the network or
+writes a store: the jobs' workers do.
 """
 
 from pathlib import Path as FilePath
@@ -880,3 +882,48 @@ def start_project_job(
     )
     response.headers["Location"] = f"{API_PREFIX}/jobs/{job.id}"
     return JobDetail.of(job)
+
+
+@job_router.delete(
+    "/{project}",
+    status_code=204,
+    response_class=Response,
+    responses=_CHANGE_RESPONSES,
+)
+def delete_project(
+    project: _Project,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    settings: _Settings,
+    queries: _Queries,
+    index: _Index,
+    jobs: _Jobs,
+) -> Response:
+    """Remove a project from Archiwista, never its data (`project.delete`); `204`.
+
+    Under the project's lock it removes only what Archiwista wrote in the
+    directory: `archiwista-project.json`, the area files of `obszary/` and
+    the exports `eksport/`. The own data (`dane/`, its snapshots `.wersje/`)
+    and every other file stay; the directory goes only when it is then
+    empty. The project's access entry and its rows of the index go; no store
+    is touched, so its pinned versions stay there. Its activity stays in the
+    action log. Needs the project's owner or an administrator (`403
+    permission_denied`); a project the session does not see is `404`.
+    Refused: a job of the project that waits or runs (`409 conflict`, that
+    job in `details.job`), a project file Archiwista cannot read (`409`,
+    `invalid_project_file`, `unsupported_project_schema`), a lock another
+    change holds (`409`, `project_locked`) and an entry that cannot be
+    removed (`500`, `io_error`).
+    """
+    project_service.delete_project(
+        settings.get(),
+        queries,
+        index,
+        decisions,
+        jobs,
+        project,
+        actor=principal,
+        visible=visible,
+    )
+    return Response(status_code=204)

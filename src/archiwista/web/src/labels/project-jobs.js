@@ -29,7 +29,7 @@ export const projectJobs = {
   /** Why a job cannot start now, in the order the card checks them (ADR-042 decision 4). */
   why: {
     write:
-      "Zmienia, udostępnia, przepina i przywraca projekt jego właściciel albo administrator.",
+      "Zmienia, udostępnia, usuwa, przepina i przywraca projekt jego właściciel albo administrator.",
     unknown_store:
       "Magazyn projektu dla „{producer}” nie pasuje do żadnego magazynu z ustawień: " +
       "wskaż go w „Zmień…”.",

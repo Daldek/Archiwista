@@ -3,10 +3,10 @@
  * 6.5 g; A-ADR-049): the projects found in the project directories, each a
  * directory with Archiwista's file archiwista-project.json, „Nowy projekt…”
  * for every person, the card with the project's directory, stores, area,
- * problems and groups of pinned versions, „Zmień…” and „Udostępnij…” with
- * the reason when they are not allowed, and the group „Dane własne” (SPEC
- * 4.7.1): the project's data folder with its files and „Odśwież”. The
- * sharing screen's texts are in labels/sharing.js.
+ * problems and groups of pinned versions, „Zmień…”, „Udostępnij…” and „Usuń
+ * projekt…” with the reason when they are not allowed, and the group „Dane
+ * własne” (SPEC 4.7.1): the project's data folder with its files and
+ * „Odśwież”. The sharing screen's texts are in labels/sharing.js.
  */
 
 export const projects = {
@@ -71,6 +71,30 @@ export const projects = {
     label: "Działania projektu",
     share: "Udostępnij…",
     share_title: "Kto widzi projekt, jego właściciel i folder danych własnych",
+  },
+  /** „Usuń projekt…”: what goes, what stays, and the name typed to confirm. */
+  remove: {
+    open: "Usuń projekt…",
+    open_title: "Usuń projekt z Archiwisty; dane w jego katalogu zostają",
+    title: "Usuń projekt „{name}”",
+    intro: "Archiwista przestanie znać ten projekt. W katalogu {path} usunie tylko to, co sama zapisała:",
+    removed: [
+      "plik projektu archiwista-project.json (zestawy i przypięcia),",
+      "pliki obszarów w katalogu obszary/,",
+      "eksporty w katalogu eksport/.",
+    ],
+    kept_intro: "Zostają:",
+    kept: [
+      "dane własne w katalogu dane/ i ich wersje w .wersje/,",
+      "każdy inny plik w katalogu projektu (np. kartograf-project.json),",
+      "przypięte wersje w magazynie: nic w magazynie nie jest zmieniane.",
+    ],
+    empty_dir: "Katalog projektu zniknie tylko wtedy, gdy nic w nim nie zostanie.",
+    access: "Znikną też ustawienia udostępniania projektu; jego aktywność zostaje w dzienniku.",
+    name: "Aby potwierdzić, wpisz nazwę projektu: {name}",
+    submit: "Usuń projekt",
+    cancel: "Anuluj",
+    done: "Usunięto projekt „{name}” z Archiwisty. Dane w jego katalogu zostały.",
   },
   card: {
     path: "Katalog",

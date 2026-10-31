@@ -775,6 +775,22 @@ export function updateProject(project, body) {
 }
 
 /**
+ * Remove a project from Archiwista, never its data (`delete_project`): its
+ * file, the area files of `obszary/` and the exports go; `dane/` with its
+ * `.wersje/` and every other file stay, the directory goes when it is then
+ * empty, and the store is not touched.
+ *
+ * @param {string} project - Project id.
+ * @returns {Promise<null>} No body (`204`).
+ * @throws {ApiError} `403 permission_denied`, `404`, `409` (`conflict` with
+ *   the project's job in `details.job`, `project_locked`,
+ *   `invalid_project_file`, `unsupported_project_schema`), `500 io_error`.
+ */
+export function deleteProject(project) {
+  return request("DELETE", `/projects/${one(project)}`);
+}
+
+/**
  * Give a project an area of `/areas`, or clear it (`set_project_area`).
  *
  * @param {string} project - Project id.

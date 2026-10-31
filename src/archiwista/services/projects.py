@@ -13,7 +13,10 @@ project, in a directory where none is yet, ``project.create`` (any person or
 their agent), and an account that creates one (a ``user``, or an ``agent``
 of one) owns it (A-ADR-049 decision 6). Each change is logged
 (``project.create``, ``project.update``, ``project.area``,
-``project.store``, A-ADR-047). ``export_project`` writes an export
+``project.store``, A-ADR-047). ``delete_project`` removes a project from
+Archiwista, never its data: what Archiwista wrote in its directory, its
+rows of the index and its access entry (``project.delete``, A-ADR-049
+decision 16). ``export_project`` writes an export
 ``eksport/<name>/`` (and its zip) from the pins, a change of the project too
 (``project.export``); ``project_exports`` lists the exports and
 ``project_export_zip`` finds an export's zip for whoever sees the project
@@ -40,6 +43,7 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings
 from archiwista.errors import (
     CommandRequestError,
+    JobConflictError,
     NotFoundError,
     PathOutsideRootError,
     ProjectFileError,
@@ -56,7 +60,8 @@ from archiwista.index import (
     ProjectRef,
 )
 from archiwista.index.projects import MAX_PROJECT_DEPTH, record_project
-from archiwista.messages import message
+from archiwista.jobs import JobSupervisor
+from archiwista.messages import label, message
 from archiwista.paths import resolve_indexed_path
 from archiwista.projects import (
     PROJECT_FILE,
@@ -65,6 +70,7 @@ from archiwista.projects import (
     change_project_file,
     clean_name,
     read_project_file,
+    remove_project_files,
     rule_text,
     write_area_file,
 )
@@ -579,6 +585,74 @@ def export_project(
         details={"name": name, "pins": export.versions},
     )
     return ProjectExportDone(export, no_store=no_store, missing=missing)
+
+
+def delete_project(
+    settings: AppSettings,
+    queries: IndexQueries,
+    index_path: Path,
+    authorizer: Authorizer,
+    jobs: JobSupervisor,
+    key: str,
+    *,
+    actor: Principal,
+    visible: ProjectVisibility,
+) -> tuple[str, ...]:
+    """Remove a project from Archiwista, never its data; return what stayed.
+
+    Under the lock, only what Archiwista wrote in the directory goes: the
+    project file, the area files of ``obszary/`` and ``eksport/``; the own
+    data (``dane/``, its ``.wersje/``) and any other file stay, and the
+    directory goes only when it is then empty (``remove_project_files``).
+    Then the project's rows of the index and its access entry go, and
+    ``project.delete`` is logged (its name, path and the entries ``kept``).
+    No store is touched: the pinned versions stay in it (A-ADR-049 decision
+    16 and its erratum).
+
+    Returns
+    -------
+    tuple of str
+        The names of the entries left in the project's directory.
+
+    Raises
+    ------
+    NotFoundError
+        No project ``key`` ``actor`` sees.
+    PermissionDeniedError
+        ``actor`` may not change the project.
+    JobConflictError
+        A job of the project waits or runs (``details.job``).
+    PathOutsideRootError
+        The project's directory or file leaves the project directories.
+    ProjectFileError
+        The file is invalid or of a newer format: Archiwista removes no file
+        it cannot read.
+    ProjectLockedError, ProjectFileWriteError
+        As for every change of the file.
+    """
+    project = changed_project(queries, authorizer, key, actor=actor, visible=visible)
+    running = jobs.active_project_job(project.key)
+    if running is not None:
+        raise JobConflictError(
+            message(
+                "project.delete_job_running",
+                kind=label("job.kind", running.kind),
+                state=label("job.state", running.state),
+            ),
+            job_id=running.id,
+            kind=running.kind,
+            state=running.state,
+        )
+    directory = project_directory(project, settings)
+    kept = remove_project_files(directory)
+    with IndexWriter(index_path) as writer:
+        writer.remove_project(project.key)
+    authorizer.state.remove_project(
+        project.access_key,
+        actor=actor,
+        details={"name": project.name, "path": project.path, "kept": list(kept)},
+    )
+    return kept
 
 
 def project_exports(

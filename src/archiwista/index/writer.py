@@ -1515,6 +1515,28 @@ class IndexWriter:
                 ).rowcount
             )
 
+    def remove_project(self, key: str) -> bool:
+        """Forget a deleted project: its row, stores, groups, pins and own folder.
+
+        The project's own folder (``own_folders``, by its access key) goes with
+        its files, snapshots and problems, as ``remove_own_folders`` forgets
+        it; the files on the disk are not touched.
+
+        Returns
+        -------
+        bool
+            Whether the index had the project.
+        """
+        with self._transaction() as connection:
+            row = connection.execute(
+                "SELECT access_key FROM projects WHERE key = ?", (key,)
+            ).fetchone()
+            if row is None:
+                return False
+            connection.execute("DELETE FROM projects WHERE key = ?", (key,))
+            connection.execute("DELETE FROM own_folders WHERE project = ?", (row[0],))
+            return True
+
     # Areas.
 
     def write_area(self, area: AreaRecord) -> None:

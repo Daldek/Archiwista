@@ -1987,6 +1987,46 @@ MESSAGES = {
         "Changed the project {project}.",
         "Zmieniono projekt {project}.",
     ),
+    "project_delete_help": Text(
+        (
+            "Removes a project from Archiwista, never its data (DELETE"
+            " /api/v1/projects/{{project}}): archiwista-project.json, the area"
+            " files of obszary/ and the exports in eksport/ go; dane/, its"
+            " .wersje/ and every other file stay, and the stores are not touched."
+        ),
+        (
+            "Usuwa projekt z Archiwisty, nigdy jego danych (DELETE"
+            " /api/v1/projects/{{project}}): znikają archiwista-project.json,"
+            " pliki obszarów z obszary/ i eksporty z eksport/; dane/, jego"
+            " .wersje/ i każdy inny plik zostają, magazyny są nietknięte."
+        ),
+    ),
+    "project_delete_yes_help": Text(
+        "Confirms the deletion; without it the command removes nothing.",
+        "Potwierdza usunięcie; bez niej polecenie niczego nie usuwa.",
+    ),
+    "project_delete_yes_required": Text(
+        (
+            "Deleting the project {project} needs --yes: it removes the project"
+            " file, the area files and the exports, never dane/."
+        ),
+        (
+            "Usunięcie projektu {project} wymaga --yes: znikają plik projektu,"
+            " pliki obszarów i eksporty, nigdy dane/."
+        ),
+    ),
+    "project_deleted": Text(
+        "Deleted the project {project} from Archiwista.",
+        "Usunięto projekt {project} z Archiwisty.",
+    ),
+    "project_kept": Text(
+        "Left in its directory: {kept}.",
+        "W jego katalogu zostały: {kept}.",
+    ),
+    "project_dir_removed": Text(
+        "Its directory was empty and is removed.",
+        "Jego katalog był pusty i został usunięty.",
+    ),
     "project_export_help": Text(
         (
             "Writes the export eksport/NAME/ of a project from its pins: a folder"

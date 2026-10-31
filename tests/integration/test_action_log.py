@@ -561,6 +561,17 @@ def project_export(tmp_path: Path) -> Performed:
         return Performed(made.api.state, since, expected)
 
 
+def project_delete(tmp_path: Path) -> Performed:
+    """Delete the project as the owner: its directory holds nothing else."""
+    with world(tmp_path) as made:
+        since = last_entry(made.api.state)
+        key = access_key(made.directory)
+        deleted = made.owner.request("DELETE", f"/projects/{made.project}")
+        assert deleted.status_code == 204, deleted.text
+        details = {"name": "raba", "path": str(made.directory), "kept": []}
+        return Performed(made.api.state, since, as_owner(made, key, details=details))
+
+
 _GONE = "nmt/pl_1992_1m_evrf2007/versions/N-34/2023-05-02_1_00000000/N-34.asc"
 
 
@@ -781,6 +792,7 @@ CASES: dict[str, Callable[[Path], Performed]] = {
     "project.area": project_area,
     "project.store": project_store,
     "project.export": project_export,
+    "project.delete": project_delete,
     "project.pin": project_pin,
     "project.unpin": project_unpin,
     "settings.update": settings_update,

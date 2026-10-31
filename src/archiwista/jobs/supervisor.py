@@ -1321,6 +1321,23 @@ class JobSupervisor:
             ).fetchone()
             return None if row is None else _job_record(connection, row)
 
+    def active_project_job(self, project: str) -> JobRecord | None:
+        """Return the oldest active job of a project, ``None`` when it has none.
+
+        A job of the ``PROJECT_KINDS`` of the project (``params.project``, its
+        key) or a ``download`` that pins into it (``params.pin.project``).
+        """
+        with self._reading() as connection:
+            row = connection.execute(
+                f"SELECT {_JOB_COLUMNS} FROM jobs WHERE state IN {_ACTIVE_SQL}"
+                f" AND ((kind IN ({_placeholders(PROJECT_KINDS)})"
+                " AND json_extract(params, '$.project') = ?)"
+                " OR (kind = 'download' AND json_extract(params, '$.pin.project') = ?))"
+                " ORDER BY created_at, id LIMIT 1",
+                (*PROJECT_KINDS, project, project),
+            ).fetchone()
+            return None if row is None else _job_record(connection, row)
+
     def last_started(self, kind: str, project: str) -> datetime | None:
         """Return when the newest job of ``kind`` of one project was asked for.
 

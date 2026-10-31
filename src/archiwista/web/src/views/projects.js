@@ -21,8 +21,11 @@
  * session that may change the project. „Zmień…” changes the name, the
  * description, the area and the store of a producer; „Udostępnij…” opens the
  * sharing screen (views/sharing.js): who sees the project, its owner and its
- * data folder. Both are the owner's or an administrator's
- * (`project_write`); otherwise they are disabled with the reason. The
+ * data folder; „Usuń projekt…” removes the project from Archiwista, never its
+ * data, after a dialog naming what goes and what stays and the project's name
+ * typed, and returns to the list with a notice. The three are the owner's or
+ * an administrator's (`project_write`); otherwise they are disabled with the
+ * reason. The
  * project's „Weryfikuj” and „Sprawdź aktualizacje” and each group's „Sprawdź
  * aktualizacje”, „Przepnij” and „Przywróć brakujące” are its jobs
  * (views/project-jobs.js), each disabled with its reason; the card lists the
@@ -40,6 +43,7 @@
 
 import {
   createProject,
+  deleteProject,
   formatCommand,
   getProject,
   listJobs,
@@ -125,24 +129,36 @@ const SHOWN_CALLS = 3;
 export default function ProjectsView({ route }) {
   const chosen = route.params.project || null;
   const store = route.params.store || null;
+  // What „Usuń projekt…” said after it removed the chosen project, until
+  // another one is chosen.
+  const [notice, setNotice] = useState(null);
+  useEffect(() => {
+    if (chosen) setNotice(null);
+  }, [chosen]);
   const list = useResource(
     (signal) => listProjects(store ? { store } : {}, { signal }),
     [store],
   );
+  const deleted = (name) => {
+    setNotice(t(L.remove.done, { name }));
+    setParams({ project: null });
+    list.reload();
+  };
   const panel = {
     label: L.panel,
     open: chosen !== null,
     onClose: () => setParams({ project: null }),
     content: chosen
-      ? html`<${ProjectCard} key=${chosen} id=${chosen} onChanged=${list.reload} />`
+      ? html`<${ProjectCard} key=${chosen} id=${chosen} onChanged=${list.reload}
+          onDeleted=${deleted} />`
       : null,
   };
   return html`<${ViewLayout} id="projects" right=${panel}>
-    <${ProjectList} list=${list} chosen=${chosen} store=${store} route=${route} />
+    <${ProjectList} list=${list} chosen=${chosen} store=${store} route=${route} notice=${notice} />
   </${ViewLayout}>`;
 }
 
-function ProjectList({ list, chosen, store, route }) {
+function ProjectList({ list, chosen, store, route, notice }) {
   const { health, settings } = useApp();
   const id = useId();
   const [creating, setCreating] = useState(false);
@@ -175,6 +191,9 @@ function ProjectList({ list, chosen, store, route }) {
       </div>
     </div>
     <div class="cards-scroll">
+      ${notice
+        ? html`<p class="pc-done" role="status"><${Icon} name="check" size=${15} /><span>${notice}</span></p>`
+        : null}
       ${creating
         ? html`<${NewProject} onClose=${() => setCreating(false)}
             onCreated=${(card) => {
@@ -529,12 +548,13 @@ function StoreField({ id, producer, value, current, problem, onChange }) {
   </div>`;
 }
 
-function ProjectCard({ id, onChanged }) {
+function ProjectCard({ id, onChanged, onDeleted }) {
   const cardId = useId();
   const resource = useResource((signal) => getProject(id, { signal }), [id]);
   const [editing, setEditing] = useState(false);
   const [done, setDone] = useState(null);
   const [sharing, setSharing] = useState(false);
+  const [removing, setRemoving] = useState(false);
   // Each change of the data folder on the sharing screen: „Dane własne” reads
   // the folder again and follows the scan the server started.
   const [folderRound, setFolderRound] = useState(0);
@@ -574,6 +594,8 @@ function ProjectCard({ id, onChanged }) {
         }} />
       <${ActionButton} icon="users" label=${L.actions.share} title=${L.actions.share_title}
         why=${why} base=${whyId} onClick=${() => setSharing(true)} />
+      <${ActionButton} icon="trash" label=${L.remove.open} title=${L.remove.open_title}
+        why=${why} off=${removing} base=${whyId} onClick=${() => setRemoving(true)} />
       <${JobButton} icon="check" label=${JL.verify} title=${JL.verify_title} why=${verify.why}
         base=${whyId} onClick=${() => jobs.start("verify")} />
       <${JobButton} icon="search" label=${JL.check}
@@ -616,6 +638,10 @@ function ProjectCard({ id, onChanged }) {
             }
           }}
           onClose=${() => setSharing(false)} />`
+      : null}
+    ${removing
+      ? html`<${RemoveProject} card=${card} onClose=${() => setRemoving(false)}
+          onDeleted=${() => onDeleted(card.name)} />`
       : null}
   </article>`;
 }
@@ -665,14 +691,60 @@ function AreaValue({ area }) {
 }
 
 /**
- * „Zmień…” or „Udostępnij…”: disabled with its reason (`why`, an entry of the
- * card's list) or while its form is open (`off`).
+ * „Zmień…”, „Udostępnij…” or „Usuń projekt…”: disabled with its reason
+ * (`why`, an entry of the card's list) or while its form is open (`off`).
  */
 function ActionButton({ icon, label, title, why, off = false, base, onClick }) {
   return html`<button type="button" class="btn sm" disabled=${why !== null || off}
     title=${why ? why.text : title} aria-describedby=${why ? reasonId(base, why) : null}
     onClick=${onClick}>
     <${Icon} name=${icon} size=${14} />${label}</button>`;
+}
+
+/**
+ * „Usuń projekt”: what goes (the project file, the area files, the exports)
+ * and what stays (the own data, any other file, the versions in the store),
+ * asked first; the button waits for the project's name typed as it is. A
+ * refusal (a job of the project, a newer file, a lock) shows in the dialog.
+ *
+ * @param {{card: import("../types.js").ProjectCard, onClose: () => void,
+ *   onDeleted: () => void}} props
+ */
+function RemoveProject({ card, onClose, onDeleted }) {
+  const id = useId();
+  const action = useAction();
+  const [typed, setTyped] = useState("");
+  const ready = typed.trim() === card.name && !action.busy;
+  const confirm = (event) => {
+    event.preventDefault();
+    if (!ready) return;
+    action.run(() => deleteProject(card.project)).then((answer) => {
+      if (answer) onDeleted();
+    });
+  };
+  const title = t(L.remove.title, { name: card.name });
+  return html`<${Modal} label=${title} onClose=${onClose}>
+    <form class="pc-remove" onSubmit=${confirm}>
+      <h2>${title}</h2>
+      <p>${t(L.remove.intro, { path: pathToCopy(card.path).first })}</p>
+      <ul>${L.remove.removed.map((line) => html`<li key=${line}>${line}</li>`)}</ul>
+      <p>${L.remove.kept_intro}</p>
+      <ul>${L.remove.kept.map((line) => html`<li key=${line}>${line}</li>`)}</ul>
+      <p class="hint">${L.remove.empty_dir} ${L.remove.access}</p>
+      <div class="field">
+        <label for=${`${id}-name`}>${t(L.remove.name, { name: card.name })}</label>
+        <input id=${`${id}-name`} type="text" autocomplete="off" spellcheck="false"
+          value=${typed} onInput=${(event) => setTyped(event.currentTarget.value)} />
+      </div>
+      ${action.problem ? html`<${ProblemView} problem=${action.problem} compact />` : null}
+      <div class="modal-actions">
+        <button type="button" class="btn" disabled=${action.busy} onClick=${onClose}>
+          ${L.remove.cancel}</button>
+        <button type="submit" class="btn danger" disabled=${!ready}>
+          <${Icon} name="trash" size=${14} />${L.remove.submit}</button>
+      </div>
+    </form>
+  </${Modal}>`;
 }
 
 /**
