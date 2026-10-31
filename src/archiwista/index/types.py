@@ -1414,6 +1414,26 @@ class ProjectRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class VersionFacts:
+    """What a pin takes of an indexed version (A-ADR-049 decisions 8 and 9).
+
+    ``path`` is relative to the producer's directory of ``store``;
+    ``present`` is false for a version the last scan did not find.
+    ``sha256`` is ``None`` without the version's metadata.
+    """
+
+    store: str
+    path: str
+    producer: str
+    sha256: str | None
+    content_sha256: str | None
+    size_bytes: int | None
+    unit: str | None
+    label: str | None
+    present: bool
+
+
+@dataclass(frozen=True, slots=True)
 class UnusedVersions:
     """Present versions that are not current, not a full sheet, not pinned.
 

@@ -317,7 +317,7 @@ def create_project(
             area=None if area is None else write_area_file(directory, area),
         ),
     )
-    project = _record(registry, settings, index_path, directory)
+    project = record_changed(registry, settings, index_path, directory)
     authorizer.state.add_project(
         key,
         owner=None if actor.id == LOCAL_PRINCIPAL_ID else actor.id,
@@ -359,7 +359,7 @@ def update_project(
     ProjectLockedError, ProjectFileWriteError
         As for every change of the file.
     """
-    project = _changed_project(queries, authorizer, key, actor=actor, visible=visible)
+    project = changed_project(queries, authorizer, key, actor=actor, visible=visible)
     directory = project_directory(project, settings)
 
     def change(data: dict[str, Any]) -> None:
@@ -376,7 +376,7 @@ def update_project(
         before={"name": project.name, "description": project.description},
         after={"name": document.name, "description": document.description},
     )
-    return _record(registry, settings, index_path, directory)
+    return record_changed(registry, settings, index_path, directory)
 
 
 def set_area(
@@ -408,7 +408,7 @@ def set_area(
     ProjectFileError, ProjectLockedError, ProjectFileWriteError
         As for every change of the file.
     """
-    project = _changed_project(queries, authorizer, key, actor=actor, visible=visible)
+    project = changed_project(queries, authorizer, key, actor=actor, visible=visible)
     directory = project_directory(project, settings)
     area = None if area_id is None else _area(queries, area_id)
     ref = None if area is None else write_area_file(directory, area)
@@ -425,7 +425,7 @@ def set_area(
         after={"area": None if ref is None else ref.path},
         details={"area_id": area_id},
     )
-    return _record(registry, settings, index_path, directory)
+    return record_changed(registry, settings, index_path, directory)
 
 
 def set_store(
@@ -461,7 +461,7 @@ def set_store(
     ProjectFileError, ProjectLockedError, ProjectFileWriteError
         As for every change of the file.
     """
-    project = _changed_project(queries, authorizer, key, actor=actor, visible=visible)
+    project = changed_project(queries, authorizer, key, actor=actor, visible=visible)
     config = settings.store(store)
     if config is None:
         raise NotFoundError(message("api.store_not_configured", store=store))
@@ -494,7 +494,7 @@ def set_store(
         after=dict(entry),
         details={"store": store},
     )
-    return _record(registry, settings, index_path, directory)
+    return record_changed(registry, settings, index_path, directory)
 
 
 @dataclass(frozen=True, slots=True)
@@ -712,7 +712,7 @@ def _geo(registry: PluginRegistry) -> GeoAdapter | None:
         return None
 
 
-def _record(
+def record_changed(
     registry: PluginRegistry,
     settings: AppSettings,
     index_path: Path,
@@ -724,7 +724,7 @@ def _record(
         return record_project(writer, directory, stores=settings.stores, geo=geo)
 
 
-def _changed_project(
+def changed_project(
     queries: IndexQueries,
     authorizer: Authorizer,
     key: str,

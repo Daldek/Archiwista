@@ -561,6 +561,57 @@ def project_export(tmp_path: Path) -> Performed:
         return Performed(made.api.state, since, expected)
 
 
+_GONE = "nmt/pl_1992_1m_evrf2007/versions/N-34/2023-05-02_1_00000000/N-34.asc"
+
+
+def _pinned_group(made: World) -> None:
+    """Make the group ``NMT`` naming a version the store does not hold."""
+    pinned = made.owner.request(
+        "POST",
+        f"/projects/{made.project}/groups",
+        json={
+            "name": "NMT",
+            "from": "file",
+            "versions": [{"store": STORE, "version": _GONE}],
+        },
+    )
+    assert pinned.status_code == 201, pinned.text
+
+
+def project_pin(tmp_path: Path) -> Performed:
+    """Pin into a new group as the owner: nothing pinned, one version skipped."""
+    with world(tmp_path) as made:
+        since = last_entry(made.api.state)
+        _pinned_group(made)
+        expected = as_owner(
+            made,
+            access_key(made.directory),
+            details={
+                "group": "NMT",
+                "from": "file",
+                "pins": 0,
+                "already": 0,
+                "skipped": 1,
+            },
+        )
+        return Performed(made.api.state, since, expected)
+
+
+def project_unpin(tmp_path: Path) -> Performed:
+    """Remove a group as the owner."""
+    with world(tmp_path) as made:
+        _pinned_group(made)
+        since = last_entry(made.api.state)
+        removed = made.owner.request("DELETE", f"/projects/{made.project}/groups/NMT")
+        assert removed.status_code == 200, removed.text
+        expected = as_owner(
+            made,
+            access_key(made.directory),
+            details={"group": "NMT", "pins": [], "group_removed": True},
+        )
+        return Performed(made.api.state, since, expected)
+
+
 def settings_update(tmp_path: Path) -> Performed:
     """Raise ``network_jobs_per_person`` from 2 to 3 as the owner."""
     with world(tmp_path) as made:
@@ -730,6 +781,8 @@ CASES: dict[str, Callable[[Path], Performed]] = {
     "project.area": project_area,
     "project.store": project_store,
     "project.export": project_export,
+    "project.pin": project_pin,
+    "project.unpin": project_unpin,
     "settings.update": settings_update,
     "job.start": job_start,
     "job.cancel": job_cancel,

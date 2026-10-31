@@ -190,8 +190,56 @@ MESSAGES = {
         "text without control characters, or null",
         "tekst bez znaków sterujących albo null",
     ),
+    "group_name_invalid": Text(
+        (
+            'A group name is 1 to 80 characters, without control characters and "/":'
+            ' "{group}" is not.'
+        ),
+        (
+            "Nazwa grupy ma od 1 do 80 znaków, bez znaków sterujących i „/”:"
+            " „{group}” jej nie spełnia."
+        ),
+    ),
+    "group_exists": Text(
+        'The project "{project}" has a group "{group}" already.',
+        "Projekt „{project}” ma już grupę „{group}”.",
+    ),
     "group_not_found": Text(
         'The project "{project}" has no group "{group}".',
         "Projekt „{project}” nie ma grupy „{group}”.",
+    ),
+    "group_origin_plan": Text(
+        (
+            'The group "{group}" holds what the plan window downloaded: versions'
+            " the store holds are pinned into a new group or a local one."
+        ),
+        (
+            "Grupa „{group}” zawiera dane pobrane w oknie planu: wersje z magazynu"
+            " przypina się do nowej grupy albo do grupy lokalnej."
+        ),
+    ),
+    "unknown_store": Text(
+        (
+            "The project's store of {producer} matches no configured store: add"
+            " the store, or name another one for the project."
+        ),
+        (
+            "Magazyn projektu dla {producer} nie odpowiada żadnemu skonfigurowanemu"
+            " magazynowi: dodaj magazyn albo wskaż projektowi inny."
+        ),
+    ),
+    "other_store": Text(
+        (
+            "The project keeps the {producer} data of the store {store}; a version"
+            " of {version_store} cannot be pinned in it."
+        ),
+        (
+            "Projekt korzysta z danych {producer} magazynu {store}; wersji z"
+            " magazynu {version_store} nie można w nim przypiąć."
+        ),
+    ),
+    "too_many_pins": Text(
+        "A group holds at most {limit} pins; this would make {count}.",
+        "Grupa mieści najwyżej {limit} przypięć; byłoby ich {count}.",
     ),
 }

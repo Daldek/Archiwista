@@ -195,7 +195,7 @@ def record_project(
     return writer.write_project(_read(writer, directory, stamp, stores=stores, geo=geo))
 
 
-def _match_store(
+def match_store(
     root: str, directory: Path, producer: str, stores: Sequence[StoreConfig]
 ) -> str | None:
     r"""Return the configured store whose directory of ``producer`` is ``root``.
@@ -259,7 +259,7 @@ def _read(
         name=document.name,
         document=document,
         stores={
-            store.producer: _match_store(store.root, directory, store.producer, stores)
+            store.producer: match_store(store.root, directory, store.producer, stores)
             for store in document.stores
         },
         area_id=area_id,

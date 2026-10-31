@@ -134,6 +134,7 @@ from archiwista.index.types import (
     UnusedVersions,
     VersionCall,
     VersionDetail,
+    VersionFacts,
     VersionsMode,
     VersionSummary,
     WarmQuery,
@@ -1592,6 +1593,46 @@ class IndexQueries:
                 years=years,
             )
 
+    def version_facts(
+        self, store: str, paths: Collection[str]
+    ) -> dict[str, VersionFacts]:
+        """Return what a pin takes of indexed versions, keyed by their path.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        paths : Collection[str]
+            Version paths relative to the producer's directory; a path the
+            index does not hold is left out of the answer.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            rows = connection.execute(
+                f"SELECT {_FACT_COLUMNS} FROM versions v"
+                " JOIN segments g ON g.id = v.segment_id"
+                f" WHERE v.store_id = ? AND v.path IN ({_IDS})",
+                (_store_id(stores, store), json.dumps(sorted(set(paths)))),
+            ).fetchall()
+        return {row["path"]: _facts(store, row) for row in rows}
+
+    def current_version_at(self, store: str, path: str) -> VersionFacts | None:
+        """Return the current version of the slot at a standard path.
+
+        ``None`` when the index holds no such slot, or the slot has no
+        present current version.
+        """
+        with self._read() as connection:
+            stores = _stores(connection)
+            row = connection.execute(
+                f"SELECT {_FACT_COLUMNS} FROM slots s"
+                " JOIN versions v ON v.id = s.current_version_id"
+                " JOIN segments g ON g.id = v.segment_id"
+                " WHERE s.store_id = ? AND s.path = ? AND v.state = 'present'",
+                (_store_id(stores, store), path),
+            ).fetchone()
+        return None if row is None else _facts(store, row)
+
     def unused_versions(self, store: str) -> UnusedVersions | None:
         """Report present versions no link names and no project pins.
 
@@ -2442,6 +2483,28 @@ def _stores(connection: sqlite3.Connection) -> dict[int, str]:
 def _store_id(stores: Mapping[int, str], store: str) -> int:
     """Row id of a store; ``-1`` (matching nothing) for an unknown one."""
     return next((key for key, name in stores.items() if name == store), -1)
+
+
+# What a pin takes of a version (``VersionFacts``), on ``v`` and ``g``.
+_FACT_COLUMNS = (
+    "v.path AS path, g.producer AS producer, v.sha256 AS sha256,"
+    " v.content_sha256 AS content_sha256, v.size_bytes AS size_bytes,"
+    " v.unit AS unit, v.label AS label, v.state AS state"
+)
+
+
+def _facts(store: str, row: sqlite3.Row) -> VersionFacts:
+    return VersionFacts(
+        store=store,
+        path=row["path"],
+        producer=row["producer"],
+        sha256=row["sha256"],
+        content_sha256=row["content_sha256"],
+        size_bytes=row["size_bytes"],
+        unit=row["unit"],
+        label=row["label"],
+        present=row["state"] == "present",
+    )
 
 
 def _where(

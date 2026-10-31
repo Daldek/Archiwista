@@ -282,6 +282,15 @@ versions a scan has just indexed.
   file whole. Archiwista never removes an export. At the terminal: `archiwista
   project-export PROJEKT NAZWA [--group GRUPA …]` and `project-exports PROJEKT`. The
   QGIS project and the other files of SPEC 8.4 come with v1.1.
+- **Pinning what the store holds** (the owner or an administrator): `archiwista
+  project-pin PROJEKT GRUPA --version MAGAZYN:WERSJA` pins a version, an older one
+  too, into a new group of the project, and `--query '{"store": "zespol", "product":
+  "nmt"}'` the versions of a catalog query (every page; at most 10,000); `--add`
+  pins into a group the project has. Nothing is downloaded: the SHA-256, the size,
+  the unit and the label come from the index, a version not in the store or without
+  a SHA-256 is skipped with the reason, and the first pin of a producer names the
+  project's store. `project-unpin PROJEKT GRUPA --pin PRODUCENT:WERSJA` removes a pin,
+  and without `--pin` the whole group; the files stay in the store.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 

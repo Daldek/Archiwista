@@ -104,6 +104,7 @@ from archiwista.previews.cache import CacheUsage
 from archiwista.projects import (
     AREAS_DIR,
     MAX_DESCRIPTION_CHARS,
+    MAX_GROUP_NAME_CHARS,
     MAX_NAME_CHARS,
     OriginKind,
     SelectionSource,
@@ -111,6 +112,7 @@ from archiwista.projects import (
 from archiwista.refs import version_ref
 from archiwista.services import Problem, ProjectDetail, StoreSummary
 from archiwista.services.log import ExportFormat, LogPage, entry_document
+from archiwista.services.pins import PinResult, SkipReason
 from archiwista.sources import (
     DefaultRoot,
     DefaultRootSource,
@@ -804,8 +806,11 @@ class CommonFilters(BaseModel):
         return _year_range(self.years)
 
 
-class CatalogFilters(CommonFilters):
-    """Filters, area and page of ``GET /slots`` (catalog and search, SPEC 6.6)."""
+class SlotFilters(CommonFilters):
+    """Filters and area of ``GET /slots``: the rows of a query on every page.
+
+    The query a pin request names (``POST /projects/{project}/groups``).
+    """
 
     location: LocationFilter = Field(
         default="any",
@@ -831,15 +836,6 @@ class CatalogFilters(CommonFilters):
             " with the producer's pinned operation."
         ),
     )
-    limit: int = Field(
-        default=DEFAULT_PAGE_LIMIT,
-        ge=1,
-        le=MAX_PAGE_LIMIT,
-        description="Page size.",
-    )
-    cursor: str | None = Field(
-        default=None, description="`next_cursor` of the previous page of the query."
-    )
 
     @field_validator("bbox")
     @classmethod
@@ -851,6 +847,20 @@ class CatalogFilters(CommonFilters):
     def bbox_values(self) -> BBox | None:
         """Return ``bbox`` as four numbers."""
         return None if self.bbox is None else parse_bbox(self.bbox)
+
+
+class CatalogFilters(SlotFilters):
+    """Filters, area and page of ``GET /slots`` (catalog and search, SPEC 6.6)."""
+
+    limit: int = Field(
+        default=DEFAULT_PAGE_LIMIT,
+        ge=1,
+        le=MAX_PAGE_LIMIT,
+        description="Page size.",
+    )
+    cursor: str | None = Field(
+        default=None, description="`next_cursor` of the previous page of the query."
+    )
 
     def slot_query(self, area: AreaFilter | None) -> SlotQuery:
         """Return the index query of these filters with a resolved area."""
@@ -3021,6 +3031,164 @@ class StoreChoice(BaseModel):
             " else absolute."
         ),
     )
+
+
+class VersionChoice(BaseModel):
+    """A version of a configured store, older ones too."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    store: str = Field(min_length=1, description="Store id (/stores).")
+    version: str = Field(
+        min_length=1,
+        description="Version path relative to the producer's directory.",
+    )
+
+
+_PIN_QUERY_EXAMPLE: dict[str, Any] = {
+    "from": "catalog",
+    "query": {"store": _STORE, "product": "nmt", "years": "2020-2023"},
+}
+_PIN_VERSIONS_EXAMPLE: dict[str, Any] = {
+    "from": "file",
+    "versions": [
+        {"store": _STORE, "version": _PROJECT_PIN_EXAMPLE["version"]},
+    ],
+}
+
+
+class PinsRequest(BaseModel):
+    """Versions the store holds, pinned into a local group (A-ADR-049 decision 8).
+
+    Exactly one of `versions` and `query`.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        validate_by_name=True,
+        validate_by_alias=True,
+        serialize_by_alias=True,
+        json_schema_extra={"examples": [_PIN_QUERY_EXAMPLE, _PIN_VERSIONS_EXAMPLE]},
+    )
+
+    source: SelectionSource = Field(
+        alias="from",
+        description=(
+            "Where the versions were chosen: `file` (the file card: `versions`),"
+            " `local_state` or `catalog` (`query`). Recorded in the group's"
+            " `selections`, never run again."
+        ),
+    )
+    versions: list[VersionChoice] | None = Field(
+        default=None,
+        min_length=1,
+        description="Versions by store and path; older ones too.",
+    )
+    query: SlotFilters | None = Field(
+        default=None,
+        description=(
+            "The filters and area of `GET /slots`: the versions of its rows on"
+            " every page (`current` by default); more than 10,000 rows are"
+            " refused (`too_many_pins`) before anything is written."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _one_choice(self) -> Self:
+        if (self.versions is None) == (self.query is None):
+            raise ValueError("exactly one of versions and query is required")
+        if (self.source == "file") != (self.versions is not None):
+            raise ValueError(
+                "from file names versions, local_state and catalog a query"
+            )
+        return self
+
+    def chosen(self) -> list[tuple[str, str]] | None:
+        """Return ``versions`` as ``(store, version)`` pairs."""
+        if self.versions is None:
+            return None
+        return [(item.store, item.version) for item in self.versions]
+
+
+class GroupRequest(PinsRequest):
+    """A new local group with its first pins (`POST /projects/{project}/groups`)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"name": "NMT Raba", **_PIN_QUERY_EXAMPLE}]}
+    )
+
+    name: str = Field(
+        min_length=1,
+        max_length=MAX_GROUP_NAME_CHARS,
+        description=(
+            "The group's name: 1 to 80 characters, no control character, no"
+            " `/`; unique in the project compared case-folded."
+        ),
+    )
+
+
+class PinChoice(BaseModel):
+    """A pin of a group, by producer and version."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    producer: str = Field(min_length=1, examples=["kartograf"])
+    version: str = Field(min_length=1, description="The pin's `version`.")
+
+
+class UnpinRequest(BaseModel):
+    """Pins removed from a group (`POST /projects/{project}/groups/{group}/unpin`)."""
+
+    model_config = _examples(
+        {
+            "pins": [
+                {
+                    "producer": "kartograf",
+                    "version": _PROJECT_PIN_EXAMPLE["version"],
+                }
+            ]
+        },
+        closed=True,
+    )
+
+    pins: list[PinChoice] = Field(min_length=1, description="The pins to remove.")
+
+
+class SkippedPin(BaseModel):
+    """A version a pin request named that was not pinned."""
+
+    store: str
+    version: str
+    reason: SkipReason = Field(
+        description=(
+            "`missing` (not present in the index) or `no_sha256` (its metadata"
+            " gives no SHA-256)."
+        )
+    )
+
+
+class PinOutcome(BaseModel):
+    """What a pin request did, with the project's card after it."""
+
+    project: ProjectCard
+    group: str = Field(description="The group's name as the file holds it.")
+    pinned: int = Field(description="Versions added to the group.")
+    already: int = Field(description="Versions the group pinned already.")
+    skipped: list[SkippedPin] = Field(description="Versions not pinned, with why.")
+
+    @classmethod
+    def of(cls, outcome: PinResult, card: ProjectCard) -> Self:
+        """Return the model of a pin request's result."""
+        return cls(
+            project=card,
+            group=outcome.group,
+            pinned=outcome.pinned,
+            already=outcome.already,
+            skipped=[
+                SkippedPin(store=item.store, version=item.version, reason=item.reason)
+                for item in outcome.skipped
+            ],
+        )
 
 
 # Settings ------------------------------------------------------------------

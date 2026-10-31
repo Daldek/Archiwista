@@ -1,4 +1,4 @@
-"""``archiwista project-init``, ``-edit``, ``-area``, ``-store``, ``-export(s)``.
+"""``archiwista project-init`` … ``-store``, ``-pin``, ``-unpin``, ``-export(s)``.
 
 Projects are Archiwista's own file ``archiwista-project.json`` (A-ADR-049).
 ``project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id
@@ -8,12 +8,18 @@ relative directory is taken from the current one), ``project-edit PROJEKT
 (``PATCH /projects/{project}``), ``project-area PROJEKT (--area-id OBSZAR |
 --clear)`` its area (``PUT /projects/{project}/area``) and ``project-store
 PROJEKT PRODUCENT --store MAGAZYN`` the store of a producer's pins (``PUT
-/projects/{project}/stores/{producer}``): each prints the project's card as
-the index holds it right after the change (``ProjectCard``). ``project-export
-PROJEKT NAZWA [--group GRUPA …]`` writes an export ``zestawy/NAZWA/`` from the
-pins (``POST /projects/{project}/exports``, ``ProjectExport``) and
-``project-exports PROJEKT`` lists them (``GET …/exports``,
-``ProjectExports``). They call
+/projects/{project}/stores/{producer}``), ``project-pin PROJEKT GRUPA
+(--version MAGAZYN:WERSJA … | --query JSON) [--from ŹRÓDŁO] [--add]`` pins
+versions the store holds into a new local group or, with ``--add``, one the
+project has (``POST /projects/{project}/groups``, ``…/groups/{group}/pins``,
+printing ``PinOutcome``) and ``project-unpin PROJEKT GRUPA [--pin
+PRODUCENT:WERSJA …]`` removes pins or the whole group (``POST
+…/groups/{group}/unpin``, ``DELETE …/groups/{group}``): the others print the
+project's card as the index holds it right after the change (``ProjectCard``).
+``project-export PROJEKT NAZWA [--group GRUPA …]`` writes an export
+``zestawy/NAZWA/`` from the pins (``POST /projects/{project}/exports``,
+``ProjectExport``) and ``project-exports PROJEKT`` lists them (``GET
+…/exports``, ``ProjectExports``). They call
 ``archiwista.services.projects`` and ``archiwista.api.projects`` without
 HTTP, as the owner of the installation (``LOCAL_OWNER``, an administrator,
 who may change every project) through the ``Authorizer`` over the state
@@ -23,6 +29,7 @@ uses the network or writes a store.
 """
 
 import argparse
+import json
 import os
 import sqlite3
 from collections.abc import Callable
@@ -35,14 +42,22 @@ from pydantic import BaseModel, ValidationError
 
 from archiwista.api.models import (
     AreaChoice,
+    GroupRequest,
+    PinsRequest,
     Preferences,
     ProjectCard,
     ProjectChange,
     ProjectRequest,
     StoreChoice,
+    UnpinRequest,
 )
 from archiwista.api.models_exports import ExportRequest, ProjectExport, ProjectExports
-from archiwista.api.projects import export_answer, exports_answer, project_card
+from archiwista.api.projects import (
+    export_answer,
+    exports_answer,
+    pin_outcome,
+    project_card,
+)
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
 from archiwista.commands import Commands, add_parser
@@ -63,7 +78,9 @@ from archiwista.error_document import (
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
 from archiwista.messages import message, with_detail
-from archiwista.reader import project_text
+from archiwista.projects import SELECTION_SOURCES
+from archiwista.reader import pin_text, project_text
+from archiwista.services import pins as pin_service
 from archiwista.services import projects as project_service
 from archiwista.services.preferences import read_preferences
 from archiwista.sources.registry import PluginRegistry
@@ -77,6 +94,8 @@ COMMANDS = frozenset(
         "project-store",
         "project-export",
         "project-exports",
+        "project-pin",
+        "project-unpin",
     }
 )
 
@@ -176,6 +195,40 @@ def add_commands(commands: Commands) -> None:
     )
     listed = add_parser(commands, "project-exports", "cli.project_exports_help")
     _project(listed)
+
+    pin = add_parser(commands, "project-pin", "cli.project_pin_help")
+    _project(pin)
+    _group(pin)
+    chosen_versions = pin.add_mutually_exclusive_group(required=True)
+    chosen_versions.add_argument(
+        "--version",
+        action="append",
+        dest="versions",
+        metavar=f"{message('metavar.store')}:{message('metavar.version')}",
+        help=message("cli.project_version_help"),
+    )
+    chosen_versions.add_argument(
+        "--query",
+        metavar=message("metavar.query"),
+        help=message("cli.project_query_help"),
+    )
+    pin.add_argument(
+        "--from",
+        dest="source",
+        choices=SELECTION_SOURCES,
+        help=message("cli.project_from_help"),
+    )
+    pin.add_argument("--add", action="store_true", help=message("cli.project_add_help"))
+    unpinned = add_parser(commands, "project-unpin", "cli.project_unpin_help")
+    _project(unpinned)
+    _group(unpinned)
+    unpinned.add_argument(
+        "--pin",
+        action="append",
+        dest="pins",
+        metavar=f"{message('metavar.producer')}:{message('metavar.version')}",
+        help=message("cli.project_pin_opt_help"),
+    )
 
 
 def main(
@@ -370,6 +423,82 @@ def _exports_text(answer: ProjectExports) -> str:
     return "\n".join(lines)
 
 
+def _pin(args: argparse.Namespace, place: _Place) -> _Output:
+    """Pin versions as ``POST …/groups`` (``--add``: ``…/pins``); print the outcome."""
+    given: dict[str, Any] = {
+        "from": args.source or ("file" if args.versions else "catalog")
+    }
+    if args.versions:
+        given["versions"] = [
+            dict(zip(("store", "version"), _pair(value), strict=True))
+            for value in args.versions
+        ]
+    else:
+        given["query"] = _json(args.query)
+    body: PinsRequest
+    if args.add:
+        body = _body(PinsRequest, given)
+    else:
+        body = _body(GroupRequest, {"name": args.group, **given})
+    outcome = pin_outcome(
+        args.project,
+        body,
+        args.group,
+        principal=LOCAL_OWNER,
+        decisions=place.decisions,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+        registry=place.registry,
+        settings=place.settings,
+        preferences=place.preferences(),
+        queries=place.queries,
+        index=place.index,
+        new=not args.add,
+    )
+    return outcome, f"{pin_text(outcome)}\n{project_text(outcome.project)}"
+
+
+def _unpin(args: argparse.Namespace, place: _Place) -> _Output:
+    """Remove pins as ``POST …/unpin`` (no ``--pin``: ``DELETE …/groups/{group}``)."""
+    pins = None
+    if args.pins:
+        listed = [
+            dict(zip(("producer", "version"), _pair(value), strict=True))
+            for value in args.pins
+        ]
+        body = _body(UnpinRequest, {"pins": listed})
+        pins = [(item.producer, item.version) for item in body.pins]
+    key = pin_service.unpin(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        args.project,
+        group=args.group,
+        pins=pins,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return _changed(place, key)
+
+
+def _pair(value: str) -> tuple[str, str]:
+    """Split ``FIRST:REST`` at its first colon; no colon gives an empty rest."""
+    first, _, rest = value.partition(":")
+    return first, rest
+
+
+def _json(text: str) -> object:
+    """Return the JSON value of ``text``; text that is no JSON is passed on.
+
+    The route's model then refuses it as ``POST`` refuses such a body.
+    """
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
 _ACTIONS: dict[str, _Action] = {
     "project-init": _init,
     "project-edit": _edit,
@@ -377,6 +506,8 @@ _ACTIONS: dict[str, _Action] = {
     "project-store": _store,
     "project-export": _export,
     "project-exports": _exports,
+    "project-pin": _pin,
+    "project-unpin": _unpin,
 }
 
 # What keeps a command from opening the settings, the state or the index.
@@ -409,6 +540,15 @@ def _project(parser: argparse.ArgumentParser) -> None:
     """Add the project, the first argument of a command on a project."""
     parser.add_argument(
         "project", metavar=message("metavar.project"), help=message("cli.project_help")
+    )
+
+
+def _group(parser: argparse.ArgumentParser) -> None:
+    """Add the group, the second argument of a command on a group."""
+    parser.add_argument(
+        "group",
+        metavar=message("metavar.group"),
+        help=message("cli.project_group_help"),
     )
 
 

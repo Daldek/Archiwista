@@ -31,6 +31,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
 | a project's exports from its pins, `pliki.txt` and `ATRYBUCJE.txt` in `zestawy/NAZWA/` (A-ADR-049), and their list | `archiwista project-export PROJEKT NAZWA [--group GRUPA …]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports` |
+| pin versions the store holds into a project's group (offline, from the index), remove pins or a group (A-ADR-049) | `archiwista project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add]`, `project-unpin PROJEKT GRUPA [--pin PRODUCENT:WERSJA …]` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}` |
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
 | team mode (v0.4): how a session starts, signing in (with a password or through the company's reverse proxy), changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `POST /session/proxy`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
 | area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
@@ -450,6 +451,33 @@ cursor is safe in a URL).
   {items}`: each export of `zestawy/` with `name`, `path`, `files`, `written_at` and
   `changed_since` (the project file changed after it: write it again). Archiwista
   never removes an export.
+- `archiwista project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … | --query
+  JSON) [--from local_state|catalog|file] [--add]` / `POST
+  /projects/{project}/groups` (`{"name", "from", "versions"?: [{"store",
+  "version"}], "query"?: {…the filters of GET /slots}}`, exactly one of
+  `versions` and `query`; `from` `file` names `versions`, `local_state` and
+  `catalog` a `query`) pins versions the store holds into a new local group,
+  and with `--add` / `POST /projects/{project}/groups/{group}/pins` (the same
+  without `name`, `200`) into a local group the project has. The versions come
+  from the index alone (no network, no producer): named ones, older too, or the
+  versions of the query's rows on every page (`current` by default). The answer
+  (`201`) is `PinOutcome`: `project` (the card), `group`, `pinned`, `already`
+  (pinned before, or named twice) and `skipped` (`[{store, version, reason}]`,
+  `missing` or `no_sha256`). The first pin of a producer names the project's
+  store of that producer. Refused before anything is written: more than 10,000
+  versions (`400 too_many_pins`, `details.count`), a name breaking the rule
+  (`400 invalid_group_name`), a taken name (`409 group_exists`, compared
+  case-folded), a group of the plan window (`409 group_origin_plan`), an unknown
+  group (`404`), a version of another store than the project's (`409
+  other_store`, `details.store`) and a project store matching no configured one
+  (`409 unknown_store`). `archiwista project-unpin PROJEKT GRUPA --pin
+  PRODUCENT:WERSJA …` / `POST /projects/{project}/groups/{group}/unpin`
+  (`{"pins": [{"producer", "version"}]}`) removes pins, and without `--pin` /
+  `DELETE /projects/{project}/groups/{group}` the whole group; both answer the
+  card and leave the versions in the store. Each change needs `project.write`
+  and is logged (`project.pin` with `group`, `from`, `pins`, `already`,
+  `skipped`; `project.unpin` with `group`, the `pins` removed and
+  `group_removed`).
 - `archiwista status` / `GET /health`: versions, sources, the index and every
   store: `status` (`unknown` not scanned yet, `available`, `unavailable`),
   counters, `last_scan` with the actor, `running_job` with its progress,

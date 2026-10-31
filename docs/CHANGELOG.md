@@ -987,6 +987,19 @@ command-line interface may change.
   card says "Przypięta w: {project} ({group})"; the Store view lists a project with its
   pinned and missing versions.
 
+- Pinning what the store holds (A-ADR-049 decisions 7 and 8, plan P3): `archiwista
+  project-pin PROJEKT GRUPA (--version MAGAZYN:WERSJA … | --query JSON) [--from …]
+  [--add]` / `POST /projects/{project}/groups` and `…/groups/{group}/pins` pin named
+  versions, older ones too, or the versions of a catalog query into a local group,
+  offline from the index (`PinOutcome`: pinned, already pinned, skipped with
+  `missing` or `no_sha256`); `archiwista project-unpin PROJEKT GRUPA [--pin
+  PRODUCENT:WERSJA …]` / `POST …/groups/{group}/unpin` and `DELETE
+  …/groups/{group}` remove pins or a group. The first pin of a producer names the
+  project's store; refused are more than 10,000 versions (`too_many_pins`), a taken
+  or invalid group name, a group of the plan window, a version of another store
+  (`other_store`) and a project store matching no configured one (`unknown_store`).
+  The action log has `project.pin` and `project.unpin`.
+
 - **Breaking:** the year types are each person's preference (v0.4, ADR-047 erratum 1):
   `year_types` left `GET` and `PUT /api/v1/settings`, and `PUT
   /api/v1/settings/year-types` is removed; use `PUT /api/v1/preferences`. A

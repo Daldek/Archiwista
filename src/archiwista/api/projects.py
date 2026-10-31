@@ -40,6 +40,9 @@ from archiwista.api.dependencies import (
 from archiwista.api.errors import problem_responses
 from archiwista.api.models import (
     AreaChoice,
+    GroupRequest,
+    PinOutcome,
+    PinsRequest,
     Preferences,
     ProjectCard,
     ProjectChange,
@@ -47,6 +50,7 @@ from archiwista.api.models import (
     ProjectList,
     ProjectRequest,
     StoreChoice,
+    UnpinRequest,
     staleness,
 )
 from archiwista.api.models_exports import (
@@ -64,6 +68,7 @@ from archiwista.errors import NotFoundError
 from archiwista.index import IndexQueries
 from archiwista.messages import message
 from archiwista.security import current_principal
+from archiwista.services import pins as pin_service
 from archiwista.services import project_detail
 from archiwista.services import projects as project_service
 from archiwista.sources.registry import PluginRegistry
@@ -87,6 +92,10 @@ _Producer = Annotated[
     Path(
         description="Producer of the store, e.g. `kartograf`.", examples=["kartograf"]
     ),
+]
+_Group = Annotated[
+    str,
+    Path(description="A group's name (compared case-folded).", examples=["NMT 2023"]),
 ]
 # What every change of a project file may answer besides its card.
 _CHANGE_RESPONSES = problem_responses(400, 403, 404, 409, 500)
@@ -415,6 +424,56 @@ def exports_answer(
 
 
 @router.post(
+    "/{project}/groups",
+    response_model=PinOutcome,
+    status_code=201,
+    responses=_CHANGE_RESPONSES,
+)
+def add_project_group(
+    project: _Project,
+    body: GroupRequest,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    registry: _Registry,
+    settings: _Settings,
+    preferences: _Preferences,
+    queries: _Queries,
+    index: _Index,
+) -> PinOutcome:
+    """Pin versions the store holds into a new local group (`project.pin`).
+
+    The versions are named (`versions`: a store and a path, older ones too)
+    or chosen by the query of `GET /slots` (`query`: the versions of its
+    rows on every page, `current` by default). Their SHA-256, size, unit and
+    label come from the index: no network, no producer. A version that is
+    not present or has no SHA-256 is not pinned and is listed in `skipped`;
+    one named twice is counted in `already`. The first pin of a producer
+    names the project's store of that producer. Needs the project's owner or
+    an administrator (`403`). Refused: a taken name (`409`, `group_exists`),
+    a name breaking the rule (`400`, `invalid_group_name`), more than 10,000
+    versions (`400`, `too_many_pins`, `details.count`; nothing written), a
+    version of another store than the project's (`409`, `other_store`), a
+    project store matching no configured one (`409`, `unknown_store`), and
+    as `PATCH /projects/{project}` refuses.
+    """
+    return pin_outcome(
+        project,
+        body,
+        body.name,
+        principal=principal,
+        decisions=decisions,
+        visible=visible,
+        registry=registry,
+        settings=settings.get(),
+        preferences=preferences,
+        queries=queries,
+        index=index,
+        new=True,
+    )
+
+
+@router.post(
     "/{project}/exports",
     response_model=ProjectExport,
     status_code=201,
@@ -477,3 +536,159 @@ def list_project_exports(
     return exports_answer(
         settings.get(), queries, preferences, project, visible=visible
     )
+
+
+@router.post(
+    "/{project}/groups/{group}/pins",
+    response_model=PinOutcome,
+    responses=_CHANGE_RESPONSES,
+)
+def add_group_pins(
+    project: _Project,
+    group: _Group,
+    body: PinsRequest,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    registry: _Registry,
+    settings: _Settings,
+    preferences: _Preferences,
+    queries: _Queries,
+    index: _Index,
+) -> PinOutcome:
+    """Pin versions the store holds into a local group (`project.pin`).
+
+    As `POST /projects/{project}/groups`, into a group the project has: a
+    version the group pins already is counted in `already`. Refused also: an
+    unknown group (`404`) and a group of the plan window (`409`,
+    `group_origin_plan`).
+    """
+    return pin_outcome(
+        project,
+        body,
+        group,
+        principal=principal,
+        decisions=decisions,
+        visible=visible,
+        registry=registry,
+        settings=settings.get(),
+        preferences=preferences,
+        queries=queries,
+        index=index,
+        new=False,
+    )
+
+
+@router.post(
+    "/{project}/groups/{group}/unpin",
+    response_model=ProjectCard,
+    responses=_CHANGE_RESPONSES,
+)
+def unpin_group_pins(
+    project: _Project,
+    group: _Group,
+    body: UnpinRequest,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    registry: _Registry,
+    settings: _Settings,
+    preferences: _Preferences,
+    queries: _Queries,
+    index: _Index,
+) -> ProjectCard:
+    """Remove pins of a group (`project.unpin`); the versions stay in the store.
+
+    A pin the group does not hold is ignored. Needs the project's owner or
+    an administrator. Refused: an unknown group (`404`), and as `PATCH
+    /projects/{project}` refuses.
+    """
+    config = settings.get()
+    key = pin_service.unpin(
+        registry,
+        config,
+        queries,
+        index,
+        decisions,
+        project,
+        group=group,
+        pins=[(item.producer, item.version) for item in body.pins],
+        actor=principal,
+        visible=visible,
+    )
+    return _changed_card(decisions, principal, queries, config, preferences, key)
+
+
+@router.delete(
+    "/{project}/groups/{group}",
+    response_model=ProjectCard,
+    responses=_CHANGE_RESPONSES,
+)
+def remove_project_group(
+    project: _Project,
+    group: _Group,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    registry: _Registry,
+    settings: _Settings,
+    preferences: _Preferences,
+    queries: _Queries,
+    index: _Index,
+) -> ProjectCard:
+    """Remove a group with its pins (`project.unpin`); the versions stay.
+
+    Needs the project's owner or an administrator. Refused: an unknown group
+    (`404`), and as `PATCH /projects/{project}` refuses.
+    """
+    config = settings.get()
+    key = pin_service.unpin(
+        registry,
+        config,
+        queries,
+        index,
+        decisions,
+        project,
+        group=group,
+        pins=None,
+        actor=principal,
+        visible=visible,
+    )
+    return _changed_card(decisions, principal, queries, config, preferences, key)
+
+
+def pin_outcome(
+    project: str,
+    body: PinsRequest,
+    group: str,
+    *,
+    principal: Principal,
+    decisions: Authorizer,
+    visible: ProjectVisibility,
+    registry: PluginRegistry,
+    settings: AppSettings,
+    preferences: Preferences,
+    queries: IndexQueries,
+    index: FilePath,
+    new: bool,
+) -> PinOutcome:
+    """Pin a request's versions into a group; return the outcome with the card."""
+    result = pin_service.pin_local(
+        registry,
+        settings,
+        queries,
+        index,
+        decisions,
+        project,
+        group=group,
+        new=new,
+        source=body.source,
+        versions=body.chosen(),
+        query=body.query,
+        actor=principal,
+        visible=visible,
+    )
+    card = _changed_card(
+        decisions, principal, queries, settings, preferences, result.project
+    )
+    return PinOutcome.of(result, card)

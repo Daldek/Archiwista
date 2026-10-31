@@ -2032,6 +2032,96 @@ MESSAGES = {
         "The project has no exports.",
         "Projekt nie ma zestawów.",
     ),
+    "project_pin_help": Text(
+        (
+            "Pins versions the store holds into a new local group of a project, or"
+            " with --add into a local group it has (POST"
+            " /api/v1/projects/{{project}}/groups, …/groups/{{group}}/pins): named by"
+            " --version, or the versions of the rows of a catalog query (--query,"
+            " the parameters of GET /slots as a JSON object, every page). Their"
+            " SHA-256, size, unit and label come from the index: no network. Prints"
+            " what was pinned, already pinned and skipped, and the project's card."
+        ),
+        (
+            "Przypina wersje z magazynu do nowej grupy lokalnej projektu albo, z"
+            " --add, do jego istniejącej grupy lokalnej (POST"
+            " /api/v1/projects/{{project}}/groups, …/groups/{{group}}/pins): wskazane"
+            " przez --version albo wersje wierszy zapytania katalogu (--query,"
+            " parametry GET /slots jako obiekt JSON, wszystkie strony). Ich"
+            " SHA-256, rozmiar, jednostka i etykieta pochodzą z indeksu: bez sieci."
+            " Wypisuje, co przypięto, co już było przypięte i co pominięto, oraz"
+            " kartę projektu."
+        ),
+    ),
+    "project_group_help": Text("The group's name.", "Nazwa grupy."),
+    "project_version_help": Text(
+        (
+            "A version as STORE:PATH (the path relative to the producer's"
+            " directory, an older version too); may be given many times."
+        ),
+        (
+            "Wersja jako MAGAZYN:ŚCIEŻKA (ścieżka względem katalogu producenta,"
+            " także starsza wersja); można podać wiele razy."
+        ),
+    ),
+    "project_query_help": Text(
+        (
+            'The catalog query as a JSON object, e.g. \'{{"store": "zespol",'
+            ' "product": "nmt"}}\' (the parameters of GET /slots without limit and'
+            " cursor)."
+        ),
+        (
+            'Zapytanie katalogu jako obiekt JSON, np. \'{{"store": "zespol",'
+            ' "product": "nmt"}}\' (parametry GET /slots bez limit i cursor).'
+        ),
+    ),
+    "project_from_help": Text(
+        (
+            "Where the versions were chosen, recorded in the group: file (the"
+            " default with --version), catalog (the default with --query) or"
+            " local_state."
+        ),
+        (
+            "Skąd pochodzą wersje, zapisywane w grupie: file (domyślnie z"
+            " --version), catalog (domyślnie z --query) albo local_state."
+        ),
+    ),
+    "project_add_help": Text(
+        "Pin into a local group the project has, not a new one.",
+        "Przypnij do istniejącej grupy lokalnej projektu, nie do nowej.",
+    ),
+    "project_unpin_help": Text(
+        (
+            "Removes pins of a project's group (--pin, POST"
+            " /api/v1/projects/{{project}}/groups/{{group}}/unpin), or without --pin"
+            " the whole group (DELETE /api/v1/projects/{{project}}/groups/{{group}});"
+            " the versions stay in the store. Prints the project's card."
+        ),
+        (
+            "Usuwa przypięcia z grupy projektu (--pin, POST"
+            " /api/v1/projects/{{project}}/groups/{{group}}/unpin) albo, bez --pin,"
+            " całą grupę (DELETE /api/v1/projects/{{project}}/groups/{{group}});"
+            " wersje zostają w magazynie. Wypisuje kartę projektu."
+        ),
+    ),
+    "project_pin_opt_help": Text(
+        "A pin as PRODUCER:PATH; may be given many times.",
+        "Przypięcie jako PRODUCENT:ŚCIEŻKA; można podać wiele razy.",
+    ),
+    "project_pinned": Text(
+        (
+            "Group {group} of the project {project}: {pinned} pinned, {already}"
+            " already pinned, {skipped} skipped."
+        ),
+        (
+            "Grupa {group} projektu {project}: przypięto {pinned}, już przypiętych"
+            " {already}, pominięto {skipped}."
+        ),
+    ),
+    "project_skipped_line": Text(
+        "  skipped {store}:{version} ({reason})",
+        "  pominięto {store}:{version} ({reason})",
+    ),
     "preview_warm_help": Text(
         (
             "Prepares the first look at current versions ahead (the preview pane's"

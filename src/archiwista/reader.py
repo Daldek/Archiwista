@@ -30,6 +30,7 @@ from archiwista.api.models import (
     Health,
     IndexAnswer,
     Issue,
+    PinOutcome,
     Preferences,
     ProjectCard,
     ProjectStore,
@@ -518,6 +519,30 @@ def project_text(card: ProjectCard) -> str:
         )
     lines.extend(_problem_lines(card.problems))
     return _with_stale(card, lines)
+
+
+def pin_text(outcome: PinOutcome) -> str:
+    """Return what a pin request did for a person: the counts and each skipped."""
+    lines = [
+        message(
+            "cli.project_pinned",
+            group=outcome.group,
+            project=outcome.project.project,
+            pinned=outcome.pinned,
+            already=outcome.already,
+            skipped=len(outcome.skipped),
+        )
+    ]
+    lines.extend(
+        message(
+            "cli.project_skipped_line",
+            store=item.store,
+            version=item.version,
+            reason=item.reason,
+        )
+        for item in outcome.skipped
+    )
+    return "\n".join(lines)
 
 
 def _stores_text(stores: Iterable[ProjectStore]) -> str:
