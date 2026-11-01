@@ -27,7 +27,7 @@ is merged into `develop` or released.
 | Data output (DEV §19, ECO-051) | done, in `feature/v0.4-team` | plan `docs/plans/2026-10-25-archiwista-next.md` Part 1 (ADR-031, ADR-033): store markers, store roots, the producers' default roots offered in the wizard, tests isolated from the producers' settings |
 | Release 0.2.0 "Previews" | done | released on `develop`, not tagged and not merged into `main` (author's decision) |
 | Nogat standard 2.1 | done | structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry; skipped items below |
-| Gate | full run pending (next session, the author's decision of 2026-11-01) | the last full run, at `07f8c71`: 2654 passed, one failure (`test_doctor_refused_store_shows_the_fix_the_producer_gave`, port 8090 taken). The commits after it ran reduced gates and the tests of each change. A full run takes about 50 to 60 minutes; start it without other test suites running |
+| Gate | green on `dd4268c` plus the doctor test fix (2026-11-01) | full run: 2719 passed, coverage 93.63%, 51 min, with the author's test server holding port 8090; `test_doctor_refused_store_shows_the_fix_the_producer_gave` now picks a free port. A full run takes about 50 to 60 minutes; start it without other test suites running |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; no run of either workflow is known |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -43,9 +43,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 
 ## Next
 
-1. Run the full gate of the branch head (next session); `feature/archiwista-projects` is
-   pushed after it passes (GitHub holds `07f8c71`).
-2. Merge and release, per the Nogat plan's decisions D2 and D3: one Archiwista release
+1. Merge and release, per the Nogat plan's decisions D2 and D3: one Archiwista release
    holds v0.3, v0.4 and the projects, outside the first release set (Archiwista follows
    the producers' tags in its own session, REL-5.4). Then: replace the commit pins by
    the producers' tags (REL-5.3, REL-2.1), merge with the author's approval, CHANGELOG
@@ -54,13 +52,16 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    --offline` resolves a commit only from uv's git database
    (`~/.cache/uv/git-v1/db/`), so fetch the producer's branch into it, change the commit
    in `pyproject.toml`, `uv lock --offline`, `uv sync --locked --all-extras`.
-3. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
+2. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
    in three browsers, the store on the share); a full `scripts/gate.sh` on the Mac; the
    live run of `tests/integration/test_live_actions.py` (`ARCHIWISTA_LIVE_ACTIONS=1`)
    and the SMB run of v0.3 criterion 8.
-4. CI proof after the push: the Chromium step of `ci.yml` and the weekly `live.yml`.
-5. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
+3. CI proof after the push: the Chromium step of `ci.yml` and the weekly `live.yml`.
+4. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
    it covers the case (DEV-10.6).
+5. Adopt the ecosystem's visual identity (Nogat `design/`, plan
+   `docs/plans/2026-11-01-visual-identity.md` in Nogat) once the author approves it, by
+   an Archiwista plan.
 
 Known gaps:
 
@@ -70,8 +71,6 @@ Known gaps:
 - Plans show „rozmiar nieznany” until Kartograf KH (the size of a plan item).
 - The „pobrane” badge cannot match LAZ: Kartograf's LAZ sidecar records no survey work
   (Open questions).
-- `tests/unit/test_doctor.py::test_doctor_refused_store_shows_the_fix_the_producer_gave`
-  is not hermetic: it fails while 127.0.0.1:8090 is taken.
 - The white rectangle over the map that the author reported was not reproduced.
 - „Pokaż wynik na mapie” does not carry the Katalog's „Wariant” filter.
 - The project card follows a job it started or the one a `409` names, not a job of the

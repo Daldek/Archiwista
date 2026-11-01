@@ -106,6 +106,13 @@ def run_cli(
     return status, capsys.readouterr().out
 
 
+def free_port() -> int:
+    """Return a loopback port no server listens on now."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
 def tree(root: Path) -> list[str]:
     """Return every path under ``root``."""
     return sorted(str(path.relative_to(root)) for path in root.rglob("*"))
@@ -207,7 +214,7 @@ def test_doctor_refused_store_shows_the_fix_the_producer_gave(
     paths: AppPaths, store_root: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The hint of a store the producer refuses is the fix the person is shown."""
-    configure(paths, store_root)
+    configure(paths, store_root, port=free_port())  # a busy port adds its own fix
     refused = replace(
         KARTOGRAF,
         status="incompatible",
