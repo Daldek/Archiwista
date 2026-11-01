@@ -3,9 +3,9 @@
 Archiwista is a web application (locally: one person on `localhost`; later a
 team on a local network) for working with the spatial data stores that
 Kartograf writes: browsing and search, a map with previews, availability and
-freshness checks, downloads and projects through the producer's API, and
-preparing data for merging. Profile `app` (DEV-1.1; `ecosystem.yaml` is
-authoritative). Introduction: [README.md](README.md); specification:
+freshness checks, downloads through the producer's API, projects in Archiwista's own
+file (A-ADR-049), and preparing data for merging. Profile `app` (DEV-1.1;
+`ecosystem.yaml` is authoritative). Introduction: [README.md](README.md); specification:
 [docs/SPEC.md](docs/SPEC.md). The Nogat standard 2.1 is in
 [standards/](https://github.com/Daldek/Nogat/tree/main/standards)
 (DEVELOPMENT_STANDARDS, DOCUMENTATION_STANDARDS, AGENT_INTERFACE, ERROR_REGISTRY).
@@ -33,8 +33,9 @@ authoritative). Introduction: [README.md](README.md); specification:
   API. No SQLite or Archiwista files on a network share or in the store; the index,
   the preview cache and the job history are local and rebuildable. The one exception
   is user data written on the user's command in the project folder (the project file
-  `archiwista-project.json` with its area files in `obszary/`, A-ADR-049; own-data
-  snapshots, sets; A-ADR-027): an open format, readable without Archiwista.
+  `archiwista-project.json` with its area files in `obszary/` and the exports
+  `eksport/<name>/` with their ZIPs, A-ADR-049; own-data snapshots, A-ADR-027): open
+  formats, readable without Archiwista.
 - Overriding product principle: layout, interface and API are simple, clear and
   convenient for people.
 - Data downloaded while working goes outside the repository and outside `/tmp`, into
@@ -48,8 +49,8 @@ authoritative). Introduction: [README.md](README.md); specification:
   variant in the catalog `src/archiwista/messages/` (one module per area, key
   `<area>.<name>`, rendered with `message`; `tests/unit/test_messages.py` checks every
   call and that no other module holds such a text) and in `web/src/labels/` (DEV-2.3).
-  Several documents under `docs/` are still Polish; `docs/PROGRESS.md` lists them. New
-  and edited documents are English.
+  The documents under `docs/` are English; Polish interface labels are quoted as they
+  appear. New and edited documents are English.
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
   (DOC-7.2); `docs/PROGRESS.md` is updated before the last commit of a session
   (DEV-17.3).
@@ -70,8 +71,8 @@ network services and stores), `perf` (the synthetic store of 50,000 slots) and `
 (a real SMB share); each needs its own setup (`.env.example`). `db` and `slow` are
 registered (DEV-10.1) and not used yet. Coverage floor 80% (`fail_under` of
 `[tool.coverage.report]`; the gate passes `--cov`). Run tests with `TMPDIR` on a local
-disk: a network share breaks SQLite and hard links. The full gate takes about 25 minutes
-(the interface tests drive Chromium; those that depend on the engine also Firefox).
+disk: a network share breaks SQLite and hard links. The full gate takes about 50 to 60
+minutes (the interface tests drive Chromium; those that depend on the engine also Firefox).
 
 ## Code map
 
@@ -141,7 +142,7 @@ tests/{unit,integration,contract,e2e,perf,fixtures}
 | Plans (v0.1 and v0.2 executed) | [docs/plans/](docs/plans/) |
 | Measurements and acceptance | [docs/reports/](docs/reports/) |
 | Changes for users | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
-| Formats on disk (sidecar, `data/`, manifest, plan) | Kartograf, not Archiwista: its `docs/ARCHITECTURE.md` 3.1 to 3.5 |
+| Formats on disk (sidecar, `data/`, plan) | Kartograf, not Archiwista: its `docs/ARCHITECTURE.md`; the project file `archiwista-project/1`: [A-ADR-049](docs/decisions/0049-projects-in-archiwista.md) |
 
 ## Session workflow
 
@@ -174,7 +175,7 @@ contract KA-1 to KA-8, SPEC 12); IMGWTools is an optional producer behind the ex
 - AGI-6.2: the OpenAPI document is `/api/v1/openapi.json` (behind the session, like every
   `/api` route) and `operationId` is the route function name; there is no command catalog.
 - DEV-18, DEV-19: profile `tool` only; Archiwista keeps its own `config.toml` and writes no
-  data files except snapshots.
+  data files except own-data snapshots and a project's exports.
 - ERR-4: a job that does not succeed, `reindex` and `archiwista doctor` end with the
   outcome statuses 10, 11 and 130 and print no error document; every other refusal ends
   standard error with the `archiwista-error/1` document.
