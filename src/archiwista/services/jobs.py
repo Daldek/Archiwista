@@ -19,9 +19,10 @@ other one as an unknown job (``404``, ``job.not_found``), for ``POST
   succeeded is a ``409 conflict`` (``job_succeeded``), so is one still
   active (``job_active``). What the
   kind needs at its start is asked again: a ``download`` needs
-  ``store.write``, a ``snapshot`` ``project.write`` of its project, a
+  ``store.write`` (and its ``pin`` is checked again: a set added to must
+  still be open), a ``snapshot`` ``project.write`` of its project, a
   ``project_repin`` and a ``project_restore`` ``project.write`` and
-  ``store.write``, a
+  ``store.write`` (a re-pin of a closed set is refused), a
   ``scan``, ``footprints``, ``link_check`` or an ``own_scan`` of every
   project ``store.scan``, and an ``own_scan`` of one project keeps to the
   limits of a person's scans (``scan_limits``); the project of a
@@ -53,8 +54,9 @@ from archiwista.jobs import (
 from archiwista.jobs.supervisor import action_details
 from archiwista.messages import label, message
 from archiwista.services.owndata import scan_limits
-from archiwista.services.pins import check_plan_pin
+from archiwista.services.pins import check_plan_pin, pin_mode
 from archiwista.services.project_jobs import require as require_project_job
+from archiwista.services.project_jobs import require_open_sets
 
 # States of a job that a retry runs again: it did not succeed.
 RETRY_STATES: tuple[JobState, ...] = ("partial", "failed", "interrupted", "cancelled")
@@ -195,7 +197,9 @@ def retry(
         ``store.scan``.
     ConflictError, InvalidChangeError
         The ``pin`` of a ``download`` is refused as ``actions.start`` refuses
-        it (``group_exists``, ``other_store``, ``unknown_store``).
+        it (``group_exists``, ``set_closed``, ``set_producer``,
+        ``too_many_calls``, ``other_store``, ``unknown_store``); a
+        ``project_repin`` of a closed set (``set_closed``).
     RateLimitedError
         An ``own_scan`` of one project beyond the limits of a person's scans
         (``scan_running``, ``scan_too_soon``).
@@ -220,6 +224,7 @@ def retry(
         authorizer.require(actor, "store.write", target=record.store)
         pin = record.params.get("pin")
         if isinstance(pin, dict) and record.store is not None:
+            calls = record.params.get("calls")
             check_plan_pin(
                 settings,
                 queries,
@@ -230,6 +235,8 @@ def retry(
                 store=record.store,
                 actor=actor,
                 visible=visible,
+                mode=pin_mode(pin),
+                calls=len(calls) if isinstance(calls, list) else 1,
             )
     if record.kind in STORE_SCAN_KINDS:
         authorizer.require(actor, "store.scan")
@@ -249,6 +256,9 @@ def retry(
             authorizer.require(actor, "project.write", found.project.access_key)
         else:
             require_project_job(authorizer, actor, record.kind, found.project)
+            if record.kind == "project_repin":
+                groups = record.params.get("groups")
+                require_open_sets(found, groups if isinstance(groups, list) else None)
     submitted = jobs.submit(
         record.kind,
         store=record.store,

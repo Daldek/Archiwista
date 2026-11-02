@@ -85,6 +85,15 @@ each group. ``manifests`` and ``project_tasks`` go. ``versions`` gains
 Version 16 (A-ADR-049 D-10): ``version_calls``, the call that selects each
 version the projects pin again (or the producer's refusal), per store and
 version path, as the producer of a given version answered it.
+
+Version 17 (A-ADR-049 erratum 6): a group is a set, ``open`` or ``closed``.
+``pin_groups`` gains ``state`` (``closed`` for a group without the member),
+``closed_at``, ``closed_by`` and ``pins_sha256`` of its closing and
+``digest_state`` (that digest against ``pins_digest`` of the pins when the
+file was read: ``ok``, ``mismatch``, ``NULL`` without one), and keeps the
+``selections`` of a ``plan`` group too; ``pins`` gains ``calls``, the places
+of a ``plan`` group's calls whose runs pinned it (JSON, ``NULL`` without the
+member).
 """
 
 import sqlite3
@@ -96,7 +105,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
@@ -322,9 +331,16 @@ CREATE TABLE pin_groups (
     name TEXT NOT NULL,
     origin TEXT NOT NULL CHECK (origin IN ('plan', 'local')),
     producer TEXT,
-    -- JSON: the calls of a plan group, the selections of a local one.
+    -- JSON: the calls of a plan group; the selections of either origin.
     calls TEXT,
     selections TEXT,
+    -- A set in the making (open) or a frozen one (closed), with its closing.
+    state TEXT NOT NULL DEFAULT 'closed' CHECK (state IN ('open', 'closed')),
+    closed_at TEXT,
+    closed_by TEXT,
+    pins_sha256 TEXT,
+    -- The recorded pins_sha256 against the digest of the pins (NULL: none).
+    digest_state TEXT CHECK (digest_state IN ('ok', 'mismatch')),
     PRIMARY KEY (project_id, position)
 ) WITHOUT ROWID;
 
@@ -341,7 +357,9 @@ CREATE TABLE pins (
     unit TEXT,
     label TEXT,
     pinned_at TEXT NOT NULL,
-    pinned_by TEXT NOT NULL
+    pinned_by TEXT NOT NULL,
+    -- JSON: the places of a plan group's calls whose runs pinned it.
+    calls TEXT
 );
 CREATE INDEX pins_version ON pins (store_id, version_path);
 CREATE INDEX pins_project ON pins (project_id, group_position);

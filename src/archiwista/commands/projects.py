@@ -9,13 +9,21 @@ relative directory is taken from the current one), ``project-edit PROJEKT
 --clear)`` its area (``PUT /projects/{project}/area``) and ``project-store
 PROJEKT PRODUCENT --store MAGAZYN`` the store of a producer's pins (``PUT
 /projects/{project}/stores/{producer}``), ``project-pin PROJEKT ZESTAW
-(--version MAGAZYN:WERSJA … | --query JSON) [--from ŹRÓDŁO] [--add]`` pins
-versions the store holds into a new local group or, with ``--add``, one the
-project has (``POST /projects/{project}/groups``, ``…/groups/{group}/pins``,
-printing ``PinOutcome``) and ``project-unpin PROJEKT ZESTAW [--pin
-PRODUCENT:WERSJA …]`` removes pins or the whole group (``POST
-…/groups/{group}/unpin``, ``DELETE …/groups/{group}``): the others print the
-project's card as the index holds it right after the change (``ProjectCard``).
+(--version MAGAZYN:WERSJA … | --query JSON) [--from ŹRÓDŁO] [--add | --open]``
+pins versions the store holds into a new group (written closed; with
+``--open`` left open, a set in the making) or, with ``--add``, an open one
+the project has (``POST /projects/{project}/groups``,
+``…/groups/{group}/pins``, printing ``PinOutcome``), ``project-draft PROJEKT
+ZESTAW`` writes an empty set in the making (``POST …/groups`` with
+``open``), ``project-unpin PROJEKT ZESTAW [--pin PRODUCENT:WERSJA …]``
+removes pins of an open group or the whole group (``POST
+…/groups/{group}/unpin``, ``DELETE …/groups/{group}``), ``project-uncall
+PROJEKT ZESTAW --call N`` removes a call of an open group (``DELETE
+…/groups/{group}/calls/{call}``), ``project-close PROJEKT ZESTAW`` closes an
+open group (``POST …/groups/{group}/close``) and ``project-reopen PROJEKT
+ZESTAW`` opens a closed one for editing (``POST …/groups/{group}/reopen``,
+A-ADR-049 erratum 6): the others print the project's card as the index
+holds it right after the change (``ProjectCard``).
 ``project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`` writes an
 export ``eksport/NAZWA/`` (with ``--zip`` also ``eksport/NAZWA.zip``) from
 the pins (``POST /projects/{project}/exports``, ``ProjectExport``) and
@@ -105,7 +113,11 @@ COMMANDS = frozenset(
         "project-activity",
         "project-delete",
         "project-pin",
+        "project-draft",
         "project-unpin",
+        "project-uncall",
+        "project-close",
+        "project-reopen",
     }
 )
 
@@ -251,7 +263,16 @@ def add_commands(commands: Commands) -> None:
         choices=SELECTION_SOURCES,
         help=message("cli.project_from_help"),
     )
-    pin.add_argument("--add", action="store_true", help=message("cli.project_add_help"))
+    added = pin.add_mutually_exclusive_group()
+    added.add_argument(
+        "--add", action="store_true", help=message("cli.project_add_help")
+    )
+    added.add_argument(
+        "--open", action="store_true", help=message("cli.project_open_help")
+    )
+    draft = add_parser(commands, "project-draft", "cli.project_draft_help")
+    _project(draft)
+    _group(draft)
     unpinned = add_parser(commands, "project-unpin", "cli.project_unpin_help")
     _project(unpinned)
     _group(unpinned)
@@ -262,6 +283,22 @@ def add_commands(commands: Commands) -> None:
         metavar=f"{message('metavar.producer')}:{message('metavar.version')}",
         help=message("cli.project_pin_opt_help"),
     )
+    uncalled = add_parser(commands, "project-uncall", "cli.project_uncall_help")
+    _project(uncalled)
+    _group(uncalled)
+    uncalled.add_argument(
+        "--call",
+        required=True,
+        type=int,
+        metavar=message("metavar.number"),
+        help=message("cli.project_call_help"),
+    )
+    closed = add_parser(commands, "project-close", "cli.project_close_help")
+    _project(closed)
+    _group(closed)
+    reopened = add_parser(commands, "project-reopen", "cli.project_reopen_help")
+    _project(reopened)
+    _group(reopened)
 
 
 def main(
@@ -562,11 +599,28 @@ def _pin(args: argparse.Namespace, place: _Place) -> _Output:
         ]
     else:
         given["query"] = _json(args.query)
-    body: PinsRequest
+    body: PinsRequest | GroupRequest
     if args.add:
         body = _body(PinsRequest, given)
     else:
-        body = _body(GroupRequest, {"name": args.group, **given})
+        body = _body(GroupRequest, {"name": args.group, "open": args.open, **given})
+    return _pin_outcome(args, place, body, new=not args.add)
+
+
+def _draft(args: argparse.Namespace, place: _Place) -> _Output:
+    """Write an empty set in the making as ``POST …/groups`` with ``open`` does."""
+    body = _body(GroupRequest, {"name": args.group, "open": True})
+    return _pin_outcome(args, place, body, new=True)
+
+
+def _pin_outcome(
+    args: argparse.Namespace,
+    place: _Place,
+    body: PinsRequest | GroupRequest,
+    *,
+    new: bool,
+) -> _Output:
+    """Pin as the routes of the groups do; return the outcome and its text."""
     outcome = pin_outcome(
         args.project,
         body,
@@ -579,7 +633,7 @@ def _pin(args: argparse.Namespace, place: _Place) -> _Output:
         preferences=place.preferences(),
         queries=place.queries,
         index=place.index,
-        new=not args.add,
+        new=new,
     )
     return outcome, f"{pin_text(outcome)}\n{project_text(outcome.project)}"
 
@@ -603,6 +657,62 @@ def _unpin(args: argparse.Namespace, place: _Place) -> _Output:
         args.project,
         group=args.group,
         pins=pins,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return _changed(place, key)
+
+
+def _uncall(args: argparse.Namespace, place: _Place) -> _Output:
+    """Remove a call of an open group as ``DELETE …/calls/{call}`` does."""
+    if args.call < 0:
+        raise InvalidChangeError(
+            message("cli.project_call_negative", call=args.call),
+            details={"option": "--call"},
+        )
+    key = pin_service.remove_call(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        args.project,
+        group=args.group,
+        call=args.call,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return _changed(place, key)
+
+
+def _close(args: argparse.Namespace, place: _Place) -> _Output:
+    """Close an open group as ``POST …/groups/{group}/close`` does."""
+    with JobSupervisor(place.paths, place.service) as jobs:
+        key = pin_service.close_set(
+            place.registry,
+            place.settings,
+            place.queries,
+            place.index,
+            place.decisions,
+            jobs,
+            args.project,
+            group=args.group,
+            actor=LOCAL_OWNER,
+            visible=place.decisions.visible_projects(LOCAL_OWNER),
+        )
+    return _changed(place, key)
+
+
+def _reopen(args: argparse.Namespace, place: _Place) -> _Output:
+    """Open a closed group for editing as ``POST …/groups/{group}/reopen`` does."""
+    key = pin_service.reopen_set(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        args.project,
+        group=args.group,
         actor=LOCAL_OWNER,
         visible=place.decisions.visible_projects(LOCAL_OWNER),
     )
@@ -636,7 +746,11 @@ _ACTIONS: dict[str, _Action] = {
     "project-activity": _activity,
     "project-delete": _delete,
     "project-pin": _pin,
+    "project-draft": _draft,
     "project-unpin": _unpin,
+    "project-uncall": _uncall,
+    "project-close": _close,
+    "project-reopen": _reopen,
 }
 
 # What keeps a command from opening the settings, the state or the index.

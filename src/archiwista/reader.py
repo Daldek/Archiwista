@@ -505,9 +505,21 @@ def project_text(card: ProjectCard) -> str:
                 "cli.project_group_line",
                 group=group.name,
                 origin=group.origin.kind,
+                state=group.state,
                 pins=len(group.pins),
             )
         )
+        if group.closed_at is not None and group.pins_sha256 is not None:
+            lines.append(
+                message(
+                    "cli.project_closed_line",
+                    closed_at=group.closed_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    closed_by=group.closed_by,
+                    pins_sha256=group.pins_sha256,
+                )
+            )
+        if group.digest_state == "mismatch":
+            lines.append(message("cli.project_digest_mismatch_line"))
         lines.extend(
             message(
                 "cli.pin_line",

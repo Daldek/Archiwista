@@ -23,7 +23,7 @@ from archiwista.index.series import (
     YearTypes,
 )
 from archiwista.owndata.reader import LayerInfo, RasterInfo
-from archiwista.projects import OriginKind, ProjectDocument, Selection
+from archiwista.projects import OriginKind, ProjectDocument, Selection, SetState
 from archiwista.sources import (
     PLAN_STATUSES,
     ActionPlan,
@@ -51,6 +51,10 @@ type PinState = Literal["ok", "missing", "sha256_mismatch", "unknown"]
 type PinCommand = Literal["rebuildable", "not_rebuildable", "unknown"]
 type ProjectState = Literal["ok", "invalid", "unsupported_schema"]
 type ProjectAreaState = Literal["ok", "missing", "changed", "invalid"]
+# A closed set's recorded ``pins_sha256`` against the digest of its pins as
+# the file holds them (A-ADR-049 erratum 6): ``mismatch`` when the file was
+# changed outside Archiwista.
+type DigestState = Literal["ok", "mismatch"]
 type VersionState = Literal["present", "missing"]
 type IssueOrigin = Literal["scan", "check"]
 type BBox = tuple[float, float, float, float]
@@ -1325,7 +1329,8 @@ class ProjectRef:
     (a newer format, its groups not read); ``problem_detail`` holds the
     pointer and rule, or the schema. ``groups``, ``pins`` and
     ``missing_pins`` count the project's; ``missing_pins`` counts pins whose
-    version is not present in the index or holds other content.
+    version is not present in the index or holds other content, and
+    ``open_groups`` its sets in the making (``state`` ``open``).
     ``access_key`` is the key of the project's access entry in the state
     database: its directory after ``realpath`` when it was scanned
     (``archiwista.auth.access_key``).
@@ -1347,6 +1352,7 @@ class ProjectRef:
     pins: int
     missing_pins: int
     scanned_at: datetime
+    open_groups: int = 0
 
     def store(self, producer: str) -> ProjectStoreRef | None:
         """Return the project's store of ``producer``, ``None`` without one."""
@@ -1363,7 +1369,9 @@ class ProjectPinRef:
     holds other content there; ``slot`` and ``is_current`` come from the
     indexed version. ``command`` is what ``version_calls`` keeps of the
     version's call (``unknown`` without an answer), and ``command_refusal``
-    the producer's text of a ``not_rebuildable`` one.
+    the producer's text of a ``not_rebuildable`` one. ``calls`` are the
+    places of a ``plan`` group's calls whose runs pinned it (``()`` for a pin
+    added by hand), ``None`` without the member.
     """
 
     producer: str
@@ -1381,6 +1389,7 @@ class ProjectPinRef:
     is_current: bool
     command: PinCommand = "unknown"
     command_refusal: str | None = None
+    calls: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1404,8 +1413,13 @@ class VersionCall:
 class PinGroupRef:
     """A group of a project with its origin and pins, in the file's order.
 
-    ``producer`` and ``calls`` are a ``plan`` group's, ``selections`` a
-    ``local`` group's.
+    ``producer`` and ``calls`` are a ``plan`` group's; ``selections`` the
+    requests of a ``local`` group's pins or of a ``plan`` group's pins added
+    by hand. ``state`` is ``open`` (a set in the making) or ``closed``;
+    ``closed_at``, ``closed_by`` and ``pins_sha256`` are those of its
+    closing, and ``digest_state`` compares that ``pins_sha256`` with the
+    digest of the pins the file held when it was read (``ok``, ``mismatch``;
+    ``None`` without one).
     """
 
     name: str
@@ -1414,6 +1428,11 @@ class PinGroupRef:
     calls: tuple[CommandCall, ...]
     selections: tuple[Selection, ...]
     pins: tuple[ProjectPinRef, ...]
+    state: SetState = "closed"
+    closed_at: datetime | None = None
+    closed_by: str | None = None
+    pins_sha256: str | None = None
+    digest_state: DigestState | None = None
 
 
 @dataclass(frozen=True, slots=True)

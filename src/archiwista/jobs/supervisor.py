@@ -1338,6 +1338,40 @@ class JobSupervisor:
             ).fetchone()
             return None if row is None else _job_record(connection, row)
 
+    def active_set_job(self, project: str, group: str) -> JobRecord | None:
+        """Return the oldest active job that writes into a set, ``None`` without one.
+
+        A ``download`` whose ``params.pin`` names the project (its key) and
+        the set, or a ``project_repin`` of the set; names compared
+        case-folded (A-ADR-049 erratum 6: such a job keeps a set from
+        closing).
+        """
+        wanted = group.casefold()
+        with self._reading() as connection:
+            rows = connection.execute(
+                f"SELECT {_JOB_COLUMNS} FROM jobs WHERE state IN {_ACTIVE_SQL}"
+                " AND ((kind = 'download'"
+                " AND json_extract(params, '$.pin.project') = ?)"
+                " OR (kind = 'project_repin'"
+                " AND json_extract(params, '$.project') = ?))"
+                " ORDER BY created_at, id",
+                (project, project),
+            ).fetchall()
+            for row in rows:
+                record = _job_record(connection, row)
+                pin = record.params.get("pin")
+                named = (
+                    [pin.get("group")]
+                    if isinstance(pin, Mapping)
+                    else record.params.get("groups")
+                )
+                if isinstance(named, list) and any(
+                    isinstance(name, str) and name.casefold() == wanted
+                    for name in named
+                ):
+                    return record
+        return None
+
     def last_started(self, kind: str, project: str) -> datetime | None:
         """Return when the newest job of ``kind`` of one project was asked for.
 
@@ -2181,17 +2215,22 @@ def _check_params(params: Mapping[str, object]) -> JsonObject:
 def _download_params(params: Mapping[str, object]) -> JsonObject:
     """Check a ``download`` job's calls (as of ``check``), ``plan_job`` and ``pin``.
 
-    ``pin`` (A-ADR-049 decision 9), when given, is ``{"project", "group"}``,
-    both non-empty texts; a download without it keeps no ``pin``.
+    ``pin`` (A-ADR-049 decision 9 and erratum 6), when given, is
+    ``{"project", "group"}``, both non-empty texts, with ``add`` or ``open``
+    ``true`` (not both) when it adds to an open set or opens a new one; a
+    download without it keeps no ``pin``.
     """
     plan_job = params.get("plan_job")
     if not (plan_job is None or (isinstance(plan_job, str) and plan_job)):
         raise ValueError(f"invalid download plan job {plan_job!r}"[:300])
     pin = params.get("pin")
+    names = ("project", "group")
     if pin is not None and not (
         isinstance(pin, Mapping)
-        and set(pin) == {"project", "group"}
-        and all(isinstance(pin[name], str) and pin[name] for name in pin)
+        and {*names} <= set(pin) <= {*names, "add", "open"}
+        and all(isinstance(pin[name], str) and pin[name] for name in names)
+        and all(pin[name] is True for name in set(pin) - {*names})
+        and len(set(pin)) <= len(names) + 1
     ):
         raise ValueError(f"invalid download pin {pin!r}"[:300])
     calls = {
@@ -2199,7 +2238,7 @@ def _download_params(params: Mapping[str, object]) -> JsonObject:
     }
     checked: JsonObject = {**_check_params(calls), "plan_job": plan_job}
     if pin is not None:
-        checked["pin"] = {"project": pin["project"], "group": pin["group"]}
+        checked["pin"] = dict(pin)
     return checked
 
 

@@ -205,6 +205,15 @@ MESSAGES = {
         "text without control characters, or null",
         "tekst bez znaków sterujących albo null",
     ),
+    "rule_set_state": Text("open or closed", "open albo closed"),
+    "rule_set_closed_members": Text(
+        "closed_at, closed_by and pins_sha256 together, only in a closed group",
+        "closed_at, closed_by i pins_sha256 razem, tylko w zamkniętym zestawie",
+    ),
+    "rule_pin_calls": Text(
+        "ascending places of the plan's calls, only in a plan group",
+        "rosnące numery wywołań planu, tylko w zestawie z planu",
+    ),
     "group_name_invalid": Text(
         (
             'A group name is 1 to 80 characters, without control characters and "/":'
@@ -223,15 +232,66 @@ MESSAGES = {
         'The project "{project}" has no group "{group}".',
         "Projekt „{project}” nie ma zestawu „{group}”.",
     ),
-    "group_origin_plan": Text(
+    "set_closed": Text(
+        'The group "{group}" is closed: open it for editing to change it.',
+        "Zestaw „{group}” jest zamknięty: aby go zmienić, otwórz go do edycji.",
+    ),
+    "set_open": Text(
+        'The group "{group}" is open for editing already.',
+        "Zestaw „{group}” jest już otwarty do edycji.",
+    ),
+    "set_job_active": Text(
         (
-            'The group "{group}" holds what the plan window downloaded: versions'
-            " the store holds are pinned into a new group or a local one."
+            'A job writes into the group "{group}" ({kind}, {state}): close the'
+            " group when the job has ended."
         ),
         (
-            "Zestaw „{group}” zawiera dane pobrane w oknie planu: wersje z magazynu"
-            " przypina się do nowego zestawu albo do zestawu z magazynu."
+            "Do zestawu „{group}” zapisuje zadanie ({kind}, {state}): zamknij"
+            " zestaw, gdy zadanie się skończy."
         ),
+    ),
+    "set_empty": Text(
+        'The group "{group}" has no pin: a closed group holds at least one.',
+        "Zestaw „{group}” nie ma przypięć: zamknięty zestaw ma co najmniej jedno.",
+    ),
+    "set_pins_not_ok": Text(
+        (
+            'Pins of the group "{group}" that are not ok: {count} (missing'
+            " {missing}, other content {mismatch}, unknown store {unknown})."
+        ),
+        (
+            "Przypięcia zestawu „{group}”, które nie są w stanie ok: {count}"
+            " (brak {missing}, inna suma {mismatch}, nieznany magazyn {unknown})."
+        ),
+    ),
+    "set_producer": Text(
+        (
+            'The group "{group}" holds data of {producers}: data of {producer}'
+            " goes into another group."
+        ),
+        (
+            "Zestaw „{group}” zawiera dane {producers}: dane {producer} trafiają"
+            " do innego zestawu."
+        ),
+    ),
+    "too_many_calls": Text(
+        "A group holds at most {limit} calls; this would make {count}.",
+        "Zestaw mieści najwyżej {limit} poleceń; byłoby ich {count}.",
+    ),
+    "pins_without_calls": Text(
+        (
+            'The group "{group}" has pins of all its calls together, written'
+            " before the groups had states: a call cannot be told apart from them."
+        ),
+        (
+            "Zestaw „{group}” ma przypięcia wszystkich swoich poleceń razem,"
+            " zapisane przed zestawami w budowie: nie da się od nich oddzielić"
+            " polecenia."
+        ),
+    ),
+    "call_not_found": Text(
+        'The group "{group}" has no call {call}.',
+        "Zestaw „{group}” nie ma polecenia {call}.",
     ),
     "unknown_store": Text(
         (

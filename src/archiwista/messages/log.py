@@ -174,6 +174,10 @@ MESSAGES = {
     "action_project_export": Text("project exported", "eksport projektu"),
     "action_project_pin": Text("versions pinned", "przypięcie wersji"),
     "action_project_unpin": Text("versions unpinned", "odpięcie wersji"),
+    "action_project_set_close": Text("set closed", "zamknięcie zestawu"),
+    "action_project_set_open": Text(
+        "set opened for editing", "otwarcie zestawu do edycji"
+    ),
     "action_settings_update": Text("settings changed", "zmiana ustawień"),
     "action_job_start": Text("job started", "uruchomienie zadania"),
     "action_job_cancel": Text("job cancelled", "anulowanie zadania"),

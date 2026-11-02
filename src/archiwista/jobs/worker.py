@@ -880,16 +880,24 @@ def _pin_download(
     *,
     geo: GeoAdapter | None,
 ) -> JsonObject:
-    """Write the project's ``plan`` group of a download; return the ``pin``."""
+    """Write the project's set of a download; return the summary's ``pin``.
+
+    A new set, or the run's calls and pins added to an open set (``add``):
+    only after a whole success; else nothing is written (``job_partial``),
+    and a refusal of the set (closed or removed meanwhile, another store)
+    leaves the files in the store and the job ``partial`` with its error.
+    """
     # Only a download that pins needs the services: imported here.
     from archiwista.services.pins import pin_download
 
-    pin = cast(Mapping[str, str], spec.params["pin"])
-    target: JsonObject = {"project": pin["project"], "group": pin["group"]}
+    pin = cast(Mapping[str, object], spec.params["pin"])
+    target: JsonObject = dict(pin)
     if not ok:
         return {**target, "written": False, "reason": "job_partial"}
     positions = [
-        entry.path for plan in (plans or {}).values() for entry in plan.entries
+        (entry.path, place)
+        for place, plan in (plans or {}).items()
+        for entry in plan.entries
     ]
     try:
         written = pin_download(
@@ -906,7 +914,7 @@ def _pin_download(
         )
     except ArchiwistaError as error:
         return {**target, "written": False, "error": _call_error(error)}
-    return {**written, "written": True}
+    return {**target, **written, "written": True}
 
 
 def run_preview(spec: JobSpec, emit: Emitter) -> JsonObject:

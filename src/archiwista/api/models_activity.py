@@ -89,7 +89,8 @@ class ProjectActivityEntry(BaseModel):
         description=(
             "What: `project.create`, `project.update`, `project.area`,"
             " `project.store`, `project.access`, `project.data_dir`,"
-            " `project.pin`, `project.unpin`, `project.export`, `project.delete`"
+            " `project.pin`, `project.unpin`, `project.set_close`,"
+            " `project.set_open`, `project.export`, `project.delete`"
             " (of a project deleted before in the same directory), or"
             " `job.start`, `job.retry` and `job.cancel` of a job of the project."
         )

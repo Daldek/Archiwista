@@ -40,7 +40,7 @@ from archiwista.jobs import JobRecord, JobSupervisor
 from archiwista.messages import message
 from archiwista.services.commands import actions, checked_call, command_info
 from archiwista.services.jobs import visible_job
-from archiwista.services.pins import check_plan_pin
+from archiwista.services.pins import PinMode, check_plan_pin
 from archiwista.sources import ActionAdapter, CommandCall, CommandInfo
 from archiwista.sources.registry import PluginRegistry
 
@@ -78,7 +78,7 @@ def start(
     visible: ProjectVisibility,
     areas: Path,
     plan_job: str | None = None,
-    pin: tuple[str, str] | None = None,
+    pin: tuple[str, str, PinMode] | None = None,
 ) -> JobRecord:
     """Check a request for a job of a producer's calls, then start the job.
 
@@ -114,11 +114,12 @@ def start(
     plan_job : str or None, optional
         ``download`` only: the ``check`` job whose kept plans the run runs, a
         job of the same store, producer and calls.
-    pin : (str, str) or None, optional
-        ``download`` only: the project and the new group the run's files and
-        its plans' other positions are pinned into when the job succeeds
-        (A-ADR-049 decision 9); the request then also needs
-        ``project.write`` of the project.
+    pin : (str, str, {"new", "open", "add"}) or None, optional
+        ``download`` only: the project, the set and how the run's files and
+        its plans' other positions are pinned into it when the job succeeds
+        (A-ADR-049 decision 9 and erratum 6): a new set written closed, a
+        new set left open, or added to an open set; the request then also
+        needs ``project.write`` of the project.
 
     Returns
     -------
@@ -135,7 +136,7 @@ def start(
     NotFoundError
         ``store`` is not configured; ``plan_job`` is no job ``actor`` sees
         (``job.not_found``) or kept no plan (``job.no_plan``); ``pin`` names
-        no project ``actor`` sees.
+        no project ``actor`` sees, or adds to no set of it (``group_not_found``).
     SourceUnavailableError, SourceIncompatibleError
         The producer's plugin is not available.
     UnsupportedError
@@ -155,10 +156,13 @@ def start(
     ConflictError
         ``plan_job`` planned another store, producer or calls (reason
         ``plan_mismatch``, ``details.job``); the project of ``pin`` holds the
-        group (``group_exists``) or names another store of the producer
-        (``other_store``) or one matching none (``unknown_store``).
+        group (``group_exists``), or an added-to set is closed
+        (``set_closed``) or of another producer (``set_producer``), or the
+        project names another store of the producer (``other_store``) or one
+        matching none (``unknown_store``).
     InvalidChangeError
-        The group's name breaks the rule (``invalid_group_name``).
+        The group's name breaks the rule (``invalid_group_name``); an
+        added-to set would hold more than 1000 calls (``too_many_calls``).
     OfflineModeError
         Offline mode is on; nothing is recorded.
     ValueError
@@ -190,6 +194,8 @@ def start(
             store=store,
             actor=actor,
             visible=visible,
+            mode=pin[2],
+            calls=len(calls),
         )
     adapter = actions(registry, producer)
     infos: dict[str, CommandInfo] = {}

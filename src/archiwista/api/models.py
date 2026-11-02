@@ -55,6 +55,7 @@ from archiwista.index import (
     AreaFilter,
     AreaRecord,
     BBox,
+    DigestState,
     FootprintPage,
     GridCell,
     GroupMember,
@@ -108,6 +109,7 @@ from archiwista.projects import (
     MAX_NAME_CHARS,
     OriginKind,
     SelectionSource,
+    SetState,
 )
 from archiwista.refs import version_ref
 from archiwista.services import Problem, ProjectDetail, StoreSummary
@@ -357,6 +359,7 @@ _PROJECT_EXAMPLE = {
     "stores": [_PROJECT_STORE_EXAMPLE],
     "area": _PROJECT_AREA_EXAMPLE,
     "groups": 2,
+    "open_groups": 1,
     "pins": 14,
     "missing_pins": 0,
     "scanned_at": "2026-10-18T12:02:30Z",
@@ -485,9 +488,15 @@ _PROJECT_PIN_EXAMPLE = {
     "is_current": False,
     "command": "rebuildable",
     "command_refusal": None,
+    "calls": [0],
 }
 _PIN_GROUP_EXAMPLE = {
     "name": "NMT 2023",
+    "state": "closed",
+    "closed_at": "2026-10-18T12:25:41Z",
+    "closed_by": "kasia",
+    "pins_sha256": "e7319a8d77a126fc2eb12f46b92ef5ac98a5b2132808474eebbb222fd5c691fe",
+    "digest_state": "ok",
     "origin": {
         "kind": "plan",
         "producer": "kartograf",
@@ -497,7 +506,7 @@ _PIN_GROUP_EXAMPLE = {
                 "options": {"product": "nmt", "sheet": ["N-34-130-D-d-2-4"]},
             }
         ],
-        "selections": None,
+        "selections": [],
     },
     "pins": [_PROJECT_PIN_EXAMPLE],
 }
@@ -2537,6 +2546,9 @@ class ProjectItem(BaseModel):
     stores: list[ProjectStore] = Field(description="The store of each producer.")
     area: ProjectArea | None
     groups: int = Field(description="Groups of pinned versions.")
+    open_groups: int = Field(
+        description="Groups that are sets in the making (`state` `open`)."
+    )
     pins: int = Field(description="Pins of every group.")
     missing_pins: int = Field(description="Pins missing from the store or other.")
     scanned_at: datetime = Field(description="When the project file was read.")
@@ -2560,6 +2572,7 @@ def _project_fields(
         "problem": project.problem,
         "stores": [ProjectStore.of(item) for item in project.stores],
         "area": None if project.area is None else ProjectArea.of(project.area),
+        "open_groups": project.open_groups,
         "pins": project.pins,
         "missing_pins": project.missing_pins,
         "scanned_at": project.scanned_at,
@@ -2803,6 +2816,14 @@ class ProjectPin(BaseModel):
     command_refusal: str | None = Field(
         description="The producer's text of a `not_rebuildable` call; null otherwise."
     )
+    calls: list[int] | None = Field(
+        description=(
+            "A plan group's pin: the places in `origin.calls` (from 0) of the"
+            " calls whose runs pinned it; `[]` for a pin added by hand, checked"
+            " and re-pinned by its own call; null for a local group's pin or one"
+            " written before the sets had states (it belongs to every call)."
+        )
+    )
 
     @classmethod
     def of(cls, pin: ProjectPinRef) -> Self:
@@ -2823,6 +2844,7 @@ class ProjectPin(BaseModel):
             is_current=pin.is_current,
             command=pin.command,
             command_refusal=pin.command_refusal,
+            calls=None if pin.calls is None else list(pin.calls),
         )
 
 
@@ -2860,17 +2882,48 @@ class GroupOrigin(BaseModel):
     )
     producer: str | None = Field(description="The producer of a plan group.")
     calls: list[GroupCall] | None = Field(description="The calls of a plan group.")
-    selections: list[GroupSelection] | None = Field(
-        description="The requests of a local group."
+    selections: list[GroupSelection] = Field(
+        description=(
+            "The requests that added the pins of a local group, or the pins added"
+            " by hand to a plan group (a set in the making)."
+        )
     )
 
 
 class ProjectGroup(BaseModel):
-    """A group of pinned versions, in the file's order."""
+    """A group of pinned versions, a set („zestaw”), in the file's order."""
 
     model_config = _examples(_PIN_GROUP_EXAMPLE)
 
     name: str
+    state: SetState = Field(
+        description=(
+            "`open`: a set in the making, whose pins and calls change; `closed`:"
+            " a frozen set (no pin is added, removed or re-pinned until it is"
+            " opened for editing). A group written before the sets had states is"
+            " `closed`."
+        )
+    )
+    closed_at: datetime | None = Field(
+        description="When Archiwista closed the set; null without that closing."
+    )
+    closed_by: str | None = Field(
+        description="The account that closed it (`local` for the local owner)."
+    )
+    pins_sha256: str | None = Field(
+        description=(
+            "The digest of the pins when the set was closed: the SHA-256 of the"
+            " lines `<producer>\\t<version>\\t<sha256>\\n`, one per pin, sorted"
+            " by producer and version (A-ADR-049 erratum 6)."
+        )
+    )
+    digest_state: DigestState | None = Field(
+        description=(
+            "`ok`: `pins_sha256` is the digest of the pins the file holds;"
+            " `mismatch`: the file was changed outside Archiwista since (open the"
+            " set for editing and close it again); null without `pins_sha256`."
+        )
+    )
     origin: GroupOrigin
     pins: list[ProjectPin]
 
@@ -2891,11 +2944,16 @@ class ProjectGroup(BaseModel):
         ]
         return cls(
             name=group.name,
+            state=group.state,
+            closed_at=group.closed_at,
+            closed_by=group.closed_by,
+            pins_sha256=group.pins_sha256,
+            digest_state=group.digest_state,
             origin=GroupOrigin(
                 kind=group.origin,
                 producer=group.producer,
                 calls=calls if plan else None,
-                selections=None if plan else selections,
+                selections=selections,
             ),
             pins=[ProjectPin.of(pin) for pin in group.pins],
         )
@@ -3092,29 +3150,16 @@ _PIN_VERSIONS_EXAMPLE: dict[str, Any] = {
 }
 
 
-class PinsRequest(BaseModel):
-    """Versions the store holds, pinned into a local group (A-ADR-049 decision 8).
-
-    Exactly one of `versions` and `query`.
-    """
+class _VersionsChoice(BaseModel):
+    """The versions a pin request chooses: named, or by the query of `GET /slots`."""
 
     model_config = ConfigDict(
         extra="forbid",
         validate_by_name=True,
         validate_by_alias=True,
         serialize_by_alias=True,
-        json_schema_extra={"examples": [_PIN_QUERY_EXAMPLE, _PIN_VERSIONS_EXAMPLE]},
     )
 
-    source: SelectionSource = Field(
-        alias="from",
-        description=(
-            "Where the versions were chosen: `file` (the file card: `versions`),"
-            " `catalog` (`query`) or `local_state` (`query`, or `versions`: the"
-            " year layer the map shows). Recorded in the group's"
-            " `selections`, never run again."
-        ),
-    )
     versions: list[VersionChoice] | None = Field(
         default=None,
         min_length=1,
@@ -3129,28 +3174,64 @@ class PinsRequest(BaseModel):
         ),
     )
 
-    @model_validator(mode="after")
-    def _one_choice(self) -> Self:
-        if (self.versions is None) == (self.query is None):
-            raise ValueError("exactly one of versions and query is required")
-        if self.source == "file" and self.versions is None:
-            raise ValueError("from file names versions")
-        if self.source == "catalog" and self.query is None:
-            raise ValueError("from catalog names a query")
-        return self
-
     def chosen(self) -> list[tuple[str, str]] | None:
         """Return ``versions`` as ``(store, version)`` pairs."""
         if self.versions is None:
             return None
         return [(item.store, item.version) for item in self.versions]
 
+    def _check_choice(self, source: SelectionSource | None) -> None:
+        """Refuse anything but one choice that suits ``source``."""
+        if (self.versions is None) == (self.query is None):
+            raise ValueError("exactly one of versions and query is required")
+        if source is None:
+            raise ValueError("from names where the versions were chosen")
+        if source == "file" and self.versions is None:
+            raise ValueError("from file names versions")
+        if source == "catalog" and self.query is None:
+            raise ValueError("from catalog names a query")
 
-class GroupRequest(PinsRequest):
-    """A new local group with its first pins (`POST /projects/{project}/groups`)."""
+
+_SOURCE = (
+    "Where the versions were chosen: `file` (the file card: `versions`),"
+    " `catalog` (`query`) or `local_state` (`query`, or `versions`: the"
+    " year layer the map shows). Recorded in the group's `selections`, never"
+    " run again."
+)
+
+
+class PinsRequest(_VersionsChoice):
+    """Versions the store holds, pinned into an open group (A-ADR-049 decision 8).
+
+    Exactly one of `versions` and `query`.
+    """
 
     model_config = ConfigDict(
-        json_schema_extra={"examples": [{"name": "NMT Raba", **_PIN_QUERY_EXAMPLE}]}
+        json_schema_extra={"examples": [_PIN_QUERY_EXAMPLE, _PIN_VERSIONS_EXAMPLE]}
+    )
+
+    source: SelectionSource = Field(alias="from", description=_SOURCE)
+
+    @model_validator(mode="after")
+    def _one_choice(self) -> Self:
+        self._check_choice(self.source)
+        return self
+
+
+class GroupRequest(_VersionsChoice):
+    """A new group with its first pins, or an empty draft (`POST …/groups`).
+
+    Exactly one of `versions` and `query`, with `from`; with `open` all three
+    may be left out: a set in the making without pins.
+    """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {"name": "NMT Raba", **_PIN_QUERY_EXAMPLE},
+                {"name": "Hydrograf 2020", "open": True},
+            ]
+        }
     )
 
     name: str = Field(
@@ -3161,6 +3242,26 @@ class GroupRequest(PinsRequest):
             " `/`; unique in the project compared case-folded."
         ),
     )
+    source: SelectionSource | None = Field(
+        default=None, alias="from", description=f"{_SOURCE} Left out of an empty draft."
+    )
+    open: bool = Field(
+        default=False,
+        description=(
+            "Leave the new group open, a set in the making (A-ADR-049 erratum 6);"
+            " else it is written closed with its digest, unless every version was"
+            " skipped."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _one_choice(self) -> Self:
+        if self.open and self.versions is None and self.query is None:
+            if self.source is not None:
+                raise ValueError("an empty draft names no versions to say where from")
+            return self
+        self._check_choice(self.source)
+        return self
 
 
 class PinChoice(BaseModel):
@@ -3211,6 +3312,12 @@ class PinOutcome(BaseModel):
     pinned: int = Field(description="Versions added to the group.")
     already: int = Field(description="Versions the group pinned already.")
     skipped: list[SkippedPin] = Field(description="Versions not pinned, with why.")
+    state: SetState = Field(
+        description=(
+            "The group's state after the request: `open` (a set in the making)"
+            " or `closed`."
+        )
+    )
 
     @classmethod
     def of(cls, outcome: PinResult, card: ProjectCard) -> Self:
@@ -3224,6 +3331,7 @@ class PinOutcome(BaseModel):
                 SkippedPin(store=item.store, version=item.version, reason=item.reason)
                 for item in outcome.skipped
             ],
+            state=outcome.state,
         )
 
 

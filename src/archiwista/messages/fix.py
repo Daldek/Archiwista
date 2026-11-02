@@ -108,6 +108,30 @@ MESSAGES = {
             " go czytać i zmieniać."
         ),
     ),
+    "set_closed": Text(
+        (
+            "Open the group for editing („Otwórz do edycji”), change it, then"
+            " close it again („Zamknij zestaw”)."
+        ),
+        (
+            "Otwórz zestaw do edycji („Otwórz do edycji”), zmień go i zamknij"
+            " ponownie („Zamknij zestaw”)."
+        ),
+    ),
+    "set_pins_not_ok": Text(
+        (
+            "Verify the group („Weryfikuj”), restore the missing pins („Przywróć"
+            " brakujące”) or unpin them, then close it."
+        ),
+        (
+            "Zweryfikuj zestaw („Weryfikuj”), przywróć brakujące przypięcia"
+            " („Przywróć brakujące”) albo je odepnij, a potem go zamknij."
+        ),
+    ),
+    "pins_without_calls": Text(
+        "Re-pin the group („Przepnij”): it writes the calls of each pin.",
+        "Przepnij zestaw („Przepnij”): zapisze polecenia każdego przypięcia.",
+    ),
     "project_file_write_failed": Text(
         (
             "Check that the directory {path} can be written and that its disk has"

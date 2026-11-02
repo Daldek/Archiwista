@@ -20,14 +20,21 @@ writes an export ``eksport/<name>/`` (and its zip) from the pins
 …/exports/{name}/zip`` sends an export's zip to whoever sees the project
 (``project-export``, ``project-exports``). ``GET
 /projects/{project}/activity`` pages the project's entries of the action log
-to whoever sees it (A-ADR-049 decision 14, ``project-activity``).
+to whoever sees it (A-ADR-049 decision 14, ``project-activity``). The groups
+are sets (A-ADR-049 erratum 6): ``POST /projects/{project}/groups`` writes a
+new one (closed, or open with ``open``: a set in the making, also without
+pins), ``…/groups/{group}/pins`` and ``…/unpin`` change an open one, ``DELETE
+…/groups/{group}/calls/{call}`` removes a call of an open one and
+``…/reopen`` opens a closed one for editing (``project-draft``,
+``project-pin``, ``project-unpin``, ``project-uncall``, ``project-reopen``).
 ``POST /projects/{project}/jobs`` starts a job over the project's groups
 (``archiwista.services.project_jobs``; ``project-verify``, ``project-check``,
-``project-repin`` and ``project-restore``) and ``DELETE /projects/{project}``
-removes a project from Archiwista, never its data, refused while a job of
-the project waits or runs (``project-delete``): both need the job
-supervisor and are in ``job_router``. Nothing here uses the network or
-writes a store: the jobs' workers do.
+``project-repin`` and ``project-restore``), ``POST
+…/groups/{group}/close`` closes an open set no job writes into
+(``project-close``) and ``DELETE /projects/{project}`` removes a project from
+Archiwista, never its data, refused while a job of the project waits or runs
+(``project-delete``): they need the job supervisor and are in ``job_router``.
+Nothing here uses the network or writes a store: the jobs' workers do.
 """
 
 from pathlib import Path as FilePath
@@ -113,6 +120,17 @@ _Producer = Annotated[
 _Group = Annotated[
     str,
     Path(description="A group's name (compared case-folded).", examples=["NMT 2023"]),
+]
+_Call = Annotated[
+    int,
+    Path(
+        ge=0,
+        description=(
+            "The call's place in the group's `origin.calls`, from 0 (as"
+            " `files[].call` of the download that made the set)."
+        ),
+        examples=[1],
+    ),
 ]
 # What every change of a project file may answer besides its card.
 _CHANGE_RESPONSES = problem_responses(400, 403, 404, 409, 500)
@@ -481,7 +499,7 @@ def add_project_group(
     queries: _Queries,
     index: _Index,
 ) -> PinOutcome:
-    """Pin versions the store holds into a new local group (`project.pin`).
+    """Pin versions the store holds into a new group, or make an empty draft.
 
     The versions are named (`versions`: a store and a path, older ones too)
     or chosen by the query of `GET /slots` (`query`: the versions of its
@@ -489,11 +507,16 @@ def add_project_group(
     label come from the index: no network, no producer. A version that is
     not present or has no SHA-256 is not pinned and is listed in `skipped`;
     one named twice is counted in `already`. The first pin of a producer
-    names the project's store of that producer. Needs the project's owner or
-    an administrator (`403`). Refused: a taken name (`409`, `group_exists`),
-    a name breaking the rule (`400`, `invalid_group_name`), more than 10,000
-    versions (`400`, `too_many_pins`, `details.count`; nothing written), a
-    version of another store than the project's (`409`, `other_store`), a
+    names the project's store of that producer. The group is written closed
+    with its digest (`pins_sha256`); with `open` it is left open, a set in
+    the making, and `versions`, `query` and `from` may then be left out (an
+    empty draft); a group whose every version was skipped is open too.
+    Logged as `project.pin` with `open`. Needs the project's owner or an
+    administrator (`403`). Refused: a taken name (`409`, `group_exists`), a
+    name breaking the rule (`400`, `invalid_group_name`), more than 10,000
+    versions (`400`, `too_many_pins`, `details.count`; nothing written), an
+    open group given versions of several producers (`409`, `set_producer`),
+    a version of another store than the project's (`409`, `other_store`), a
     project store matching no configured one (`409`, `unknown_store`), and
     as `PATCH /projects/{project}` refuses.
     """
@@ -666,12 +689,16 @@ def add_group_pins(
     queries: _Queries,
     index: _Index,
 ) -> PinOutcome:
-    """Pin versions the store holds into a local group (`project.pin`).
+    """Pin versions the store holds into an open group (`project.pin`).
 
-    As `POST /projects/{project}/groups`, into a group the project has: a
-    version the group pins already is counted in `already`. Refused also: an
-    unknown group (`404`) and a group of the plan window (`409`,
-    `group_origin_plan`).
+    As `POST /projects/{project}/groups`, into a set in the making of either
+    origin: a version the group pins already is counted in `already`; into a
+    group of the plan window the pins are hand pins (`calls` `[]`, checked
+    and re-pinned by their own calls) and the request is kept in
+    `origin.selections`. Refused also: an unknown group (`404`,
+    `group_not_found`), a closed one (`409`, `set_closed`: open it for
+    editing first) and a version of another producer than the group's
+    (`409`, `set_producer`).
     """
     return pin_outcome(
         project,
@@ -707,11 +734,12 @@ def unpin_group_pins(
     queries: _Queries,
     index: _Index,
 ) -> ProjectCard:
-    """Remove pins of a group (`project.unpin`); the versions stay in the store.
+    """Remove pins of an open group (`project.unpin`); the versions stay in the store.
 
     A pin the group does not hold is ignored. Needs the project's owner or
-    an administrator. Refused: an unknown group (`404`), and as `PATCH
-    /projects/{project}` refuses.
+    an administrator. Refused: an unknown group (`404`, `group_not_found`),
+    a closed one (`409`, `set_closed`), and as `PATCH /projects/{project}`
+    refuses.
     """
     config = settings.get()
     key = pin_service.unpin(
@@ -748,8 +776,9 @@ def remove_project_group(
 ) -> ProjectCard:
     """Remove a group with its pins (`project.unpin`); the versions stay.
 
-    Needs the project's owner or an administrator. Refused: an unknown group
-    (`404`), and as `PATCH /projects/{project}` refuses.
+    Open or closed. Needs the project's owner or an administrator. Refused:
+    an unknown group (`404`, `group_not_found`), and as `PATCH
+    /projects/{project}` refuses.
     """
     config = settings.get()
     key = pin_service.unpin(
@@ -767,9 +796,98 @@ def remove_project_group(
     return _changed_card(decisions, principal, queries, config, preferences, key)
 
 
+@router.delete(
+    "/{project}/groups/{group}/calls/{call}",
+    response_model=ProjectCard,
+    responses=_CHANGE_RESPONSES,
+)
+def remove_group_call(
+    project: _Project,
+    group: _Group,
+    call: _Call,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    registry: _Registry,
+    settings: _Settings,
+    preferences: _Preferences,
+    queries: _Queries,
+    index: _Index,
+) -> ProjectCard:
+    """Remove a call of an open group with the pins only its run pinned.
+
+    `call` is the place in `origin.calls`, from 0; the higher places shift
+    down in every pin's `calls`. A pin whose `calls` becomes empty goes; a
+    pin added by hand (`calls` `[]`) and a pin of another call too stay. The
+    last call removed, the group is a local one. Logged as `project.unpin`
+    with `call` and the pins removed; the versions stay in the store. Needs
+    the project's owner or an administrator. Refused: an unknown group
+    (`404`, `group_not_found`) or call (`404`, `call_not_found`), a closed
+    group (`409`, `set_closed`), a group holding a pin written before the
+    sets had states, which belongs to every call (`409`,
+    `pins_without_calls`: re-pin it first), and as `PATCH
+    /projects/{project}` refuses.
+    """
+    config = settings.get()
+    key = pin_service.remove_call(
+        registry,
+        config,
+        queries,
+        index,
+        decisions,
+        project,
+        group=group,
+        call=call,
+        actor=principal,
+        visible=visible,
+    )
+    return _changed_card(decisions, principal, queries, config, preferences, key)
+
+
+@router.post(
+    "/{project}/groups/{group}/reopen",
+    response_model=ProjectCard,
+    responses=_CHANGE_RESPONSES,
+)
+def reopen_project_group(
+    project: _Project,
+    group: _Group,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    registry: _Registry,
+    settings: _Settings,
+    preferences: _Preferences,
+    queries: _Queries,
+    index: _Index,
+) -> ProjectCard:
+    """Open a closed set for editing (`project.set_open`), „Otwórz do edycji”.
+
+    `state` becomes `open` and `closed_at`, `closed_by` and `pins_sha256`
+    go; programs that read only closed sets refuse it until it is closed
+    again. A group written before the sets had states is opened alike.
+    Needs the project's owner or an administrator. Refused: an unknown group
+    (`404`, `group_not_found`), an open one (`409`, `set_open`), and as
+    `PATCH /projects/{project}` refuses.
+    """
+    config = settings.get()
+    key = pin_service.reopen_set(
+        registry,
+        config,
+        queries,
+        index,
+        decisions,
+        project,
+        group=group,
+        actor=principal,
+        visible=visible,
+    )
+    return _changed_card(decisions, principal, queries, config, preferences, key)
+
+
 def pin_outcome(
     project: str,
-    body: PinsRequest,
+    body: PinsRequest | GroupRequest,
     group: str,
     *,
     principal: Principal,
@@ -797,6 +915,7 @@ def pin_outcome(
         query=body.query,
         actor=principal,
         visible=visible,
+        open_set=isinstance(body, GroupRequest) and body.open,
     )
     card = _changed_card(
         decisions, principal, queries, settings, preferences, result.project
@@ -860,13 +979,15 @@ def start_project_job(
     project the session does not see is `404`, as is a group it does not
     have; `repin` and `restore` need `project.write` and `store.write` (`403
     permission_denied`). Refused before a job exists: a `repin` without
-    exactly one group (`400`), a group whose producer offers no commands
-    (`422 no_commands`), a local group to re-pin with a pin known not
-    rebuildable (`422 command_not_rebuildable`), a group whose producer's
-    store the project names matches no configured store (`409
-    unknown_store`), a second job of the project (`409 conflict`, that job
-    in `details.job`), offline mode for all but `verify` (`409
-    offline_mode`) and a producer whose plugin is missing (`503`).
+    exactly one group (`400`), a `repin` of a closed set (`409 set_closed`:
+    open it for editing first), a group whose producer offers no commands
+    (`422 no_commands`), a local group, or a pin added by hand to a plan
+    group, to re-pin with a pin known not rebuildable (`422
+    command_not_rebuildable`), a group whose producer's store the project
+    names matches no configured store (`409 unknown_store`), a second job of
+    the project (`409 conflict`, that job in `details.job`), offline mode
+    for all but `verify` (`409 offline_mode`) and a producer whose plugin is
+    missing (`503`).
     """
     job = project_jobs.start(
         registry,
@@ -882,6 +1003,55 @@ def start_project_job(
     )
     response.headers["Location"] = f"{API_PREFIX}/jobs/{job.id}"
     return JobDetail.of(job)
+
+
+@job_router.post(
+    "/{project}/groups/{group}/close",
+    response_model=ProjectCard,
+    responses=_CHANGE_RESPONSES,
+)
+def close_project_group(
+    project: _Project,
+    group: _Group,
+    principal: _Principal,
+    decisions: _Authorizer,
+    visible: _Visible,
+    registry: _Registry,
+    settings: _Settings,
+    preferences: _Preferences,
+    queries: _Queries,
+    index: _Index,
+    jobs: _Jobs,
+) -> ProjectCard:
+    r"""Close an open set (`project.set_close`), „Zamknij zestaw”.
+
+    Writes `state` `closed` with `closed_at`, `closed_by` and `pins_sha256`:
+    the SHA-256 of the lines `<producer>\t<version>\t<sha256>\n`, one per
+    pin, sorted by producer and version. A closed set takes no pin, loses
+    none and is not re-pinned until it is opened for editing. The pins'
+    states are the index's, from the last scan (run `verify` first to hash
+    them). Needs the project's owner or an administrator. Refused, in this
+    order: an unknown group (`404`, `group_not_found`); a closed set (`409`,
+    `set_closed`); a job that writes into it waits or runs, a `download`
+    pinning into it or a `repin` of it (`409`, `set_job_active`, that job in
+    `details.job`); no pin (`409`, `set_empty`); a pin that is not `ok`
+    (`409`, `set_pins_not_ok`: `details.counts` by state, the first 100 in
+    `details.pins`); and as `PATCH /projects/{project}` refuses.
+    """
+    config = settings.get()
+    key = pin_service.close_set(
+        registry,
+        config,
+        queries,
+        index,
+        decisions,
+        jobs,
+        project,
+        group=group,
+        actor=principal,
+        visible=visible,
+    )
+    return _changed_card(decisions, principal, queries, config, preferences, key)
 
 
 @job_router.delete(

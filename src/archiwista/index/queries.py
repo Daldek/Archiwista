@@ -236,6 +236,8 @@ SELECT pr.id, pr.key, pr.name, pr.path, pr.access_key, pr.description, pr.state,
     pr.problem, pr.problem_detail, pr.created_at, pr.created_by, pr.area_path,
     pr.area_sha256, pr.area_id, pr.area_state, pr.scanned_at,
     (SELECT count(*) FROM pin_groups pg WHERE pg.project_id = pr.id) AS group_count,
+    (SELECT count(*) FROM pin_groups pg
+        WHERE pg.project_id = pr.id AND pg.state = 'open') AS open_groups,
     (SELECT count(*) FROM pins p WHERE p.project_id = pr.id) AS pins,
     (SELECT count(*) FROM {_PIN_SOURCE}
         WHERE p.project_id = pr.id AND {_PIN_STATE} IN ('missing', 'sha256_mismatch')
@@ -1803,7 +1805,8 @@ class IndexQueries:
                 return None
             stores = _project_stores(connection, [row["id"]])
             groups = connection.execute(
-                "SELECT position, name, origin, producer, calls, selections"
+                "SELECT position, name, origin, producer, calls, selections, state,"
+                " closed_at, closed_by, pins_sha256, digest_state"
                 " FROM pin_groups WHERE project_id = ? ORDER BY position",
                 (row["id"],),
             ).fetchall()
@@ -1812,7 +1815,8 @@ class IndexQueries:
                 " p.sha256, p.content_sha256, p.size_bytes, p.unit, p.label,"
                 f" p.pinned_at, p.pinned_by, {_PIN_STATE} AS state, s.path AS slot,"
                 " coalesce(v.id = s.current_version_id, 0) AS is_current,"
-                " vc.call AS known_call, vc.refusal AS command_refusal"
+                " vc.call AS known_call, vc.refusal AS command_refusal,"
+                " p.calls AS pin_calls"
                 f" FROM {_PIN_SOURCE} LEFT JOIN slots s ON s.id = v.slot_id"
                 " LEFT JOIN stores st ON st.id = p.store_id"
                 " LEFT JOIN version_calls vc ON vc.store_id = p.store_id"
@@ -1839,6 +1843,11 @@ class IndexQueries:
                     is_current=bool(pin["is_current"]),
                     command=_pin_command(pin["known_call"], pin["command_refusal"]),
                     command_refusal=pin["command_refusal"],
+                    calls=(
+                        None
+                        if pin["pin_calls"] is None
+                        else tuple(int(place) for place in json.loads(pin["pin_calls"]))
+                    ),
                 )
             )
         return ProjectRecord(
@@ -3532,6 +3541,7 @@ def _project_ref(row: sqlite3.Row, stores: tuple[ProjectStoreRef, ...]) -> Proje
         pins=int(row["pins"]),
         missing_pins=int(row["missing_pins"]),
         scanned_at=datetime.fromisoformat(row["scanned_at"]),
+        open_groups=int(row["open_groups"]),
     )
 
 
@@ -3574,6 +3584,15 @@ def _pin_group(row: sqlite3.Row, pins: tuple[ProjectPinRef, ...]) -> PinGroupRef
             Selection(source=item["from"], query=item["query"]) for item in selections
         ),
         pins=pins,
+        state=row["state"],
+        closed_at=(
+            None
+            if row["closed_at"] is None
+            else datetime.fromisoformat(row["closed_at"])
+        ),
+        closed_by=row["closed_by"],
+        pins_sha256=row["pins_sha256"],
+        digest_state=row["digest_state"],
     )
 
 

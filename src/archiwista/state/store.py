@@ -72,6 +72,8 @@ type ActionName = Literal[
     "project.delete",
     "project.pin",
     "project.unpin",
+    "project.set_close",
+    "project.set_open",
     "settings.update",
     "job.start",
     "job.cancel",

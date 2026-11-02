@@ -14,26 +14,33 @@ names for each producer of a group (``services.project_jobs.group_store``):
 - ``check`` asks the source through ``ActionAdapter.check`` (its notices
   become the job's): a plan group by its calls, a local group by the call of
   each pin (``command_for_version`` through the index's ``version_calls``,
-  each call asked once). Each pin is compared by its slot and SHA-256:
-  ``current``, ``newer``, ``missing``, ``removed``, ``unverifiable``,
-  ``check_failed`` or ``not_checkable`` (a local pin whose call the producer
+  each call asked once), and a pin added by hand to a plan group (``calls``
+  ``[]``) by its own call as a local pin. Each pin is compared by its slot
+  and SHA-256 (a plan group's other pins against the plans of all its
+  calls): ``current``, ``newer``, ``missing``, ``removed``, ``unverifiable``,
+  ``check_failed`` or ``not_checkable`` (a pin whose call the producer
   cannot rebuild, with its text: D5); a position of a plan group's calls
   without a pin is ``added``;
-- ``repin`` runs the group's calls (a local group: the calls of its pins) in
-  the producer's update mode (``upgrade``); only when every call and every
-  unit succeeded are the group's pins replaced under the file's lock: a plan
-  group's by the files of the runs, a local group's each by the file of the
-  run at its slot (a pin whose slot no run returned stays); a file the run
-  names no version of counts as its slot's current version after the
-  rescan, without one the pin of its slot stays; a pin whose
-  version and SHA-256 did not change keeps its ``pinned_at`` and
+- ``repin`` runs the group's calls (a local group: the calls of its pins; a
+  plan group: its calls and those of its hand pins) in the producer's update
+  mode (``upgrade``), as written: a call's options, ``year`` included, are
+  never dropped or changed (only an area file names the project's). Only
+  when every call and every unit succeeded are the group's pins replaced
+  under the file's lock, and only while the set is open (a set closed
+  meanwhile ends the job ``partial``, no pin changed): a plan group's run
+  pins by the files of its calls' runs, each naming those calls
+  (``calls``), a local group's pins and a plan group's hand pins each by the
+  file of its call's run at its slot (a pin whose slot no run returned
+  stays); a file the run names no version of counts as its slot's current
+  version after the rescan, without one the pin of its slot stays; a pin
+  whose version and SHA-256 did not change keeps its ``pinned_at`` and
   ``pinned_by``, the others get the job's actor and time;
 - ``restore`` runs, for the groups with pins missing from the store, their
   calls in the producer's default mode (the versions the store holds are
   kept): a missing pin whose SHA-256 returns is ``restored``, one whose
   ``content_sha256`` returns with other bytes ``content_match``, another
-  ``not_restored`` (reason ``other_content`` or ``not_returned``), a local
-  pin without a call ``not_restorable`` with the producer's text (D5). It
+  ``not_restored`` (reason ``other_content`` or ``not_returned``), a pin
+  without a call ``not_restorable`` with the producer's text (D5). It
   never writes the project file.
 
 After a run the slots of its files are read again into the index, and after
@@ -56,6 +63,7 @@ from archiwista.auth import ALL_PROJECTS
 from archiwista.errors import (
     ArchiwistaError,
     CheckFailedError,
+    ConflictError,
     NotFoundError,
     OfflineModeError,
     RunFailedError,
@@ -74,6 +82,7 @@ from archiwista.jobs.availability import store_unreachable
 from archiwista.jobs.protocol import JobSpec, JsonObject
 from archiwista.jobs.worker import (
     RESCAN_STOP_S,
+    _call_error,
     _CallRun,
     _checked_plan,
     _geo,
@@ -87,6 +96,7 @@ from archiwista.messages import message, with_detail
 from archiwista.projects import (
     change_project_file,
     format_time,
+    group_state,
     project_area_options,
 )
 from archiwista.services.commands import (
@@ -97,9 +107,10 @@ from archiwista.services.commands import (
 )
 from archiwista.services.pins import find_group
 from archiwista.services.project_jobs import (
+    by_hand,
     chosen_groups,
-    group_producers,
     group_store,
+    set_closed,
 )
 from archiwista.services.projects import project_directory
 from archiwista.sources import (
@@ -151,15 +162,18 @@ class _Job:
 
 @dataclass(slots=True)
 class _GroupCalls:
-    """The calls of a group, and what became of the calls of its local pins.
+    """The calls of a group, and what became of the calls of its own pins.
 
-    ``calls`` are the distinct calls in their order: a plan group's origin, a
-    local group's pins' (``of_pin`` the place of each pin's call). A local pin
-    whose call the producer cannot rebuild is in ``refused`` with its text;
-    one the producer refused otherwise in ``failed`` with the error.
+    ``calls`` are the distinct calls in their order: a plan group's origin
+    first (``origin`` of them), then the calls of the pins that have their
+    own (a local group's, a plan group's hand pins; ``of_pin`` the place of
+    each such pin's call). A pin whose call the producer cannot rebuild is
+    in ``refused`` with its text; one the producer refused otherwise in
+    ``failed`` with the error.
     """
 
     calls: list[CommandCall] = field(default_factory=list)
+    origin: int = 0
     of_pin: dict[_PinKey, int] = field(default_factory=dict)
     refused: dict[_PinKey, str] = field(default_factory=dict)
     failed: dict[_PinKey, ArchiwistaError] = field(default_factory=dict)
@@ -261,7 +275,7 @@ def check(spec: JobSpec, emit: "Emitter") -> tuple[JsonObject, bool]:
         rows += [_checked_pin(group, pin, calls, plans) for pin in group.pins]
         if group.origin == "plan":
             pinned = {_slot(pin) for pin in group.pins}
-            for entry in _entries(plans).values():
+            for entry in _entries(plans[: calls.origin]).values():
                 if entry.path not in pinned:
                     added.append(
                         {
@@ -295,7 +309,9 @@ def repin(spec: JobSpec, emit: "Emitter") -> tuple[JsonObject, bool]:
 
     A run some of whose calls or units failed changes no pin and ends
     ``partial`` (the downloaded versions stay in the store); one none of
-    whose calls succeeded fails with the error of its first.
+    whose calls succeeded fails with the error of its first. A set closed
+    while the calls ran keeps its pins: the job ends ``partial`` with that
+    refusal (``set_closed``) as its ``error``.
     """
     _require_online(spec)
     started = time.perf_counter()
@@ -314,27 +330,29 @@ def repin(spec: JobSpec, emit: "Emitter") -> tuple[JsonObject, bool]:
     errors = [run.error for run, _ in runs if run.error is not None]
     if runs and len(errors) == len(runs):
         raise errors[0]
-    files = [(call, file) for run, call in runs for file in _files(run)]
+    files = [(run.place, call, file) for run, call in runs for file in _files(run)]
     head: JsonObject = {
         "project": job.project.key,
         "group": group.name,
         "calls": sections,
-        "files": [
-            {**asdict(file), "call": calls.calls.index(call)} for call, file in files
-        ],
+        "files": [{**asdict(file), "call": place} for place, _, file in files],
         "rescanned": rescanned,
     }
-    whole = all(run.status() == "ok" for run, _ in runs)
-    if not whole:
-        unchanged: JsonObject = {
-            **head,
-            "status": "unchanged",
-            "written": False,
-            "pins": {"kept": 0, "new": 0, "dropped": 0},
-            "seconds": _seconds(started),
-        }
-        return unchanged, False
-    counts = _replace_pins(spec, job, stores, group, files, emit)
+    unchanged: JsonObject = {
+        **head,
+        "status": "unchanged",
+        "written": False,
+        "pins": {"kept": 0, "new": 0, "dropped": 0},
+    }
+    if not all(run.status() == "ok" for run, _ in runs):
+        return {**unchanged, "seconds": _seconds(started)}, False
+    try:
+        counts = _replace_pins(spec, job, stores, group, calls, files, emit)
+    except ConflictError as error:
+        if error.details.get("reason") != "set_closed":
+            raise
+        refused = {**unchanged, "error": _call_error(error)}
+        return {**refused, "seconds": _seconds(started)}, False
     status = "replaced" if counts["new"] or counts["dropped"] else "unchanged"
     summary: JsonObject = {
         **head,
@@ -363,7 +381,15 @@ def restore(spec: JobSpec, emit: "Emitter") -> tuple[JsonObject, bool]:
         missing = [pin for pin in group.pins if pin.state == "missing"]
         if not missing:
             continue
-        calls = _group_calls(spec, job, stores, group, missing)
+        # A plan group's calls run only for its run pins; a hand pin's own.
+        calls = _group_calls(
+            spec,
+            job,
+            stores,
+            group,
+            missing,
+            origin=any(not by_hand(pin) for pin in missing),
+        )
         runs, ran, read = _run_calls(spec, job, stores, group, calls.calls, emit)
         sections += ran
         rescanned += read
@@ -483,33 +509,46 @@ def _group_calls(
     stores: _Stores,
     group: PinGroupRef,
     pins: Sequence[ProjectPinRef],
+    *,
+    origin: bool = True,
 ) -> _GroupCalls:
-    """Return a group's calls: a plan group's origin, a local group's pins'.
+    """Return a group's calls: a plan group's origin, then its own pins' calls.
 
-    A plan group's call naming its area's GeoJSON in the project's
-    ``obszary/`` (A-ADR-035 erratum 2) names it in the project directory.
-    The call of a local pin comes from the index's ``version_calls`` of the
-    installed producer, else from the producer (``command_for_version``),
-    whose answer is kept.
+    A plan group's calls come first (with ``origin``) as the file writes
+    them, only a call naming its area's GeoJSON in the project's
+    ``obszary/`` (A-ADR-035 erratum 2) naming it in the project directory:
+    no other option, ``year`` included, is dropped or changed. A pin of a
+    local group and a pin added by hand to a plan group have their own call:
+    from the index's ``version_calls`` of the installed producer, else from
+    the producer (``command_for_version``), whose answer is kept; a call
+    already among the calls is not asked twice.
     """
     found = _GroupCalls()
-    if group.origin == "plan":
-        directory = project_directory(job.project, spec.settings)
-        found.calls = [
-            replace(call, options=project_area_options(call.options, directory))
-            for call in group.calls
-        ]
-        return found
     places: dict[str, int] = {}
+    if group.origin == "plan":
+        if origin:
+            directory = project_directory(job.project, spec.settings)
+            found.calls = [
+                replace(call, options=project_area_options(call.options, directory))
+                for call in group.calls
+            ]
+            found.origin = len(found.calls)
+            for place, call in enumerate(found.calls):
+                places.setdefault(_same_call(call), place)
+        own = [pin for pin in pins if by_hand(pin)]
+    else:
+        own = list(pins)
+    if not own:
+        return found
     with (
         IndexQueries(spec.index_path) as queries,
         IndexWriter(spec.index_path) as writer,
     ):
-        for producer in group_producers(group):
+        for producer in dict.fromkeys(pin.producer for pin in own):
             adapter = version_commands(job.registry, producer)
             installed = job.registry.state(producer).package_version or ""
             store, root = stores.of(producer)
-            for pin in pins:
+            for pin in own:
                 if pin.producer != producer:
                     continue
                 key = (pin.producer, pin.version)
@@ -529,15 +568,31 @@ def _group_calls(
                 if answer.call is None:
                     found.refused[key] = answer.refusal or ""
                     continue
-                same = json.dumps(
-                    [producer, answer.call.command, dict(answer.call.options)],
-                    sort_keys=True,
-                )
+                same = _same_call(answer.call)
                 if same not in places:
                     places[same] = len(found.calls)
                     found.calls.append(answer.call)
                 found.of_pin[key] = places[same]
     return found
+
+
+def _same_call(call: CommandCall) -> str:
+    """Return what tells a call apart: its producer, command and options."""
+    return json.dumps([call.producer, call.command, dict(call.options)], sort_keys=True)
+
+
+def _own_runs[Item](
+    group: PinGroupRef, pin: ProjectPinRef, calls: _GroupCalls, items: Sequence[Item]
+) -> list[Item]:
+    """Return the plans or runs (in the order of ``calls``) a pin is judged by.
+
+    A plan group's pin by all its calls' (the set's union), a local pin and
+    a hand pin by its own call's, none without one.
+    """
+    if group.origin == "plan" and not by_hand(pin):
+        return list(items[: calls.origin])
+    place = calls.of_pin.get((pin.producer, pin.version))
+    return [] if place is None else [items[place]]
 
 
 def _entries(plans: Iterable[ActionPlan | None]) -> dict[str, PlanEntry]:
@@ -566,13 +621,7 @@ def _checked_pin(
     elif pin.state == "missing":
         status = "missing"
     else:
-        own = (
-            plans
-            if group.origin == "plan"
-            else [plans[calls.of_pin[key]]]
-            if key in calls.of_pin
-            else []
-        )
+        own = _own_runs(group, pin, calls, plans)
         entry = _entries(own).get(_slot(pin))
         if entry is None:
             asked = [plan for plan in own if plan is not None]
@@ -686,13 +735,7 @@ def _restored_pin(
             reason="not_returned",
             detail=error.message,
         )
-    own = (
-        list(runs)
-        if group.origin == "plan"
-        else [runs[calls.of_pin[key]]]
-        if key in calls.of_pin
-        else []
-    )
+    own = _own_runs(group, pin, calls, runs)
     returned = [
         file for run, _ in own for file in _files(run) if file.path == _slot(pin)
     ]
@@ -743,34 +786,62 @@ def _replace_pins(
     job: _Job,
     stores: _Stores,
     group: PinGroupRef,
-    files: Sequence[tuple[CommandCall, ActionFile]],
+    calls: _GroupCalls,
+    files: Sequence[tuple[int, CommandCall, ActionFile]],
     emit: "Emitter",
 ) -> dict[str, int]:
     """Write the group's pins of a re-pin that wholly succeeded; return the counts.
 
-    Under the file's lock: a plan group's pins become the runs' files, a
-    local group's each the file at its slot (one without stays). A file the
-    run names no version of is its slot's current version after the rescan,
-    as for a download's pins; without one the pin of its slot stays. A pin
-    of the same version and SHA-256 is kept as the file holds it.
+    Under the file's lock, while the set is open: a plan group's run pins
+    become the files of its calls' runs, each naming the calls whose runs
+    returned it (``calls``); a local group's pins and a plan group's hand
+    pins each the file of its own call's run at its slot (one without
+    stays; a hand pin keeps ``calls`` ``[]``). A file the run names no
+    version of is its slot's current version after the rescan, as for a
+    download's pins; without one the pin of its slot stays. A pin of the
+    same version and SHA-256 is kept as the file holds it.
+
+    Raises
+    ------
+    ConflictError
+        The set was closed meanwhile (``set_closed``): no pin changes.
+    NotFoundError
+        The group is gone.
     """
     moment = format_time(datetime.now(UTC).replace(microsecond=0))
-    by_producer: dict[str, dict[str, ActionFile | None]] = {}
-    for call, file in files:
-        by_producer.setdefault(call.producer, {}).setdefault(file.path, file)
+    # Each run's files by slot, a file without a version as its slot's current one.
+    by_place: dict[int, dict[str, ActionFile | None]] = {}
+    producer_of: dict[int, str] = {}
     contents: dict[tuple[str, str], str | None] = {}
     with IndexQueries(spec.index_path) as queries:
-        for producer, found in by_producer.items():
+        for place, call, file in files:
+            store, _ = stores.of(call.producer)
+            producer_of[place] = call.producer
+            found = by_place.setdefault(place, {})
+            if file.path not in found:
+                found[file.path] = (
+                    file
+                    if file.version_path is not None
+                    else _current_file(queries, store, file)
+                )
+        for producer in dict.fromkeys(producer_of.values()):
             store, _ = stores.of(producer)
-            found.update(
-                (path, _current_file(queries, store, file))
-                for path, file in list(found.items())
-                if file is not None and file.version_path is None
-            )
-            paths = [file.version_path for file in found.values() if file is not None]
-            versions = [path for path in paths if path is not None]
+            versions = [
+                file.version_path
+                for place, found in by_place.items()
+                if producer_of[place] == producer
+                for file in found.values()
+                if file is not None and file.version_path is not None
+            ]
             for path, fact in queries.version_facts(store, versions).items():
                 contents[(producer, path)] = fact.content_sha256
+    # A plan group's calls by slot: the slot's first file and the calls that
+    # returned it.
+    run_slots: dict[str, tuple[ActionFile | None, list[int]]] = {}
+    for place in range(calls.origin):
+        for path, returned in by_place.get(place, {}).items():
+            first, places = run_slots.get(path, (None, []))
+            run_slots[path] = (first or returned, [*places, place])
     slots = {(pin.producer, pin.version): _slot(pin) for pin in group.pins}
 
     def pin_of(producer: str, file: ActionFile) -> dict[str, Any]:
@@ -800,40 +871,52 @@ def _replace_pins(
             raise NotFoundError(
                 message(
                     "project.group_not_found", project=job.project.key, group=group.name
-                )
+                ),
+                reason="group_not_found",
+                details={"group": group.name},
             )
+        if group_state(target) != "open":
+            raise set_closed(str(target["name"]))
         old: list[dict[str, Any]] = target["pins"]
         held = {(item["producer"], item["version"]): item for item in old}
+        plan = group.origin == "plan" and group.producer is not None
         chosen: list[dict[str, Any]] = []
-        if group.origin == "plan" and group.producer is not None:
-            for path, file in by_producer.get(group.producer, {}).items():
+        if plan and group.producer is not None:
+            for path, (file, places) in run_slots.items():
                 if file is not None:
-                    chosen.append(_kept_or_new(held, group.producer, file, pin_of))
+                    found = _kept_or_new(held, group.producer, file, pin_of)
+                    chosen.append(_with_calls(found, places))
                     continue
                 chosen.extend(
-                    item
+                    _with_calls(item, places)
                     for item in old
-                    if item["producer"] == group.producer
+                    if item.get("calls") != []
                     and slots.get((item["producer"], item["version"])) == path
                 )
-        else:
-            for item in old:
-                key = (item["producer"], item["version"])
-                file = by_producer.get(key[0], {}).get(slots.get(key, key[1]))
-                chosen.append(
-                    item if file is None else _kept_or_new(held, key[0], file, pin_of)
-                )
-        pins = list(
-            {(item["producer"], item["version"]): item for item in chosen}.values()
+        for item in old:
+            if plan and item.get("calls") != []:
+                continue
+            key = (item["producer"], item["version"])
+            place = calls.of_pin.get(key)
+            file = (
+                None
+                if place is None
+                else by_place.get(place, {}).get(slots.get(key, key[1]))
+            )
+            new = item if file is None else _kept_or_new(held, key[0], file, pin_of)
+            chosen.append(_with_calls(new, []) if plan else new)
+        pins: dict[tuple[str, str], dict[str, Any]] = {}
+        for item in chosen:
+            pins.setdefault((item["producer"], item["version"]), item)
+        before = {(item["producer"], item["version"], item["sha256"]) for item in old}
+        counts["kept"] = sum(
+            1
+            for item in pins.values()
+            if (item["producer"], item["version"], item["sha256"]) in before
         )
-        kept = {id(item) for item in old}
-        counts["kept"] = sum(1 for item in pins if id(item) in kept)
         counts["new"] = len(pins) - counts["kept"]
-        now = {(item["producer"], item["version"]) for item in pins}
-        counts["dropped"] = sum(
-            1 for item in old if (item["producer"], item["version"]) not in now
-        )
-        target["pins"] = pins
+        counts["dropped"] = sum(1 for key in held if key not in pins)
+        target["pins"] = list(pins.values())
 
     directory = project_directory(job.project, spec.settings)
     change_project_file(directory, change)
@@ -847,6 +930,11 @@ def _replace_pins(
         text = with_detail(message("job.project_not_indexed"), str(error))
         emit.notice("warning", "project_not_indexed", text)
     return counts
+
+
+def _with_calls(pin: dict[str, Any], places: Iterable[int]) -> dict[str, Any]:
+    """Return a plan group's pin naming the places of its calls (``[]``: by hand)."""
+    return {**pin, "calls": sorted(set(places))}
 
 
 def _kept_or_new(

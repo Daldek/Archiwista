@@ -14,15 +14,25 @@ invalid file (``invalid_project_file``), refused with the JSON pointer
 (``clean_name``); group names are unique in a project compared case-folded.
 ``document_json``, ``group_json``, ``store_json``, ``area_json`` and
 ``pin_json`` give the members a writer sets.
+
+A group is a set („zestaw”) in one of two states (A-ADR-049 erratum 6):
+``open``, a set in the making whose content changes, or ``closed``, a frozen
+one; a group without ``state`` is closed. Archiwista closes a set by writing
+``closed_at``, ``closed_by`` and ``pins_sha256`` (``pins_digest`` of its
+pins) together (``seal_group``) and opens it by removing them
+(``unseal_group``). A ``plan`` group's pin may name the calls whose runs
+pinned it (``calls``, ``[]`` for a pin added by hand), and its origin may
+hold the hand pins' ``selections``.
 """
 
+import hashlib
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import PureWindowsPath
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from archiwista.errors import ProjectFileError
 from archiwista.messages import message, with_detail
@@ -44,8 +54,16 @@ MAX_GROUP_CALLS = 1_000
 
 type SelectionSource = Literal["local_state", "catalog", "file"]
 type OriginKind = Literal["plan", "local"]
+# A set in the making (``open``) or a frozen one (``closed``); no member: closed.
+type SetState = Literal["open", "closed"]
 
 SELECTION_SOURCES: tuple[SelectionSource, ...] = ("local_state", "catalog", "file")
+SET_STATES: tuple[SetState, ...] = get_args(SetState.__value__)
+# The members Archiwista writes together when it closes a set.
+CLOSED_MEMBERS = ("closed_at", "closed_by", "pins_sha256")
+# The order of a group's members as Archiwista writes them; members it does
+# not know follow.
+_GROUP_ORDER = ("name", "state", *CLOSED_MEMBERS, "origin", "pins")
 # How every time of the file is written: UTC, whole seconds.
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
@@ -90,24 +108,6 @@ class StoreRoot:
 
 
 @dataclass(frozen=True, slots=True)
-class PlanOrigin:
-    """A group of the data the plan window downloaded: the run's calls.
-
-    Attributes
-    ----------
-    producer : str
-        Producer of the calls and of every pin of the group.
-    calls : tuple[CommandCall, ...]
-        The calls of that run in their order, 1 to ``MAX_GROUP_CALLS``.
-    """
-
-    producer: str
-    calls: tuple[CommandCall, ...]
-
-    kind: Literal["plan"] = field(default="plan", init=False)
-
-
-@dataclass(frozen=True, slots=True)
 class Selection:
     """A request that added pins to a local group: a record, never run again.
 
@@ -122,6 +122,27 @@ class Selection:
 
     source: SelectionSource
     query: Mapping[str, object] | None
+
+
+@dataclass(frozen=True, slots=True)
+class PlanOrigin:
+    """A group of the data the plan window downloaded: the runs' calls.
+
+    Attributes
+    ----------
+    producer : str
+        Producer of the calls and of every pin of the group.
+    calls : tuple[CommandCall, ...]
+        The calls of the runs in their order, 1 to ``MAX_GROUP_CALLS``.
+    selections : tuple[Selection, ...]
+        The requests that added the hand pins of an open set holding calls.
+    """
+
+    producer: str
+    calls: tuple[CommandCall, ...]
+    selections: tuple[Selection, ...] = ()
+
+    kind: Literal["plan"] = field(default="plan", init=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,6 +183,11 @@ class Pin:
         When it was pinned (UTC, whole seconds).
     pinned_by : str
         The account that pinned it (``local`` for the local owner).
+    calls : tuple[int, ...] or None
+        A ``plan`` group's pin: the ascending places in ``origin.calls`` of
+        the calls whose runs pinned it, ``()`` for a pin added by hand;
+        ``None`` without the member (a local group's pin, or one written
+        before the sets had states, which belongs to the calls as a whole).
     """
 
     producer: str
@@ -173,6 +199,7 @@ class Pin:
     label: str | None
     pinned_at: datetime
     pinned_by: str
+    calls: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,11 +216,20 @@ class PinGroup:
         store held).
     pins : tuple[Pin, ...]
         At most ``MAX_GROUP_PINS``; a version once.
+    state : {"open", "closed"}
+        A set in the making or a frozen one (no member: ``closed``).
+    closed_at, closed_by, pins_sha256 : datetime, str, str or None
+        When and by whom Archiwista closed the set, and ``pins_digest`` of
+        its pins then; all three or none, none on an open set.
     """
 
     name: str
     origin: PlanOrigin | LocalOrigin
     pins: tuple[Pin, ...] = ()
+    state: SetState = "closed"
+    closed_at: datetime | None = None
+    closed_by: str | None = None
+    pins_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -367,7 +403,12 @@ def store_json(store: StoreRoot) -> dict[str, Any]:
 
 
 def group_json(group: PinGroup) -> dict[str, Any]:
-    """Return an entry of the member ``groups`` of a project file."""
+    """Return an entry of the member ``groups`` of a project file.
+
+    A closed set Archiwista did not close (one written before the sets had
+    states) is written without ``state``, as it was read.
+    """
+    selections = [selection_json(item) for item in group.origin.selections]
     origin: dict[str, Any]
     if isinstance(group.origin, PlanOrigin):
         origin = {
@@ -378,21 +419,32 @@ def group_json(group: PinGroup) -> dict[str, Any]:
                 for call in group.origin.calls
             ],
         }
+        if selections:
+            origin["selections"] = selections
     else:
-        origin = {
-            "kind": "local",
-            "selections": [
-                {"from": item.source}
-                if item.query is None
-                else {"from": item.source, "query": dict(item.query)}
-                for item in group.origin.selections
-            ],
-        }
-    return {
-        "name": group.name,
-        "origin": origin,
-        "pins": [pin_json(pin) for pin in group.pins],
-    }
+        origin = {"kind": "local", "selections": selections}
+    data: dict[str, Any] = {"name": group.name}
+    if group.state == "open" or group.pins_sha256 is not None:
+        data["state"] = group.state
+    if (
+        group.closed_at is not None
+        and group.closed_by is not None
+        and group.pins_sha256 is not None
+    ):
+        data.update(
+            closed_at=format_time(group.closed_at),
+            closed_by=group.closed_by,
+            pins_sha256=group.pins_sha256,
+        )
+    data.update(origin=origin, pins=[pin_json(pin) for pin in group.pins])
+    return data
+
+
+def selection_json(selection: Selection) -> dict[str, Any]:
+    """Return an entry of the member ``selections`` of an origin."""
+    if selection.query is None:
+        return {"from": selection.source}
+    return {"from": selection.source, "query": dict(selection.query)}
 
 
 def pin_json(pin: Pin) -> dict[str, Any]:
@@ -411,7 +463,82 @@ def pin_json(pin: Pin) -> dict[str, Any]:
         pinned_at=format_time(pin.pinned_at),
         pinned_by=pin.pinned_by,
     )
+    if pin.calls is not None:
+        data["calls"] = list(pin.calls)
     return data
+
+
+def pins_digest(pins: Iterable[tuple[str, str, str]]) -> str:
+    r"""Return the digest of a set's pins, its ``pins_sha256`` (A-ADR-049 erratum 6).
+
+    The lowercase hexadecimal SHA-256 of the UTF-8 bytes of the lines
+    ``<producer>\t<version>\t<sha256>\n``, one per pin, sorted by producer
+    and version by code point, the three texts exactly as the file holds
+    them (none can hold a tab or a line feed: ``_PRODUCER``, ``_relative``,
+    ``_SHA256``). Only the pins' identity counts: their calls, times, labels
+    and the set's origin do not. The writers and the index compute it here.
+
+    Parameters
+    ----------
+    pins : Iterable[tuple[str, str, str]]
+        ``(producer, version, sha256)`` of each pin, in any order.
+
+    Returns
+    -------
+    str
+        64 lowercase hexadecimal digits.
+    """
+    digest = hashlib.sha256()
+    for producer, version, sha256 in sorted(pins, key=lambda pin: (pin[0], pin[1])):
+        digest.update(f"{producer}\t{version}\t{sha256}\n".encode())
+    return digest.hexdigest()
+
+
+def group_state(group: Mapping[str, object]) -> SetState:
+    """Return the state of a group's JSON object: ``closed`` without the member."""
+    return "open" if group.get("state") == "open" else "closed"
+
+
+def group_digest(group: Mapping[str, Any]) -> str:
+    """Return ``pins_digest`` of the pins of a group's JSON object."""
+    return pins_digest(
+        (str(pin["producer"]), str(pin["version"]), str(pin["sha256"]))
+        for pin in group.get("pins", [])
+    )
+
+
+def seal_group(group: dict[str, Any], *, closed_at: str, closed_by: str) -> str:
+    """Close a group's JSON object as Archiwista closes a set; return its digest.
+
+    Writes ``state`` ``closed`` with ``closed_at``, ``closed_by`` and
+    ``pins_sha256`` (``pins_digest`` of its pins), in the members' order.
+    """
+    digest = group_digest(group)
+    group.update(
+        state="closed", closed_at=closed_at, closed_by=closed_by, pins_sha256=digest
+    )
+    _in_order(group)
+    return digest
+
+
+def unseal_group(group: dict[str, Any]) -> dict[str, Any]:
+    """Open a group's JSON object; return the members of the closing it ends.
+
+    ``closed_at``, ``closed_by`` and ``pins_sha256`` go (each ``None`` in the
+    answer when the set had none) and ``state`` becomes ``open``.
+    """
+    ended = {name: group.pop(name, None) for name in CLOSED_MEMBERS}
+    group["state"] = "open"
+    _in_order(group)
+    return ended
+
+
+def _in_order(group: dict[str, Any]) -> None:
+    """Put a group's members in the order Archiwista writes them; unknown ones last."""
+    order = {name: place for place, name in enumerate(_GROUP_ORDER)}
+    items = sorted(group.items(), key=lambda item: order.get(item[0], len(order)))
+    group.clear()
+    group.update(items)
 
 
 def _pointer(base: str, *parts: object) -> str:
@@ -555,8 +682,48 @@ def _groups(items: list[object]) -> tuple[PinGroup, ...]:
         pointer = f"{base}/origin"
         origin = _origin(_object(_member(group, pointer), pointer), pointer)
         pins = _pins(_array(group, f"{base}/pins"), f"{base}/pins", origin)
-        groups.append(PinGroup(name=name, origin=origin, pins=pins))
+        state, closed_at, closed_by, digest = _closing(group, base)
+        groups.append(
+            PinGroup(
+                name=name,
+                origin=origin,
+                pins=pins,
+                state=state,
+                closed_at=closed_at,
+                closed_by=closed_by,
+                pins_sha256=digest,
+            )
+        )
     return tuple(groups)
+
+
+def _closing(
+    group: Mapping[str, object], base: str
+) -> tuple[SetState, datetime | None, str | None, str | None]:
+    """Return a group's state and the members of its closing, if it has them.
+
+    ``state`` is ``open`` or ``closed`` (``set_state``), ``closed`` when left
+    out; ``closed_at``, ``closed_by`` and ``pins_sha256`` are all three or
+    none, and none on an open set (``set_closed_members``).
+    """
+    given = group.get("state", "closed")
+    state = next((known for known in SET_STATES if known == given), None)
+    if state is None:
+        raise invalid_file(f"{base}/state", "set_state")
+    present = [name for name in CLOSED_MEMBERS if name in group]
+    if not present:
+        return state, None, None, None
+    if state == "open":
+        raise invalid_file(f"{base}/{present[0]}", "set_closed_members")
+    missing = [name for name in CLOSED_MEMBERS if name not in group]
+    if missing:
+        raise invalid_file(f"{base}/{missing[0]}", "set_closed_members")
+    return (
+        state,
+        _time(group, f"{base}/closed_at"),
+        _account(group, f"{base}/closed_by"),
+        _sha256(group, f"{base}/pins_sha256"),
+    )
 
 
 def _origin(origin: Mapping[str, object], base: str) -> PlanOrigin | LocalOrigin:
@@ -575,31 +742,37 @@ def _origin(origin: Mapping[str, object], base: str) -> PlanOrigin | LocalOrigin
                 raise invalid_file(f"{pointer}/command", "command")
             options = _object(_member(call, f"{pointer}/options"), f"{pointer}/options")
             calls.append(CommandCall(producer, command, dict(options)))
-        return PlanOrigin(producer=producer, calls=tuple(calls))
+        selections: tuple[Selection, ...] = ()
+        if origin.get("selections") is not None:
+            selections = _selections(origin, f"{base}/selections")
+        return PlanOrigin(producer=producer, calls=tuple(calls), selections=selections)
     if kind == "local":
-        selections: list[Selection] = []
-        for index, item in enumerate(_array(origin, f"{base}/selections")):
-            pointer = _pointer(f"{base}/selections", index)
-            selection = _object(item, pointer)
-            given = _member(selection, f"{pointer}/from")
-            source = next(
-                (known for known in SELECTION_SOURCES if known == given), None
-            )
-            if source is None:
-                raise invalid_file(f"{pointer}/from", "selection")
-            query = selection.get("query")
-            # A request that named its versions has no query: always `file`,
-            # and `local_state` for the year layer the map shows.
-            if source == "file" and query is not None:
-                raise invalid_file(f"{pointer}/query", "query")
-            if query is None and source != "catalog":
-                selections.append(Selection(source=source, query=None))
-                continue
-            if not isinstance(query, dict):
-                raise invalid_file(f"{pointer}/query", "query")
-            selections.append(Selection(source=source, query=dict(query)))
-        return LocalOrigin(selections=tuple(selections))
+        return LocalOrigin(selections=_selections(origin, f"{base}/selections"))
     raise invalid_file(f"{base}/kind", "required" if kind is None else "origin")
+
+
+def _selections(origin: Mapping[str, object], base: str) -> tuple[Selection, ...]:
+    """Return the requests an origin records (its member ``selections``)."""
+    selections: list[Selection] = []
+    for index, item in enumerate(_array(origin, base)):
+        pointer = _pointer(base, index)
+        selection = _object(item, pointer)
+        given = _member(selection, f"{pointer}/from")
+        source = next((known for known in SELECTION_SOURCES if known == given), None)
+        if source is None:
+            raise invalid_file(f"{pointer}/from", "selection")
+        query = selection.get("query")
+        # A request that named its versions has no query: always `file`,
+        # and `local_state` for the year layer the map shows.
+        if source == "file" and query is not None:
+            raise invalid_file(f"{pointer}/query", "query")
+        if query is None and source != "catalog":
+            selections.append(Selection(source=source, query=None))
+            continue
+        if not isinstance(query, dict):
+            raise invalid_file(f"{pointer}/query", "query")
+        selections.append(Selection(source=source, query=dict(query)))
+    return tuple(selections)
 
 
 def _pins(
@@ -627,6 +800,9 @@ def _pins(
         size = _member(pin, f"{pointer}/size_bytes")
         if not isinstance(size, int) or isinstance(size, bool) or size < 0:
             raise invalid_file(f"{pointer}/size_bytes", "size")
+        calls = None
+        if pin.get("calls") is not None:
+            calls = _pin_calls(pin["calls"], f"{pointer}/calls", origin)
         pins.append(
             Pin(
                 producer=producer,
@@ -638,6 +814,30 @@ def _pins(
                 label=_text(pin, f"{pointer}/label"),
                 pinned_at=_time(pin, f"{pointer}/pinned_at"),
                 pinned_by=_account(pin, f"{pointer}/pinned_by"),
+                calls=calls,
             )
         )
     return tuple(pins)
+
+
+def _pin_calls(
+    value: object, pointer: str, origin: PlanOrigin | LocalOrigin
+) -> tuple[int, ...]:
+    """Return the places of a pin's calls (``pin_calls``).
+
+    Only a ``plan`` group's pin names calls: ascending distinct places of
+    ``origin.calls``, ``[]`` for a pin added by hand.
+    """
+    if not isinstance(origin, PlanOrigin) or not isinstance(value, list):
+        raise invalid_file(pointer, "pin_calls")
+    places: list[int] = []
+    for item in value:
+        if (
+            not isinstance(item, int)
+            or isinstance(item, bool)
+            or not 0 <= item < len(origin.calls)
+            or (places and item <= places[-1])
+        ):
+            raise invalid_file(pointer, "pin_calls")
+        places.append(item)
+    return tuple(places)

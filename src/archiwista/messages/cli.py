@@ -725,8 +725,22 @@ MESSAGES = {
         "Brak widocznych projektów.",
     ),
     "project_group_line": Text(
-        "  group {group} ({origin}): {pins} pins",
-        "  zestaw {group} ({origin}): przypięcia {pins}",
+        "  group {group} ({origin}, {state}): {pins} pins",
+        "  zestaw {group} ({origin}, {state}): przypięcia {pins}",
+    ),
+    "project_closed_line": Text(
+        "    closed {closed_at} by {closed_by}, pins_sha256 {pins_sha256}",
+        "    zamknięty {closed_at} przez {closed_by}, pins_sha256 {pins_sha256}",
+    ),
+    "project_digest_mismatch_line": Text(
+        (
+            "    pins_sha256 does not match the pins: the file was changed outside"
+            " Archiwista; open the group for editing and close it again."
+        ),
+        (
+            "    pins_sha256 nie zgadza się z przypięciami: plik zmieniono poza"
+            " Archiwistą; otwórz zestaw do edycji i zamknij go ponownie."
+        ),
     ),
     "pin_line": Text(
         "    pin {version} ({producer}): {state}",
@@ -1582,19 +1596,41 @@ MESSAGES = {
     ),
     "jobs_pin_help": Text(
         (
-            "download only: the project whose new group (--pin-group) the run's"
-            " files and its plans' other positions are pinned into when the job"
-            " succeeds."
+            "download only: the project whose set (--pin-group) the run's files and"
+            " its plans' other positions are pinned into when the job succeeds: a"
+            " new set, written closed (--pin-open: left open), or with --pin-add"
+            " an open one."
         ),
         (
-            "tylko download: projekt, do którego nowego zestawu (--pin-group) zostaną"
+            "tylko download: projekt, do którego zestawu (--pin-group) zostaną"
             " przypięte pliki uruchomienia i pozostałe pozycje jego planów, gdy"
-            " zadanie się powiedzie."
+            " zadanie się powiedzie: nowego, zapisanego jako zamknięty (--pin-open:"
+            " pozostawionego w budowie), albo z --pin-add zestawu w budowie."
         ),
     ),
     "jobs_pin_group_help": Text(
-        "The new group's name in the project of --pin.",
-        "Nazwa nowego zestawu w projekcie z --pin, najlepiej cel albo rok (np. 2024).",
+        (
+            "The set's name in the project of --pin: a new one, or with --pin-add"
+            " an open one."
+        ),
+        (
+            "Nazwa zestawu w projekcie z --pin: nowego albo, z --pin-add, zestawu"
+            " w budowie."
+        ),
+    ),
+    "jobs_pin_add_help": Text(
+        (
+            "download only: add the run's calls and pins to the open set --pin-group"
+            " (a set in the making) instead of writing a new one."
+        ),
+        (
+            "tylko download: dodaj wywołania i przypięcia uruchomienia do zestawu w"
+            " budowie --pin-group, zamiast zapisać nowy."
+        ),
+    ),
+    "jobs_pin_open_help": Text(
+        "download only: leave the new set --pin-group open, a set in the making.",
+        "tylko download: zostaw nowy zestaw --pin-group w budowie (otwarty).",
     ),
     "jobs_call_help": Text(
         (
@@ -2161,23 +2197,93 @@ MESSAGES = {
     ),
     "project_pin_help": Text(
         (
-            "Pins versions the store holds into a new local group of a project, or"
-            " with --add into a local group it has (POST"
-            " /api/v1/projects/{{project}}/groups, …/groups/{{group}}/pins): named by"
-            " --version, or the versions of the rows of a catalog query (--query,"
-            " the parameters of GET /slots as a JSON object, every page). Their"
-            " SHA-256, size, unit and label come from the index: no network. Prints"
-            " what was pinned, already pinned and skipped, and the project's card."
+            "Pins versions the store holds into a new group of a project, written"
+            " closed (--open: left open, a set in the making), or with --add into"
+            " an open group it has (POST /api/v1/projects/{{project}}/groups,"
+            " …/groups/{{group}}/pins): named by --version, or the versions of the"
+            " rows of a catalog query (--query, the parameters of GET /slots as a"
+            " JSON object, every page). Their SHA-256, size, unit and label come"
+            " from the index: no network. Prints what was pinned, already pinned"
+            " and skipped, and the project's card."
         ),
         (
-            "Przypina wersje z magazynu do nowego zestawu projektu albo, z"
-            " --add, do jego istniejącego zestawu z magazynu (POST"
-            " /api/v1/projects/{{project}}/groups, …/groups/{{group}}/pins): wskazane"
-            " przez --version albo wersje wierszy zapytania katalogu (--query,"
-            " parametry GET /slots jako obiekt JSON, wszystkie strony). Ich"
-            " SHA-256, rozmiar, jednostka i etykieta pochodzą z indeksu: bez sieci."
-            " Wypisuje, co przypięto, co już było przypięte i co pominięto, oraz"
-            " kartę projektu."
+            "Przypina wersje z magazynu do nowego zestawu projektu, zapisanego jako"
+            " zamknięty (--open: pozostawionego w budowie), albo, z --add, do jego"
+            " zestawu w budowie (POST /api/v1/projects/{{project}}/groups,"
+            " …/groups/{{group}}/pins): wskazane przez --version albo wersje"
+            " wierszy zapytania katalogu (--query, parametry GET /slots jako obiekt"
+            " JSON, wszystkie strony). Ich SHA-256, rozmiar, jednostka i etykieta"
+            " pochodzą z indeksu: bez sieci. Wypisuje, co przypięto, co już było"
+            " przypięte i co pominięto, oraz kartę projektu."
+        ),
+    ),
+    "project_draft_help": Text(
+        (
+            "Writes an empty set in the making, an open group of a project (POST"
+            " /api/v1/projects/{{project}}/groups with open): a plan window's"
+            " download, jobs start … --pin-add or project-pin --add fill it, and"
+            " project-close closes it. Prints the outcome and the project's card."
+        ),
+        (
+            "Zapisuje pusty zestaw w budowie, otwarty zestaw projektu (POST"
+            " /api/v1/projects/{{project}}/groups z open): wypełnia go pobranie z"
+            " okna planu, jobs start … --pin-add albo project-pin --add, a zamyka"
+            " project-close. Wypisuje wynik i kartę projektu."
+        ),
+    ),
+    "project_open_help": Text(
+        "Leave the new group open, a set in the making, instead of writing it closed.",
+        "Zostaw nowy zestaw w budowie (otwarty), zamiast zapisać go jako zamknięty.",
+    ),
+    "project_uncall_help": Text(
+        (
+            "Removes a call of an open group with the pins only its run pinned"
+            " (DELETE /api/v1/projects/{{project}}/groups/{{group}}/calls/{{call}});"
+            " the versions stay in the store. Prints the project's card."
+        ),
+        (
+            "Usuwa polecenie zestawu w budowie z przypięciami tylko z jego"
+            " uruchomienia (DELETE"
+            " /api/v1/projects/{{project}}/groups/{{group}}/calls/{{call}}); wersje"
+            " zostają w magazynie. Wypisuje kartę projektu."
+        ),
+    ),
+    "project_call_help": Text(
+        "The call's place in the group's origin.calls, from 0.",
+        "Numer polecenia w origin.calls zestawu, od 0.",
+    ),
+    "project_call_negative": Text(
+        "--call is a call's place, from 0: {call} is none.",
+        "--call to numer polecenia od 0: {call} nim nie jest.",
+    ),
+    "project_close_help": Text(
+        (
+            "Closes an open group (POST"
+            " /api/v1/projects/{{project}}/groups/{{group}}/close): writes"
+            " closed_at, closed_by and pins_sha256, the digest of its pins. Refused"
+            " while a job writes into it, without pins, or with a pin that is not"
+            " ok in the index (project-verify hashes them first). Prints the"
+            " project's card."
+        ),
+        (
+            "Zamyka zestaw w budowie (POST"
+            " /api/v1/projects/{{project}}/groups/{{group}}/close): zapisuje"
+            " closed_at, closed_by i pins_sha256, skrót jego przypięć. Odmawia,"
+            " gdy do zestawu zapisuje zadanie, gdy nie ma przypięć albo gdy"
+            " przypięcie nie jest w indeksie w stanie ok (najpierw sprawdza je"
+            " project-verify). Wypisuje kartę projektu."
+        ),
+    ),
+    "project_reopen_help": Text(
+        (
+            "Opens a closed group for editing (POST"
+            " /api/v1/projects/{{project}}/groups/{{group}}/reopen): its closed_at,"
+            " closed_by and pins_sha256 go. Prints the project's card."
+        ),
+        (
+            "Otwiera zamknięty zestaw do edycji (POST"
+            " /api/v1/projects/{{project}}/groups/{{group}}/reopen): jego"
+            " closed_at, closed_by i pins_sha256 znikają. Wypisuje kartę projektu."
         ),
     ),
     "project_group_help": Text(
@@ -2217,21 +2323,23 @@ MESSAGES = {
         ),
     ),
     "project_add_help": Text(
-        "Pin into a local group the project has, not a new one.",
-        "Przypnij do istniejącego zestawu z magazynu, nie do nowego.",
+        "Pin into an open group the project has (a set in the making), not a new one.",
+        "Przypnij do zestawu w budowie (otwartego) projektu, nie do nowego.",
     ),
     "project_unpin_help": Text(
         (
-            "Removes pins of a project's group (--pin, POST"
+            "Removes pins of a project's open group (--pin, POST"
             " /api/v1/projects/{{project}}/groups/{{group}}/unpin), or without --pin"
-            " the whole group (DELETE /api/v1/projects/{{project}}/groups/{{group}});"
-            " the versions stay in the store. Prints the project's card."
+            " the whole group, open or closed (DELETE"
+            " /api/v1/projects/{{project}}/groups/{{group}}); the versions stay in"
+            " the store. Prints the project's card."
         ),
         (
-            "Usuwa przypięcia z zestawu projektu (--pin, POST"
+            "Usuwa przypięcia z zestawu projektu w budowie (--pin, POST"
             " /api/v1/projects/{{project}}/groups/{{group}}/unpin) albo, bez --pin,"
-            " cały zestaw (DELETE /api/v1/projects/{{project}}/groups/{{group}});"
-            " wersje zostają w magazynie. Wypisuje kartę projektu."
+            " cały zestaw, otwarty lub zamknięty (DELETE"
+            " /api/v1/projects/{{project}}/groups/{{group}}); wersje zostają w"
+            " magazynie. Wypisuje kartę projektu."
         ),
     ),
     "project_pin_opt_help": Text(

@@ -6,22 +6,25 @@
 what its worker would refuse: a project the principal does not see (``404``,
 as an unknown one), a re-pin or a restore asked by a principal who may not
 change the project (``project.write``) or write the stores (``store.write``;
-``403 permission_denied``), a group the project does not have (``404``), a
-group whose producer offers no commands (``422 unsupported``,
-``no_commands``) for the jobs that run calls, a re-pin of a local group with
-a pin whose call the index knows cannot be rebuilt (``422 unsupported``,
+``403 permission_denied``), a group the project does not have (``404``), a re-pin
+of a closed set (``409 conflict``, ``set_closed``: a set is opened for
+editing first, A-ADR-049 erratum 6), a group whose producer offers no
+commands (``422 unsupported``, ``no_commands``) for the jobs that run calls,
+a re-pin of a local group, or of a pin added by hand to a plan group, whose
+call the index knows cannot be rebuilt (``422 unsupported``,
 ``command_not_rebuildable``, A-ADR-049 D5) and a group whose producer's store
 the project names matches no configured store (``409 conflict``,
 ``unknown_store``). The supervisor then refuses a second job of the project
 (``409 conflict``) and, offline, a job that needs the network (``409``,
 ``offline_mode``). A verification and a check need only that the principal
-sees the project. ``require`` asks the same of a retry
-(``archiwista.services.jobs.retry``). Nothing here uses the network: the
-producer runs in the job's worker.
+sees the project. ``require`` and ``require_open_sets`` ask the same of a
+retry (``archiwista.services.jobs.retry``). Nothing here uses the network:
+the producer runs in the job's worker.
 
-``chosen_groups``, ``group_producers`` and ``group_store`` are shared with the
-jobs' runners (``archiwista.jobs.project_jobs``), which import this module
-without the supervisor.
+``chosen_groups``, ``group_producers``, ``group_store``, ``by_hand`` and
+``set_closed`` are shared with the jobs' runners
+(``archiwista.jobs.project_jobs``) and the pins' services, which import this
+module without the supervisor.
 """
 
 from collections.abc import Mapping, Sequence
@@ -31,7 +34,13 @@ from archiwista.auth import Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings
 from archiwista.errors import ConflictError, NotFoundError
-from archiwista.index import IndexQueries, PinGroupRef, ProjectRecord, ProjectRef
+from archiwista.index import (
+    IndexQueries,
+    PinGroupRef,
+    ProjectPinRef,
+    ProjectRecord,
+    ProjectRef,
+)
 from archiwista.messages import message
 from archiwista.services.commands import actions, not_rebuildable, version_commands
 from archiwista.sources.registry import PluginRegistry
@@ -122,7 +131,8 @@ def start(
         pin known ``not_rebuildable`` (``command_not_rebuildable``).
     ConflictError
         A check, a re-pin or a restore of a group whose producer's store
-        the project names matches no configured store (``unknown_store``).
+        the project names matches no configured store (``unknown_store``); a
+        re-pin of a closed set (``set_closed``).
     JobConflictError
         The project has a job that waits or runs (``details.job``).
     OfflineModeError
@@ -144,16 +154,21 @@ def start(
     ):
         raise ValueError(f"a re-pin takes one group, got {groups!r}")
     chosen = chosen_groups(record, groups)
+    if kind == "repin":
+        require_open_sets(record, [group.name for group in chosen])
     if job_kind in _CALLING:
         for group in chosen:
             for producer in group_producers(group):
                 actions(registry, producer)
-                if group.origin == "local":
+                if group.origin == "local" or any(
+                    by_hand(pin) for pin in group.pins if pin.producer == producer
+                ):
                     version_commands(registry, producer)
                 group_store(project, producer)
     if kind == "repin":
         for pin in chosen[0].pins:
-            if chosen[0].origin == "local" and pin.command == "not_rebuildable":
+            own_call = chosen[0].origin == "local" or by_hand(pin)
+            if own_call and pin.command == "not_rebuildable":
                 raise not_rebuildable(
                     pin.producer, pin.version, pin.command_refusal or ""
                 )
@@ -161,6 +176,35 @@ def start(
     return jobs.submit(
         job_kind, params={"project": project.key, "groups": names}, actor=actor
     )
+
+
+def by_hand(pin: ProjectPinRef) -> bool:
+    """Whether a pin of a ``plan`` group was added by hand (``calls`` ``[]``).
+
+    Such a pin is checked, restored and re-pinned by its own call, as a
+    ``local`` group's pin is (A-ADR-049 erratum 6).
+    """
+    return pin.calls == ()
+
+
+def set_closed(name: str) -> ConflictError:
+    """Return the refusal of a change of a closed set (``set_closed``)."""
+    return ConflictError(
+        message("project.set_closed", group=name),
+        reason="set_closed",
+        details={"group": name},
+        hint=message("fix.set_closed"),
+    )
+
+
+def require_open_sets(record: ProjectRecord, names: Sequence[str] | None) -> None:
+    """Refuse a re-pin of a closed set (``set_closed``) before its job exists.
+
+    ``names`` are the groups of the job (``None``: every group).
+    """
+    for group in chosen_groups(record, names):
+        if group.state != "open":
+            raise set_closed(group.name)
 
 
 def require(
@@ -203,7 +247,9 @@ def chosen_groups(
             raise NotFoundError(
                 message(
                     "project.group_not_found", project=record.project.key, group=name
-                )
+                ),
+                reason="group_not_found",
+                details={"group": name},
             )
         chosen[group.name] = group
     return tuple(group for group in record.groups if group.name in chosen)

@@ -1,12 +1,15 @@
 """``archiwista jobs``: background jobs (plan of 2026-10-25, A4 to A6).
 
 ``jobs start RODZAJ PRODUCENT --store ID --call JSON [--call JSON …] [--plan
-ZADANIE]`` starts a job of calls of commands of the producer's catalog on a
+ZADANIE] [--pin PROJEKT --pin-group ZESTAW [--pin-add | --pin-open]]``
+starts a job of calls of commands of the producer's catalog on a
 configured store (``POST /jobs``; all the lines of a row in one job, ADR-044)
 and follows it to its end in the foreground (``archiwista.jobs.foreground``):
 kind ``check`` plans a run of each call without its effects, ``download``
 runs them in the store, with ``--plan`` the plans a ``check`` job of the same
-calls kept. It prints the job as it ended (``GET /jobs/{job}``,
+calls kept, and with ``--pin`` pins what it leaves into a new set of a
+project (``--pin-open``: left open) or an open one (``--pin-add``). It
+prints the job as it ended (``GET /jobs/{job}``,
 ``JobDetail``) and exits with its outcome: ``0`` succeeded, ``10`` partial,
 ``11`` failed, ``130`` cancelled or interrupted (ERR §1). ``jobs retry
 ZADANIE`` starts a job that did not succeed again (``POST
@@ -129,6 +132,13 @@ def add_commands(commands: Commands) -> None:
         metavar=message("metavar.group"),
         help=message("cli.jobs_pin_group_help"),
     )
+    pin_mode = started.add_mutually_exclusive_group()
+    pin_mode.add_argument(
+        "--pin-add", action="store_true", help=message("cli.jobs_pin_add_help")
+    )
+    pin_mode.add_argument(
+        "--pin-open", action="store_true", help=message("cli.jobs_pin_open_help")
+    )
     listed = add_parser(actions, "list", "cli.jobs_list_help")
     listed.add_argument(
         "--kind",
@@ -226,6 +236,10 @@ def _start(
             given[name] = getattr(args, name)
     if args.pin_project is not None or args.pin_group is not None:
         given["pin"] = {"project": args.pin_project, "group": args.pin_group}
+        if args.pin_add:
+            given["pin"]["add"] = True
+        if args.pin_open:
+            given["pin"]["open"] = True
     try:
         request = JobRequest.model_validate(given)
     except ValidationError as error:

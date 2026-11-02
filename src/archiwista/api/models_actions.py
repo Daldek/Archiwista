@@ -16,13 +16,21 @@ validation_error``).
 from datetime import datetime
 from typing import Any, Self
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from archiwista.api.models_availability import AvailabilityNoticeItem
 from archiwista.index import PlanTotals, StoredPlan
 from archiwista.jobs import MAX_JOB_CALLS
 from archiwista.projects import MAX_GROUP_NAME_CHARS
 from archiwista.services.actions import ActionKind, KeptPlans
+from archiwista.services.pins import PinMode
 from archiwista.sources import CommandCall, PlanEntry, PlanStatus
 
 _JOB_ID = "3f9c1a7e5b2d4c60"
@@ -163,7 +171,7 @@ class CallRequest(BaseModel):
 
 
 class JobPin(BaseModel):
-    """The project and the new group a download pins its files into."""
+    """The project and the set a download pins its files into."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -176,11 +184,36 @@ class JobPin(BaseModel):
         min_length=1,
         max_length=MAX_GROUP_NAME_CHARS,
         description=(
-            "The new group's name: 1 to 80 characters, no control character, no"
-            " `/`, free in the project (compared case-folded)."
+            "The set's name: 1 to 80 characters, no control character, no `/`."
+            " A new set's name is free in the project (compared case-folded);"
+            " with `add` it names an open set of the project."
         ),
         examples=["NMT 2023"],
     )
+    add: bool = Field(
+        default=False,
+        description=(
+            "Add the run's calls and pins to the open set `group` (a set in the"
+            " making) instead of writing a new set."
+        ),
+    )
+    open: bool = Field(
+        default=False,
+        description=(
+            "Leave the new set open (a set in the making) instead of writing it"
+            " closed; not with `add`."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _one_mode(self) -> Self:
+        if self.add and self.open:
+            raise ValueError("a pin adds to an open set or opens a new one, not both")
+        return self
+
+    def mode(self) -> PinMode:
+        """Return how the download pins: ``add``, ``open`` or ``new``."""
+        return "add" if self.add else "open" if self.open else "new"
 
 
 class JobRequest(BaseModel):
@@ -241,15 +274,20 @@ class JobRequest(BaseModel):
     pin: "JobPin | None" = Field(
         default=None,
         description=(
-            "`download` only: pin what the run leaves into a new group of a"
-            " project (A-ADR-049 decision 9). When the job succeeds (no failed"
-            " unit, nothing taken) its worker writes the group, origin `plan`"
-            " with the job's producer and calls: a pin for every file of"
-            " `files[]` and, for each call with a kept plan, for every other"
-            " position the version the index holds at its standard path. The"
-            " request also needs `project.write`; a taken name is `409"
-            " group_exists` before a job exists. The summary's `pin` says"
-            " what was written."
+            "`download` only: pin what the run leaves into a set of a project"
+            " (A-ADR-049 decision 9 and erratum 6). When the job succeeds (no"
+            " failed unit, nothing taken) its worker writes: a new set, origin"
+            " `plan` with the job's producer and calls, closed at once (`open`:"
+            " left open, a set in the making), or the run's calls and pins"
+            " appended to the open set `group` (`add`). It pins every file of"
+            " `files[]` and, for each call with a kept plan, every other"
+            " position's version the index holds at its standard path, each pin"
+            " naming its calls. The request also needs `project.write`; refused"
+            " before a job exists: a taken name (`409 group_exists`), with `add`"
+            " an unknown set (`404 group_not_found`), a closed one (`409"
+            " set_closed`), one of another producer (`409 set_producer`) or more"
+            " than 1000 calls together (`400 too_many_calls`). The summary's"
+            " `pin` says what was written."
         ),
     )
 
@@ -278,9 +316,11 @@ class JobRequest(BaseModel):
             for call in self.calls
         )
 
-    def pin_target(self) -> tuple[str, str] | None:
-        """Return ``pin`` as ``(project, group)``."""
-        return None if self.pin is None else (self.pin.project, self.pin.group)
+    def pin_target(self) -> tuple[str, str, PinMode] | None:
+        """Return ``pin`` as ``(project, group, mode)``."""
+        if self.pin is None:
+            return None
+        return (self.pin.project, self.pin.group, self.pin.mode())
 
 
 class PlanEntryItem(BaseModel):

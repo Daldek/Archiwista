@@ -63,7 +63,13 @@ from archiwista.index.types import (
     own_file_id,
 )
 from archiwista.messages import STORED_LANG, localize
-from archiwista.projects import PlanOrigin, ProjectDocument, format_time
+from archiwista.projects import (
+    PinGroup,
+    PlanOrigin,
+    ProjectDocument,
+    format_time,
+    pins_digest,
+)
 from archiwista.sources import (
     AvailabilityReport,
     CommandCall,
@@ -2803,7 +2809,11 @@ def _write_project_document(
     document: ProjectDocument,
     stores: Mapping[str, int | None],
 ) -> None:
-    """Insert a project's stores, groups and pins (each pin's store by producer)."""
+    """Insert a project's stores, groups and pins (each pin's store by producer).
+
+    A closed group's recorded ``pins_sha256`` is compared with the digest of
+    its pins here, as the file was read (``digest_state``).
+    """
     connection.executemany(
         "INSERT INTO project_stores (project_id, producer, root, store_id)"
         " VALUES (?, ?, ?, ?)",
@@ -2814,36 +2824,36 @@ def _write_project_document(
     )
     connection.executemany(
         "INSERT INTO pin_groups (project_id, position, name, origin, producer,"
-        " calls, selections) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        " calls, selections, state, closed_at, closed_by, pins_sha256,"
+        " digest_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 project_id,
                 position,
                 group.name,
                 group.origin.kind,
-                *(
-                    (
-                        group.origin.producer,
-                        _json(
-                            [
-                                {"command": call.command, "options": call.options}
-                                for call in group.origin.calls
-                            ]
-                        ),
-                        None,
+                group.origin.producer if isinstance(group.origin, PlanOrigin) else None,
+                (
+                    _json(
+                        [
+                            {"command": call.command, "options": call.options}
+                            for call in group.origin.calls
+                        ]
                     )
                     if isinstance(group.origin, PlanOrigin)
-                    else (
-                        None,
-                        None,
-                        _json(
-                            [
-                                {"from": item.source, "query": item.query}
-                                for item in group.origin.selections
-                            ]
-                        ),
-                    )
+                    else None
                 ),
+                _json(
+                    [
+                        {"from": item.source, "query": item.query}
+                        for item in group.origin.selections
+                    ]
+                ),
+                group.state,
+                None if group.closed_at is None else format_time(group.closed_at),
+                group.closed_by,
+                group.pins_sha256,
+                _digest_state(group),
             )
             for position, group in enumerate(document.groups)
         ],
@@ -2851,7 +2861,7 @@ def _write_project_document(
     connection.executemany(
         "INSERT INTO pins (project_id, group_position, producer, store_id,"
         " version_path, sha256, content_sha256, size_bytes, unit, label, pinned_at,"
-        " pinned_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " pinned_by, calls) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             (
                 project_id,
@@ -2866,8 +2876,17 @@ def _write_project_document(
                 pin.label,
                 format_time(pin.pinned_at),
                 pin.pinned_by,
+                None if pin.calls is None else _json(list(pin.calls)),
             )
             for position, group in enumerate(document.groups)
             for pin in group.pins
         ],
     )
+
+
+def _digest_state(group: PinGroup) -> str | None:
+    """Return whether a group's recorded ``pins_sha256`` is its pins' digest."""
+    if group.pins_sha256 is None:
+        return None
+    digest = pins_digest((pin.producer, pin.version, pin.sha256) for pin in group.pins)
+    return "ok" if digest == group.pins_sha256 else "mismatch"
