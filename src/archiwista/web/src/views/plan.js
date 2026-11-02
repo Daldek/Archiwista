@@ -29,11 +29,13 @@
  * (`store_write`) sees the plan with the action disabled and the reason.
  * „Dodaj do projektu” (A-ADR-049 decision 9) asks the download to pin, once
  * it succeeded, what it fetched and the plan's positions the store holds
- * into a new group of a project the session may change (`pin` of `POST
- * /jobs`; the group's name starts as the window's title); with nothing to
- * download it only pins. It is disabled with its reason without
- * `store_write`, offline, without a project to change or before a plan; a
- * refusal of the project or the group shows at its field.
+ * into a set of a project the session may change (`pin` of `POST /jobs`):
+ * „Nowy zestaw” (its name starts as the window's title), written closed or,
+ * with „Zostaw w budowie”, left open (`open`), or „Zestaw w budowie”, one of
+ * the project's open sets (`add`); with nothing to download it only pins.
+ * It is disabled with its reason without `store_write`, offline, without a
+ * project to change or before a plan; a refusal of the project or the set
+ * shows at its field.
  *
  * The shell opens the window (`openPlan` of downloads.js), so it outlives the
  * view. Planning and the confirmation are modal; once something started the
@@ -44,10 +46,11 @@
  * pobieranie”.
  */
 
-import { getJobPlan, parseCommand, requestEach, startJob, watchJob } from "../api.js";
+import { getJobPlan, getProject, parseCommand, requestEach, startJob, watchJob } from "../api.js";
 import { useApp } from "../context.js";
 import { CancelDownload, downloadActive, DownloadStatus, useDownloads } from "../downloads.js";
 import { bytes, count, int, plural } from "../format.js";
+import { useResource } from "../hooks.js";
 import { actions } from "../labels/actions.js";
 import { t } from "../labels/index.js";
 import { projects as P } from "../labels/projects.js";
@@ -113,7 +116,15 @@ export function DownloadPlan({
 }) {
   const { session, settings } = useApp();
   const projects = useWritableProjects();
-  const [pin, setPin] = useState(() => ({ on: false, project: null, group: groupName(title) }));
+  // „Nowy zestaw” (`group`, left open with `open`) or „Zestaw w budowie” (`set`).
+  const [pin, setPin] = useState(() => ({
+    on: false,
+    project: null,
+    mode: "new",
+    group: groupName(title),
+    open: false,
+    set: null,
+  }));
   const [pinRefusal, setPinRefusal] = useState(null);
   const downloads = useDownloads();
   const titleId = useId();
@@ -140,9 +151,25 @@ export function DownloadPlan({
   const areaProject = area?.projects.find((item) =>
     writable.some((entry) => entry.project === item.project));
   const pinProject = pin.project ?? areaProject?.project ?? writable[0]?.project ?? null;
+  // The chosen project's sets in the making, read once pinning is chosen.
+  const target = useResource(
+    (signal) =>
+      pinning && pinProject ? getProject(pinProject, { signal }) : Promise.resolve(null),
+    [pinning ? pinProject : null],
+  );
+  const sets =
+    target.data && target.data.project === pinProject
+      ? target.data.groups.filter((group) => group.state === "open")
+      : null;
+  const adding = pin.mode === "add" && Boolean(sets?.length);
+  const pinSet = adding ? (sets.find((item) => item.name === pin.set) ?? sets[0]).name : null;
   const pinGroup = pin.group.trim();
-  const pinTarget =
-    pinning && pinProject && pinGroup ? { project: pinProject, group: pinGroup } : null;
+  let pinTarget = null;
+  if (pinning && pinProject && adding) {
+    pinTarget = { project: pinProject, group: pinSet, add: true };
+  } else if (pinning && pinProject && pinGroup) {
+    pinTarget = { project: pinProject, group: pinGroup, ...(pin.open ? { open: true } : {}) };
+  }
   const followed = (run) => {
     if (!run.job) return null;
     const item = downloads.entries.find((entry) => entry.id === run.job.id) ?? seen.current.get(run.job.id) ?? null;
@@ -204,9 +231,11 @@ export function DownloadPlan({
       if (!error.problem) throw error;
       const field = pinTarget ? pinRefusalField(error) : null;
       if (field) {
-        // The project or the group refused before a job: corrected and asked again.
+        // The project or the set refused before a job: corrected and asked again,
+        // the project's sets read again (one may have been closed meanwhile).
         setRuns(null);
         setPinRefusal({ problem: error.problem, field: field === "group" ? "group" : "project" });
+        target.reload();
         return;
       }
       record(0, { problem: error.problem });
@@ -318,7 +347,7 @@ export function DownloadPlan({
         : null}
       ${lines !== null && !started
         ? html`<${PinOption} pin=${pin} why=${pinWhy} projects=${projects} project=${pinProject}
-            refusal=${pinRefusal} onChange=${changePin} />`
+            sets=${sets} set=${pinSet} refusal=${pinRefusal} onChange=${changePin} />`
         : null}
       ${reason && !started
         ? html`<p class="plan-line warn plan-reason" role="note"><${Icon} name="alert" size=${15} /><span>${reason}</span></p>`
@@ -355,13 +384,17 @@ function groupName(title) {
 }
 
 /**
- * „Dodaj do projektu”: the project and the new group the download pins
- * into, disabled with its reason (`why`); a refusal at its field.
+ * „Dodaj do projektu”: the project and the set the download pins into —
+ * „Nowy zestaw” by its name, written closed or left „w budowie” (`open`),
+ * or „Zestaw w budowie”, one of the project's open sets (`sets`, null while
+ * they are read; `set` the chosen one) — disabled with its reason (`why`);
+ * a refusal at its field.
  */
-function PinOption({ pin, why, projects, project, refusal, onChange }) {
+function PinOption({ pin, why, projects, project, sets, set, refusal, onChange }) {
   const id = useId();
   const items = projects.data ?? [];
   const on = pin.on && why === null && items.length > 0;
+  const adding = pin.mode === "add" && Boolean(sets?.length);
   const at = (field) => (refusal?.field === field ? refusal.problem : null);
   const toggle = (event) => onChange({ on: event.currentTarget.checked });
   return html`<fieldset class="plan-pin">
@@ -378,22 +411,52 @@ function PinOption({ pin, why, projects, project, refusal, onChange }) {
             <label for=${`${id}-project`}>${PL.project}</label>
             <select id=${`${id}-project`} value=${project ?? ""}
               aria-invalid=${at("project") ? "true" : null} aria-describedby=${`${id}-project-note`}
-              onChange=${(event) => onChange({ project: event.currentTarget.value })}>
+              onChange=${(event) => onChange({ project: event.currentTarget.value, set: null })}>
               ${items.map(
                 (item) => html`<option key=${item.project} value=${item.project}>${item.name}</option>`,
               )}
             </select>
             <${FieldNote} id=${`${id}-project-note`} problem=${at("project")} />
           </div>
-          <div class=${`field${at("group") ? " invalid" : ""}`}>
-            <label for=${`${id}-group`}>${PL.group}</label>
-            <input id=${`${id}-group`} value=${pin.group} maxlength=${MAX_GROUP_NAME}
-              autocomplete="off" aria-invalid=${at("group") ? "true" : null}
-              aria-describedby=${`${id}-group-note`}
-              onInput=${(event) => onChange({ group: event.currentTarget.value })} />
+          <fieldset class=${`field pin-group${at("group") ? " invalid" : ""}`}>
+            <legend>${PL.set}</legend>
+            <label class="check-field">
+              <input type="radio" name=${`${id}-mode`} checked=${!adding}
+                onChange=${() => onChange({ mode: "new" })} />${PL.group}</label>
+            ${adding
+              ? null
+              : html`<label class="visually-hidden" for=${`${id}-group`}>${PL.name}</label>
+                  <input id=${`${id}-group`} value=${pin.group} maxlength=${MAX_GROUP_NAME}
+                    autocomplete="off" aria-invalid=${at("group") ? "true" : null}
+                    aria-describedby=${`${id}-group-note`}
+                    onInput=${(event) => onChange({ group: event.currentTarget.value })} />
+                  <label class="check-field pin-keep">
+                    <input type="checkbox" checked=${pin.open}
+                      aria-describedby=${`${id}-keep-note`}
+                      onChange=${(event) => onChange({ open: event.currentTarget.checked })} />
+                    ${PL.keep_open}</label>
+                  <span class="field-hint pin-keep" id=${`${id}-keep-note`}>
+                    ${PL.keep_open_hint}</span>`}
+            <label class="check-field">
+              <input type="radio" name=${`${id}-mode`} checked=${adding} disabled=${!sets?.length}
+                onChange=${() => onChange({ mode: "add" })} />${PL.open_group}</label>
+            ${adding
+              ? html`<label class="visually-hidden" for=${`${id}-set`}>${PL.open_group}</label>
+                  <select id=${`${id}-set`} value=${set ?? ""}
+                    aria-invalid=${at("group") ? "true" : null}
+                    aria-describedby=${`${id}-group-note`}
+                    onChange=${(event) => onChange({ set: event.currentTarget.value })}>
+                    ${sets.map(
+                      (item) =>
+                        html`<option key=${item.name} value=${item.name}>${item.name}</option>`,
+                    )}
+                  </select>`
+              : null}
             <${FieldNote} id=${`${id}-group-note`} problem=${at("group")}>
-              ${PL.group_hint}</${FieldNote}>
-          </div>
+              ${adding ? PL.open_group_hint : PL.group_hint}
+              ${sets && !sets.length ? ` ${PL.no_open_groups}` : ""}
+            </${FieldNote}>
+          </fieldset>
         </div>`
       : null}
   </fieldset>`;

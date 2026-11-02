@@ -60,6 +60,8 @@ const ICONS = {
   down: "m6 9 6 6 6-6",
   download: "M12 4v11m-5-5 5 5 5-5M5 20h14",
   trash: "M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13",
+  lock: "M6 11h12v9H6zM8 11V8a4 4 0 0 1 8 0v3",
+  unlock: "M6 11h12v9H6zM8 11V8a4 4 0 0 1 7.7-1.5",
   plus: "M12 5v14M5 12h14",
   file: "M6 3h8l4 4v14H6V3Zm8 0v4h4",
   rotate: "M4 12a8 8 0 0 1 14-5.3M20 4v4h-4M20 12a8 8 0 0 1-14 5.3M4 20v-4h4",

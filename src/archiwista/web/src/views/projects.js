@@ -4,10 +4,10 @@
  * API filters them, nothing filtered here — each a directory with
  * Archiwista's file `archiwista-project.json`: its name and description, the
  * store of each producer whose versions it pins, its groups of pinned
- * versions, the missing ones, and an invalid or newer file. „Nowy projekt…”:
- * every person creates a project in a project directory of the settings
- * (its directory, name, description and area; Archiwista writes the file)
- * and owns it.
+ * versions with how many are sets in the making, the missing ones, and an
+ * invalid or newer file. „Nowy projekt…”: every person creates a project in
+ * a project directory of the settings (its directory, name, description and
+ * area; Archiwista writes the file) and owns it.
  *
  * The chosen project (`?view=projects&project=<id>`) is in the side panel:
  * its directory to copy, the store of each producer with its match or that
@@ -15,12 +15,18 @@
  * links to its map and filtered catalog, and the store's file counts there;
  * when and by whom it was created, its problems, and its groups („Zestawy”)
  * in the file's order — each with where its versions came from (a plan's
- * command lines, the first three and „i N więcej”, or the requests
- * that chose them from the store, in words), its jobs and its pins with
- * their state, the state of
- * their command (D5) and what the last job found, leading to their file
- * cards; „Odepnij” at a pin and „Usuń zestaw” (each after a question) for a
- * session that may change the project. „Zmień…” changes the name, the
+ * command lines, the first three and „i N więcej”, and the requests that
+ * chose versions from the store, in words), its state (open, „w budowie”,
+ * or closed with when, by whom and the start of its digest to copy; a
+ * digest the pins no longer match is warned), its jobs and its pins with
+ * their state, the state of their command (D5) and what the last job found,
+ * leading to their file cards. For a session that may change the project:
+ * „Zamknij zestaw” of an open set (disabled with its reasons; a refusal
+ * shows at the set), „Otwórz do edycji” of a closed one, „Odepnij” at a pin
+ * and „Usuń polecenie” at a call of an open set, and „Usuń zestaw”, each
+ * change but closing after a question; „Nowy zestaw w budowie…” makes an
+ * empty set in the making. A download that ends reads the card again.
+ * „Zmień…” changes the name, the
  * description, the area and the store of a producer; „Udostępnij…” opens the
  * sharing screen (views/sharing.js): who sees the project, its owner and its
  * data folder; „Usuń projekt…” removes the project from Archiwista, never its
@@ -44,6 +50,8 @@
  */
 
 import {
+  addProjectGroup,
+  closeGroup,
   createProject,
   deleteProject,
   formatCommand,
@@ -52,7 +60,9 @@ import {
   listOwnFiles,
   listProjects,
   listSlots,
+  removeGroupCall,
   removeProjectGroup,
+  reopenGroup,
   setProjectArea,
   setProjectStore,
   startProjectScan,
@@ -61,6 +71,7 @@ import {
   uploadArea,
 } from "../api.js";
 import { useApp } from "../context.js";
+import { useDownloadEnd } from "../downloads.js";
 import { count, int, size, stamp } from "../format.js";
 import { useAction, useResource } from "../hooks.js";
 import { T, t } from "../labels/index.js";
@@ -85,6 +96,7 @@ import {
   useState,
 } from "../ui.js";
 import {
+  actorName,
   Badge,
   FileLink,
   IssueList,
@@ -97,9 +109,11 @@ import {
   storeName,
   useJob,
 } from "./cards.js";
+import { FieldNote, MAX_GROUP_NAME, pinRefusalField } from "./pin-dialog.js";
 import { ProjectActivity } from "./project-activity.js";
 import { ProjectExports } from "./project-exports.js";
 import {
+  closeReasons,
   groupJobReason,
   JobButton,
   PinCommand,
@@ -122,6 +136,10 @@ const FOLDER_LEVEL = { ok: "ok", missing: "bad", unreadable: "bad", invalid: "ba
 const AREA_LEVEL = { ok: "ok", missing: "bad", changed: "warn", invalid: "bad" };
 // The command lines of a plan group shown before „i N więcej”.
 const SHOWN_CALLS = 3;
+// The characters of a closed set's digest shown; the title holds all of it.
+const DIGEST_SHOWN = 12;
+// The pins „Usuń polecenie” names before „i N więcej”.
+const SHOWN_PINS = 10;
 
 /**
  * The Projects view (route `projects`).
@@ -249,7 +267,11 @@ function ProjectList({ list, chosen, store, route, notice }) {
                         : null}
                     </td>
                     <td><${StoreLines} stores=${item.stores} /></td>
-                    <td class="num tabular">${int(item.groups)}</td>
+                    <td class="num tabular">${int(item.groups)}
+                      ${item.open_groups > 0
+                        ? html`<span class="faint pc-open-count">
+                            ${t(L.columns.open_groups, { count: int(item.open_groups) })}</span>`
+                        : null}</td>
                     <td class="num tabular">${int(item.pins)}</td>
                     <td class=${item.missing_pins ? "num tabular bad-text" : "num tabular"}>
                       ${int(item.missing_pins)}</td>
@@ -561,11 +583,15 @@ function ProjectCard({ id, onChanged, onDeleted }) {
   // Each change of the data folder on the sharing screen: „Dane własne” reads
   // the folder again and follows the scan the server started.
   const [folderRound, setFolderRound] = useState(0);
+  // A change read again: the card and the project's waiting and running jobs.
   const changed = () => {
     resource.reload();
+    jobs.reload();
     onChanged();
   };
   const jobs = useProjectJobs(id, changed);
+  // A download may have pinned into the project, or no longer writes into a set.
+  useDownloadEnd(changed);
   const { data: card, error } = resource;
   if (!card) {
     if (!error) return html`<${Spinner} />`;
@@ -578,9 +604,10 @@ function ProjectCard({ id, onChanged, onDeleted }) {
   const context = jobs.contextOf(card);
   const verify = projectJob("verify", context);
   const check = projectJob("check", context);
-  const groupReasons = card.groups.flatMap((group) =>
-    ["check", "repin", "restore"].map((kind) => groupJobReason(kind, group, context)),
-  );
+  const groupReasons = card.groups.flatMap((group) => [
+    ...["check", "repin", "restore"].map((kind) => groupJobReason(kind, group, context)),
+    ...(card.project_write && group.state === "open" ? closeReasons(group, context) : []),
+  ]);
   return html`<article class="project-card" aria-labelledby="project-card-title">
     <h2 class="pc-title" id="project-card-title">
       <${Tech} value=${[["project", card.project], ["path", card.path.local]]}>${card.name}</${Tech}>
@@ -627,7 +654,8 @@ function ProjectCard({ id, onChanged, onDeleted }) {
           <${IssueList} issues=${card.problems} currentProject=${card.project} />
         </section>`
       : null}
-    <${Groups} card=${card} jobs=${jobs} context=${context} base=${whyId} onChanged=${changed} />
+    <${Groups} card=${card} jobs=${jobs} context=${context} why=${why} base=${whyId}
+      onChanged=${changed} />
     <${ProjectExports} card=${card} />
     <${OwnData} key=${card.project} project=${card.project} round=${folderRound} />
     <${ProjectActivity} card=${card} />
@@ -770,87 +798,289 @@ function RemoveProject({ card, onClose, onDeleted }) {
 }
 
 /**
- * The groups of pinned versions in the file's order, each with its origin,
- * its jobs („Sprawdź aktualizacje”, „Przepnij”, „Przywróć brakujące”,
- * disabled with their reason in the card's list `base`) and pins with what
- * the last job found at each; for a session that may change the project
- * „Odepnij” at each pin and „Usuń zestaw”, each after a question.
+ * The groups of pinned versions („zestawy”) in the file's order (`Group`).
+ * For a session that may change the project: „Zamknij zestaw” of an open
+ * set (the server's refusal shows at the set), „Otwórz do edycji” of a
+ * closed one, „Odepnij” at each pin and „Usuń polecenie” at each call of an
+ * open set, and „Usuń zestaw”, each change but closing after a question;
+ * „Nowy zestaw w budowie…” (disabled with `why` for another session) makes
+ * an empty set in the making.
  */
-function Groups({ card, jobs, context, base, onChanged }) {
+function Groups({ card, jobs, context, why, base, onChanged }) {
   const [asking, setAsking] = useState(null);
+  const [drafting, setDrafting] = useState(false);
   const [done, setDone] = useState(null);
+  // „Zamknij zestaw”: the set it closes now or closed last, its refusal shown there.
+  const closing = useAction();
+  const [closed, setClosed] = useState(null);
   const write = card.project_write;
-  // A pin of a group (`pin`) or the whole group (`pin` null), asked first.
-  const ask = (group, pin) =>
-    setAsking({ group: group.name, pin, pins: pin ? 1 : group.pins.length });
+  const ask = (question) => {
+    setDone(null);
+    setAsking(question);
+  };
+  const finish = (text) => {
+    setAsking(null);
+    setDrafting(false);
+    setClosed(null);
+    setDone(text);
+    onChanged();
+  };
+  const close = (group) => {
+    setDone(null);
+    setClosed(group.name);
+    closing.run(() => closeGroup(card.project, group.name)).then((answer) => {
+      // Refused: the card and the project's jobs are read again, the refusal stays.
+      if (answer) finish(t(PIN.closed, { group: group.name }));
+      else onChanged();
+    });
+  };
   return html`<section class="det-sec" aria-labelledby="pc-groups-title">
-    <h3 class="section-title" id="pc-groups-title">${L.card.groups}</h3>
+    <div class="pc-groups-head">
+      <h3 class="section-title" id="pc-groups-title">${L.card.groups}</h3>
+      ${card.state === "ok"
+        ? html`<${ActionButton} icon="plus" label=${PIN.draft} title=${PIN.draft_title}
+            why=${why} off=${drafting} base=${base}
+            onClick=${() => {
+              setDone(null);
+              setDrafting(true);
+            }} />`
+        : null}
+    </div>
     ${done
       ? html`<p class="pc-done" role="status"><${Icon} name="check" size=${15} />
           <span>${done}</span></p>`
       : null}
     ${card.groups.length
       ? html`<ul class="pc-groups">
-          ${card.groups.map(
-            (group) => html`<li key=${group.name} class="pc-group">
-              <div class="pc-group-head">
-                <b>${group.name}</b>
-                <${Origin} origin=${group.origin} />
-                <span class="faint">${count(group.pins.length, L.card.pin_count)}</span>
-              </div>
-              <${GroupActions} group=${group} jobs=${jobs} context=${context} base=${base}
-                onRemove=${write ? () => ask(group, null) : null} />
-              ${group.origin.kind === "plan"
-                ? html`<${PlanCalls} producer=${group.origin.producer}
-                    calls=${group.origin.calls ?? []} />`
-                : html`<${Selections} selections=${group.origin.selections ?? []} />`}
-              <${PinList} pins=${group.pins} group=${group.name} marks=${jobs.marks}
-                onUnpin=${write ? (pin) => ask(group, pin) : null} />
-            </li>`,
-          )}
+          ${card.groups.map((group) => {
+            const mine = closed === group.name;
+            return html`<${Group} key=${group.name} group=${group} jobs=${jobs}
+              context=${context} base=${base} write=${write} ask=${ask}
+              closing=${mine && closing.busy} refused=${mine ? closing.problem : null}
+              onCloseSet=${() => close(group)} />`;
+          })}
         </ul>`
       : html`<p class="faint">${card.state === "ok" ? L.card.no_groups : L.card.groups_unread}</p>`}
     ${asking
-      ? html`<${PinQuestion} project=${card.project} asking=${asking}
-          onClose=${() => setAsking(null)}
-          onDone=${(text) => {
-            setAsking(null);
-            setDone(text);
-            onChanged();
-          }} />`
+      ? html`<${SetQuestion} project=${card.project} asking=${asking}
+          onClose=${() => setAsking(null)} onDone=${finish} />`
+      : null}
+    ${drafting
+      ? html`<${NewDraft} project=${card.project} onClose=${() => setDrafting(false)}
+          onDone=${(group) => finish(t(PIN.drafted, { group }))} />`
       : null}
   </section>`;
 }
 
-/** „Odepnij” of a pin or „Usuń zestaw”, asked first; a refusal shows in the question. */
-function PinQuestion({ project, asking, onClose, onDone }) {
+/**
+ * A set: its origin, state, pin count and a digest its pins no longer match;
+ * its actions (`GroupActions`) with, while it is open, the advice to verify
+ * before closing; the refusal of its closing (`refused`); its command lines,
+ * the requests that chose versions from the store, and its pins with what
+ * the last job found at each. „Odepnij” and „Usuń polecenie” only while it
+ * is open, for a session that may change the project (`write`).
+ *
+ * @param {{group: import("../types.js").ProjectGroup, write: boolean,
+ *   ask: (question: Object<string, *>) => void, closing: boolean,
+ *   refused: import("../types.js").Problem|null, onCloseSet: () => void}} props
+ */
+function Group({ group, jobs, context, base, write, ask, closing, refused, onCloseSet }) {
+  const open = group.state === "open";
+  const change = write && open;
+  const { name, origin } = group;
+  // An empty set in the making has no origin to tell yet.
+  const told = group.pins.length > 0 || origin.kind === "plan" || origin.selections?.length;
+  const remove = () => ask({ kind: "remove", group: name, count: group.pins.length });
+  return html`<li class="pc-group">
+    <div class="pc-group-head">
+      <b>${name}</b>
+      ${told ? html`<${Origin} origin=${origin} />` : null}
+      <${SetState} group=${group} />
+      <span class="faint">${count(group.pins.length, L.card.pin_count)}</span>
+    </div>
+    ${group.digest_state === "mismatch"
+      ? html`<p class="hint warn pc-set-warn" role="note"><${Icon} name="alert" size=${14} />
+          <span>${L.card.digest_mismatch}</span></p>`
+      : null}
+    <${GroupActions} group=${group} jobs=${jobs} context=${context} base=${base}
+      closing=${closing} onCloseSet=${change ? onCloseSet : null}
+      onReopen=${write && !open ? () => ask({ kind: "reopen", group: name }) : null}
+      onRemove=${write ? remove : null} />
+    ${change && group.pins.length
+      ? html`<p class="faint pc-set-advice">${PIN.close_advice}</p>`
+      : null}
+    ${refused ? html`<${ProblemView} problem=${refused} compact />` : null}
+    ${origin.kind === "plan"
+      ? html`<${PlanCalls} producer=${origin.producer} calls=${origin.calls ?? []} group=${name}
+          onUncall=${change ? (call) => ask(uncalling(group, call)) : null} />`
+      : null}
+    <${Selections} selections=${origin.selections ?? []} />
+    <${PinList} pins=${group.pins} group=${name} plan=${origin.kind === "plan"}
+      marks=${jobs.marks}
+      onUnpin=${change ? (pin) => ask({ kind: "unpin", group: name, pin }) : null} />
+  </li>`;
+}
+
+/**
+ * „Usuń polecenie” of a set's call, to ask: the pins only that call pinned
+ * go; `pins` is null when the set holds a pin written before the sets had
+ * states, which belongs to all its calls (the server refuses, saying why).
+ */
+function uncalling(group, call) {
+  const known = group.pins.every((pin) => Array.isArray(pin.calls));
+  const pins = known
+    ? group.pins.filter((pin) => pin.calls.length === 1 && pin.calls[0] === call)
+    : null;
+  return { kind: "uncall", group: group.name, call, pins };
+}
+
+/**
+ * A change of a set asked first — „Odepnij” of a pin, „Usuń polecenie” with
+ * the pins that go, „Usuń zestaw”, „Otwórz do edycji” — its refusal shown
+ * in the question.
+ */
+function SetQuestion({ project, asking, onClose, onDone }) {
   const action = useAction();
-  const { group, pin } = asking;
-  const version = pin ? (pin.label ?? pin.version) : null;
-  const question = pin
-    ? t(PIN.unpin_question, { version, group })
-    : t(PIN.remove_group_question, { group, count: int(asking.pins) });
+  const asked = question(project, asking);
   const confirm = () =>
-    action
-      .run(() =>
-        pin
-          ? unpinGroupPins(project, group, [{ producer: pin.producer, version: pin.version }])
-          : removeProjectGroup(project, group),
-      )
-      .then((answer) => {
-        if (answer) onDone(pin ? t(PIN.unpinned, { version, group }) : t(PIN.removed, { group }));
-      });
-  const yes = pin ? PIN.unpin : PIN.remove_group;
-  return html`<${Modal} label=${yes} onClose=${onClose}>
-    <h2>${yes}</h2>
-    <p>${question}</p>
+    action.run(asked.change).then((answer) => {
+      if (answer) onDone(asked.done);
+    });
+  return html`<${Modal} label=${asked.yes} onClose=${onClose}>
+    <h2>${asked.yes}</h2>
+    <p>${asked.text}</p>
+    ${asking.kind === "uncall" ? html`<${UncallPins} pins=${asking.pins} />` : null}
     ${action.problem ? html`<${ProblemView} problem=${action.problem} compact />` : null}
     <div class="modal-actions">
       <button type="button" class="btn" disabled=${action.busy} onClick=${onClose}>
         ${PIN.confirm_cancel}</button>
-      <button type="button" class="btn danger" disabled=${action.busy} onClick=${confirm}>
-        <${Icon} name="trash" size=${14} />${yes}</button>
+      <button type="button" class=${asked.danger ? "btn danger" : "btn primary"}
+        disabled=${action.busy} onClick=${confirm}>
+        <${Icon} name=${asked.icon} size=${14} />${asked.yes}</button>
     </div>
+  </${Modal}>`;
+}
+
+/**
+ * What a question of a set asks (`text`), the change it confirms (`change`),
+ * its button and what the card says once it is done.
+ */
+function question(project, asking) {
+  const { kind, group } = asking;
+  if (kind === "unpin") {
+    const { pin } = asking;
+    const version = pin.label ?? pin.version;
+    const pins = [{ producer: pin.producer, version: pin.version }];
+    return {
+      yes: PIN.unpin,
+      icon: "trash",
+      danger: true,
+      text: t(PIN.unpin_question, { version, group }),
+      change: () => unpinGroupPins(project, group, pins),
+      done: t(PIN.unpinned, { version, group }),
+    };
+  }
+  if (kind === "uncall") {
+    const place = int(asking.call + 1);
+    return {
+      yes: PIN.uncall,
+      icon: "trash",
+      danger: true,
+      text: t(PIN.uncall_question, { place, group }),
+      change: () => removeGroupCall(project, group, asking.call),
+      done: t(PIN.uncalled, { place, group }),
+    };
+  }
+  if (kind === "reopen") {
+    return {
+      yes: PIN.reopen,
+      icon: "unlock",
+      danger: false,
+      text: t(PIN.reopen_question, { group }),
+      change: () => reopenGroup(project, group),
+      done: t(PIN.reopened, { group }),
+    };
+  }
+  return {
+    yes: PIN.remove_group,
+    icon: "trash",
+    danger: true,
+    text: t(PIN.remove_group_question, { group, count: int(asking.count) }),
+    change: () => removeProjectGroup(project, group),
+    done: t(PIN.removed, { group }),
+  };
+}
+
+/** The pins „Usuń polecenie” unpins (`null`: the server decides); the files stay. */
+function UncallPins({ pins }) {
+  const kept = html`<p class="hint">${PIN.uncall_kept}</p>`;
+  if (pins === null) return kept;
+  if (!pins.length) return html`<p>${PIN.uncall_no_pins}</p>${kept}`;
+  const shown = pins.slice(0, SHOWN_PINS);
+  const more = pins.length - shown.length;
+  return html`<p>${t(PIN.uncall_pins, { count: int(pins.length) })}</p>
+    <ul class="pc-uncall-pins">
+      ${shown.map(
+        (pin) => html`<li key=${`${pin.producer}/${pin.version}`} class="mono">${pin.version}</li>`,
+      )}
+    </ul>
+    ${more > 0 ? html`<p class="faint">${t(PIN.uncall_more, { count: int(more) })}</p>` : null}
+    ${kept}`;
+}
+
+/**
+ * „Nowy zestaw w budowie…”: the name of an empty set in the making (`POST
+ * …/groups` with `open`); a refusal of the name shows at its field.
+ *
+ * @param {{project: string, onClose: () => void, onDone: (group: string) => void}} props
+ */
+function NewDraft({ project, onClose, onDone }) {
+  const id = useId();
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [refusal, setRefusal] = useState(null);
+  const ready = name.trim() !== "" && !saving;
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!ready) return;
+    setSaving(true);
+    setRefusal(null);
+    let outcome;
+    try {
+      outcome = await addProjectGroup(project, { name: name.trim(), open: true });
+    } catch (error) {
+      if (!error.problem) throw error;
+      setRefusal({ problem: error.problem, field: pinRefusalField(error) });
+      setSaving(false);
+      return;
+    }
+    onDone(outcome.group);
+  };
+  const problem = refusal?.field === "group" ? refusal.problem : null;
+  return html`<${Modal} label=${PIN.draft_heading} onClose=${onClose}>
+    <form class="pc-draft" onSubmit=${submit}>
+      <h2>${PIN.draft_heading}</h2>
+      <div class=${`field${problem ? " invalid" : ""}`}>
+        <label for=${`${id}-name`}>${PIN.draft_name}</label>
+        <input id=${`${id}-name`} value=${name} maxlength=${MAX_GROUP_NAME} autocomplete="off"
+          aria-invalid=${problem ? "true" : null} aria-describedby=${`${id}-name-note`}
+          onInput=${(event) => {
+            setName(event.currentTarget.value);
+            setRefusal(null);
+          }} />
+        <${FieldNote} id=${`${id}-name-note`} problem=${problem}>${PIN.name_hint}</${FieldNote}>
+      </div>
+      ${refusal && !problem ? html`<${ProblemView} problem=${refusal.problem} compact />` : null}
+      <div class="modal-actions">
+        <button type="button" class="btn" disabled=${saving} onClick=${onClose}>
+          ${PIN.cancel}</button>
+        <button type="submit" class="btn primary" disabled=${!ready}>
+          ${saving
+            ? html`<span class="spinner" aria-hidden="true"></span>`
+            : html`<${Icon} name="plus" size=${14} />`}
+          ${PIN.draft_submit}</button>
+      </div>
+    </form>
   </${Modal}>`;
 }
 
@@ -865,8 +1095,36 @@ function Origin({ origin }) {
     ${named ? t(L.card.origin_local_from, { sources: named }) : L.card.origin_local}</${Badge}>`;
 }
 
-/** A group's jobs and „Usuń zestaw” (`onRemove`, null: not offered). */
-function GroupActions({ group, jobs, context, base, onRemove }) {
+/**
+ * The state of a set: „w budowie”, or closed with when and by whom and the
+ * first characters of its digest (all of it in the title and to copy); a set
+ * closed before the sets had states says only „zamknięty”.
+ */
+function SetState({ group }) {
+  if (group.state === "open") {
+    return html`<${Badge} level="warn" title=${L.card.set_open_title}>
+      ${L.card.set_open}</${Badge}>`;
+  }
+  if (!group.closed_at) {
+    return html`<${Badge} level="plain" title=${L.card.set_closed_title}>
+      ${L.card.set_closed}</${Badge}>`;
+  }
+  const digest = group.pins_sha256 ?? "";
+  const by = actorName(group.closed_by ?? T.common.empty);
+  return html`<span class="pc-set-closed">
+    <${Badge} level="ok" title=${L.card.set_closed_title}>
+      ${t(L.card.set_closed_at, { at: stamp(group.closed_at), by })}</${Badge}>
+    <code class="pc-digest" title=${digest}>${digest.slice(0, DIGEST_SHOWN)}</code>
+    <${CopyButton} text=${digest} label=${L.card.copy_digest} />
+  </span>`;
+}
+
+/**
+ * A set's jobs, „Zamknij zestaw” (`onCloseSet`, disabled with every reason
+ * that holds, or while it closes) or „Otwórz do edycji” (`onReopen`), and
+ * „Usuń zestaw” (`onRemove`); each null: not offered.
+ */
+function GroupActions({ group, jobs, context, base, closing, onCloseSet, onReopen, onRemove }) {
   const why = (kind) => groupJobReason(kind, group, context);
   const name = { group: group.name };
   return html`<div class="pc-actions pc-group-actions" role="group"
@@ -880,22 +1138,60 @@ function GroupActions({ group, jobs, context, base, onRemove }) {
     <${JobButton} icon="download" label=${JL.restore} ariaLabel=${t(JL.restore_label, name)}
       title=${JL.restore_title} why=${why("restore")} base=${base}
       onClick=${() => jobs.start("restore", [group.name])} />
+    ${onCloseSet
+      ? html`<${CloseButton} group=${group} reasons=${closeReasons(group, context)}
+          busy=${closing} base=${base} onClick=${onCloseSet} />`
+      : null}
+    ${onReopen
+      ? html`<button type="button" class="btn sm" aria-label=${t(PIN.reopen_label, name)}
+          title=${PIN.reopen_title} onClick=${onReopen}>
+          <${Icon} name="unlock" size=${14} />${PIN.reopen}</button>`
+      : null}
     ${onRemove
       ? html`<button type="button" class="btn ghost sm pc-group-remove"
-          aria-label=${t(PIN.remove_group_label, { group: group.name })} onClick=${onRemove}>
+          aria-label=${t(PIN.remove_group_label, name)} onClick=${onRemove}>
           <${Icon} name="trash" size=${13} />${PIN.remove_group}</button>`
       : null}
   </div>`;
 }
 
-/** A plan group's command lines: the first three, the others on „i N więcej”. */
-function PlanCalls({ producer, calls }) {
+/**
+ * „Zamknij zestaw”: disabled with every reason that holds, each an entry of
+ * the card's list (`base`), or while it closes.
+ */
+function CloseButton({ group, reasons, busy, base, onClick }) {
+  const off = reasons.length > 0;
+  return html`<button type="button" class="btn sm" disabled=${off || busy}
+    aria-label=${t(PIN.close_label, { group: group.name })}
+    title=${off ? reasons.map((why) => why.text).join(" ") : PIN.close_title}
+    aria-describedby=${off ? reasons.map((why) => reasonId(base, why)).join(" ") : null}
+    onClick=${onClick}>
+    ${busy
+      ? html`<span class="spinner" aria-hidden="true"></span>`
+      : html`<${Icon} name="lock" size=${14} />`}
+    ${PIN.close}</button>`;
+}
+
+/**
+ * A plan group's command lines: the first three, the others on „i N
+ * więcej”; at each „Usuń polecenie” (`onUncall` with its place, null: not
+ * offered).
+ */
+function PlanCalls({ producer, calls, group, onUncall }) {
   const [all, setAll] = useState(false);
   const shown = all ? calls : calls.slice(0, SHOWN_CALLS);
   const more = calls.length - shown.length;
   return html`<div class="pc-calls">
     ${shown.map(
-      (call, index) => html`<${Command} key=${index} producer=${producer} call=${call} />`,
+      (call, index) => html`<div key=${index} class="pc-call">
+        <${Command} producer=${producer} call=${call} />
+        ${onUncall
+          ? html`<button type="button" class="btn ghost sm pc-uncall"
+              aria-label=${t(PIN.uncall_label, { place: int(index + 1), group })}
+              onClick=${() => onUncall(index)}>
+              <${Icon} name="x" size=${12} />${PIN.uncall}</button>`
+          : null}
+      </div>`,
     )}
     ${more > 0
       ? html`<button type="button" class="btn ghost sm" onClick=${() => setAll(true)}>
@@ -932,7 +1228,7 @@ function Command({ producer, call }) {
   </div>`;
 }
 
-/** A local group's requests that chose its versions, in words. */
+/** The requests that chose a set's versions from the store, in words. */
 function Selections({ selections }) {
   if (!selections.length) return null;
   return html`<ul class="pc-selections" aria-label=${L.card.selections}>
@@ -950,7 +1246,11 @@ function Selections({ selections }) {
   </ul>`;
 }
 
-function PinList({ pins, group, marks, onUnpin }) {
+/**
+ * A set's pins; in a set of the plan window those added by hand are marked.
+ * „Odepnij” at each (`onUnpin`, null: not offered).
+ */
+function PinList({ pins, group, plan, marks, onUnpin }) {
   if (!pins.length) return html`<p class="faint pc-no-pins">${L.card.no_pins}</p>`;
   return html`<ul class="pc-pins" aria-label=${L.card.pins}>
     ${pins.map(
@@ -965,6 +1265,10 @@ function PinList({ pins, group, marks, onUnpin }) {
         ${pin.state === "ok"
           ? html`<${Badge} level=${pin.is_current ? "info" : "plain"}>
               ${pin.is_current ? L.card.pin_current : L.card.pin_older}</${Badge}>`
+          : null}
+        ${plan && pin.calls?.length === 0
+          ? html`<${Badge} level="plain" title=${L.card.pin_by_hand_title}>
+              ${L.card.pin_by_hand}</${Badge}>`
           : null}
         <${Badge} level=${pin.state === "ok" ? "ok" : "bad"}>
           <${Tech} value=${[

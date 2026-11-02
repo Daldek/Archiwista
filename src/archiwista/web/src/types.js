@@ -1356,6 +1356,7 @@
  * @property {ProjectStore[]} stores - The store of each producer.
  * @property {ProjectArea|null} area
  * @property {number} groups - Groups of pinned versions.
+ * @property {number} open_groups - Of them sets in the making („w budowie”).
  * @property {number} pins - Pins of every group.
  * @property {number} missing_pins - Pins missing from the store or other.
  * @property {string} scanned_at - When the project file was read.
@@ -1398,25 +1399,43 @@
  *   attempted), `unknown` (not asked yet).
  * @property {string|null} command_refusal - The producer's text of a `not_rebuildable`
  *   call; null otherwise.
+ * @property {number[]|null} calls - In a group of the plan window, the places in
+ *   `origin.calls` (from 0) of the calls whose runs pinned it; `[]` for a pin
+ *   added by hand. Null in a local group and for a pin written before the sets
+ *   had states (it belongs to all the group's calls together).
  */
 
 /**
  * Where a group's versions came from: `plan` (downloaded in the plan window by
- * `calls`) or `local` (what the store held, chosen by `selections`).
+ * `calls`, while the set holds one) or `local` (what the store held, chosen by
+ * `selections`).
  *
  * @typedef {object} GroupOrigin
  * @property {"plan"|"local"} kind
  * @property {string|null} producer - The producer of a plan group.
  * @property {CommandCall[]|null} calls - The calls of a plan group.
  * @property {{source: "local_state"|"catalog"|"file",
- *   query: Object<string, *>|null}[]|null} selections - The requests of a local group.
+ *   query: Object<string, *>|null}[]|null} selections - The requests that chose
+ *   the versions from the store: of a local group, and of the pins a plan
+ *   group's open set got by hand.
  */
 
 /**
- * A group of pinned versions, in the file's order.
+ * A group of pinned versions („zestaw”), in the file's order: open while it
+ * is made („w budowie”), closed once frozen (every group written before the
+ * sets had states is closed).
  *
  * @typedef {object} ProjectGroup
  * @property {string} name
+ * @property {"open"|"closed"} state
+ * @property {string|null} closed_at - When Archiwista closed it; null while open
+ *   and for a group closed before the sets had states.
+ * @property {string|null} closed_by - Who closed it (account id, `local`).
+ * @property {string|null} pins_sha256 - The digest of its pins written at its
+ *   closing (lowercase hex SHA-256).
+ * @property {"ok"|"mismatch"|null} digest_state - Whether `pins_sha256` matches
+ *   the pins the file holds; `mismatch`: the file was changed outside
+ *   Archiwista; null without a digest.
  * @property {GroupOrigin} origin
  * @property {ProjectPin[]} pins
  */
@@ -1438,6 +1457,7 @@
  * @property {ProjectStore[]} stores
  * @property {ProjectArea|null} area
  * @property {ProjectGroup[]} groups - Groups in the file's order.
+ * @property {number} open_groups - Sets in the making („w budowie”).
  * @property {number} pins
  * @property {number} missing_pins
  * @property {string} scanned_at
@@ -1469,7 +1489,7 @@
 
 /**
  * Body of `POST /projects/{project}/groups/{group}/pins`: versions the store
- * holds, pinned into a local group (A-ADR-049 decision 8). Exactly one of
+ * holds, pinned into an open set (A-ADR-049 decision 8). Exactly one of
  * `versions` (`from: "file"`) and `query` (`local_state`, `catalog`).
  *
  * @typedef {object} PinsRequest
@@ -1482,9 +1502,11 @@
  */
 
 /**
- * Body of `POST /projects/{project}/groups`: a new local group with its first pins.
+ * Body of `POST /projects/{project}/groups`: a new group with its first pins,
+ * written closed; with `open` a set in the making, which may leave out
+ * `from`, `versions` and `query` (an empty one).
  *
- * @typedef {PinsRequest & {name: string}} GroupRequest
+ * @typedef {Partial<PinsRequest> & {name: string, open?: boolean}} GroupRequest
  */
 
 /**
@@ -1493,6 +1515,7 @@
  * @typedef {object} PinOutcome
  * @property {ProjectCard} project
  * @property {string} group - The group's name as the file holds it.
+ * @property {"open"|"closed"} state - The set's state after the request.
  * @property {number} pinned - Versions added to the group.
  * @property {number} already - Versions the group pinned already.
  * @property {Array<{store: string, version: string, reason: "missing"|"no_sha256"}>}
@@ -1784,8 +1807,9 @@
  * @property {string} [kind]
  * @property {string} [store]
  * @property {string} [state]
- * @property {string} [project] - Only jobs with this project's data (its own-data
- *   scans, snapshots, previews of its files).
+ * @property {string} [project] - Only jobs with this project's data: its jobs
+ *   (`project_*`), the downloads pinning into it, its own-data scans, snapshots,
+ *   previews of its files.
  * @property {number} [limit] - 1–200, default 50.
  * @property {string} [cursor]
  */
@@ -2575,9 +2599,11 @@
  *   one names its place as `details.call`.
  * @property {string} [plan_job] - `download` only: the `check` job of the same calls
  *   whose plans it runs.
- * @property {{project: string, group: string}} [pin] - `download` only: once it
- *   succeeded, its files and the plans' positions the store holds are pinned into
- *   this new group of the project (origin `plan`).
+ * @property {{project: string, group: string, add?: boolean, open?: boolean}} [pin] -
+ *   `download` only: once it succeeded, its files and the plans' positions the
+ *   store holds are pinned into this new group of the project (origin `plan`),
+ *   written closed, or left in the making with `open`; with `add` into the
+ *   project's open set `group` (not both).
  */
 
 /**

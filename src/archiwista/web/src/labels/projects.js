@@ -3,10 +3,11 @@
  * 6.5 g; A-ADR-049): the projects found in the project directories, each a
  * directory with Archiwista's file archiwista-project.json, „Nowy projekt…”
  * for every person, the card with the project's directory, stores, area,
- * problems and groups of pinned versions, „Zmień…”, „Udostępnij…” and „Usuń
- * projekt…” with the reason when they are not allowed, and the group „Dane
- * własne” (SPEC 4.7.1): the project's data folder with its files and
- * „Odśwież”. The sharing screen's texts are in labels/sharing.js.
+ * problems and groups of pinned versions (sets, open „w budowie” or closed),
+ * „Zmień…”, „Udostępnij…” and „Usuń projekt…” with the reason when they are
+ * not allowed, and the group „Dane własne” (SPEC 4.7.1): the project's data
+ * folder with its files and „Odśwież”. The sharing screen's texts are in
+ * labels/sharing.js, those of the changes of a set in labels/pins.js.
  */
 
 export const projects = {
@@ -29,6 +30,7 @@ export const projects = {
     name: "Projekt",
     stores: "Magazyny",
     groups: "Zestawy",
+    open_groups: "{count} w budowie",
     pins: "Przypięte",
     missing_pins: "Brakujące",
     scanned_at: "Odczytano",
@@ -131,6 +133,19 @@ export const projects = {
     origin_plan: "z planu pobrania · {producer}",
     origin_local: "z magazynu",
     origin_local_from: "z magazynu · {sources}",
+    /** The state of a set (a group): open while it is made, closed once frozen. */
+    set_open: "w budowie",
+    set_open_title:
+      "Zestaw w budowie: można do niego dodawać, odpinać i przepinać, " +
+      "aż „Zamknij zestaw” go zamrozi",
+    set_closed: "zamknięty",
+    set_closed_at: "zamknięty {at} · {by}",
+    set_closed_title:
+      "Zestaw zamknięty: nic go nie zmienia; „Otwórz do edycji” pozwala go zmienić",
+    copy_digest: "skrót zestawu",
+    digest_mismatch:
+      "Skrót zestawu nie zgadza się z przypięciami: plik zmieniono poza Archiwistą. " +
+      "Otwórz zestaw do edycji i zamknij go ponownie.",
     sources: {
       local_state: "stan lokalny",
       catalog: "katalog",
@@ -157,6 +172,8 @@ export const projects = {
     pin_current: "bieżąca",
     pin_older: "starsza wersja",
     pin_open: "Karta pliku",
+    pin_by_hand: "ręcznie",
+    pin_by_hand_title: "Dodana przez „Dodaj do projektu…”, nie przez polecenie zestawu",
   },
   own: {
     title: "Dane własne",

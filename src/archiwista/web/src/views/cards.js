@@ -567,8 +567,10 @@ export function downloadSummary(events) {
 }
 
 /**
- * The pin of a download: the group written with its pins and the plan's
- * positions the store did not hold, or why nothing was pinned.
+ * The pin of a download: the set written with its pins — a new one, „w
+ * budowie” when left open, or the set in the making it added to (`add`) —
+ * and the plan's positions the store did not hold, or why nothing was
+ * pinned.
  *
  * @param {{pin: Object<string, *>}} props - `result.pin` of the download.
  */
@@ -585,8 +587,12 @@ function PinResult({ pin }) {
     return html`<p class="job-pin bad-text" role="note">${text}</p>`;
   }
   const missing = pin.not_pinned ?? [];
+  const values = { ...names, count: count(pin.pins, pins.versions) };
+  const notes = [];
+  if (pin.already) notes.push(t(R.already, { count: count(pin.already, pins.versions) }));
+  if (!pin.add && pin.state === "open") notes.push(R.left_open);
   return html`<div class="job-pin">
-    <p>${t(R.written, { ...names, count: count(pin.pins, pins.versions) })} ${link}</p>
+    <p>${t(pin.add ? R.added : R.written, values)} ${notes.join(" ")} ${link}</p>
     ${missing.length
       ? html`<p class="faint">${t(R.not_pinned, { count: int(missing.length) })}:
           <span class="mono">${missing.map((item) => item.path).join(", ")}</span></p>`

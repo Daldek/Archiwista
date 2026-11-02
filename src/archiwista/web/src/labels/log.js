@@ -115,6 +115,8 @@ export const log = {
     "project.delete": "usunięcie projektu",
     "project.pin": "przypięcie wersji",
     "project.unpin": "odpięcie wersji",
+    "project.set_close": "zamknięcie zestawu",
+    "project.set_open": "otwarcie zestawu do edycji",
     "settings.update": "zmiana ustawień",
     "job.start": "uruchomienie zadania",
     "job.cancel": "anulowanie zadania",

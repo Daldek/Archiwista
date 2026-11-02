@@ -855,44 +855,47 @@ export function setProjectStore(project, producer, store) {
 }
 
 /**
- * A new local group of a project with the versions the store holds
- * (`add_project_group`, A-ADR-049 decision 8): the versions named, or the
- * rows of a `GET /slots` query on every page.
+ * A new group of a project (`add_project_group`, A-ADR-049 decision 8): the
+ * versions the store holds, named or the rows of a `GET /slots` query on
+ * every page, written closed at once; with `open` a set in the making („w
+ * budowie”), which may start empty (neither `versions` nor `query`).
  *
  * @param {string} project - Project id.
  * @param {GroupRequest} body
  * @returns {Promise<PinOutcome>} What was pinned, with the card after it (`201`).
  * @throws {ApiError} `403 permission_denied`, `404` (an unknown project),
  *   `400` (`invalid_group_name`, `too_many_pins` with `details.count`), `409`
- *   (`group_exists`, `other_store`, `unknown_store`, `project_locked`), `422`.
+ *   (`group_exists`, `other_store`, `unknown_store`, `set_producer`,
+ *   `project_locked`), `422`.
  */
 export function addProjectGroup(project, body) {
   return request("POST", `/projects/${one(project)}/groups`, { json: body });
 }
 
 /**
- * More versions the store holds in a local group (`add_group_pins`).
+ * More versions the store holds in an open set of any origin
+ * (`add_group_pins`); a set of the plan window pins them by hand (`calls` `[]`).
  *
  * @param {string} project - Project id.
  * @param {string} group - The group's name.
  * @param {PinsRequest} body
  * @returns {Promise<PinOutcome>}
- * @throws {ApiError} As `addProjectGroup`; `404` for an unknown group and `409
- *   group_origin_plan` for a group of the plan window.
+ * @throws {ApiError} As `addProjectGroup`; `404 group_not_found` for an
+ *   unknown group and `409 set_closed` for a closed one.
  */
 export function addGroupPins(project, group, body) {
   return request("POST", `/projects/${one(project)}/groups/${one(group)}/pins`, { json: body });
 }
 
 /**
- * Take pins out of a group (`unpin_group_pins`); the group stays.
+ * Take pins out of an open set (`unpin_group_pins`); the group stays.
  *
  * @param {string} project - Project id.
  * @param {string} group - The group's name.
  * @param {Array<{producer: string, version: string}>} pins
  * @returns {Promise<ProjectCard>} The changed card.
  * @throws {ApiError} `403 permission_denied`, `404` (an unknown project or
- *   group), `409 project_locked`.
+ *   group), `409` (`set_closed`, `project_locked`).
  */
 export function unpinGroupPins(project, group, pins) {
   return request("POST", `/projects/${one(project)}/groups/${one(group)}/unpin`, {
@@ -901,15 +904,65 @@ export function unpinGroupPins(project, group, pins) {
 }
 
 /**
- * Remove a group with its pins from a project (`remove_project_group`).
+ * Remove a group with its pins from a project (`remove_project_group`), open
+ * or closed.
  *
  * @param {string} project - Project id.
  * @param {string} group - The group's name.
  * @returns {Promise<ProjectCard>} The changed card.
- * @throws {ApiError} As `unpinGroupPins`.
+ * @throws {ApiError} `403 permission_denied`, `404` (an unknown project or
+ *   group), `409 project_locked`.
  */
 export function removeProjectGroup(project, group) {
   return request("DELETE", `/projects/${one(project)}/groups/${one(group)}`);
+}
+
+/**
+ * Remove a call of an open set of the plan window („Usuń polecenie”): the
+ * pins only that call pinned go; a pin of another call and a pin added by
+ * hand stay, and the later calls move one place up.
+ *
+ * @param {string} project - Project id.
+ * @param {string} group - The group's name.
+ * @param {number} call - Its place in `origin.calls`, from 0.
+ * @returns {Promise<ProjectCard>} The changed card.
+ * @throws {ApiError} `403 permission_denied`, `404` (an unknown project or
+ *   group, `call_not_found`), `409` (`set_closed`; `pins_without_calls`: pins
+ *   written before the sets had states, which „Przepnij” writes anew;
+ *   `project_locked`).
+ */
+export function removeGroupCall(project, group, call) {
+  const path = `/projects/${one(project)}/groups/${one(group)}/calls/${one(call)}`;
+  return request("DELETE", path);
+}
+
+/**
+ * Close an open set („Zamknij zestaw”): its content frozen, with who closed
+ * it, when, and the digest of its pins (`pins_sha256`).
+ *
+ * @param {string} project - Project id.
+ * @param {string} group - The group's name.
+ * @returns {Promise<ProjectCard>} The changed card.
+ * @throws {ApiError} `403 permission_denied`, `404` (an unknown project,
+ *   `group_not_found`), `409` (`set_closed`; `set_job_active` with the job in
+ *   `details.job`; `set_empty`; `set_pins_not_ok` with `details.counts` by
+ *   state and the first pins in `details.pins`; `project_locked`).
+ */
+export function closeGroup(project, group) {
+  return request("POST", `/projects/${one(project)}/groups/${one(group)}/close`);
+}
+
+/**
+ * Open a closed set for editing („Otwórz do edycji”): its closing and digest go.
+ *
+ * @param {string} project - Project id.
+ * @param {string} group - The group's name.
+ * @returns {Promise<ProjectCard>} The changed card.
+ * @throws {ApiError} `403 permission_denied`, `404` (an unknown project,
+ *   `group_not_found`), `409` (`set_open`, `project_locked`).
+ */
+export function reopenGroup(project, group) {
+  return request("POST", `/projects/${one(project)}/groups/${one(group)}/reopen`);
 }
 
 /**
@@ -1631,16 +1684,18 @@ export function validateCommand(body) {
  * Start a job of a producer's calls on a configured store (`start_job`), all
  * the lines of a row in one job (ADR-044): `check` plans a run of each call
  * without its effects, `download` runs them (with `plan_job`, the plans that
- * check kept of the same calls; with `pin`, into a new group of a project
- * once it succeeded, A-ADR-049 decision 9).
+ * check kept of the same calls; with `pin`, once it succeeded, into a new
+ * group of a project, closed or with `open` left in the making, or with `add`
+ * into an open one, A-ADR-049 decision 9).
  *
  * @param {JobRequest} body
  * @returns {Promise<JobDetail>} The queued job (`202`).
  * @throws {ApiError} `403 permission_denied` (a download without
  *   `store_write`, a `pin` into a project the session may not change), `400`
  *   (`store_without_producer`, the producer's refusal of an option,
- *   `invalid_group_name`), `404` (also a project of `pin`), `409 conflict`
- *   (`offline_mode`, `plan_mismatch`, `group_exists`, `other_store`,
+ *   `invalid_group_name`, `too_many_calls`), `404` (also a project of `pin`,
+ *   `group_not_found`), `409 conflict` (`offline_mode`, `plan_mismatch`,
+ *   `group_exists`, `set_closed`, `set_producer`, `other_store`,
  *   `unknown_store`); a refusal of one call names its place in `calls` as
  *   `details.call`.
  */

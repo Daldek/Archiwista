@@ -12,24 +12,29 @@
  * that matches no configured one, writing the stores (`store_write`: re-pin,
  * restore), a producer without commands (`no_commands`), versions whose
  * command the producer cannot rebuild (`command_not_rebuildable`: check and
- * restore of a local group none of whose pins has a call, re-pin of a local
- * group with one such pin), offline mode (check, re-pin, restore), a job of
- * the project starting or running (every job), and for a restore a group
- * with no missing version. The card lists the reasons in force once
- * (`ReasonList`); each disabled button points at its own
- * (`aria-describedby`). The project's „Sprawdź aktualizacje” checks the
- * groups that can be checked and is disabled only when none can.
+ * restore of a local group none of whose pins has a call, re-pin of a group
+ * with such a pin chosen from the store: a local group's, or one a plan
+ * group's set got by hand), offline mode (check, re-pin, restore), a closed
+ * set (re-pin), a job of the project starting or running (every job), and
+ * for a restore a group with no missing version. „Zamknij zestaw” of an open
+ * set is disabled with every reason that holds (`closeReasons`): a job that
+ * writes into the set waits or runs (the project's jobs that `GET
+ * /jobs?project=` lists queued or running), a pin not `ok` at the last scan,
+ * no pin at all. The card lists the reasons in force once (`ReasonList`);
+ * each disabled button points at its own (`aria-describedby`). The project's
+ * „Sprawdź aktualizacje” checks the groups that can be checked and is
+ * disabled only when none can.
  *
  * When a job ends the card is read again; what the job found at each pin
  * (`result.pins`) stays beside the pin until the next job starts
  * (`PinMark`), and its summary under the project's actions.
  */
 
-import { listCommands, startProjectJob } from "../api.js";
+import { listCommands, listJobs, startProjectJob } from "../api.js";
 import { useApp } from "../context.js";
-import { int } from "../format.js";
+import { int, plural } from "../format.js";
 import { useResource } from "../hooks.js";
-import { t } from "../labels/index.js";
+import { T, t } from "../labels/index.js";
 import { projectJobs as L } from "../labels/project-jobs.js";
 import { html, Icon, Tech } from "../ui.js";
 import { Badge, FINAL_STATES, seconds, SUMMARY_STATES, useJob } from "./cards.js";
@@ -52,10 +57,19 @@ const ORDER = [
   "no_commands",
   "command_not_rebuildable",
   "offline",
+  "set_closed",
   "running",
   "no_groups",
   "no_missing",
+  "set_job_active",
+  "set_pins_not_ok",
+  "set_empty",
 ];
+// The states of a job that waits or runs, and the most jobs of each listed.
+const ACTIVE_STATES = ["queued", "running"];
+const ACTIVE_LIMIT = 200;
+// The states of a pin that keep its set from closing, as the server counts them.
+const NOT_OK = ["missing", "sha256_mismatch", "unknown"];
 const MARK_LEVEL = {
   ok: "ok",
   current: "ok",
@@ -75,7 +89,8 @@ const MARK_LEVEL = {
 
 /**
  * The jobs of a project's card: the followed job, `contextOf(card)` (the
- * state the reasons need), `start(kind, groups)` and the marks of the pins.
+ * state the reasons need), `start(kind, groups)`, the marks of the pins and
+ * `reload()`, which reads the project's waiting and running jobs again.
  *
  * @param {string} project - Project id.
  * @param {() => void} onEnd - Called when a job ends (the card is read again).
@@ -85,6 +100,11 @@ export function useProjectJobs(project, onEnd) {
   const commands = useResource((signal) => listCommands({ signal }), []);
   const job = useJob({ onEnd });
   const busy = job.starting || job.running;
+  // Read again when the followed job starts or ends, and on `reload`.
+  const active = useResource(
+    (signal) => activeJobs(project, signal),
+    [project, job.id, job.running],
+  );
   // Null until known (or when it cannot be asked): the server then decides.
   const producers = commands.data
     ? new Set(commands.data.items.map((item) => item.producer))
@@ -94,11 +114,27 @@ export function useProjectJobs(project, onEnd) {
     storeWrite: Boolean(session?.store_write),
     offline: Boolean(settings?.offline),
     commands: producers,
+    active: active.data ?? [],
     busy,
   });
   const start = (kind, groups = null) =>
     job.run(() => startProjectJob(project, groups ? { kind, groups } : { kind }), KINDS[kind]);
-  return { job, busy, contextOf, start, marks: pinMarks(job) };
+  return { job, busy, contextOf, start, marks: pinMarks(job), reload: active.reload };
+}
+
+/**
+ * The project's jobs that wait or run (`GET /jobs?project=`): its own and
+ * the downloads pinning into it.
+ *
+ * @param {string} project
+ * @param {AbortSignal} signal
+ * @returns {Promise<import("../types.js").JobDetail[]>}
+ */
+async function activeJobs(project, signal) {
+  const pages = await Promise.all(
+    ACTIVE_STATES.map((state) => listJobs({ project, state, limit: ACTIVE_LIMIT }, { signal })),
+  );
+  return pages.flatMap((page) => page.items);
 }
 
 /** A reason of the card's list (`L.why[key]`; `key` may carry `:<producer>`). */
@@ -113,11 +149,19 @@ function groupProducers(group) {
   return [...new Set(group.pins.map((pin) => pin.producer))];
 }
 
-/** Whether D5 keeps `kind` of a group from starting (A-ADR-049 decision 12). */
+/**
+ * Whether D5 keeps `kind` of a group from starting (A-ADR-049 decision 12).
+ * The pins chosen from the store — a local group's, and those a plan group's
+ * set got by hand (`calls` `[]`) — are checked and restored by their own
+ * calls, and a re-pin rebuilds each of them; a plan group's other pins go by
+ * its calls.
+ */
 function notRebuildable(kind, group) {
-  if (group.origin.kind !== "local" || !group.pins.length) return false;
+  const local = group.origin.kind === "local";
+  const own = local ? group.pins : group.pins.filter((pin) => pin.calls?.length === 0);
+  if (!own.length) return false;
   const refused = (pin) => pin.command === "not_rebuildable";
-  return kind === "repin" ? group.pins.some(refused) : group.pins.every(refused);
+  return kind === "repin" ? own.some(refused) : local && own.every(refused);
 }
 
 /** The first reason of a group's own that keeps a calling job from it, or null. */
@@ -150,11 +194,61 @@ export function groupJobReason(kind, group, context) {
   const own = groupReason(kind, group, context);
   if (own) return own;
   if (context.offline) return reason("offline");
+  if (kind === "repin" && group.state === "closed") return reason("set_closed");
   if (context.busy) return reason("running");
   if (kind === "restore" && !group.pins.some((pin) => pin.state === "missing")) {
     return reason("no_missing");
   }
   return null;
+}
+
+/**
+ * Why „Zamknij zestaw” cannot close an open set now, every reason that holds
+ * (the server checks them again): a job that writes into the set waits or
+ * runs (a `download` pinning into it, a `project_repin` of it; names
+ * compared case-folded), pins not `ok` at the last scan, or no pin at all.
+ *
+ * @param {import("../types.js").ProjectGroup} group
+ * @returns {Reason[]} Empty: it can close.
+ */
+export function closeReasons(group, context) {
+  const { card } = context;
+  const name = fold(group.name);
+  const kinds = new Set(
+    context.active.filter((job) => writesInto(job, card.project, name)).map((job) => job.kind),
+  );
+  const reasons = [...kinds].map((kind) =>
+    reason(`set_job_active:${kind}`, { kind: T.common.job_kind[kind] ?? kind }),
+  );
+  if (!group.pins.length) return [...reasons, reason("set_empty")];
+  const counts = NOT_OK.map((state) => group.pins.filter((pin) => pin.state === state).length);
+  const total = counts.reduce((sum, value) => sum + value, 0);
+  if (total) {
+    const [missing, mismatch, unknown] = counts.map(int);
+    const values = { count: int(total), missing, mismatch, unknown };
+    reasons.push({
+      key: `set_pins_not_ok:${counts.join("-")}`,
+      text: t(plural(total, L.why.set_pins_not_ok), values),
+    });
+  }
+  return reasons;
+}
+
+/** Whether a job of the project's list writes into its set of the folded name `name`. */
+function writesInto(job, project, name) {
+  const params = job.params ?? {};
+  if (job.kind === "download") {
+    return params.pin?.project === project && fold(params.pin.group ?? "") === name;
+  }
+  if (job.kind === "project_repin") {
+    return params.project === project && fold(params.groups?.[0] ?? "") === name;
+  }
+  return false;
+}
+
+/** A set's name as the server compares names: case-folded (as Python's `casefold`). */
+function fold(name) {
+  return name.toUpperCase().toLowerCase();
 }
 
 /**

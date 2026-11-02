@@ -5,13 +5,15 @@
  * their query on every page (`query`), the file card (views/file.js) the
  * version chosen on its timeline (`versions`). The window names what will
  * be pinned with its count, „Projekt” (the projects the session may change,
- * `project_write`) and the group: a new one by its name, or a local group of
- * the project (a group of the plan window takes only what it downloaded). A
- * refusal shows at its field: the project (`403`, `404`), the group
- * (`invalid_group_name`, `group_exists`, `group_origin_plan`) or what will
- * be pinned (`too_many_pins`, `other_store`, `unknown_store`). The outcome
- * says what was pinned, what the group held already and what was skipped
- * with why, and leads to the project.
+ * `project_write`) and the group: a new one by its name (written closed), or
+ * „Zestaw w budowie”, an open set of the project of any origin (a closed
+ * one is opened for editing on the project's card). A refusal shows at its
+ * field: the project (`403`, `404`), the group (`invalid_group_name`,
+ * `group_exists`, `group_not_found`, `set_closed`, `set_producer`) or what
+ * will be pinned (`too_many_pins`, `other_store`, `unknown_store`). The
+ * outcome says what was pinned, what the group held already and what was
+ * skipped with why, whether the set is open or closed, and leads to the
+ * project.
  */
 
 import { addGroupPins, addProjectGroup, getProject, listProjects, listSlots } from "../api.js";
@@ -58,8 +60,10 @@ const QUERY_FILTERS = [
 const GROUP_REASONS = new Set([
   "invalid_group_name",
   "group_exists",
-  "group_origin_plan",
   "group_not_found",
+  "set_closed",
+  "set_producer",
+  "too_many_calls",
 ]);
 const WHAT_REASONS = new Set(["too_many_pins", "other_store", "unknown_store"]);
 
@@ -177,9 +181,9 @@ export function PinDialog({ source, query, versions, what, onPinned, onClose }) 
     (signal) => (project ? getProject(project, { signal }) : Promise.resolve(null)),
     [project],
   );
-  const local = (card.data?.groups ?? []).filter((group) => group.origin.kind === "local");
-  const mode = local.length ? form.mode : "new";
-  const group = (local.find((item) => item.name === form.group) ?? local[0])?.name ?? null;
+  const opened = (card.data?.groups ?? []).filter((group) => group.state === "open");
+  const mode = opened.length ? form.mode : "new";
+  const group = (opened.find((item) => item.name === form.group) ?? opened[0])?.name ?? null;
   const total = rows.data ?? null;
   const tooMany = total !== null && total > MAX_GROUP_PINS;
   const named = mode === "new" ? form.name.trim() !== "" : group !== null;
@@ -257,22 +261,22 @@ export function PinDialog({ source, query, versions, what, onPinned, onClose }) 
                 onInput=${(event) => change({ name: event.currentTarget.value })} />`
           : null}
         <label class="check-field">
-          <input type="radio" name=${`${id}-mode`} checked=${mode === "local"}
-            disabled=${!local.length}
-            onChange=${() => change({ mode: "local" })} />${L.local_group}</label>
-        ${mode === "local"
-          ? html`<label class="visually-hidden" for=${`${id}-local`}>${L.local_group}</label>
-              <select id=${`${id}-local`} value=${group ?? ""}
+          <input type="radio" name=${`${id}-mode`} checked=${mode === "open"}
+            disabled=${!opened.length}
+            onChange=${() => change({ mode: "open" })} />${L.open_group}</label>
+        ${mode === "open"
+          ? html`<label class="visually-hidden" for=${`${id}-open`}>${L.open_group}</label>
+              <select id=${`${id}-open`} value=${group ?? ""}
                 aria-invalid=${at("group") ? "true" : null} aria-describedby=${`${id}-group-note`}
                 onChange=${(event) => change({ group: event.currentTarget.value })}>
-                ${local.map(
+                ${opened.map(
                   (item) => html`<option key=${item.name} value=${item.name}>${item.name}</option>`,
                 )}
               </select>`
           : null}
         <${FieldNote} id=${`${id}-group-note`} problem=${at("group")}>
-          ${mode === "new" ? L.name_hint : L.local_group_hint}
-          ${card.data && !local.length ? ` ${L.no_local_groups}` : ""}
+          ${mode === "new" ? L.name_hint : L.open_group_hint}
+          ${card.data && !opened.length ? ` ${L.no_open_groups}` : ""}
         </${FieldNote}>
       </fieldset>
       ${refusal && refusal.field === null
@@ -320,9 +324,10 @@ export function pinRefusalField(error) {
   return null;
 }
 
-/** What a pin request did, with a link to the project. */
+/** What a pin request did, whether its set is open or closed, with a link to the project. */
 function PinOutcome({ outcome, onClose }) {
   const card = outcome.project;
+  const state = L.done_state[outcome.state] ?? null;
   return html`<${Modal} label=${L.title} onClose=${onClose}>
     <h2>${L.title}</h2>
     <p class="pin-done" role="status"><${Icon} name="check" size=${15} />
@@ -333,6 +338,7 @@ function PinOutcome({ outcome, onClose }) {
         already: int(outcome.already),
         skipped: int(outcome.skipped.length),
       })}</span></p>
+    ${state ? html`<p class="hint pin-state">${state}</p>` : null}
     ${outcome.skipped.length
       ? html`<div class="pin-skipped">
           <span class="section-title">${L.skipped}</span>
