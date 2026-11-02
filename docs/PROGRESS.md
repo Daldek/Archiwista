@@ -8,9 +8,10 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 ## Status
 
 The working branch is `feature/archiwista-projects` (from `feature/v0.4-team`, which
-holds v0.3, v0.4, the station views and the user guide). Its head runs on the author's
-team test server (port 8090, https://archiwista-test.debever.pl). Nothing after 0.2.0
-is merged into `develop` or released.
+holds v0.3, v0.4, the station views and the user guide). The author's team test server
+(port 8090, https://archiwista-test.debever.pl) runs `dd4268c` of it: the project's area
+of A-ADR-049 erratum 5 is not deployed. Nothing after 0.2.0 is merged into `develop` or
+released.
 
 | Component | State | Note |
 |---|---|---|
@@ -20,7 +21,7 @@ is merged into `develop` or released.
 | Plan window: bounded requests | done on `feature/archiwista-projects`, deployed on the test server | Four requests in flight (`requestEach`), a bare `503` is `server_busy`, after a 116-sheet set exceeded the server's 100 connections (`c9fd47b`); one „Zamknij” keeps a download's window reopenable from the list (`d4daea6`) |
 | Previews of a ZIP of one raster (GUGiK's XYZ of 2020) | done on `feature/archiwista-projects`, deployed on the test server | Previewed as that raster through `/vsizip/`, format named "XYZ (ZIP)" (`formats.raster_member`, the rule exports share; `43c2254`) |
 | Phone fields | done on `feature/archiwista-projects`, deployed on the test server | Fields at 16 px on a phone, so iOS does not zoom in after sign-in (`1f2ed39`) |
-| A project's area for the map, the Katalog and a producer's call (A-ADR-049 erratum 5) | done on `feature/archiwista-projects`, deployed on the test server | "Obszar projektu" in the map's step 1 and the Katalog's area filter; "Obszar polecenia" runs a pasted call on the area of step 1 or a project's (`POST /commands/area`, `archiwista commands area`, the source capability `AreaCommandAdapter`, Kartograf's `with_area`: the area as `--geometry`, else its box); the plan window's "Obszar" row; the project card's "Pliki obszaru w Katalogu" and file count |
+| A project's area for the map, the Katalog and a producer's call (A-ADR-049 erratum 5; the author confirmed the interface on 2026-11-02, D7 of Nogat's plan `2026-11-02-archiwista-sets-for-hydrograf.md`) | done on `feature/archiwista-projects` (`0d4f958`, `2ceca75`), not deployed | "Obszar projektu" in the map's step 1 and the Katalog's area filter; "Obszar polecenia" runs a pasted call on the area of step 1 or a project's (`POST /commands/area`, `archiwista commands area`, the source capability `AreaCommandAdapter`, Kartograf's `with_area`: the area as `--geometry`, else its box); the plan window's "Obszar" row; the project card's "Pliki obszaru w Katalogu" and file count |
 | User guide `/instrukcja` | done, in `feature/v0.4-team` | A-ADR-048 (proposed; the author decides on merging): twelve Polish slides served without a session, "Instrukcja" in the top bar; slide 9 shows the project card |
 | v0.4 "Team" | built on `feature/v0.4-team` | plan `docs/plans/2026-10-26-plan-v0.4.md` T1 to T12 (ADR-046, ADR-047; security D6, D7, D10); acceptance with three people, the permission matrix, the ASVS checklist; the LAN runbook ran once on one machine with real components (`docs/reports/v0.4-lan-runbook.md`); macOS fixes (no `RLIMIT_AS`, `TCP_NODELAY`, `F_GETPATH`) |
 | v0.3 "Actions" | built | plan `docs/plans/2026-10-25-archiwista-next.md` Part 3: A1 to A14 (ADR-034 to ADR-044): producer commands, availability at the source, the plan window, downloads and job controls, preview warm-up, background downloads; its project actions (A7, A8, A13) are replaced by A-ADR-049. Report `docs/reports/v0.3-measurements.md` |
@@ -28,7 +29,7 @@ is merged into `develop` or released.
 | Data output (DEV §19, ECO-051) | done, in `feature/v0.4-team` | plan `docs/plans/2026-10-25-archiwista-next.md` Part 1 (ADR-031, ADR-033): store markers, store roots, the producers' default roots offered in the wizard, tests isolated from the producers' settings |
 | Release 0.2.0 "Previews" | done | released on `develop`, not tagged and not merged into `main` (author's decision) |
 | Nogat standard 2.1 | done | structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry; skipped items below |
-| Gate | green on `dd4268c` plus the doctor test fix (2026-11-01) | full run: 2719 passed, coverage 93.63%, 51 min, with the author's test server holding port 8090; `test_doctor_refused_store_shows_the_fix_the_producer_gave` now picks a free port. A full run takes about 50 to 60 minutes; start it without other test suites running |
+| Gate | green on `8d16cef` (2026-11-02) | full run: 2735 passed, coverage 93.64%, 54 min, `TMPDIR` on a local disk, the author's test server holding port 8090. The Firefox run of `tests/e2e/test_guide.py` no longer stalls it (`8d16cef`): the test resized the app's tab behind the guide's tab, and `set_viewport_size` waits without a timeout for a size Firefox may never give a covered tab. A full run takes about 50 to 60 minutes; start it without other test suites running |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; no run of either workflow is known |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -44,23 +45,35 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 
 ## Next
 
-1. Merge and release, per the Nogat plan's decisions D2 and D3: one Archiwista release
-   holds v0.3, v0.4 and the projects, outside the first release set (Archiwista follows
-   the producers' tags in its own session, REL-5.4). Then: replace the commit pins by
+1. Draft sets („zestaw w budowie”), step A2 of Nogat's plan
+   `docs/plans/2026-11-02-archiwista-sets-for-hydrograf.md` (branch
+   `plan/archiwista-sets-hydrograf`), on this branch after the area fix: a group's
+   `state`, `open` or `closed` (no member: closed), with `closed_at`, `closed_by` and
+   `pins_sha256` in the project file, a closed set frozen until „Otwórz do edycji”; one
+   producer per set (D12, the author's decision). It becomes erratum 6 of A-ADR-049.
+2. Deploy A2's head on the test server (the plan's A3, at any time by D6), with
+   `Environment=TMPDIR=<data-dir>/tmp` in its systemd unit: Kartograf unpacks BDOT10k
+   in `TMPDIR`, and `/tmp` there is a small tmpfs. The area fix itself needs no
+   migration (index schema 16, state schema 4, no new dependency); rollback to
+   `dd4268c`.
+3. Merge and release, per decisions D2 and D3 of Nogat's plan
+   `2026-10-31-archiwista-projects.md`: one Archiwista release holds v0.3, v0.4 and the
+   projects, outside the first release set (Archiwista follows the producers' tags in its
+   own session, REL-5.4). Then: replace the commit pins by
    the producers' tags (REL-5.3, REL-2.1), merge with the author's approval, CHANGELOG
    version, tag, the Nogat registry (the edge Archiwista → IMGWTools is still
    `planned`). Re-pin first if a producer commits on its branch again: `uv lock
    --offline` resolves a commit only from uv's git database
    (`~/.cache/uv/git-v1/db/`), so fetch the producer's branch into it, change the commit
    in `pyproject.toml`, `uv lock --offline`, `uv sync --locked --all-extras`.
-2. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
+4. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
    in three browsers, the store on the share); a full `scripts/gate.sh` on the Mac; the
    live run of `tests/integration/test_live_actions.py` (`ARCHIWISTA_LIVE_ACTIONS=1`)
    and the SMB run of v0.3 criterion 8.
-3. CI proof after the push: the Chromium step of `ci.yml` and the weekly `live.yml`.
-4. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
+5. CI proof after the push: the Chromium step of `ci.yml` and the weekly `live.yml`.
+6. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
    it covers the case (DEV-10.6).
-5. Adopt the ecosystem's visual identity (Nogat `design/`, plan
+7. Adopt the ecosystem's visual identity (Nogat `design/`, plan
    `docs/plans/2026-11-01-visual-identity.md` in Nogat) once the author approves it, by
    an Archiwista plan.
 
@@ -113,9 +126,6 @@ Decisions awaiting the author:
   window"): the project card starts re-pin and restore at once, and the project's plan is
   its own action, "Sprawdź aktualizacje" (ADR-042 option I). Should a window built from
   that check stand before them as well (option H)?
-- A-ADR-049 erratum 5 adds `POST /commands/area`, `archiwista commands area` and the
-  source capability `AreaCommandAdapter` without a plan (DEV-17.4): confirm the
-  interface change.
 - `main` of this repository is not on GitHub: push and make it the default branch (ECO-008).
 
 Open outside this repository:
