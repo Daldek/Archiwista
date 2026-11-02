@@ -33,7 +33,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | a project's exports from its pins: copies in category folders with `README.txt` in `eksport/NAZWA/`, optionally a ZIP (A-ADR-049), their list and the ZIP | `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports`, `GET /projects/{project}/exports/{name}/zip` |
 | a project's activity from the action log: its changes and its jobs, newest first, without the client address (A-ADR-049) | `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
 | remove a project from Archiwista, never data: its file, area files and exports go, `dane/` and every other file stay (A-ADR-049 erratum 2) | `archiwista project-delete PROJEKT --yes` | `DELETE /projects/{project}` |
-| pin versions the store holds into a project's group (offline, from the index), remove pins or a group (A-ADR-049) | `archiwista project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add]`, `project-unpin PROJEKT ZESTAW [--pin PRODUCENT:WERSJA …]` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}` |
+| pin versions the store holds into a project's set (offline, from the index): a new set (closed at once, or left in the making with `--open`), a set in the making (`--add`) or an empty set in the making; remove pins, a call or a set; close a set in the making with the digest of its pins and open a closed one again (A-ADR-049, erratum 6) | `archiwista project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add \| --open]`, `project-draft PROJEKT ZESTAW`, `project-unpin PROJEKT ZESTAW [--pin PRODUCENT:WERSJA …]`, `project-uncall PROJEKT ZESTAW --call N`, `project-close PROJEKT ZESTAW`, `project-reopen PROJEKT ZESTAW` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}`, `DELETE /projects/{project}/groups/{group}/calls/{call}`, `POST /projects/{project}/groups/{group}/close`, `POST /projects/{project}/groups/{group}/reopen` |
 | jobs over a project's groups (A-ADR-049): the pinned files hashed in the store (offline), the pins compared with the source, one group pinned anew to the source's newer versions, the missing pins downloaded again; in the foreground, exit 0, 10, 11 or 130 | `archiwista project-verify PROJEKT [ZESTAW …]`, `project-check PROJEKT [ZESTAW …]`, `project-repin PROJEKT ZESTAW`, `project-restore PROJEKT [ZESTAW …]` | `POST /projects/{project}/jobs` |
 | session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
 | team mode (v0.4): how a session starts, signing in (with a password or through the company's reverse proxy), changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `POST /session/proxy`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
@@ -49,7 +49,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | scan of the own-data folder | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
 | producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3), the call that selects a stored version again, a call given an area of Archiwista, e.g. a project's (A-ADR-049) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]`, `commands area PRODUCENT POLECENIE [--options JSON] --area-id OBSZAR`, `version-command MAGAZYN WERSJA` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format`, `/commands/area`, `GET /stores/{store}/versions/{version}/command` |
 | what the source has for an area and a product: the last report kept with its rows (labels, ranked variants, store badges), a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID] [--store ID] [--horizontal …] [--resolution …] [--vertical-crs …]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` and the same options | `GET /availability`, `POST /availability` |
-| a job of a producer's calls on a configured store (all the lines of a row in one job, ADR-044), kind `check` (the plan of a run of each call without its effects) or `download` (the run of each call, with the plans of a `check` job of the same calls if named; it writes the store; optionally pinning what it leaves into a new group of a project), and the plans a `check` job kept (v0.3) | `archiwista jobs start check PRODUCENT --store MAGAZYN --call JSON [--call JSON …]`, `jobs start download PRODUCENT --store MAGAZYN --call JSON [--call JSON …] [--plan ZADANIE] [--pin PROJEKT --pin-group ZESTAW]` (each `--call` a `{"command": "…", "options": {…}}`; the job in the foreground, printed as it ended), `jobs plan ZADANIE` | `POST /jobs`, `GET /jobs/{job}/plan` |
+| a job of a producer's calls on a configured store (all the lines of a row in one job, ADR-044), kind `check` (the plan of a run of each call without its effects) or `download` (the run of each call, with the plans of a `check` job of the same calls if named; it writes the store; optionally pinning what it leaves into a new set of a project, closed or left in the making, or adding it to a set in the making), and the plans a `check` job kept (v0.3) | `archiwista jobs start check PRODUCENT --store MAGAZYN --call JSON [--call JSON …]`, `jobs start download PRODUCENT --store MAGAZYN --call JSON [--call JSON …] [--plan ZADANIE] [--pin PROJEKT --pin-group ZESTAW [--pin-add \| --pin-open]]` (each `--call` a `{"command": "…", "options": {…}}`; the job in the foreground, printed as it ended), `jobs plan ZADANIE` | `POST /jobs`, `GET /jobs/{job}/plan` |
 | a file itself: a version's, an own file's or one file of its set, a snapshot's (v0.4) | — (HTTP only) | `GET /stores/{store}/versions/{version}/file`, `GET /projects/{project}/files/{file_id}/file`, `GET …/files/{file_id}/snapshots/{label}/file` (each also `HEAD`, a set's file by `?member=`) |
 | the action log: a page newest first, an export of every entry the filters select (v0.4, administrators) | `archiwista log list [filters] [--limit N] [--cursor ID]`, `log export [filters] [--format jsonl\|csv] [--output FILE]` (section 10) | `GET /log`, `GET /log/export` |
 
@@ -374,13 +374,15 @@ cursor is safe in a URL).
 - `GET /requests/{parent_request}`: the files of one producer request (for
   example both sides of the PL/CZ border).
 - Projects are Archiwista's own `archiwista-project.json` (A-ADR-049); the
-  producers' manifests are not read. Pinning (`project-pin`, `project-unpin`),
-  the jobs over a project's groups (`POST /projects/{project}/jobs`,
-  `project-verify`, `project-check`, `project-repin`, `project-restore`;
-  section 9), the exports and the activity (`project-activity`) are below; the
-  project card of the web interface uses the same routes, and a pin's
-  `command` (`not_rebuildable` with `command_refusal`) tells beforehand which
-  pins a check, a restore or a re-pin cannot reach (D5).
+  producers' manifests are not read. Pinning and the sets' states
+  (`project-pin`, `project-draft`, `project-unpin`, `project-uncall`,
+  `project-close`, `project-reopen`), the jobs over a project's groups (`POST
+  /projects/{project}/jobs`, `project-verify`, `project-check`,
+  `project-repin`, `project-restore`; section 9), the exports and the activity
+  (`project-activity`) are below; the project card of the web interface uses
+  the same routes, and a pin's `command` (`not_rebuildable` with
+  `command_refusal`) tells beforehand which pins a check, a restore or a re-pin
+  cannot reach (D5).
 - `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
   `GET /projects/{project}`: the projects visible to the actor; a hidden project
   answers like a missing one (`404`). A project is its directory, which holds
@@ -391,13 +393,21 @@ cursor is safe in a URL).
   file writes it and the configured `store` it matches, `null`: none),
   `area` (`path`, `sha256`, `state` `ok`/`missing`/`changed`/`invalid`, and the
   `area_id` of the index it was read into) or `null`, the counts `groups`,
-  `pins` and `missing_pins`, `scanned_at`, and whether the actor may change it
-  now (`project_write`: its owner or an administrator; read at each request).
-  The card adds `path`, `created_at`, `created_by`, `groups` (each `name`,
-  `origin` `{kind: "plan", producer, calls}` or `{kind: "local", selections}`,
+  `open_groups` (sets in the making), `pins` and `missing_pins`, `scanned_at`,
+  and whether the actor may change it now (`project_write`: its owner or an
+  administrator; read at each request). The card adds `path`, `created_at`,
+  `created_by`, `groups` (each `name`; `state`, `open` for a set in the making
+  or `closed`; `closed_at`, `closed_by` and `pins_sha256` of a set Archiwista
+  closed, else `null`; `digest_state`, `ok`, `mismatch` (the recorded digest is
+  not that of the pins: the file was changed outside Archiwista) or `null`
+  without a recorded digest; `origin` `{kind, producer, calls, selections}`,
+  `kind` `plan` while the set holds calls, else `local`, `producer` and `calls`
+  `null` for `local`, `selections` the requests that pinned by hand, for both;
   and its `pins`, each with `producer`, `store`, `version`, `sha256`,
   `content_sha256`, `size_bytes`, `unit`, `label`, `pinned_at`, `pinned_by`,
-  `state`, `slot`, `is_current`, and `command`: `rebuildable`,
+  `calls` (the places in `origin.calls` of the calls whose runs pinned it, `[]`
+  for a pin added by hand, `null` for a pin written before the sets' states or
+  of a local set), `state`, `slot`, `is_current`, and `command`: `rebuildable`,
   `not_rebuildable` with the producer's text in `command_refusal`, or
   `unknown` until the producer is asked, see `version-command`) and `problems`
   (`invalid_project_file`,
@@ -480,7 +490,8 @@ cursor is safe in a URL).
   log, newest first (A-ADR-049 decision 14). The entries `project.*` about the
   project (`project.create`, `project.update`, `project.area`, `project.store`,
   `project.access`, `project.data_dir`, `project.pin`, `project.unpin`,
-  `project.export`, `project.delete`) and `job.start`, `job.retry` and `job.cancel` of a job whose
+  `project.set_close`, `project.set_open`, `project.export`,
+  `project.delete`) and `job.start`, `job.retry` and `job.cancel` of a job whose
   `details.project` is the project (a project job, a download that pins into it,
   a warm-up of its previews), with the outcome `ok` or `failed`; a refusal and
   another project's entries never. The answer `ProjectActivity {items,
@@ -508,53 +519,135 @@ cursor is safe in a URL).
   interactively). Logged as `project.delete` (target the project's access key;
   `before` its access entry; `details`: `name`, `path`, `kept`, the entries
   left in the directory); the project's earlier entries stay in the log.
+- Sets (A-ADR-049 erratum 6). A set (`groups[]` of the card) is `open`, a set
+  in the making whose content changes, or `closed`, frozen: a closed set takes
+  no pin, unpin, removed call or re-pin (`409 conflict`, `set_closed`) until it
+  is opened again. A set without `state` in the file (written before) is
+  closed. An open set has one producer, fixed by its first call or pin; another
+  producer's versions or calls are `409 conflict`, `set_producer`. A set
+  holding calls has the origin `plan`, any other `local`; a pin of a `plan` set
+  names in `calls` the calls whose runs pinned it, `[]` when it was added by
+  hand. Every change of a set needs `project.write` (`403 permission_denied`;
+  `404` for a hidden project) and is written under the project file's lock
+  (`409 project_locked`; a file Archiwista cannot read `409
+  invalid_project_file`, `unsupported_project_schema`).
 - `archiwista project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … | --query
-  JSON) [--from local_state|catalog|file] [--add]` / `POST
+  JSON) [--from local_state|catalog|file] [--add | --open]` / `POST
   /projects/{project}/groups` (`{"name", "from", "versions"?: [{"store",
-  "version"}], "query"?: {…the filters of GET /slots}}`, exactly one of
-  `versions` and `query`; `from` `file` names `versions`, `catalog` a `query`,
-  `local_state` either: its filters, or the year layer the map shows) pins
-  versions the store holds into a new local group,
-  and with `--add` / `POST /projects/{project}/groups/{group}/pins` (the same
-  without `name`, `200`) into a local group the project has. The versions come
-  from the index alone (no network, no producer): named ones, older too, or the
-  versions of the query's rows on every page (`current` by default). The answer
-  (`201`) is `PinOutcome`: `project` (the card), `group`, `pinned`, `already`
-  (pinned before, or named twice) and `skipped` (`[{store, version, reason}]`,
-  `missing` or `no_sha256`). The first pin of a producer names the project's
-  store of that producer. Refused before anything is written: more than 10,000
-  versions (`400 too_many_pins`, `details.count`), a name breaking the rule
-  (`400 invalid_group_name`), a taken name (`409 group_exists`, compared
-  case-folded), a group of the plan window (`409 group_origin_plan`), an unknown
-  group (`404`), a version of another store than the project's (`409
-  other_store`, `details.store`) and a project store matching no configured one
-  (`409 unknown_store`). `archiwista project-unpin PROJEKT ZESTAW --pin
-  PRODUCENT:WERSJA …` / `POST /projects/{project}/groups/{group}/unpin`
-  (`{"pins": [{"producer", "version"}]}`) removes pins, and without `--pin` /
-  `DELETE /projects/{project}/groups/{group}` the whole group; both answer the
-  card and leave the versions in the store. Each change needs `project.write`
-  and is logged (`project.pin` with `group`, `from`, `pins`, `already`,
-  `skipped`; `project.unpin` with `group`, the `pins` removed and
+  "version"}], "query"?: {…the filters of GET /slots}, "open"?: false}`,
+  exactly one of `versions` and `query`; `from` `file` names `versions`,
+  `catalog` a `query`, `local_state` either: its filters, or the year layer the
+  map shows) pins versions the store holds into a new set, written closed at
+  once (`closed_at`, `closed_by`, `pins_sha256`), or with `--open` / `"open":
+  true` left open; a new set whose every version was skipped is open too.
+  With `"open": true` `versions` and `query` may both be left out: an empty set
+  in the making, which `archiwista project-draft PROJEKT ZESTAW` makes. With
+  `--add` / `POST /projects/{project}/groups/{group}/pins` (the same without
+  `name` and `open`, `200`) the versions go into a set in the making of either
+  origin: the request is recorded in its `origin.selections`, and a pin of a
+  `plan` set gets `"calls": []`. The versions come from the index alone (no
+  network, no producer): named ones, older too, or the versions of the query's
+  rows on every page (`current` by default). The answer (`201`) is
+  `PinOutcome`: `project` (the card), `group`, `pinned`, `already` (pinned
+  before, or named twice), `skipped` (`[{store, version, reason}]`, `missing`
+  or `no_sha256`) and `state` (the set's, `open` or `closed`, after the
+  request). The first pin of a producer names the project's store of that
+  producer. Refused before anything is written: more than 10,000 versions
+  (`400 too_many_pins`, `details.count`), a name breaking the rule (`400
+  invalid_group_name`), a taken name (`409 group_exists`, compared
+  case-folded), no such set (`404`, `group_not_found`), a closed set (`409
+  set_closed`), versions of another producer than the open set's, or of
+  several producers for a new open set (`409 set_producer`), a version of
+  another store than the project's (`409 other_store`, `details.store`) and a
+  project store matching no configured one (`409 unknown_store`). Logged as
+  `project.pin` (`group`, `from`, `pins`, `already`, `skipped`, and for a new
+  set `open`, whether it was left open; `pins: 0` for an empty one).
+- `archiwista project-unpin PROJEKT ZESTAW --pin PRODUCENT:WERSJA …` / `POST
+  /projects/{project}/groups/{group}/unpin` (`{"pins": [{"producer",
+  "version"}]}`) removes pins of an open set (`409 set_closed` for a closed
+  one), and without `--pin` / `DELETE /projects/{project}/groups/{group}` the
+  whole set, open or closed; both answer the card and leave the versions in
+  the store. Logged as `project.unpin` (`group`, the `pins` removed and
   `group_removed`).
+- `archiwista project-uncall PROJEKT ZESTAW --call N` / `DELETE
+  /projects/{project}/groups/{group}/calls/{call}` (no body; `call` the 0-based
+  place in `origin.calls`, which is `files[].call` of the download's summary
+  when the set was new) removes a call of an open set: `N` leaves every pin's
+  `calls` and the higher places shift down by one; a pin whose `calls` becomes
+  empty that way goes, and a hand pin (`[]`) or a pin of another call too
+  stays. With the last call gone the set's origin is `local` again (its
+  selections kept, the pins' `calls` gone). It answers the card. Refused: a
+  closed set (`409 set_closed`), no such set (`404`, `group_not_found`), no
+  such call (`404 not_found`, `call_not_found`) and a set holding a pin without
+  `calls`, written before the sets' states (`409 conflict`,
+  `pins_without_calls`: a re-pin, `project-repin`, writes them). Logged as
+  `project.unpin` (`group`, `call`, the `pins` removed).
+- `archiwista project-close PROJEKT ZESTAW` / `POST
+  /projects/{project}/groups/{group}/close` (no body) closes a set in the
+  making and answers the card. Refused, in this order: no such set (`404`,
+  `group_not_found`); a closed set (`409 set_closed`); a job that writes into
+  it waits or runs, a `download` whose `params.pin` names the project and the
+  set or a `project_repin` of the set (`409 set_job_active`, `details.job`
+  `{id, kind, state}`); a set without pins (`409 set_empty`); a pin whose state
+  at the index's last scan is not `ok` (`409 set_pins_not_ok`, `details.counts`
+  `{"missing": a, "sha256_mismatch": b, "unknown": c}` and `details.pins`, the
+  first 100 `{producer, version, state}`: run `project-verify` or a rescan
+  first). It writes `state: "closed"`, `closed_at` (now), `closed_by` (the
+  actor's id, `local` for the local owner) and `pins_sha256`, and logs
+  `project.set_close` (`group`, `pins`, `pins_sha256`). `pins_sha256` is the
+  lowercase hexadecimal SHA-256 of the UTF-8 bytes of the lines
+  `<producer>\t<version>\t<sha256>\n`, one per pin, sorted by producer, then
+  version, by code point (`archiwista.projects.document.pins_digest`); only
+  the pins' identity counts, not `calls`, `pinned_at`, labels or the origin. A
+  reader checks a closed set with it, for example:
+
+  ```sh
+  archiwista project raba --json | jq -r '.groups[] | select(.name == "2024")
+    | .pins[] | [.producer, .version, .sha256] | @tsv' | LC_ALL=C sort | sha256sum
+  ```
+
+- `archiwista project-reopen PROJEKT ZESTAW` / `POST
+  /projects/{project}/groups/{group}/reopen` (no body) opens a closed set
+  again, an older one without `state` too, and answers the card: it writes
+  `state: "open"` and removes `closed_at`, `closed_by` and `pins_sha256`, and
+  logs `project.set_open` (`group`, and the `closed_at`, `closed_by` and
+  `pins_sha256` of the closing it ends). An open set is `409 set_open`, no
+  such set `404` (`group_not_found`). A reader that takes only closed sets
+  (Hydrograf) refuses the set until it is closed again.
 - `archiwista jobs start download … [--plan ZADANIE] --pin PROJEKT --pin-group
-  ZESTAW` / `POST /jobs` with `"pin": {"project", "group"}` (a `download` only;
-  section 9) pins what the download leaves into a new group of the plan window
-  (A-ADR-049 decision 9). The request needs `project.write` of the project
-  besides `store_writer`, and is refused before a job exists as `project-pin`
-  refuses a new group: an unknown or hidden project `404`, `403
-  permission_denied`, `400 invalid_group_name`, `409 group_exists`, `409
-  other_store` and `409 unknown_store`. When the job succeeds (no failed unit,
-  nothing `taken`), its worker writes the group after the rescan: origin `plan`
-  with the job's producer and calls, a pin for every file of `files[]` and, for
-  each call with a kept plan, for every other position the current version the
-  index holds at its path. `result.pin` says what became of it: `{project,
-  group, written: true, pins, not_pinned: [{path, reason: "not_in_store"}]}`;
-  `{project, group, written: false, reason: "job_partial"}` for a job that did
-  not succeed (nothing is written; a retry pins again); `{project, group,
-  written: false, error}` when the write failed (a name taken meanwhile, the
-  lock held), which ends the job `partial` with its files in the store. The job
-  belongs to the project (`GET /jobs?project=`), and its `job.start` entry of
-  the log has `project` and `group`.
+  ZESTAW [--pin-add | --pin-open]` / `POST /jobs` with `"pin": {"project",
+  "group"}` (a `download` only; section 9) pins what the download leaves into a
+  new set of the plan window, written closed (A-ADR-049 decision 9); with
+  `"open": true` (`--pin-open`) the new set is left in the making, and with
+  `"add": true` (`--pin-add`) the job's calls and pins are appended to the set
+  in the making `group` (erratum 6); `add` and `open` together are `400
+  validation_error`. The request needs `project.write` of the project besides
+  `store_writer`, and is refused before a job exists: an unknown or hidden
+  project `404`, `403 permission_denied`, `400 invalid_group_name`, `409
+  other_store` and `409 unknown_store`; for a new set `409 group_exists`; with
+  `add` no such set (`404`, `group_not_found`), a closed set (`409
+  set_closed`), another producer than the set's (`409 set_producer`) and more
+  than 1,000 calls in the set and the job together (`400 too_many_calls`,
+  `details.count`, `details.limit`). The job's `params.pin` keeps `add` or
+  `open` when true. When the job succeeds (no failed unit, nothing `taken`),
+  its worker writes under the project's lock after the rescan: a new set of
+  origin `plan` with the job's producer and calls, or the job's calls appended
+  to the open set's `origin.calls` (checked open again), a pin for every file
+  of `files[]` and, for each call with a kept plan, for every other position
+  the current version the index holds at its path, each pin's `calls` naming
+  its call (offset by the calls the set held); a version the set pins already
+  gains the call and keeps `pinned_at` and `pinned_by`. `result.pin` says what
+  became of it: `{project, group, ["add": true | "open": true], written: true,
+  pins, already, state, not_pinned: [{path, reason: "not_in_store"}]}` (`pins`
+  the new pins, `already` the versions the set pinned already, `state` the
+  set's after the write); `{project, group, [mode], written: false, reason:
+  "job_partial"}` for a job that did not succeed (nothing is written; a retry
+  pins again); `{project, group, [mode], written: false, error: {code, reason,
+  detail}}` when the write failed (a name taken meanwhile, the lock held, the
+  set closed or removed meanwhile: `set_closed`), which ends the job `partial`
+  with its files in the store ("Otwórz do edycji", `project-reopen`, then `jobs
+  retry`). The job belongs to the project (`GET /jobs?project=`), and its
+  `job.start` entry of the log has `project` and `group`.
 - `archiwista status` / `GET /health`: versions, sources, the index and every
   store: `status` (`unknown` not scanned yet, `available`, `unavailable`),
   counters, `last_scan` with the actor, `running_job` with its progress,
@@ -1073,8 +1166,8 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 | `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |
 | `POST /previews/warm` | none, or any of `{"store": "…", "product": "…", "segment": "…", "project": "…", "area_id": "…"}` | the first look at current versions prepared in the preview cache (v0.3, ADR-041): the job `preview_warm` has no `store`, its `params` are the filters (and `since`, set only by the scheduler's warm-up after a scan); any session may ask; a store that is not configured, a project the session does not see and an unknown area → `404` before a job; a request of the filters of a waiting warm-up returns that job |
 | `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"`, and `"store"`, `"horizontal"`, `"resolution"`, `"vertical_crs"` for the rows of a `200` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`); a store that is not configured → `404` before a job |
-| `POST /jobs` | `{"kind": "check", "producer": "…", "store": "…", "calls": [{"command": "…", "options": {…}}, …]}` (1 to 1000 calls, in their order; one for one line); for a run `"kind": "download"`, optionally `"plan_job": "…"` (a `check` job of the same store, producer and calls in the same order) and `"pin": {"project": "…", "group": "…"}` (a new group of the project that the run's files and its plans' other positions are pinned into when it succeeds, section 5 at `jobs start download … --pin`) | a job of calls of commands of the producer's catalog that work on a store and have a check (v0.3): all the lines of a report's row, or of a pasted list, in one job (ADR-044). `check` plans a run of each call in the store's directory of the producer without its effects, one after the other, and keeps a plan of each; a call the producer refuses, or none of whose positions could be checked, keeps none and the job ends `partial` (it fails only when no call was planned, with the first call's error); `download` runs the calls there (with `plan_job` each call only its plan's positions to download, one whose source changed since a failed item, `stale_plan`; a call without a kept plan or with nothing to download is skipped), the next call running after one that failed; both over the network. `result.calls` says what became of each call (`status`, `line`, `error`; a download's `reason` of a skipped one), `files[]` and `items[]` of a download carry the `call`; with `pin`, `result.pin` says what was pinned. Refused before a job exists: a download by a session without `store_writer` (and without the setting `store_write_for_all`) `403` (`permission_denied`; an agent has the roles of the person who issued its token), a store that is not configured `404`, a command outside the catalog `400` (`unknown_command`), a store without a directory of the producer `400` (`store_without_producer`), a command on no store or without a check `422` (`no_store`, `no_check`), an option that is a file path `403` (`path_outside_root`), the producer's refusal of the options `400` (its text, `details.option`), each refusal of one call naming its place in `calls` (`details.call`, from 0), a `plan_job` the session does not see or that kept no plan `404`, one of another store, producer or calls `409` (`plan_mismatch`, `details.job`), `plan_job` or `pin` with `check` `400`, a `pin` the project refuses (`404`, `403`, `400 invalid_group_name`, `409 group_exists`, `other_store`, `unknown_store`), a missing plugin `503`, offline `409` (`offline_mode`); the job keeps the options as the producer read them. A download that shares a call (store, producer, command, options) with an active download starts with the warning notice `overlapping_job` |
-| `POST /projects/{project}/jobs` | `{"kind": "verify"}`, `"check"`, `"restore"` (optionally `"groups": ["…"]`, every group when left out) or `{"kind": "repin", "groups": ["…"]}` (exactly one) | a job over a project's groups (A-ADR-049 decision 11; the kinds `project_verify`, `project_check`, `project_repin`, `project_restore`, with no `store` and the `params` `project` and `groups`): who sees the project starts a verification or a check; a re-pin and a restore need `project.write` and `store.write` (`403`). Refused before a job: a group the project does not have (`404`), a re-pin of not exactly one group (`400`), a group whose producer offers no commands (`422 unsupported`, `no_commands`), a re-pin of a local group with a pin whose call cannot be rebuilt (`422 unsupported`, `command_not_rebuildable`), a project store matching no configured one (`409 conflict`, `unknown_store`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409`, `offline_mode`) |
+| `POST /jobs` | `{"kind": "check", "producer": "…", "store": "…", "calls": [{"command": "…", "options": {…}}, …]}` (1 to 1000 calls, in their order; one for one line); for a run `"kind": "download"`, optionally `"plan_job": "…"` (a `check` job of the same store, producer and calls in the same order) and `"pin": {"project": "…", "group": "…"}` (a new set of the project, written closed, that the run's files and its plans' other positions are pinned into when it succeeds; with `"open": true` the new set is left in the making, with `"add": true` the job's calls and pins go into the set in the making `group`, not both; section 5 at `jobs start download … --pin`) | a job of calls of commands of the producer's catalog that work on a store and have a check (v0.3): all the lines of a report's row, or of a pasted list, in one job (ADR-044). `check` plans a run of each call in the store's directory of the producer without its effects, one after the other, and keeps a plan of each; a call the producer refuses, or none of whose positions could be checked, keeps none and the job ends `partial` (it fails only when no call was planned, with the first call's error); `download` runs the calls there (with `plan_job` each call only its plan's positions to download, one whose source changed since a failed item, `stale_plan`; a call without a kept plan or with nothing to download is skipped), the next call running after one that failed; both over the network. `result.calls` says what became of each call (`status`, `line`, `error`; a download's `reason` of a skipped one), `files[]` and `items[]` of a download carry the `call`; with `pin`, `result.pin` says what was pinned. Refused before a job exists: a download by a session without `store_writer` (and without the setting `store_write_for_all`) `403` (`permission_denied`; an agent has the roles of the person who issued its token), a store that is not configured `404`, a command outside the catalog `400` (`unknown_command`), a store without a directory of the producer `400` (`store_without_producer`), a command on no store or without a check `422` (`no_store`, `no_check`), an option that is a file path `403` (`path_outside_root`), the producer's refusal of the options `400` (its text, `details.option`), each refusal of one call naming its place in `calls` (`details.call`, from 0), a `plan_job` the session does not see or that kept no plan `404`, one of another store, producer or calls `409` (`plan_mismatch`, `details.job`), `plan_job` or `pin` with `check` `400`, a `pin` the project refuses (`404`, `403`, `400 invalid_group_name`, `409 group_exists`, `other_store`, `unknown_store`; with `add` `404 group_not_found`, `409 set_closed`, `409 set_producer`, `400 too_many_calls`; `add` with `open` `400 validation_error`), a missing plugin `503`, offline `409` (`offline_mode`); the job keeps the options as the producer read them. A download that shares a call (store, producer, command, options) with an active download starts with the warning notice `overlapping_job` |
+| `POST /projects/{project}/jobs` | `{"kind": "verify"}`, `"check"`, `"restore"` (optionally `"groups": ["…"]`, every group when left out) or `{"kind": "repin", "groups": ["…"]}` (exactly one) | a job over a project's groups (A-ADR-049 decision 11; the kinds `project_verify`, `project_check`, `project_repin`, `project_restore`, with no `store` and the `params` `project` and `groups`): who sees the project starts a verification or a check; a re-pin and a restore need `project.write` and `store.write` (`403`). Refused before a job: a group the project does not have (`404`), a re-pin of not exactly one group (`400`), a group whose producer offers no commands (`422 unsupported`, `no_commands`), a re-pin of a local group with a pin whose call cannot be rebuilt (`422 unsupported`, `command_not_rebuildable`), a re-pin of a closed set (`409 conflict`, `set_closed`; erratum 6), a project store matching no configured one (`409 conflict`, `unknown_store`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409`, `offline_mode`) |
 
 An unknown store gives `404 not_found`, a wrong body `400 validation_error`.
 When a job that writes the store's index (a scan or outlines) runs already, the
@@ -1145,13 +1238,17 @@ needs that store readable (`store_unavailable` fails the job). Their `result`:
   rebuild, its text in `detail`: D5). It ends `partial` when some pins could not
   be asked and fails (`source_unavailable`, `check_failed`) when none could;
 - `project_repin` (network; one group): runs the group's calls (a local group:
-  its pins' calls, `command_for_version`) in the producer's update mode;
+  its pins' calls, `command_for_version`; a set of calls and hand pins: its
+  calls for the run pins and each hand pin's own call) in the producer's update
+  mode, each call's options, `year` too, as the file writes them;
   `project`, `group`, `status` (`replaced`, `unchanged`), `written`, `calls`,
   `files`, `pins` (`kept`, `new`, `dropped`) and `rescanned`. Only when every
   call and unit succeeded are the pins replaced in the file under its lock (a
   pin whose version and SHA-256 did not change keeps `pinned_at` and
-  `pinned_by`); anything less changes no pin and ends `partial` (`written`
-  false), the downloaded versions staying in the store;
+  `pinned_by`; a run pin gets its `calls`, so an older set gains them; an open
+  set stays open); anything less, or a set closed while the job ran, changes no
+  pin and ends `partial` (`written` false), the downloaded versions staying in
+  the store;
 - `project_restore` (network; never writes the file): runs, for the groups with
   pins missing from the store, their calls in the producer's default mode;
   `project`, `groups`, `ok`, `counts`, `pins` (the missing ones: `group`,
@@ -1182,8 +1279,9 @@ A job is controlled by (v0.3; ADR-038):
   as it ended). A download fetches only what the store still lacks. One that
   succeeded is `409`, reason `job_succeeded`; one that waits or runs
   `job_active`; a download needs `store_writer` again (`403`) and, with `pin`,
-  `project.write` of the project and its group's name still free (`409
-  group_exists`), a snapshot the project's owner; the new job is refused as
+  `project.write` of the project and what its `pin` needs again (a new set's
+  name still free, `409 group_exists`; with `add` the set still in the making,
+  `409 set_closed`), a snapshot the project's owner; the new job is refused as
   any job of its kind (`409` for a store whose index another job writes, offline
   mode).
 - `GET /jobs/{id}/log`: the end of the job's log, its worker's standard error in

@@ -316,22 +316,52 @@ and a directory holding only one of them is no project.
   session may change), who created it and its problems. "Zmień…" changes the name,
   the description, the area and a producer's store, "Udostępnij…" who sees it (both the
   owner's or an administrator's). "Weryfikuj" and "Sprawdź aktualizacje" run the
-  project's jobs (below). Each set shows where its versions came from — a plan
-  set's command lines (the first three, the others on "i N więcej"), a set chosen in
-  the store, its selections in words — with "Sprawdź aktualizacje", "Przepnij",
-  "Przywróć brakujące" and "Usuń zestaw", and each pin its state in the store ("w
-  magazynie", "brak w magazynie", another content), whether it is the slot's current
-  version, "bez polecenia" with the producer's reason when the producer cannot rebuild
-  the command that selects it (for example a derived `soil hsg` file: its check and
-  restore, and its set's re-pin, are not possible), and "Odepnij". An action that cannot be used
-  now is disabled, and the card lists each reason once: changing the project (the
-  owner or an administrator), a producer's store that matches no configured one, the
-  right to write the stores, a producer without commands (IMGWTools until v0.5), a
-  version without a command, offline mode, a job of the project already running, and
-  a set with nothing missing. One job of a project runs at a time; the card follows
+  project's jobs (below). Each set shows its state — "w budowie" on a set in the
+  making, "zamknięty" with the date, who closed it and the first 12 characters of its
+  digest on a closed one (the whole digest in the tooltip, to copy) — and where its
+  versions came from — a plan set's command lines (the first three, the others on "i N
+  więcej"), a set chosen in the store, its selections in words — with "Sprawdź
+  aktualizacje", "Przepnij", "Przywróć brakujące" and "Usuń zestaw", and each pin its
+  state in the store ("w magazynie", "brak w magazynie", another content), whether it
+  is the slot's current version, "bez polecenia" with the producer's reason when the
+  producer cannot rebuild the command that selects it (for example a derived `soil hsg`
+  file: its check and restore, and its set's re-pin, are not possible), and "Odepnij"
+  (a set in the making only). An action that cannot be used now is disabled, and the
+  card lists each reason once: changing the project (the owner or an administrator), a
+  producer's store that matches no configured one, the right to write the stores, a
+  producer without commands (IMGWTools until v0.5), a version without a command,
+  offline mode, a job of the project already running, a closed set, and a set with
+  nothing missing. One job of a project runs at a time; the card follows
   it and, when it ends, reads the project again and marks each pin with what the job
   found ("nienaruszona", "jest nowsza: <label>", "przywrócona", …) until the next job.
   Below come the exports, the own data and the activity.
+- **Sets in the making** (A-ADR-049 erratum 6; the owner or an administrator): a set is
+  built from several plan windows and hand-picked versions while it is open ("w
+  budowie"), and closed when it is complete; a closed set is frozen, so a program that
+  reads only closed sets (Hydrograf) can rely on it. "Nowy zestaw w budowie…" on the
+  card makes an empty one; the plan window's "Dodaj do projektu" adds a download to one
+  ("Zestaw w budowie") or keeps a new set open ("Zostaw w budowie"); the pin dialog's
+  "Zestaw w budowie" lists the project's open sets only (a closed set is opened on its
+  card first). A set in the making holds one producer's data; a version added by hand
+  to a set of plan calls carries the badge "ręcznie". "Usuń polecenie" at a call
+  removes it with the pins only that call pinned (the question lists them; the files
+  stay in the store); "Odepnij" removes a pin. "Zamknij
+  zestaw" freezes the set and records the digest of its pins (`pins_sha256`, the
+  SHA-256 of one line `<producer>\t<version>\t<sha256>` per pin, sorted); it is
+  disabled, with the reason, while a job writes into the set, while a pin is missing,
+  has another SHA-256 or lies in an unknown store at the last scan ("Weryfikuj" first
+  is worth it), and for an empty set. A closed set takes no pin, "Odepnij", "Usuń
+  polecenie" or "Przepnij" (disabled with the reason); "Otwórz do edycji" opens it again
+  after a question warning that programs reading only closed sets refuse it until it
+  is closed again, and closing it again records a new digest. Sets made before are
+  closed. A warning "Skrót zestawu nie zgadza się z przypięciami: plik zmieniono poza
+  Archiwistą. Otwórz zestaw do edycji i zamknij go ponownie." means the project file
+  was changed outside Archiwista after the set was closed. At the terminal: `archiwista
+  project-draft PROJEKT ZESTAW` (an empty set in the making), `project-pin … --open` (a
+  new set left open) and `--add` (into a set in the making), `project-uncall PROJEKT
+  ZESTAW --call N` (`N` from 0, in the order of the set's calls), `project-close PROJEKT
+  ZESTAW` and `project-reopen PROJEKT ZESTAW`, and `jobs start download … --pin PROJEKT
+  --pin-group ZESTAW --pin-open` or `--pin-add`; each refusal names its reason.
 
 ![The project's card after a check and a re-pin](../src/archiwista/web/guide/08-projekt.webp)
 
@@ -397,26 +427,29 @@ and a directory holding only one of them is no project.
   (without `--yes` it removes nothing).
 - **Pinning what the store holds** (the owner or an administrator): `archiwista
   project-pin PROJEKT ZESTAW --version MAGAZYN:WERSJA` pins a version, an older one
-  too, into a new set of the project, and `--query '{"store": "zespol", "product":
-  "nmt"}'` the versions of a catalog query (every page; at most 10,000); `--add` pins
-  into a set the project has that was chosen in the store. Nothing is downloaded: the
-  SHA-256, the size, the unit and the label come from the index, a version not in the
-  store or without a SHA-256 is skipped with the reason, and the first pin of a
-  producer names the project's store. `project-unpin PROJEKT ZESTAW --pin PRODUCENT:WERSJA` removes a pin,
-  and without `--pin` the whole set; the files stay in the store. A download pins
-  what it leaves too: `archiwista jobs start download … --plan ZADANIE --pin PROJEKT
-  --pin-group ZESTAW` writes, when the job succeeds, a new set of the plan window
-  with the files it fetched and the versions the store holds at the plan's other
-  positions; a job that ends `partial` pins nothing, and a taken name or another
-  store is refused before the download starts. In the web: "Dodaj do projektu…" on the
-  catalog's result, a coverage row of the map and a version on the file card pins the
-  chosen versions (those the filters, or the year chosen on the map, show; the window
-  counts them) into a new set of a project the session may change ("Nowy zestaw",
-  for example "2024") or adds them to one the project has ("Istniejący zestaw
-  projektu"); on the project's card "Odepnij" removes a pin and "Usuń zestaw" a set,
-  each asked first. The plan window's option "Dodaj do projektu" names the project and
-  the new set; the download's result in the top bar then says what was pinned and what
-  was not.
+  too, into a new set of the project, closed at once (`--open` leaves it in the
+  making), and `--query '{"store": "zespol", "product": "nmt"}'` the versions of a
+  catalog query (every page; at most 10,000); `--add` pins into a set in the making.
+  Nothing is downloaded: the SHA-256, the size, the unit and the label come from the
+  index, a version not in the store or without a SHA-256 is skipped with the reason,
+  and the first pin of a producer names the project's store. `project-unpin PROJEKT
+  ZESTAW --pin PRODUCENT:WERSJA` removes a pin of a set in the making, and without
+  `--pin` the whole set; the files stay in the store. A download pins what it leaves
+  too: `archiwista jobs start download … --plan ZADANIE --pin PROJEKT --pin-group
+  ZESTAW` writes, when the job succeeds, a new closed set of the plan window with the
+  files it fetched and the versions the store holds at the plan's other positions
+  (`--pin-open` leaves it in the making; `--pin-add` adds the calls and their files to
+  the set in the making `ZESTAW`); a job that ends `partial` pins nothing, and a taken
+  name, a closed set, another producer or another store is refused before the download
+  starts. In the web: "Dodaj do projektu…" on the catalog's result, a coverage row of
+  the map and a version on the file card pins the chosen versions (those the filters,
+  or the year chosen on the map, show; the window counts them) into a new set of a
+  project the session may change ("Nowy zestaw", for example "2024") or adds them to a
+  set in the making ("Zestaw w budowie"); on the project's card "Odepnij" removes a pin
+  and "Usuń zestaw" a set, each asked first. The plan window's option "Dodaj do
+  projektu" names the project and a new set ("Nowy zestaw", with "Zostaw w budowie" to
+  keep it open) or a set in the making ("Zestaw w budowie"); the download's result in
+  the top bar then says what was pinned and what was not.
 - **The jobs of a project** (the card's buttons; at the terminal):
   `archiwista project-verify PROJEKT [ZESTAW …]` hashes each pinned file in its
   store without the network (`ok`, `corrupt`, `missing`, `content_match` when another
@@ -424,22 +457,25 @@ and a directory holding only one of them is no project.
   [ZESTAW …]` asks the source and compares each pin by its slot (`current`, `newer`,
   `missing`, `removed`, `unverifiable`, `check_failed`, `not_checkable` for a version
   whose command the producer cannot rebuild), listing positions without a pin;
-  `project-repin PROJEKT ZESTAW` downloads the source's newer versions of one set and
-  pins them only when every call succeeded (an unchanged pin keeps its time and
-  author); `project-restore PROJEKT [ZESTAW …]` downloads the missing pinned versions
-  again (`restored`, `content_match`, `not_restored`, `not_restorable`) and never
-  changes the file. No set named is every set. Anyone who sees the project verifies
-  and checks it; a re-pin and a restore need the owner or an administrator and the
-  right to write the stores. One job of a project runs at a time; each follows the job
-  in the foreground and exits `0`, `10` (partial), `11` or `130`.
+  `project-repin PROJEKT ZESTAW` downloads the source's newer versions of one set in
+  the making (a closed set is opened first) with its calls as written, `year` and every
+  other option kept, and pins them only when every call succeeded (an unchanged pin
+  keeps its time and author); `project-restore PROJEKT [ZESTAW …]` downloads the
+  missing pinned versions again (`restored`, `content_match`, `not_restored`,
+  `not_restorable`) and never changes the file. No set named is every set. Anyone who
+  sees the project verifies and checks it; a re-pin and a restore need the owner or an
+  administrator and the right to write the stores. One job of a project runs at a
+  time; each follows the job in the foreground and exits `0`, `10` (partial), `11` or
+  `130`.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 
 - **The list** of projects shows each project's name and description, the store of
   each producer whose versions it pins ("żaden magazyn z ustawień" when the file names
-  a directory that no configured store has), its groups, the pinned and the missing
-  versions and when its file was read. A file broken by hand, or of a newer Archiwista,
-  is listed with the reason and not used. Hidden projects are not visible.
+  a directory that no configured store has), its groups (and how many are in the
+  making), the pinned and the missing versions and when its file was read. A file
+  broken by hand, or of a newer Archiwista, is listed with the reason and not used.
+  Hidden projects are not visible.
   "Nowy projekt…" takes the project's directory in a project directory of the settings
   (made when missing), a name (empty: the directory's), a description and, optionally,
   an area file (GeoJSON, GeoPackage or a zipped Shapefile, kept as an area and copied
@@ -451,14 +487,14 @@ and a directory holding only one of them is no project.
   w Katalogu" and the count of the store's files in the area when it is in order; the
   map, the Katalog's area filter and "Obszar polecenia" offer such an area too), who
   created it and when, its problems with how to fix them, and its groups of
-  pinned versions in the file's order: each with where its versions came from (a plan
-  of a producer, with its commands to copy, or the store, with where they were chosen)
-  and its versions with their state ("w magazynie", "brak w magazynie", "inna treść niż
-  przypięta") leading to their file cards. "Zmień…" changes the name, the description,
-  the area (a new file, or none) and the store of a producer's pins; "Udostępnij…"
-  (share) opens the project's sharing screen (see "Projects in a team" below). Both are
-  the project owner's or an administrator's: for anyone else they are disabled and the
-  card says why.
+  pinned versions in the file's order: each with its state ("w budowie" or closed) and
+  where its versions came from (a plan of a producer, with its commands to copy, or the
+  store, with where they were chosen) and its versions with their state ("w magazynie",
+  "brak w magazynie", "inna treść niż przypięta") leading to their file cards.
+  "Zmień…" changes the name, the description, the area (a new file, or none) and the
+  store of a producer's pins; "Udostępnij…" (share) opens the project's sharing screen
+  (see "Projects in a team" below). Both are the project owner's or an administrator's:
+  for anyone else they are disabled and the card says why.
 
 - **The data folder** is `<project folder>/dane/` by default; the project's owner
   or an administrator can point to another folder on the sharing screen ("Folder

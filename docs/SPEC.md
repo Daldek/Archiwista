@@ -192,7 +192,7 @@ keep their meaning.
 | **Full / partial sheet** | The index record `TAK`/`NIE` (`czy_ark_wypelniony`, in the sidecar `extra.source.full_sheet`): whether the sheet is completely filled with content | ARCH 3.2 |
 | **Kartograf job (area)** | One call for an area; its files, also on both sides of the PL/CZ border, are linked by a common `extra.parent_request` | ARCH 3.4 |
 | **Project** | (Archiwista) A directory with `archiwista-project.json` (`archiwista-project/1`), written only by Archiwista: name, description, area (a geometry file in `obszary/`), the store of each of its producers and groups of pins; its access is in the state database (A-ADR-029), its own data in `dane/` (4.7.1), its exports in `eksport/` (8.4). Kartograf and IMGWTools keep no projects (ECO-054) | section 4.7, A-ADR-049 |
-| **Pin group** | (Archiwista) a named list of pins of a project, shown to people as a "zestaw" (set): the complete input data for one purpose, named by it (e.g. "2024"), with its origin: `plan` (the producer's calls that the plan window downloaded them with) or `local` (the selection in the store that chose them: "Stan lokalny", the "Katalog" (Catalog), a "Karta pliku" (File card)) | section 4.7, A-ADR-049 |
+| **Pin group** | (Archiwista) a named list of pins of a project, shown to people as a "zestaw" (set): the complete input data for one purpose, named by it (e.g. "2024"), with its origin: `plan` (the producer's calls that the plan window downloaded them with) or `local` (the selection in the store that chose them: "Stan lokalny", the "Katalog" (Catalog), a "Karta pliku" (File card)); and its state: `open`, a set in the making ("w budowie") whose content changes, or `closed`, a frozen set with the digest of its pins (`pins_sha256`) | section 4.7, A-ADR-049 (erratum 6) |
 | **Project job** | (Archiwista) a background job over the groups of a project: `project_verify` (the pinned files hashed, no network), `project_check` (the pins against the source), `project_repin` (one group anew, to the source's newer versions), `project_restore` (missing pinned versions downloaded again) | sections 4.7, 5.6, A-ADR-049 |
 | **Pin** | (Archiwista) an entry of a pin group: the version a project uses — producer, the version's path relative to the store (never a standard path), `sha256` (and `content_sha256` when the sidecar has one), size, unit, label, who pinned it and when; any number of projects pin the same version | section 4.7, A-ADR-049 |
 | **Availability** | What the source has for an area: years, variants, sheet completeness; the `check_availability` report (`kartograf-availability/1`) | ADR-041 |
@@ -200,7 +200,7 @@ keep their meaning.
 | **Currency** | Whether the local or pinned version is the newest at the source: a `check_*` plan (`kartograf-plan/1`; statuses `current`, `newer`, `missing`, `unverifiable`, `check_failed`) | ADR-036 |
 | **Area** | The user's selection: rectangle, polygon, geometry file, sheet code, TERYT, KU or country | — |
 | **Year coverage** | (Archiwista) a coverage label of a year or release for an area: "pełne" (full), "pełne · 2 kampanie" (full, 2 campaigns), "częściowe · 58%" (partial, 58%), "brak danych" (no data), plus a separate store-state badge: "pobrane" (downloaded), "pobrane 5/12" (downloaded 5/12), "niepobrane" (not downloaded) | section 6.4 |
-| **Set** | (Archiwista) "Zestaw" in the Polish interface: a group of a project, a named complete set of pinned data for one purpose (e.g. "2024": NMT, BDOT10k and orthophoto of 2024); `groups` in the code, the API and the project file | section 8.4, A-ADR-049 |
+| **Set** | (Archiwista) "Zestaw" in the Polish interface: a group of a project, a named complete set of pinned data for one purpose (e.g. "2024": NMT, BDOT10k and orthophoto of 2024); `groups` in the code, the API and the project file; "w budowie" (in the making) while open, frozen once closed ("Zamknij zestaw") | section 8.4, A-ADR-049 |
 | **Derived product** | (proposal for Kartograf) the result of merging, saved in the store as a version with a sidecar and a list of inputs (`extra.source_files[]`, the HSG pattern); in the IMGW directory, the series of a dataset (IMGWTools) | sections 8.1, 4.8 |
 | **IMGW dataset** | A kind of IMGW-PIB archives with a common format, e.g. daily hydro, daily precipitation; the publication unit is a period (year or month) for the whole country | section 4.8 |
 | **IMGW archive** | A file published by IMGW-PIB (e.g. `codz_2024.zip`), saved in the IMGW directory 1:1 as an immutable version with a sidecar (`sha256`, `ETag`, `Last-Modified`); slot = the file path on the IMGW server | section 4.8.1, IMGW-4 |
@@ -641,7 +641,7 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | `station_series` | a variable of a station's series in the current dataset series version: file, `sha256` and rows, the variable's key (with the half-year period, e.g. `Q_max@winter`) and unit, first and last date with a value, list of gaps, units with a value and aggregate sums (from the `series.json` listing, IMGW-8) and the station's own known periods (datasets of station files, ČHMÚ); `series_catalogs` keeps the version read, with the dataset's unit, kind of years of its archives, first year and the periods known to the version |
 | `series_years` | each year of a variable in hydrological and calendar years (half-year characteristics: hydrological only): units, known units, units with a value — computed during indexing from the gap lists against the known periods (4.8.4); the labels, the Timeline and filters, whose longest gap comes from the gap list |
 | `search` | FTS5: sheet codes, TERYT, KU, labels, request numbers, file names, human-readable product names, project names and the names of their pin groups, station codes and names, river names |
-| `projects`, `project_stores`, `pin_groups`, `pins` | known projects, one per directory, as their file `archiwista-project.json` was last read (its state or problem, name, description, area): the store of each producer it names with the configured store matched, its groups with their origin, and the pins of each group linked to versions by store and path — the "which projects use the file" index (SCOPE 3.3; A-ADR-049) |
+| `projects`, `project_stores`, `pin_groups`, `pins` | known projects, one per directory, as their file `archiwista-project.json` was last read (its state or problem, name, description, area): the store of each producer it names with the configured store matched, its groups with their origin, state (`open`, `closed`), the members of their closing (`closed_at`, `closed_by`, `pins_sha256`) and `digest_state` (`ok`, `mismatch`: the recorded digest against the pins as read; `NULL` without one), and the pins of each group with their `calls` linked to versions by store and path — the "which projects use the file" index (SCOPE 3.3; A-ADR-049 and its erratum 6) |
 | `version_calls` | the command of a stored version as its producer rebuilds it (`command_for_version`), or the producer's refusal, per version and producer version: filled by pinning, by the project jobs and by the command of a version (`GET …/versions/{version}/command`), read by the project card (A-ADR-049 decision 10) |
 | `availability` | latest availability reports per area and product, with a date (visible without a network); for IMGW datasets — published years with publication dates |
 | `jobs`, `job_events` | history of background jobs and their events |
@@ -889,11 +889,17 @@ IMGW-21). Decisions: A-ADR-049 (D1 to D7 of the author's decision of 2026-10-31)
   store has path aliases, 4.6 point 7); and `groups` of pins, each with a name, its origin
   — `plan`, the producer's calls (`command` and `options`) that the plan window downloaded
   it with, or `local`, the selections in the store that chose it ("Stan lokalny", the
-  "Katalog" (Catalog), a "Karta pliku" (File card)) — and its pins: `producer`, `version`
-  (the version's file relative to the store, never a standard path), `sha256`,
+  "Katalog" (Catalog), a "Karta pliku" (File card)) —, its state (`state`: `open`, a set in
+  the making, or `closed`, also when the member is absent; a closed set holds `closed_at`,
+  `closed_by` and `pins_sha256`, all three, an open set none) and its pins: `producer`,
+  `version` (the version's file relative to the store, never a standard path), `sha256`,
   `content_sha256` when the sidecar has one, `size_bytes`, `unit`, `label`, `pinned_at` and
-  `pinned_by`. Who sees and changes the project is in the state database (4.3, A-ADR-029),
-  never in the file; own data and snapshots stay as 4.7.1 says.
+  `pinned_by`, and in a `plan` group `calls`, the places in `origin.calls` of the calls
+  whose runs pinned it (`[]` for a pin added by hand; absent on a pin written before
+  A-ADR-049 erratum 6). A set holding calls is `plan` (1 to 1,000 calls; the requests of its
+  hand pins in `origin.selections`), any other `local`. Who sees and changes the project is
+  in the state database (4.3, A-ADR-029), never in the file; own data and snapshots stay as
+  4.7.1 says.
 - **Writing:** every change takes the lock `.archiwista-project.lock` (a directory made
   with `mkdir`, an `owner` file in it), reads the file again, changes it and replaces it
   atomically (`os.replace`); a lock held by another writer is waited for 5 s, then the
@@ -920,12 +926,33 @@ IMGW-21). Decisions: A-ADR-049 (D1 to D7 of the author's decision of 2026-10-31)
 - **Pinning what the store holds** (no network): "Dodaj do projektu…" of "Stan lokalny"
   (the area, product, year and variant of the map), of the "Katalog" (its current result)
   and of the "Karta pliku" (the version chosen on its timeline, an older one too) adds the
-  versions with their `sha256` from the index to a new group or to a group of origin
-  `local`.
-- **Pinning new data:** the plan window's "Dodaj do projektu" (a project and a new group's
-  name) makes the window's download pin, at its end, every file of its `files[]` and every
-  position of its plan the store already held, as a group of origin `plan` with the calls;
-  a run that did not wholly succeed pins nothing.
+  versions with their `sha256` from the index to a new set, written closed at once (open
+  when every version was skipped), or to a set in the making of either origin ("Zestaw w
+  budowie"); a closed set takes none (`409 set_closed`).
+- **Pinning new data:** the plan window's "Dodaj do projektu" (a project and a new set's
+  name, or a set in the making of the project) makes the window's download pin, at its
+  end, every file of its `files[]` and every position of its plan the store already held,
+  as a new set of origin `plan` with the calls (closed at once, or left open with "Zostaw w
+  budowie"), or appended with its calls to the chosen open set, each pin naming its call;
+  a run that did not wholly succeed pins nothing, and a set closed meanwhile takes nothing
+  (the job ends `partial`, the files stay).
+- **Sets in the making and closed sets** (A-ADR-049 erratum 6): a set is built in the
+  making ("w budowie": "Nowy zestaw w budowie…" on the card, `archiwista project-draft`,
+  or "Zostaw w budowie" in the plan window) from several plan windows and hand pins of one
+  producer (another producer's are refused, `409 set_producer`), and "Usuń polecenie"
+  removes one call with the pins only it pinned. "Zamknij zestaw" freezes it: refused for
+  a set with no pin, a job writing into it, or a pin that is not `ok` at the last scan
+  ("Weryfikuj" first is advised); it writes `closed_at`, `closed_by` and `pins_sha256`, the
+  SHA-256 of the lines `<producer>\t<version>\t<sha256>\n` of its pins sorted by producer
+  and version (`archiwista.projects.document.pins_digest`), which a reader of the file
+  (Hydrograf) can compute to see that the set did not change. A closed set takes no pin,
+  unpin, removed call or re-pin; "Otwórz do edycji" opens it again (and removes the three
+  members), and closing it again records a new digest. A digest that no longer matches the
+  pins (the file changed outside Archiwista) is shown on the card ("Skrót zestawu nie
+  zgadza się z przypięciami: …"). Sets written before are closed without a digest. At the
+  terminal: `archiwista project-draft`, `project-pin … --open | --add`, `project-uncall`,
+  `project-close`, `project-reopen` and `jobs start download … --pin-open | --pin-add`
+  (AGENT_API.md).
 - **Jobs of a project** (5.6): "Weryfikuj" (`project_verify`, no network: Archiwista
   hashes the pinned files; a pin whose bytes changed but whose `content_sha256` matches a
   present version is shown apart, not as an error), "Sprawdź aktualizacje"
@@ -936,8 +963,11 @@ IMGW-21). Decisions: A-ADR-049 (D1 to D7 of the author's decision of 2026-10-31)
   mode; a missing pin is kept when its `sha256`, or for ČHMÚ its `content_sha256`,
   returns). A version whose command the producer cannot rebuild (KB-6, IMGW-21) is pinned,
   verified and exported, and its check, restore and re-pin are disabled with the
-  producer's reason (D5). The check, re-pin and restore of IMGW pins wait for the
-  IMGWTools actions of v0.5.
+  producer's reason (D5). In a set of calls and hand pins each run pin goes by the set's
+  calls and each hand pin by its own command; the calls run with their options as written
+  (`year` too), never dropped or changed. A closed set is not re-pinned (`409 set_closed`,
+  before the job and again under the lock). The check, re-pin and restore of IMGW pins
+  wait for the IMGWTools actions of v0.5.
 - **Activity:** the project card lists the action log's entries of the project (A-ADR-047;
   D7): who created, changed, pinned, unpinned and exported it and which of its jobs ran,
   without the client addresses.
@@ -2164,13 +2194,18 @@ Zlewnia Raby do Dobczyc             obszar: zlewnia Raby · 1470 km² [Pokaż na
                                     Pliki w obszarze: 120 plików z obrysem w obszarze
                                     · 3 pliki dla całego kraju
 [Weryfikuj] [Sprawdź aktualizacje] [Eksportuj…] [Udostępnij…]
+[Nowy zestaw w budowie…]
 -----------------------------------------------------------------------------
 Zestaw           Pochodzenie                                Pliki  Stan
 NMT 2023         okno planu: kartograf elevation download…  12     w magazynie
-  [Sprawdź aktualizacje] [Przepnij] [Przywróć brakujące] [Usuń zestaw]
+  zamknięty 2026.11.02 14:05 · Kasia · e7319a8d77a1
+  [Sprawdź aktualizacje] [Otwórz do edycji] [Przywróć brakujące] [Usuń zestaw]
 Stan lokalny     Stan lokalny: NMT · 2019 · Raba            9      1 brak w magazynie
-  [Sprawdź aktualizacje] [Przepnij] [Przywróć brakujące] [Usuń zestaw]
+  w budowie
+  [Sprawdź aktualizacje] [Przepnij] [Przywróć brakujące] [Zamknij zestaw]
+  [Usuń zestaw]
 Gleby HSG        Karta pliku                                 4      w magazynie
+  zamknięty
   sprawdzanie i przywracanie niedostępne: producent nie odtworzy polecenia
 -----------------------------------------------------------------------------
 Aktywność   Kasia  przypięcie zestawu „NMT 2023” · 12 plików      wczoraj 14:02
@@ -3436,18 +3471,20 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /commands/validate` | validation without the network (KB-3, IMGW-11) |
 | `POST /commands/format` | options → text of the `kartograf …` or `imgw …` command (KB-4, IMGW-11) |
 | `POST /commands/area` | a call with an area of `/areas` (drawn, uploaded or a project's) in place of the area options it names: the area's GeoJSON as the command's geometry file (`way` `geometry`), else the box that encloses it (`way` `bbox`); the area's country when the command needs one; the line without a store root, the `replaced` options; `422 unsupported` for a command that takes no area (`no_area_option`) or a producer without the capability `AreaCommandAdapter` (`no_area_commands`); no network (A-ADR-049 erratum 5) |
-| `POST /jobs` | background job: `check`, `download`, `series`, `compose`, `export`, `preview`; `check` and `download` take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); a `download` with `pin` (`project`, `group`: a new group's name) pins its files and the positions of its plan the store held into that project when it succeeds — it also needs `project.write`, and a taken group name is `409 group_exists` before a job (A-ADR-049 decision 9); a project's jobs start at `POST /projects/{id}/jobs` |
+| `POST /jobs` | background job: `check`, `download`, `series`, `compose`, `export`, `preview`; `check` and `download` take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); a `download` with `pin` pins its files and the positions of its plan the store held into that project when it succeeds: `{project, group}` a new set written closed, with `open: true` a new set left open, with `add: true` appended with its calls to the open set `group` (`add` and `open` not both: `400`) — it also needs `project.write`, and is refused before a job: a taken name `409 group_exists` (new sets), no such set `404 group_not_found`, a closed one `409 set_closed`, another producer than the set's `409 set_producer`, more than 1,000 calls together `400 too_many_calls` (`add`); a set closed meanwhile ends the job `partial` with the pin's error, the files kept (A-ADR-049 decision 9, erratum 6); a project's jobs start at `POST /projects/{id}/jobs` |
 | `GET /jobs`, `GET /jobs/{id}` | list and state of jobs with the actor (`actor`), `project` filter; from v0.4 the list holds every job of the queue, and a job only of projects the session does not see shows its kind, store, actor, state and progress counts only (`hidden: true`); such a job at its own address → `404` |
 | `GET /jobs/{id}/events` | SSE of a visible job (`progress`, `notice`, `state`), resumption via `Last-Event-ID`; ends after the final state, about a second after its session ends or its account is disabled or removed (as for `…/file`, from v0.4), or once the session no longer sees the job |
 | `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`, with `pin` also `project.write`; a project's re-pin or restore: `project.write` and `store.write`; from v0.4 a store's scan, outlines or link check and the scan of every project's folder: `store.scan`; the scan of one project's folder: the limits of a person's scans, `429`) (ADR-038, A-ADR-049) |
 | `GET /jobs/{id}/log` | the end of the job log (the last MiB), for a session that sees the whole job (ADR-038) |
-| `GET /projects`, `POST /projects` | list (each project, one per directory with `archiwista-project.json`: `name`, `description`, `state` (`ok`, `invalid`, `unsupported_schema`) with its problem, `stores` (each producer's root as written and the configured store it matches, `null` when none), `area` (path, state, `area_id`), counts of groups, pins and missing pins, `scanned_at`; `store` lists the projects whose store entry matches the store); a new project (`path`: absolute, a project directory of the settings or at most four levels below one where a scan finds it, made when missing; `name`, by default the directory's name; `description`; `area_id`, an area of the index written into `obszary/`) → Archiwista writes `archiwista-project.json`, `201` with the card; a directory holding the file already is `409 project_exists`; any signed-in person creates a project and becomes its owner (visibility `default_project_visibility`; logged as `project.create`), and a directory with an access entry but no file needs `project.write` (A-ADR-039 erratum 3, kept by A-ADR-049) |
-| `GET /projects/{id}` | the card: the project of the list with its directory, its groups (name, origin: the producer's calls of `plan` or the selections of `local`) and their pins (producer, version, `sha256`, `content_sha256`, size, unit, label, who pinned and when, the state from the index: `ok`, `missing`, `sha256_mismatch`, `unknown`; for a local pin whether its command can be rebuilt: `rebuildable`, `not_rebuildable` with the producer's text, `unknown`), problems (an invalid project file, an unknown store, missing pins, a changed area); this card and each item of `GET /projects` say whether the session may change the project (`project_write`: its owner or an administrator, read on every request; the interface shows a change it may not make disabled with its reason) |
+| `GET /projects`, `POST /projects` | list (each project, one per directory with `archiwista-project.json`: `name`, `description`, `state` (`ok`, `invalid`, `unsupported_schema`) with its problem, `stores` (each producer's root as written and the configured store it matches, `null` when none), `area` (path, state, `area_id`), counts of groups, sets in the making (`open_groups`), pins and missing pins, `scanned_at`; `store` lists the projects whose store entry matches the store); a new project (`path`: absolute, a project directory of the settings or at most four levels below one where a scan finds it, made when missing; `name`, by default the directory's name; `description`; `area_id`, an area of the index written into `obszary/`) → Archiwista writes `archiwista-project.json`, `201` with the card; a directory holding the file already is `409 project_exists`; any signed-in person creates a project and becomes its owner (visibility `default_project_visibility`; logged as `project.create`), and a directory with an access entry but no file needs `project.write` (A-ADR-039 erratum 3, kept by A-ADR-049) |
+| `GET /projects/{id}` | the card: the project of the list with its directory, its groups (name; `state` `open` or `closed` with `closed_at`, `closed_by`, `pins_sha256` and `digest_state`: `ok`, `mismatch` when the recorded digest does not match the pins, `null` without one; origin: the producer's calls of `plan` and the selections of either origin) and their pins (producer, version, `sha256`, `content_sha256`, size, unit, label, who pinned and when, `calls` of a plan set's pin: the places of its calls, `[]` for one added by hand, `null` for one written before; the state from the index: `ok`, `missing`, `sha256_mismatch`, `unknown`; for a local pin whether its command can be rebuilt: `rebuildable`, `not_rebuildable` with the producer's text, `unknown`), problems (an invalid project file, an unknown store, missing pins, a changed area); this card and each item of `GET /projects` say whether the session may change the project (`project_write`: its owner or an administrator, read on every request; the interface shows a change it may not make disabled with its reason) |
 | `PATCH /projects/{id}`, `PUT /projects/{id}/area`, `PUT /projects/{id}/stores/{producer}` | the owner or an administrator changes the name and description (`project.update`), sets or clears the area (`area_id` or `null`; `project.area`), or moves a producer's store entry to another configured store (`store`; `project.store`); each answers the card; the project file is changed under its lock (`409 project_locked`, `invalid_project_file`, `unsupported_project_schema`) (A-ADR-049) |
-| `POST /projects/{id}/groups`, `POST /projects/{id}/groups/{group}/pins` | the owner or an administrator pins versions the store holds, without the network, into a new group (`name`) or a group of origin `local`: `from` (`local_state`, `catalog`, `file`) and either `versions` (store and version path) or `query` (the filters of `GET /slots`, every page); a version not present or without `sha256` is skipped with its reason, one pinned already is counted; above 10,000 pins `400 too_many_pins`; a version of another store than the project's for its producer `409 other_store`; a plan group `409 group_origin_plan`; answers the card and what was pinned and skipped (`project.pin`) |
-| `POST /projects/{id}/groups/{group}/unpin`, `DELETE /projects/{id}/groups/{group}` | removes the named pins of a group (`pins`: producer and version) or the whole group; the files stay in the store (`project.unpin`) |
+| `POST /projects/{id}/groups`, `POST /projects/{id}/groups/{group}/pins` | the owner or an administrator pins versions the store holds, without the network, into a new set (`name`; written closed at once, or left open with `open: true`, which may name no versions: an empty set in the making) or an open set of either origin (the request recorded in `origin.selections`, pins of a plan set marked as added by hand): `from` (`local_state`, `catalog`, `file`) and either `versions` (store and version path) or `query` (the filters of `GET /slots`, every page); a version not present or without `sha256` is skipped with its reason, one pinned already is counted (a new set whose every version was skipped is left open); above 10,000 pins `400 too_many_pins`; a version of another store than the project's for its producer `409 other_store`; a closed set `409 set_closed`, versions of another producer than an open set's, or of several producers for a new open set, `409 set_producer`, no such set `404 group_not_found`; answers the card, what was pinned and skipped and the set's `state` (`project.pin`, with `open`) (A-ADR-049 erratum 6) |
+| `POST /projects/{id}/groups/{group}/unpin`, `DELETE /projects/{id}/groups/{group}` | removes the named pins of an open set (`pins`: producer and version; a closed set `409 set_closed`) or the whole set in either state; the files stay in the store (`project.unpin`) |
+| `DELETE /projects/{id}/groups/{group}/calls/{call}` | the owner or an administrator removes the call `call` (its place in `origin.calls`, as `files[].call` of the download's summary) from an open set: the place leaves every pin's `calls` (the higher ones shift down), a pin left with no call goes, hand pins and other calls' pins stay; the last call gone, the set is `local` again; answers the card; a closed set `409 set_closed`, no such call `404 call_not_found`, a pin written without `calls` `409 pins_without_calls` (a re-pin writes them); `project.unpin` with `call` (A-ADR-049 erratum 6) |
+| `POST /projects/{id}/groups/{group}/close`, `POST /projects/{id}/groups/{group}/reopen` | the owner or an administrator closes a set in the making ("Zamknij zestaw"; no body): refused, in this order, for no such set (`404 group_not_found`), a closed set (`409 set_closed`), a waiting or running job writing into it (`409 set_job_active`, `details.job`: a download pinning into it or its re-pin), no pin (`409 set_empty`) and a pin not `ok` at the last scan (`409 set_pins_not_ok`, `details.counts` of `missing`, `sha256_mismatch`, `unknown` and the first 100 in `details.pins`); writes `state` `closed`, `closed_at`, `closed_by` and `pins_sha256` (`project.set_close`); reopening ("Otwórz do edycji") writes `state` `open` and removes the three (`project.set_open`), an open set `409 set_open`; both answer the card (A-ADR-049 erratum 6) |
 | `DELETE /projects/{id}` | the owner or an administrator removes the project from Archiwista, never data → `204`: under its lock only what Archiwista wrote in the directory goes (`archiwista-project.json`, the area files of `obszary/`, `eksport/`), `dane/` with `.wersje/` and every other file stay, the directory goes only when then empty; the project's access entry and its rows of the index go, no store is touched (the pinned versions stay); refused while a job of the project waits or runs (`409 conflict`, the job in `details.job`) and for a project file Archiwista cannot read (`409 invalid_project_file`, `unsupported_project_schema`); `project.delete` with `kept`, the earlier entries stay (A-ADR-049 erratum 2) |
-| `POST /projects/{id}/jobs` | a job over the project's groups (`kind`: `verify` — the pinned files hashed in the store, no network; `check` — the pins against the source; `repin` — exactly one group anew in the producer's update mode, its pins replaced after the whole run succeeded; `restore` — missing pinned versions downloaded again and kept by `sha256` or `content_sha256`; `groups` optional, every group by default) → `202` with the job; a re-pin and a restore need `project.write` and `store.write`, a check and a verification only visibility; one job per project (`409`); a group whose producer has no commands is `422 no_commands`, one whose versions have no command is refused for a re-pin (`422 command_not_rebuildable`); the store must be configured (`409 unknown_store`); a retry asks the same (A-ADR-049) |
+| `POST /projects/{id}/jobs` | a job over the project's groups (`kind`: `verify` — the pinned files hashed in the store, no network; `check` — the pins against the source; `repin` — exactly one group anew in the producer's update mode, its pins replaced after the whole run succeeded; `restore` — missing pinned versions downloaded again and kept by `sha256` or `content_sha256`; `groups` optional, every group by default) → `202` with the job; a re-pin and a restore need `project.write` and `store.write`, a check and a verification only visibility; one job per project (`409`); a group whose producer has no commands is `422 no_commands`, one whose versions have no command is refused for a re-pin (`422 command_not_rebuildable`); a re-pin of a closed set is `409 set_closed` before a job and again under the lock (the job then ends `partial`, no pin changed); the store must be configured (`409 unknown_store`); a retry asks the same (A-ADR-049) |
 | `GET /projects/{id}/activity` | whoever sees the project: its entries of the action log newest first, with a cursor — the project's changes (`project.*`) and its jobs (`job.start`, `job.retry`, `job.cancel`), with who, when, the outcome and the details, without the client address or session (D7, A-ADR-049) |
 | `POST /projects/{id}/exports`, `GET /projects/{id}/exports`, `GET /projects/{id}/exports/{name}/zip` | the owner or an administrator writes `eksport/<name>/` (`{name, groups?, zip}`): copies of the pinned files of every group or of `groups` in category folders with `README.txt`, with `zip` also `eksport/<name>.zip`, replacing an export of that name (`project.export`; a pin left out is counted); the list of exports says whether each has a ZIP and whether the project changed after it; the ZIP route sends it to whoever sees the project; the QGIS set from v1.1 (8.4) |
 | `POST /assistant/conversations`, `GET …`, `DELETE …/{id}` | conversations |
@@ -4790,7 +4827,8 @@ rebuilt is pinned, its check and restore disabled with the reason); the command 
 on the file card; the project card with its area on the map, groups and pins with their
 state, its actions and its activity from the action log; the exports of copies in
 category folders with `README.txt` in `eksport/<name>/`, also as a ZIP (the QGIS export is
-v1.1); the guide's slide on projects.
+v1.1); the guide's slide on projects; sets in the making, closed with the digest of their
+pins and reopened (A-ADR-049 erratum 6, the author's request of 2026-11-02).
 The producers' manifests are not read and none is migrated (D4). The check, re-pin and
 restore of IMGW pins come with the IMGWTools actions of v0.5.
 
@@ -4830,6 +4868,11 @@ Criteria:
    `README.txt` (each attribution once); with `zip` also the ZIP of the same tree.
 9. Live test UC-06 with a report: a project filled from the plan window and from "Stan
    lokalny", verified, checked, and restored on another computer.
+10. A set in the making (A-ADR-049 erratum 6) built from two plan windows and hand pins
+    of one producer is refused "Zamknij zestaw" while a pin is missing, then closes with
+    a `pins_sha256` equal to the digest a one-line script computes from its pins; a
+    closed set refuses pins, unpins, removed calls and re-pins (`409 set_closed`), and
+    "Otwórz do edycji" followed by a new closing records a new digest.
 
 ### v0.5 "IMGW stations"
 

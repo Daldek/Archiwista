@@ -9,6 +9,36 @@ command-line interface may change.
 
 ### Added
 
+- Sets in the making (A-ADR-049 erratum 6): a project's set is open, "w budowie",
+  while it is built from several plan windows and hand-picked versions of one
+  producer, and closed once complete. "Zamknij zestaw" freezes it and writes
+  `closed_at`, `closed_by` and `pins_sha256`, the SHA-256 of the lines
+  `<producer>\t<version>\t<sha256>\n` of its pins sorted by producer and version
+  (`archiwista.projects.document.pins_digest`), so a reader (Hydrograf) can tell the
+  set has not changed; it is refused while a job writes into the set, for an empty
+  set and for a pin that is not `ok` at the last scan. A closed set takes no pin,
+  unpin, removed call or re-pin (`409 set_closed`) until "Otwórz do edycji" opens it
+  again; a set from before is closed. The project's card shows the state ("w
+  budowie", or closed with the date, who closed it and the digest's first 12
+  characters), "Nowy zestaw w budowie…", "Usuń polecenie" at a call and a warning
+  when the digest no longer matches the pins; the plan window adds a download to a
+  set in the making ("Zestaw w budowie") or keeps a new set open ("Zostaw w
+  budowie"), and the pin dialog's "Zestaw w budowie" lists the open sets. New sets
+  of "Dodaj do projektu…" and of the plan window are written closed at once unless
+  kept open. The project file gains the group members `state`, `closed_at`,
+  `closed_by` and `pins_sha256`, `selections` of a plan origin and a pin's `calls`
+  (within `archiwista-project/1`; an older Archiwista keeps them); the API gains
+  `POST /projects/{project}/groups/{group}/close` and `…/reopen`, `DELETE
+  /projects/{project}/groups/{group}/calls/{call}`, `open` of `POST
+  /projects/{project}/groups`, `pin.add` and `pin.open` of `POST /jobs`, the
+  refusals `set_closed`, `set_open`, `set_producer`, `set_empty`, `set_job_active`,
+  `set_pins_not_ok`, `pins_without_calls` and `too_many_calls` (`group_origin_plan`
+  goes: hand pins go into a set in the making of either origin), and the log
+  `project.set_close` and `project.set_open`; the command line gains `archiwista
+  project-draft`, `project-pin --add | --open`, `project-uncall`, `project-close`,
+  `project-reopen` and `jobs start download … --pin-add | --pin-open`. The index
+  is rebuilt once (`SCHEMA_VERSION` 17: the sets' states and digests, the pins'
+  calls).
 - A producer's call runs on an area of Archiwista, for example a project's
   (A-ADR-049 erratum 5): `POST /commands/area` and `archiwista commands area PRODUCENT
   POLECENIE [--options JSON] --area-id OBSZAR` take a call and an area of `/areas`
