@@ -140,6 +140,14 @@ def _pin(place: Place, group: str, *versions: str) -> None:
     assert answer.status_code in (200, 201), answer.text
 
 
+def _reopen(place: Place, group: str) -> None:
+    """Open a closed group of the project for editing."""
+    answer = place.owner.request(
+        "POST", f"/projects/{place.project}/groups/{group}/reopen"
+    )
+    assert answer.status_code == 200, answer.text
+
+
 def _wait(place: Place, caller: Caller, job_id: str) -> dict[str, Any]:
     place.jobs.wait(job_id, timeout=JOB_TIMEOUT_S)
     detail: dict[str, Any] = caller.request("GET", f"/jobs/{job_id}").json()
@@ -253,6 +261,7 @@ def test_project_check_compares_pins_by_slot_and_reports_added_and_d5(
         },
     )
     assert _wait(place, place.owner, started.json()["id"])["state"] == "succeeded"
+    _reopen(place, PLAN)
     unpinned = place.owner.request(
         "POST",
         f"/projects/{place.project}/groups/{PLAN}/unpin",
@@ -304,6 +313,7 @@ def test_project_repin_replaces_pins_and_keeps_those_unchanged(place: Place) -> 
     _write(place, f"{FOLDER}/2024.csv", _line("2024.csv", "2024-06-30"))
     _scan(place)
     _pin(place, LOCAL, f"{FOLDER}/2023.csv", f"{FOLDER}/2024.csv")
+    _reopen(place, LOCAL)
     (before,) = _file(place)["groups"]
     old = {pin["version"]: pin for pin in before["pins"]}
 
@@ -335,6 +345,7 @@ def test_project_repin_of_a_partial_run_changes_no_pin(place: Place) -> None:
     _write(place, f"{folder}/2024.csv", f"950160180,{folder}/2024.csv,2024-06-30\n")
     _scan(place)
     _pin(place, LOCAL, f"{folder}/2024.csv")
+    _reopen(place, LOCAL)
     before = (place.directory / PROJECT_FILE).read_bytes()
 
     # Act
@@ -371,6 +382,7 @@ def test_project_repin_of_a_plan_group_pins_files_without_a_version_path(
         },
     )
     assert _wait(place, place.owner, started.json()["id"])["state"] == "succeeded"
+    _reopen(place, PLAN)
     (before,) = _file(place)["groups"]
     (place.root / standin.UNVERSIONED).touch()
 
@@ -432,7 +444,7 @@ def test_project_restore_gives_restored_content_match_not_restored_and_d5(
 def test_project_jobs_refuse_before_a_job_and_ask_again_on_retry(
     place: Place, tmp_path: Path
 ) -> None:
-    """Permissions, groups, D5, one job per project, offline mode, retries."""
+    """Permissions, groups, closed sets, D5, one job per project, offline, retries."""
     # Arrange
     _write(place, f"{FOLDER}/2023.csv", _line("2023.csv", "2023-12-31"))
     _write(place, DERIVED, "zlewnia\n")
@@ -448,6 +460,8 @@ def test_project_jobs_refuse_before_a_job_and_ask_again_on_retry(
     no_group = place.owner.request("POST", url, json={"kind": "repin"})
     two = place.owner.request("POST", url, json={"kind": "repin", "groups": ["a", "b"]})
     unknown = place.owner.request("POST", url, json={"kind": "check", "groups": ["x"]})
+    closed = place.owner.request("POST", url, json={"kind": "repin", "groups": [LOCAL]})
+    _reopen(place, "Pochodne")
     derived = place.owner.request(
         "POST", url, json={"kind": "repin", "groups": ["Pochodne"]}
     )
@@ -469,6 +483,8 @@ def test_project_jobs_refuse_before_a_job_and_ask_again_on_retry(
     assert no_group.status_code == 400
     assert two.status_code == 400
     assert_problem(unknown, 404, "not_found")
+    assert_problem(closed, 409, "conflict", "set_closed")
+    assert closed.json()["details"]["group"] == LOCAL
     assert_problem(derived, 422, "unsupported", reason="command_not_rebuildable")
     assert held.status_code == 202, held.text
     assert_problem(second, 409, "conflict")

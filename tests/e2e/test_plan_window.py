@@ -392,15 +392,17 @@ def test_a_set_of_a_line_per_sheet_is_planned_a_few_requests_at_a_time(
 ) -> None:
     """130 lines: the check, its row, each line's plan; never 100 requests at once."""
     # Arrange: the step offers the check, then the index keeps a fresh report.
+    # The page settles first: the step reads the report of the product chosen
+    # in it, which would otherwise find the kept one and offer no check.
     served = serve_store(serve, tmp_path)
     page = tab.page
     step = open_area(page, served, served.token_url())
     check = step.get_by_role("button", name="Sprawdź u źródła")
     expect(check).to_be_enabled()
+    tab.settle()
     with IndexWriter(served.paths.index_file) as writer:
         report = sheet_report(datetime.now(UTC))
         writer.write_availability(AREA.id, report, product="dem", job_id=None)
-    tab.settle()
     tab.reset_most_in_flight()
 
     # Act: the check answers with the kept report; the plan of its row.
@@ -530,7 +532,7 @@ def test_a_download_pins_its_files_into_a_new_group_of_a_project(
     created = call(page, "POST", "/projects", {"path": str(projects / "raba")})
     dialog = open_plan(page, first)
     dialog.get_by_role("checkbox", name="Dodaj do projektu").check()
-    group = dialog.get_by_label("Nowy zestaw")
+    group = dialog.get_by_label("Nazwa nowego zestawu")
     expect(group).to_have_value("dem · 2023 · PL-2000 · 1m · EVRF2007 · obszar Kraków")
     group.fill("Wodowskaz 2023")
     dialog.get_by_role("button", name="Pobierz 2 pozycje i przypnij").click()
@@ -553,14 +555,16 @@ def test_a_download_pins_its_files_into_a_new_group_of_a_project(
     # Act: the same name again (case aside) is refused before a job.
     dialog = open_plan(page, first)
     dialog.get_by_role("checkbox", name="Dodaj do projektu").check()
-    dialog.get_by_label("Nowy zestaw").fill("wodowskaz 2023")
+    dialog.get_by_label("Nazwa nowego zestawu").fill("wodowskaz 2023")
     dialog.get_by_role("button", name=re.compile(r"(i przypnij|^Przypnij .*)$")).click()
 
     # Assert
     expect(dialog.locator(".plan-pin .field-error")).to_contain_text(
         "ma już zestaw „Wodowskaz 2023”"
     )
-    expect(dialog.get_by_label("Nowy zestaw")).to_have_attribute("aria-invalid", "true")
+    expect(dialog.get_by_label("Nazwa nowego zestawu")).to_have_attribute(
+        "aria-invalid", "true"
+    )
     assert len(call(page, "GET", "/jobs?kind=download")["items"]) == 1
 
     # Act: the project's card.

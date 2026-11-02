@@ -5,10 +5,11 @@ with its projects. „Stan lokalny” of an area pins what the map shows of a
 product's files in it into a new group: the versions its filters choose (the
 current ones, or every version of an older year), else the versions of the
 year chosen on the map; the Katalog, with filters, refuses a taken name at
-the group's field and then adds its rows to that local group, and pins an
-older year's versions; the file card pins an older version, and the project
-card unpins it and removes its group, each after a question (the window also
-in Firefox). A person who may change no project finds „Dodaj do projektu…”
+the group's field and then adds its rows to that group once it is open
+(„Zestaw w budowie”), and pins an older year's versions; the file card pins
+an older version, and the project card opens its closed set for editing,
+unpins it and removes its group, each after a question (the window also in
+Firefox). A person who may change no project finds „Dodaj do projektu…”
 disabled with the reason. No request leaves the server.
 """
 
@@ -18,7 +19,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 from playwright.sync_api import Locator, Page, expect
 
@@ -27,6 +28,7 @@ from archiwista.config import AppSettings, StoreConfig
 from archiwista.projects import PROJECT_FILE
 from archiwista.security import fragment_url, issue_one_time_token
 from archiwista.state import StateStore
+from tests.e2e.test_acceptance_v03 import call
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.make_store import NMT, ExpectedEntry, StoreManifest, make_store
 from tests.fixtures.permissions import add_people, principal, share
@@ -200,7 +202,11 @@ def test_pins_from_the_local_state_and_the_catalog_into_one_group(
     window.get_by_role("button", name="Zamknij").click()
     expect(window).to_be_hidden()
 
-    # Act: the Katalog of every NMT version; the taken name first.
+    # Act: the group opened for editing; the Katalog of every NMT version, the
+    # taken name first.
+    path = f"/projects/{PROJECT}/groups/{quote('NMT obszaru')}/reopen"
+    reopened = call(page, "POST", path)
+    assert reopened["status"] == 200, reopened
     query = {"product": "nmt", "versions": "all"}
     page.goto(f"{served.base}/?view=catalog&{urlencode(query)}")
     every = rows(page, query)
@@ -221,11 +227,9 @@ def test_pins_from_the_local_state_and_the_catalog_into_one_group(
     )
     assert len(group_of(store, "NMT obszaru")["pins"]) == len(current)
 
-    # Act: into the local group instead.
-    window.get_by_label("Istniejący zestaw projektu", exact=True).check()
-    window.get_by_role("combobox", name="Istniejący zestaw projektu").select_option(
-        "NMT obszaru"
-    )
+    # Act: into that set in the making instead.
+    window.get_by_role("radio", name="Zestaw w budowie").check()
+    window.get_by_role("combobox", name="Zestaw w budowie").select_option("NMT obszaru")
     window.get_by_role("button", name="Przypnij").click()
 
     # Assert: the versions the store cannot pin are listed with why.
@@ -401,13 +405,19 @@ def test_an_older_version_pinned_from_the_file_card_is_unpinned_on_the_card(
     assert [pin["version"] for pin in group["pins"]] == [older.version]
     assert group["origin"]["selections"][0]["from"] == "file"
 
-    # Act: the project card; its pin unpinned after the question.
+    # Act: the project card; its closed set opened for editing and its pin
+    # unpinned, each after the question.
     window.get_by_role("link", name="Otwórz projekt").click()
     expect(window).to_be_hidden()
     panel = page.get_by_role("complementary", name="Projekt")
     head = page.locator(".pc-group-head b").get_by_text("Starsza", exact=True)
     shown = panel.locator(".pc-group").filter(has=head)
     expect(shown.locator(".pc-pin")).to_contain_text("starsza wersja")
+    shown.get_by_role("button", name="Otwórz do edycji zestaw Starsza").click()
+    reopen = page.get_by_role("dialog", name="Otwórz do edycji")
+    expect(reopen).to_contain_text("Otworzyć zestaw „Starsza” do edycji?")
+    reopen.get_by_role("button", name="Otwórz do edycji").click()
+    expect(reopen).to_be_hidden()
     shown.get_by_role("button", name=f"Odepnij {older.label} z zestawu Starsza").click()
     question = page.get_by_role("dialog", name="Odepnij")
     expect(question).to_contain_text(f"Odpiąć {older.label} z zestawu „Starsza”?")

@@ -227,7 +227,7 @@ def test_pins_named_versions_counts_the_pinned_and_skips_with_a_reason(
     created = place.owner.request(
         "POST",
         f"/projects/{place.project}/groups",
-        json={"name": "Starsze", "from": "file", "versions": named},
+        json={"name": "Starsze", "from": "file", "versions": named, "open": True},
     )
     added = place.owner.request(
         "POST",
@@ -244,6 +244,7 @@ def test_pins_named_versions_counts_the_pinned_and_skips_with_a_reason(
     # Assert
     assert created.status_code == 201, created.text
     assert (created.json()["pinned"], created.json()["already"]) == (1, 0)
+    assert created.json()["state"] == "open"
     assert created.json()["skipped"] == [
         {"store": STORE, "version": _path(C_NO_META), "reason": "no_sha256"},
         {"store": STORE, "version": GONE, "reason": "missing"},
@@ -340,7 +341,7 @@ def test_too_many_versions_are_refused_before_anything_is_written(
 
 
 def test_refusals_of_a_pin_leave_the_file_as_it_was(place: Place) -> None:
-    """``other_store``, ``unknown_store``, ``group_origin_plan``, names, groups."""
+    """``other_store``, ``unknown_store``, ``set_closed``, names, groups."""
     # Arrange
     url = f"/projects/{place.project}/groups"
     first = place.owner.request(
@@ -369,19 +370,19 @@ def test_refusals_of_a_pin_leave_the_file_as_it_was(place: Place) -> None:
 
     change_project_file(place.directory, plan)
     other = {"store": OTHER_STORE, "version": _path(D_OTHER)}
+    older = {"from": "file", "versions": [{"store": STORE, "version": _path(A_OLDER)}]}
     before = (place.directory / PROJECT_FILE).read_bytes()
 
     # Act
     other_store = place.owner.request(
         "POST", url, json={"name": "Drugi", "from": "file", "versions": [other]}
     )
-    into_plan = place.owner.request(
+    into_plan = place.owner.request("POST", f"{url}/Plan/pins", json=older)
+    into_closed = place.owner.request("POST", f"{url}/NMT/pins", json=older)
+    unpin_closed = place.owner.request(
         "POST",
-        f"{url}/Plan/pins",
-        json={
-            "from": "file",
-            "versions": [{"store": STORE, "version": _path(A_OLDER)}],
-        },
+        f"{url}/NMT/unpin",
+        json={"pins": [{"producer": PRODUCER, "version": _path(A_CURRENT)}]},
     )
     taken = place.owner.request(
         "POST", url, json={"name": " nmt ", "from": "file", "versions": [other]}
@@ -393,28 +394,26 @@ def test_refusals_of_a_pin_leave_the_file_as_it_was(place: Place) -> None:
         "POST", f"{url}/brak/pins", json={"from": "file", "versions": [other]}
     )
     unchanged = (place.directory / PROJECT_FILE).read_bytes()
+    reopened = place.owner.request("POST", f"{url}/NMT/reopen")
 
     def elsewhere(data: dict[str, Any]) -> None:
         data["stores"][0]["root"] = str(place.root.parent / "przeniesiony")
 
     change_project_file(place.directory, elsewhere)
-    moved = place.owner.request(
-        "POST",
-        f"{url}/NMT/pins",
-        json={
-            "from": "file",
-            "versions": [{"store": STORE, "version": _path(A_OLDER)}],
-        },
-    )
+    moved = place.owner.request("POST", f"{url}/NMT/pins", json=older)
 
     # Assert
     assert_problem(other_store, 409, "conflict", "other_store")
     assert other_store.json()["details"]["store"] == STORE
-    assert_problem(into_plan, 409, "conflict", "group_origin_plan")
+    closed_sets = ((into_plan, "Plan"), (into_closed, "NMT"), (unpin_closed, "NMT"))
+    for closed, group in closed_sets:
+        assert_problem(closed, 409, "conflict", "set_closed")
+        assert closed.json()["details"]["group"] == group
     assert_problem(taken, 409, "conflict", "group_exists")
     assert_problem(slash, 400, "validation_error", "invalid_group_name")
     assert_problem(unknown, 404, "not_found")
     assert unchanged == before
+    assert reopened.status_code == 200, reopened.text
     assert_problem(moved, 409, "conflict", "unknown_store")
 
 
@@ -429,6 +428,7 @@ def test_unpin_removes_pins_and_whole_groups(place: Place) -> None:
             "name": "NMT",
             "from": "catalog",
             "query": {"store": STORE, "versions": "all"},
+            "open": True,
         },
     )
     assert created.status_code == 201, created.text
@@ -465,7 +465,14 @@ def test_unpin_removes_pins_and_whole_groups(place: Place) -> None:
     assert [(entry.action, entry.details) for entry in entries] == [
         (
             "project.pin",
-            {"group": "NMT", "from": "catalog", "pins": 3, "already": 0, "skipped": 1},
+            {
+                "group": "NMT",
+                "from": "catalog",
+                "pins": 3,
+                "already": 0,
+                "skipped": 1,
+                "open": True,
+            },
         ),
         ("project.unpin", {"group": "NMT", "pins": [pin]}),
         ("project.unpin", {"group": "NMT", "pins": kept, "group_removed": True}),
@@ -547,6 +554,7 @@ def test_commands_pin_and_unpin_as_the_routes_do(
         "project-pin",
         place.project,
         "Z CLI",
+        "--open",
         *[arg for path in versions for arg in ("--version", f"{STORE}:{path}")],
     )
     added = _cli(

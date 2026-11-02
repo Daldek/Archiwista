@@ -8,7 +8,8 @@ re-pin and the restore are disabled with the offline reason; „Pokaż na
 mapie” opens the project's area. On the stand-in's store a project without
 sets (groups) cannot be verified, a derived file's pin shows the producer's reason
 (D5) and disables its set's jobs, a set with nothing missing cannot be
-restored, and the check and the re-pin of a set mark its pins. The
+restored, and the check of a set and its re-pin, once it is opened for
+editing („Otwórz do edycji”), mark its pins. The
 computer's owner writes an export of a fixture project with „Eksportuj…” and
 finds its category folders and ``README.txt`` on the disk; once the project file
 changes, the list says „projekt zmieniony po eksporcie — wygeneruj ponownie”
@@ -482,7 +483,12 @@ def test_group_jobs_say_why_they_wait_check_and_repin_mark_the_pins(
     expect(pin_of(local, "2024.csv")).to_contain_text("nowsza: 2024-12-31")
     shot(page, panel)
 
-    # Act
+    # Act: the set, closed when pinned, opened for editing and re-pinned.
+    local.get_by_role("button", name=f"Otwórz do edycji zestaw {LOCAL}").click()
+    page.get_by_role("dialog", name="Otwórz do edycji").get_by_role(
+        "button", name="Otwórz do edycji"
+    ).click()
+    expect(local.locator(".pc-group-head")).to_contain_text("w budowie")
     local.get_by_role("button", name=f"Przepnij zestaw {LOCAL}").click()
 
     # Assert: the newer year pinned, the other kept.

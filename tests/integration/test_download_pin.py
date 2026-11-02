@@ -175,6 +175,8 @@ def test_a_planned_download_pins_its_files_and_the_plans_held_positions(
         "project": place.project,
         "group": GROUP,
         "pins": 3,
+        "already": 0,
+        "state": "closed",
         "not_pinned": [{"path": f"{FOLDER}/stations.json", "reason": "not_in_store"}],
         "written": True,
     }

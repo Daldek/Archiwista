@@ -5,7 +5,8 @@ through the API, the command line or (for the pruning) the server's scheduler
 and finds exactly one entry of it with its actor, the actor's kind, the
 session's label, the client address, the target and the outcome; a name
 without a case fails ``test_each_action_is_logged_once``. The world is a
-marked Kartograf store ``zespol`` (empty), a project directory, the four
+marked Kartograf store ``zespol`` (empty; the cases of closing and opening a
+set write a version of it into the index), a project directory, the four
 people of ``tests.fixtures.permissions`` and a supervisor that starts no job,
 so jobs wait to be cancelled and retried; the download of a file uses a
 generated store scanned into the index (``served_store``); signing in,
@@ -47,11 +48,13 @@ from archiwista.config import (
 )
 from archiwista.index import IndexWriter, initialize
 from archiwista.jobs import JobSupervisor, ScanScheduler
+from archiwista.projects import PROJECT_FILE
 from archiwista.services.log import FIELDS
 from archiwista.sources.registry import SourceRegistry, load_registry
 from archiwista.state import ActionEntry, ActionName, StateSnapshot, StateStore
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
 from tests.fixtures.api_store import served_store
+from tests.fixtures.index_data import NMT, slot_path, version, write_pass
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.permissions import (
     ADMIN,
@@ -590,7 +593,10 @@ def _pinned_group(made: World) -> None:
 
 
 def project_pin(tmp_path: Path) -> Performed:
-    """Pin into a new group as the owner: nothing pinned, one version skipped."""
+    """Pin into a new group as the owner: nothing pinned, one version skipped.
+
+    The group is new and holds no pin, so it is left open (``open``).
+    """
     with world(tmp_path) as made:
         since = last_entry(made.api.state)
         _pinned_group(made)
@@ -603,6 +609,7 @@ def project_pin(tmp_path: Path) -> Performed:
                 "pins": 0,
                 "already": 0,
                 "skipped": 1,
+                "open": True,
             },
         )
         return Performed(made.api.state, since, expected)
@@ -619,6 +626,74 @@ def project_unpin(tmp_path: Path) -> Performed:
             made,
             access_key(made.directory),
             details={"group": "NMT", "pins": [], "group_removed": True},
+        )
+        return Performed(made.api.state, since, expected)
+
+
+# A version the index holds, so the pin of it is ``ok`` and its set closes.
+_HELD = version(slot_path(NMT, "M-34-1-A"), "2024-05-01_1", 1)
+
+
+def _draft_set(made: World) -> str:
+    """Make the open set ``Szkic`` pinning ``_HELD``; return its route."""
+    with IndexWriter(made.paths.index_file) as writer:
+        write_pass(writer, [_HELD])
+    groups = f"/projects/{made.project}/groups"
+    body = {
+        "name": "Szkic",
+        "open": True,
+        "from": "file",
+        "versions": [{"store": STORE, "version": _HELD.relative_path.as_posix()}],
+    }
+    drafted = made.owner.request("POST", groups, json=body)
+    assert drafted.status_code == 201, drafted.text
+    return f"{groups}/Szkic"
+
+
+def _written_set(made: World) -> dict[str, Any]:
+    """Return the set ``Szkic`` as the project file holds it."""
+    data = json.loads((made.directory / PROJECT_FILE).read_text(encoding="utf-8"))
+    return next(item for item in data["groups"] if item["name"] == "Szkic")
+
+
+def project_set_close(tmp_path: Path) -> Performed:
+    """Close a set in the making as the owner, with the digest of its pin."""
+    with world(tmp_path) as made:
+        route = _draft_set(made)
+        since = last_entry(made.api.state)
+        closed = made.owner.request("POST", f"{route}/close")
+        assert closed.status_code == 200, closed.text
+        expected = as_owner(
+            made,
+            access_key(made.directory),
+            details={
+                "group": "Szkic",
+                "pins": 1,
+                "pins_sha256": _written_set(made)["pins_sha256"],
+            },
+        )
+        return Performed(made.api.state, since, expected)
+
+
+def project_set_open(tmp_path: Path) -> Performed:
+    """Open a closed set for editing as the owner: the closing it ends."""
+    with world(tmp_path) as made:
+        route = _draft_set(made)
+        closed = made.owner.request("POST", f"{route}/close")
+        assert closed.status_code == 200, closed.text
+        sealed = _written_set(made)
+        since = last_entry(made.api.state)
+        opened = made.owner.request("POST", f"{route}/reopen")
+        assert opened.status_code == 200, opened.text
+        expected = as_owner(
+            made,
+            access_key(made.directory),
+            details={
+                "group": "Szkic",
+                "closed_at": sealed["closed_at"],
+                "closed_by": sealed["closed_by"],
+                "pins_sha256": sealed["pins_sha256"],
+            },
         )
         return Performed(made.api.state, since, expected)
 
@@ -795,6 +870,8 @@ CASES: dict[str, Callable[[Path], Performed]] = {
     "project.delete": project_delete,
     "project.pin": project_pin,
     "project.unpin": project_unpin,
+    "project.set_close": project_set_close,
+    "project.set_open": project_set_open,
     "settings.update": settings_update,
     "job.start": job_start,
     "job.cancel": job_cancel,

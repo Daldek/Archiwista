@@ -147,7 +147,9 @@ class Tab:
         Firefox fails the loads of the page it leaves (module scripts,
         stylesheets, ``fetch``) and runs the page's handlers of those
         failures, which then report errors of a page nobody sees any more;
-        Chromium drops the page without running them.
+        Chromium drops the page without running them, and Playwright never
+        reports the end of a request the page left: it stays in flight, so
+        a later ``settle`` would wait for it in vain.
         """
         deadline = time.monotonic() + SETTLE_TIMEOUT_S
         quiet_since = time.monotonic()
