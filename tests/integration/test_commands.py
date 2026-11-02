@@ -63,6 +63,15 @@ LINE = (
     "kartograf elevation download --product nmt --sheet N-34-130-D-d-2-4"
     " --resolution 1m --vertical-crs EVRF2007 --root ./data"
 )
+# A call that names its area by a sheet, and a WGS84 area in Poland alone (Kraków).
+IMAGERY = "imagery download"
+ORTO = {"product": "orto", "sheet": "N-34-130-D-d-2-4", "sheet_system": "1992"}
+KRAKOW = {
+    "type": "Polygon",
+    "coordinates": [
+        [[19.9, 50.0], [20.0, 50.0], [20.0, 50.05], [19.9, 50.05], [19.9, 50.0]]
+    ],
+}
 
 
 class _StandinStore(StoreConfig):
@@ -397,6 +406,110 @@ def test_commands_api_without_kartograf_refuses_only_its_commands(
     assert attempts == []
 
 
+def _area(owner: Caller, geometry: dict[str, Any], name: str) -> Any:
+    """Return the area ``POST /areas`` keeps for ``geometry``."""
+    created = owner.request("POST", "/areas", json={"geometry": geometry, "name": name})
+    assert created.status_code == 201, created.text
+    return created.json()
+
+
+def test_commands_api_gives_a_call_an_area_that_validate_accepts(
+    tmp_path: Path,
+) -> None:
+    """The area's GeoJSON replaces the sheet; validate takes that file's path.
+
+    A project's area is an area of ``/areas`` too (A-ADR-049 erratum 5). The
+    country the command needs comes from the area, the line reads back into
+    the call, and nothing is asked of the network.
+    """
+    # Arrange
+    paths = _kartograf_paths(tmp_path)
+    with running_api(paths, load_registry(cache_dir=paths.cache_dir)) as api:
+        owner = api.session(LOCAL_OWNER)
+        with no_network() as attempts:
+            area = _area(owner, KRAKOW, "Kraków")
+            body = {"producer": "kartograf", "command": IMAGERY, "options": ORTO}
+
+            # Act
+            given = _answer(
+                owner.request(
+                    "POST", "/commands/area", json={**body, "area_id": area["id"]}
+                )
+            )
+            read_back = _parse(owner, "kartograf", given["line"])
+            checked = owner.request(
+                "POST",
+                "/commands/validate",
+                json={**body, "options": given["options"], "store": "zespol"},
+            )
+
+    # Assert
+    area_file = paths.areas_dir / f"{area['id']}.geojson"
+    options = {
+        "product": "orto",
+        "sheet_system": "1992",
+        "geometry": str(area_file),
+        "country": "pl",
+    }
+    assert {key: value for key, value in given.items() if key != "line"} == {
+        **body,
+        "options": options,
+        "area": {
+            "id": area["id"],
+            "name": "Kraków",
+            "area_km2": area["area_km2"],
+            "countries": ["PL"],
+        },
+        "way": "geometry",
+        "replaced": ["sheet"],
+    }
+    assert read_back == {**body, "options": options, "run": {}}
+    assert _answer(checked)["options"] == options
+    written = json.loads(area_file.read_bytes())
+    assert [feature["geometry"] for feature in written["features"]] == [
+        area["geometry"]
+    ]
+    assert attempts == []
+
+
+def test_commands_api_refuses_an_area_for_a_call_that_cannot_take_one(
+    tmp_path: Path, standin: ModuleType
+) -> None:
+    """An unknown area, command or option of area, or a source without areas.
+
+    The stand-in has commands but takes no area of Archiwista; the second
+    source has no commands at all. None of them is asked anything.
+    """
+    # Arrange
+    paths = _kartograf_paths(tmp_path)
+    with running_api(paths, load_registry(cache_dir=paths.cache_dir)) as api:
+        owner = api.session(LOCAL_OWNER)
+        with no_network() as attempts:
+            area = _area(owner, KRAKOW, "Kraków")["id"]
+
+            def given(producer: str, command: str, area_id: str = area) -> Any:
+                body = {"producer": producer, "command": command, "area_id": area_id}
+                return owner.request("POST", "/commands/area", json=body)
+
+            # Act
+            unknown_area = given("kartograf", IMAGERY, "0000000000000000")
+            no_option = given("kartograf", "store overview")
+            unknown_command = given("kartograf", "imagery fetch")
+            no_areas = given("standin", "series fetch")
+            no_commands = given("external", "stations list")
+            empty_id = given("kartograf", IMAGERY, "")
+
+    # Assert
+    assert_problem(unknown_area, 404, "not_found")
+    assert_problem(no_option, 422, "unsupported", "no_area_option")
+    assert_problem(unknown_command, 400, "validation_error", "unknown_command")
+    assert_problem(no_areas, 422, "unsupported", "no_area_commands")
+    assert_problem(no_commands, 422, "unsupported", "no_commands")
+    assert_problem(empty_id, 400, "validation_error")
+    assert standin.CALLS == []
+    assert attempts == []
+
+
 def _cli(
     capsys: pytest.CaptureFixture[str],
     paths: AppPaths,
@@ -417,7 +530,7 @@ def _cli(
 def test_commands_cli_json_equals_http(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """``commands list|parse|validate|format --json`` are the routes, refusals too."""
+    """``commands list|parse|validate|format|area --json``: the routes, refusals too."""
     # Arrange
     paths = _kartograf_paths(tmp_path)
     registry = load_registry(cache_dir=paths.cache_dir)
@@ -426,6 +539,9 @@ def test_commands_cli_json_equals_http(
     year = {**NMT, "year": 1800}
     geometry = {**NMT, "geometry": "/etc/passwd"}
     run = json.dumps({"root": "./data"})
+    orto = {"producer": "kartograf", "command": IMAGERY, "options": ORTO}
+    imagery = ("kartograf", IMAGERY, "--options", json.dumps(ORTO), "--area-id")
+    unknown = "0000000000000000"
 
     def cli(*argv: str, status: int = 0) -> Any:
         return _cli(capsys, paths, registry, *argv, status=status)
@@ -437,6 +553,7 @@ def test_commands_cli_json_equals_http(
             return owner.request(method, path, json=body).json()
 
         with no_network() as attempts:
+            area = http("POST", "/areas", {"geometry": KRAKOW, "name": "Kraków"})["id"]
             # Act
             answers = [
                 (cli("list"), http("GET", "/commands")),
@@ -457,6 +574,10 @@ def test_commands_cli_json_equals_http(
                     http(
                         "POST", "/commands/format", {**call, "run": {"root": "./data"}}
                     ),
+                ),
+                (
+                    cli("area", *imagery, area),
+                    http("POST", "/commands/area", {**orto, "area_id": area}),
                 ),
             ]
             refusals = [
@@ -500,10 +621,38 @@ def test_commands_cli_json_equals_http(
                     cli("list", "--producer", "imgw", status=15),
                     http("GET", "/commands?producer=imgw"),
                 ),
+                (
+                    cli("area", *imagery, unknown, status=3),
+                    http("POST", "/commands/area", {**orto, "area_id": unknown}),
+                ),
+                (
+                    cli(
+                        "area",
+                        "kartograf",
+                        "store overview",
+                        "--area-id",
+                        area,
+                        status=15,
+                    ),
+                    http(
+                        "POST",
+                        "/commands/area",
+                        {
+                            "producer": "kartograf",
+                            "command": "store overview",
+                            "area_id": area,
+                        },
+                    ),
+                ),
             ]
             capsys.readouterr()
             argv = ["commands", "format", *given, json.dumps(NMT), "--run", run]
             text = (main(argv, registry=registry, paths=paths), capsys.readouterr())
+            argv = ["commands", "area", *imagery, area]
+            area_text = (
+                main(argv, registry=registry, paths=paths),
+                capsys.readouterr(),
+            )
 
     # Assert
     for printed, answered in answers:
@@ -515,7 +664,12 @@ def test_commands_cli_json_equals_http(
         "not_found",
         "forbidden",
         "unsupported",
+        "not_found",
+        "unsupported",
     ]
     assert answers[3][0]["line"] == LINE
     assert (text[0], text[1].out) == (0, f"{LINE}\n")
+    assert answers[4][0]["replaced"] == ["sheet"]
+    assert area_text[0] == 0
+    assert area_text[1].out.splitlines()[0] == answers[4][0]["line"]
     assert attempts == []

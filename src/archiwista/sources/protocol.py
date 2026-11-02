@@ -6,9 +6,10 @@ factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 version of a slot, station catalogs, the series indexes of stations, the
 values of a station's series, their parts, coordinate operations, link
 confirmation, sheet grids, the default store root, the producer's commands
-with the availability at the source, the command of a stored version and
-the folder of a version in a project's export are optional capabilities: a
-producer without them still satisfies ``SourceAdapter``.
+with the availability at the source, a command over an area of Archiwista,
+the command of a stored version and the folder of a version in a project's
+export are optional capabilities: a producer without them still satisfies
+``SourceAdapter``.
 """
 
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
@@ -20,6 +21,7 @@ from archiwista.sources.types import (
     ActionPlan,
     ActionProgress,
     ActionResult,
+    AreaCommand,
     AvailabilityNotice,
     AvailabilityReport,
     CommandCall,
@@ -28,6 +30,7 @@ from archiwista.sources.types import (
     EntryMeta,
     Extreme,
     Footprint,
+    GeoJSONGeometry,
     ScanScope,
     SeriesListing,
     SeriesValues,
@@ -546,6 +549,45 @@ class VersionCommandAdapter(Protocol):
         ProducerError
             The producer refused otherwise: no such version or sidecar, an
             invalid sidecar, a path that is no version.
+        """
+        ...
+
+
+@runtime_checkable
+class AreaCommandAdapter(Protocol):
+    """Optional capability: a command of the catalog over an area of Archiwista.
+
+    Offline, no disk access: the producer's names of the options that choose
+    an area stay in its adapter (A-ADR-049 erratum 5). A person picks an
+    area, e.g. a project's, for a command they paste, and the call gets that
+    area in place of the one it named.
+    """
+
+    def with_area(
+        self,
+        call: CommandCall,
+        *,
+        area_file: Path,
+        geometry: GeoJSONGeometry,
+        countries: tuple[str, ...],
+    ) -> AreaCommand:
+        """Return ``call`` with the area in place of the area options it names.
+
+        ``area_file`` is the area's GeoJSON Archiwista keeps (RFC 7946, WGS84,
+        one feature, as ``ActionAdapter.availability`` receives it), passed as
+        the command's geometry file option when it has one; otherwise the box
+        that encloses ``geometry`` (the area's WGS84 polygon) goes as the
+        command's box (``AreaCommand.way`` ``bbox``). ``countries`` are those
+        the area meets (``AreaRecord``), for a country the command needs with
+        an area and the call does not give. The other options stay as given.
+
+        Raises
+        ------
+        UnsupportedError
+            The command takes no area (reason ``no_area_option``).
+        ProducerError
+            The producer does not know the command, or the box of the area
+            cannot be measured.
         """
         ...
 

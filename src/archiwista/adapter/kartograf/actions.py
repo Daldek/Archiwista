@@ -32,10 +32,13 @@ positions another job fetches (ADR-047), which Kartograf then never executes.
 ``command_for_version`` gives the call that selects a stored version again
 (A-ADR-049 D-10): ``read_sidecar`` of the version into ``command_for_file``,
 offline; Kartograf's refusal ``command_not_rebuildable`` is ``UnsupportedError``
-with its text.
+with its text. ``with_area`` gives a call an area of Archiwista in place of the
+area it names (A-ADR-049 erratum 5): the area's GeoJSON as ``geometry``, or the
+box that encloses it for a command without one; offline, no disk access.
 """
 
 import inspect
+import math
 import os
 from collections.abc import Callable, Collection, Mapping
 from contextlib import suppress
@@ -44,6 +47,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
+import shapely
 from kartograf import (
     CommandNotRebuildableError,
     KartografError,
@@ -58,10 +62,12 @@ from kartograf import (
     format_command,
     list_commands,
     parse_command,
+    pinned_transform,
     read_sidecar,
     run_command,
     validate_command,
 )
+from shapely.geometry import shape
 
 from archiwista.adapter.kartograf import PACKAGE, PRODUCER
 from archiwista.errors import BrokenContractError, ProducerError, UnsupportedError
@@ -74,6 +80,8 @@ from archiwista.sources import (
     ActionPlan,
     ActionProgress,
     ActionResult,
+    AreaCommand,
+    AreaWay,
     AvailabilityArea,
     AvailabilityCampaign,
     AvailabilityCombination,
@@ -86,6 +94,7 @@ from archiwista.sources import (
     CommandInfo,
     CommandOption,
     CommandWrites,
+    GeoJSONGeometry,
     ItemStatus,
     OptionType,
     PathRole,
@@ -121,6 +130,25 @@ AVAILABILITY_COMMAND = "elevation availability"
 # The countries whose parts of an area Kartograf checks, in the order of its
 # report: an area of both goes as ``auto``.
 _AREA_COUNTRIES = ("PL", "CZ")
+# The CRS Kartograf measures each of those countries' part of an area in: the
+# box of an area (``area_box``) is in its first country's.
+_AREA_CRS = {"PL": "EPSG:2180", "CZ": "EPSG:5514"}
+_WGS84 = "EPSG:4326"
+# Longest edge of an area before it moves to a planar CRS (about 0.5 km): the
+# edges of a WGS84 polygon bend there.
+_SEGMENT_DEGREES = 0.005
+# Decimal places of a WGS84 box (about 0.1 m); a planar box has whole metres.
+_DEGREE_PLACES = 6
+# The ``one_of`` group of the options that choose an area in Kartograf's
+# schema (``sheet``, ``bbox``, ``geometry``, ``teryt``…), the options an area of
+# Archiwista goes as, and what goes with two of them: the box's CRS and the
+# geometry file's layer.
+_AREA_GROUP = "area"
+_GEOMETRY_OPTION = "geometry"
+_BBOX_OPTION = "bbox"
+_BBOX_CRS_OPTION = "bbox_crs"
+_COUNTRY_OPTION = "country"
+_AREA_COMPANIONS = {_BBOX_OPTION: (_BBOX_CRS_OPTION,), _GEOMETRY_OPTION: ("layer",)}
 _LANGUAGES = frozenset({"en", "pl"})
 # Kartograf's progress events (``DownloadProgress.status``) whose ``current``
 # of ``total`` count the units of a run, and those whose ``sheet`` names a
@@ -506,6 +534,132 @@ def area_country(countries: tuple[str, ...]) -> str:
     named = {country.upper() for country in countries}
     known = [country for country in _AREA_COUNTRIES if country in named]
     return known[0].lower() if len(known) == 1 else "auto"
+
+
+def with_area(
+    call: CommandCall,
+    *,
+    area_file: Path,
+    geometry: GeoJSONGeometry,
+    countries: tuple[str, ...],
+) -> AreaCommand:
+    """Return a call with an area of Archiwista in place of its own (``area_call``).
+
+    Raises
+    ------
+    UnsupportedError
+        The command has no option that takes the area (``no_area_option``).
+    ProducerError
+        Kartograf does not know the command, or has no pinned operation to the
+        CRS of the area's box.
+    """
+    try:
+        entry = command_schema(call.command).commands[0]
+    except KartografError as error:
+        raise call_error(error, command=call.command, given=call.options) from error
+    return area_call(
+        _command_info(entry, polish=False),
+        call,
+        area_file=area_file,
+        geometry=geometry,
+        countries=countries,
+    )
+
+
+def area_call(
+    info: CommandInfo,
+    call: CommandCall,
+    *,
+    area_file: Path,
+    geometry: GeoJSONGeometry,
+    countries: tuple[str, ...],
+) -> AreaCommand:
+    """Return ``call`` of the command ``info`` over an area of Archiwista.
+
+    The call's options of the schema's group ``area`` go, with their
+    companions (``bbox_crs``, the ``layer`` of a geometry file). The area's
+    GeoJSON ``area_file`` becomes ``geometry`` when the command has it;
+    otherwise the box that encloses ``geometry`` (``area_box``) becomes
+    ``bbox`` with ``bbox_crs``. A command with ``country`` that the call does
+    not give gets the area's (``area_country``): Kartograf needs one with an
+    area. The other options stay as given; ``run`` is left out.
+
+    Raises
+    ------
+    UnsupportedError
+        The command has neither ``geometry`` nor ``bbox`` among the options
+        that choose an area (reason ``no_area_option``).
+    ProducerError
+        No pinned operation to the CRS of the box.
+    """
+    area = {option.name for option in info.options if option.group == _AREA_GROUP}
+    way: AreaWay
+    if _GEOMETRY_OPTION in area:
+        way = "geometry"
+    elif _BBOX_OPTION in area:
+        way = "bbox"
+    else:
+        raise UnsupportedError(
+            message("command.no_area_option", command=call.command),
+            reason="no_area_option",
+        )
+    gone = area | {
+        companion for name in area for companion in _AREA_COMPANIONS.get(name, ())
+    }
+    options = {name: value for name, value in call.options.items() if name not in gone}
+    if way == "geometry":
+        options[_GEOMETRY_OPTION] = str(area_file)
+    else:
+        box, crs = area_box(geometry, countries)
+        options |= {_BBOX_OPTION: box, _BBOX_CRS_OPTION: crs}
+    takes_country = any(option.name == _COUNTRY_OPTION for option in info.options)
+    if takes_country and _COUNTRY_OPTION not in options:
+        options[_COUNTRY_OPTION] = area_country(countries)
+    replaced = tuple(name for name in call.options if name in gone)
+    return AreaCommand(CommandCall(PRODUCER, call.command, options), way, replaced)
+
+
+def area_box(
+    geometry: GeoJSONGeometry, countries: tuple[str, ...]
+) -> tuple[list[float], str]:
+    """Return the box that encloses an area, and the box's CRS.
+
+    The envelope of the WGS84 polygon, its edges densified, in the CRS
+    Kartograf measures the first of the area's countries in (EPSG:2180 for
+    PL, EPSG:5514 for CZ alone), widened to whole metres; an area in neither
+    country gives its WGS84 envelope, widened to six decimal places.
+
+    Raises
+    ------
+    ProducerError
+        Kartograf has no pinned operation to the CRS.
+    """
+    polygon = shape(geometry)
+    named = {country.upper() for country in countries}
+    known = [country for country in _AREA_COUNTRIES if country in named]
+    if not known:
+        scale = 10**_DEGREE_PLACES
+        min_x, min_y, max_x, max_y = polygon.bounds
+        box = [
+            math.floor(min_x * scale) / scale,
+            math.floor(min_y * scale) / scale,
+            math.ceil(max_x * scale) / scale,
+            math.ceil(max_y * scale) / scale,
+        ]
+        return box, _WGS84
+    crs = _AREA_CRS[known[0]]
+    points = shapely.get_coordinates(shapely.segmentize(polygon, _SEGMENT_DEGREES))
+    try:
+        xs, ys = pinned_transform(_WGS84, crs).transform(points[:, 0], points[:, 1])
+    except KartografError as error:
+        raise call_error(error) from error
+    box = [
+        float(math.floor(xs.min())),
+        float(math.floor(ys.min())),
+        float(math.ceil(xs.max())),
+        float(math.ceil(ys.max())),
+    ]
+    return box, crs
 
 
 def call_error(

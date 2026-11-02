@@ -1348,13 +1348,13 @@ MESSAGES = {
     "commands_help": Text(
         (
             "Producers' commands: their catalog, a pasted line read into a call, a"
-            " call checked without the network and its command line (--json: the"
-            " models of /api/v1/commands)."
+            " call checked without the network, its command line and a call given"
+            " an area of Archiwista (--json: the models of /api/v1/commands)."
         ),
         (
             "Polecenia producentów: ich katalog, wklejona linia odczytana jako"
-            " wywołanie, wywołanie sprawdzone bez sieci i jego linia polecenia (--json:"
-            " modele /api/v1/commands)."
+            " wywołanie, wywołanie sprawdzone bez sieci, jego linia polecenia i"
+            " wywołanie z obszarem Archiwisty (--json: modele /api/v1/commands)."
         ),
     ),
     "commands_list_help": Text(
@@ -1421,6 +1421,43 @@ MESSAGES = {
             "To, co linia podaje poza opcjami, jako obiekt JSON, np. "
             '\'{{"root": "./data"}}\'.'
         ),
+    ),
+    "commands_area_help": Text(
+        (
+            "Gives a call an area of Archiwista (a project's, a drawn or uploaded"
+            " one) in place of the area it names and prints its command line"
+            " (--json: CommandAreaItem model)."
+        ),
+        (
+            "Wstawia do wywołania obszar Archiwisty (obszar projektu, narysowany"
+            " albo z pliku) w miejsce obszaru z wywołania i wypisuje jego linię"
+            " polecenia (--json: model CommandAreaItem)."
+        ),
+    ),
+    "commands_area_id_help": Text(
+        (
+            "Area identifier, e.g. a project's (area.area_id of archiwista project"
+            " --json)."
+        ),
+        (
+            "Identyfikator obszaru, np. obszaru projektu (area.area_id z archiwista"
+            " project --json)."
+        ),
+    ),
+    "commands_area_bbox": Text(
+        (
+            "The command takes no geometry file: the area went as the box that"
+            " encloses it, so the producer may select data outside the area."
+        ),
+        (
+            "Polecenie nie przyjmuje pliku geometrii: obszar trafił do niego jako"
+            " prostokąt, który go obejmuje, więc producent może wybrać też dane"
+            " spoza obszaru."
+        ),
+    ),
+    "commands_area_replaced": Text(
+        "The area replaced the options: {options}",
+        "Obszar zastąpił opcje: {options}",
     ),
     "commands_producer_help": Text(
         "Producer identifier, e.g. kartograf.",

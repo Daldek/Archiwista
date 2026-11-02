@@ -2,6 +2,7 @@
 
 from archiwista.sources.protocol import (
     ActionAdapter,
+    AreaCommandAdapter,
     CoordinateTransformer,
     CurrentVersionAdapter,
     DefaultRootAdapter,
@@ -29,6 +30,8 @@ from archiwista.sources.types import (
     ActionPlan,
     ActionProgress,
     ActionResult,
+    AreaCommand,
+    AreaWay,
     AvailabilityArea,
     AvailabilityCampaign,
     AvailabilityCombination,
@@ -85,6 +88,9 @@ __all__ = [
     "ActionPlan",
     "ActionProgress",
     "ActionResult",
+    "AreaCommand",
+    "AreaCommandAdapter",
+    "AreaWay",
     "AvailabilityArea",
     "AvailabilityCampaign",
     "AvailabilityCombination",

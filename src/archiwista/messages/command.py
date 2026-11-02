@@ -13,6 +13,14 @@ MESSAGES = {
             " magazynie {root}, a to nie jest plik tego magazynu."
         ),
     ),
+    "no_area_commands": Text(
+        "The source {producer} cannot give a command one of Archiwista's areas.",
+        "Źródło {producer} nie przyjmuje w poleceniu obszaru z Archiwisty.",
+    ),
+    "no_area_option": Text(
+        'The command "{command}" takes no area.',
+        "Polecenie „{command}” nie przyjmuje obszaru.",
+    ),
     "no_check": Text(
         (
             'The command "{command}" of the source {producer} has no plan without'
@@ -52,8 +60,16 @@ MESSAGES = {
         ),
     ),
     "path_option_hint": Text(
-        "Leave the option out of the request.",
-        "Pomiń tę opcję w żądaniu.",
+        (
+            "Leave the option out of the request; give an area as an area of"
+            " Archiwista instead (a project's, a drawn or an uploaded one: „Obszar"
+            " polecenia”, POST /commands/area)."
+        ),
+        (
+            "Pomiń tę opcję w żądaniu; obszar podaj jako obszar Archiwisty (obszar"
+            " projektu, narysowany albo z pliku: „Obszar polecenia”, POST"
+            " /commands/area)."
+        ),
     ),
     "store_required": Text(
         "The command {command} works on a store: name the store.",

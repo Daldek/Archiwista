@@ -48,6 +48,7 @@ from archiwista.sources import (
     ActionPlan,
     ActionProgress,
     ActionResult,
+    AreaCommand,
     AvailabilityNotice,
     AvailabilityReport,
     CommandCall,
@@ -130,10 +131,11 @@ class KartografAdapter:
     ``SegmentedAdapter``, ``PartitionedAdapter``, ``GeoAdapter``,
     ``LinkCheckAdapter``, ``SheetGridAdapter``, ``DefaultRootAdapter``,
     ``ActionAdapter`` (Kartograf's commands and ``check_availability``,
-    ``actions.py``), ``VersionCommandAdapter`` (``command_for_file``,
-    ``actions.py``) and ``ExportFolderAdapter``. All methods
-    may run in several threads at once; one iterator of ``iter_entries``
-    belongs to one thread.
+    ``actions.py``), ``AreaCommandAdapter`` (an area of Archiwista as a
+    command's ``geometry``, ``actions.py``), ``VersionCommandAdapter``
+    (``command_for_file``, ``actions.py``) and ``ExportFolderAdapter``. All
+    methods may run in several threads at once; one iterator of
+    ``iter_entries`` belongs to one thread.
     """
 
     producer = PRODUCER
@@ -578,6 +580,19 @@ class KartografAdapter:
     def command_for_version(self, version: str, *, root: Path) -> CommandCall:
         """Return the call of a stored version (its sidecar, ``command_for_file``)."""
         return actions.command_for_version(version, root=root)
+
+    def with_area(
+        self,
+        call: CommandCall,
+        *,
+        area_file: Path,
+        geometry: GeoJSONGeometry,
+        countries: tuple[str, ...],
+    ) -> AreaCommand:
+        """Return a call over an area of Archiwista: its GeoJSON as ``geometry``."""
+        return actions.with_area(
+            call, area_file=area_file, geometry=geometry, countries=countries
+        )
 
     def export_folder(self, product: str | None, dataset_key: str | None) -> str | None:
         """Return the export folder of a product's versions (``NMT``, ``BDOT``…)."""

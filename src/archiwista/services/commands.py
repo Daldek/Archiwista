@@ -13,8 +13,10 @@ the producer's default root (Decision 1 of the plan), and refuses an option of
 the request that is a file path: the producer would open that file in this
 process (SPEC 10.1). The one file path it takes is an input naming an area's
 GeoJSON Archiwista wrote (``areas.write_area_geojson``, A-ADR-035 erratum 2):
-the command lines of an availability report name it. Nothing here uses the
-network or writes.
+the command lines of an availability report name it, and so does a call that
+``command_with_area`` gives an area of the index (A-ADR-049 erratum 5: a
+project's area for a pasted command). Nothing here uses the network; only
+``command_with_area`` writes, the area's GeoJSON in Archiwista's data.
 
 ``version_command`` gives the call that selects a stored version again
 (A-ADR-049 D-10, ``VersionCommandAdapter``) and its command line with the
@@ -27,7 +29,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from archiwista.areas import area_geojson_id
+from archiwista.areas import area_geojson_id, write_area_geojson
 from archiwista.auth import ProjectVisibility
 from archiwista.config import AppSettings
 from archiwista.errors import (
@@ -37,10 +39,12 @@ from archiwista.errors import (
     SourceStateError,
     UnsupportedError,
 )
-from archiwista.index import IndexQueries, IndexWriter, VersionCall
+from archiwista.index import AreaRecord, IndexQueries, IndexWriter, VersionCall
 from archiwista.messages import message
 from archiwista.sources import (
     ActionAdapter,
+    AreaCommand,
+    AreaCommandAdapter,
     CommandCall,
     CommandInfo,
     VersionCommandAdapter,
@@ -63,6 +67,19 @@ class VersionCommand:
 
     call: CommandCall
     line: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class AreaCommandLine:
+    """A call over an area of the index, the area and the call's command line.
+
+    ``line`` is the producer's line of ``command.call`` (``ActionAdapter.format``)
+    without a store root, so a plan names the configured store's.
+    """
+
+    command: AreaCommand
+    area: AreaRecord
+    line: str
 
 
 def list_commands(
@@ -222,6 +239,72 @@ def refuse_path_options(
             hint=message("command.path_option_hint"),
             details={"option": option.name},
         )
+
+
+def command_with_area(
+    registry: PluginRegistry,
+    queries: IndexQueries,
+    call: CommandCall,
+    *,
+    area_id: str,
+    areas: Path,
+) -> AreaCommandLine:
+    """Give a call an area of the index in place of the area it names.
+
+    The area's GeoJSON is written into ``areas`` (``areas.write_area_geojson``:
+    kept as long as the area, already there for an area checked at the
+    source) and the producer's adapter puts it into the call
+    (``AreaCommandAdapter``): as the command's geometry file, or as the box
+    that encloses it for a command without one. A call naming that file
+    passes ``validate_command`` and the jobs (A-ADR-049 erratum 5). ``run``
+    is left out. Nothing uses the network.
+
+    Parameters
+    ----------
+    registry : PluginRegistry
+        Producer plugins.
+    queries : IndexQueries
+        The index that keeps the area.
+    call : CommandCall
+        The producer, the command and the options, as ``parse_command`` reads
+        a pasted line.
+    area_id : str
+        An area of the index (``POST /areas``, a project's area).
+    areas : Path
+        Where the areas' GeoJSON files are (``AppPaths.areas_dir``).
+
+    Raises
+    ------
+    NotFoundError
+        The index keeps no area ``area_id``.
+    CommandRequestError
+        The command is not in the producer's catalog (``unknown_command``).
+    UnsupportedError
+        The producer offers no commands (``no_commands``) or takes no area of
+        Archiwista (``no_area_commands``), or the command takes no area
+        (``no_area_option``).
+    ProducerError
+        The producer refused: the box of the area cannot be measured.
+    SourceUnavailableError, SourceIncompatibleError
+        The producer's plugin is not available.
+    """
+    adapter = actions(registry, call.producer)
+    if not isinstance(adapter, AreaCommandAdapter):
+        raise UnsupportedError(
+            message("command.no_area_commands", producer=call.producer),
+            reason="no_area_commands",
+        )
+    command_info(adapter, call)
+    area = queries.area(area_id)
+    if area is None:
+        raise NotFoundError(message("api.area_unknown", area=area_id))
+    found = adapter.with_area(
+        CommandCall(call.producer, call.command, call.options),
+        area_file=write_area_geojson(areas, area),
+        geometry=area.geometry,
+        countries=area.countries,
+    )
+    return AreaCommandLine(found, area, adapter.format(found.call))
 
 
 def format_command(registry: PluginRegistry, call: CommandCall) -> str:

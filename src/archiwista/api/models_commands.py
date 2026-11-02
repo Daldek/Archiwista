@@ -5,10 +5,12 @@ commands of the producers' catalogs with their options, the summary and the
 description in the language of the request. ``CommandCallItem`` is one call of
 a command: the answer of ``POST /commands/parse`` and ``/validate`` and the
 body of ``/format``, whose answer is ``CommandLine``, the producer's command
-line of the call. The store root is never an option of a call: ``validate``
-takes the id of a configured store (``ValidateRequest.store``), and the root a
-pasted line names stays in ``run`` (ADR-034, decision 2). The request models
-refuse unknown members (``400 validation_error``).
+line of the call. ``AreaRequest`` gives a call an area of Archiwista (``POST
+/commands/area``, A-ADR-049 erratum 5), answered by ``CommandAreaItem``. The
+store root is never an option of a call: ``validate`` takes the id of a
+configured store (``ValidateRequest.store``), and the root a pasted line names
+stays in ``run`` (ADR-034, decision 2). The request models refuse unknown
+members (``400 validation_error``).
 """
 
 from collections.abc import Iterable
@@ -16,7 +18,10 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from archiwista.api.models import AreaRef
+from archiwista.services.commands import AreaCommandLine
 from archiwista.sources import (
+    AreaWay,
     CommandCall,
     CommandChoice,
     CommandInfo,
@@ -93,6 +98,14 @@ _CALL_EXAMPLE: dict[str, Any] = {
     "command": "elevation download",
     "options": _OPTIONS,
     "run": {"root": "./data"},
+}
+_AREA_ID = "5f2b9c0e7d41a3b6"
+_AREA_FILE = f"/home/kasia/.local/share/archiwista/areas/{_AREA_ID}.geojson"
+_AREA_OPTIONS: dict[str, Any] = {
+    "product": "orto",
+    "sheet_system": "1992",
+    "geometry": _AREA_FILE,
+    "country": "pl",
 }
 
 
@@ -394,6 +407,123 @@ class CommandLine(BaseModel):
     def of(cls, call: CommandCall, line: str) -> Self:
         """Return the model of the command line of a call."""
         return cls(producer=call.producer, command=call.command, line=line)
+
+
+class AreaRequest(BaseModel):
+    """A call to give an area of Archiwista (`POST /commands/area`)."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "examples": [
+                {
+                    "producer": "kartograf",
+                    "command": "imagery download",
+                    "options": {
+                        "product": "orto",
+                        "sheet": "N-34-130-D-d-2-4",
+                        "sheet_system": "1992",
+                    },
+                    "area_id": _AREA_ID,
+                }
+            ]
+        },
+    )
+
+    producer: str = Field(description="Producer id.")
+    command: str = Field(description="Command of the producer's catalog.")
+    options: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "The options in the JSON form of the catalog, as `POST /commands/parse`"
+            " reads a pasted line; the options that choose an area are replaced."
+        ),
+    )
+    area_id: str = Field(
+        min_length=1,
+        description=(
+            "An area of `/areas`: drawn, uploaded, or a project's (`area.area_id` of"
+            " a project)."
+        ),
+    )
+
+    def call(self) -> CommandCall:
+        """Return the call to give the area."""
+        return CommandCall(self.producer, self.command, self.options)
+
+
+class CommandAreaItem(BaseModel):
+    """A call over an area of Archiwista and its command line (A-ADR-049 erratum 5)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "producer": "kartograf",
+                    "command": "imagery download",
+                    "options": _AREA_OPTIONS,
+                    "line": (
+                        "kartograf imagery download --product orto --country pl"
+                        f" --geometry {_AREA_FILE} --sheet-system 1992"
+                    ),
+                    "area": {
+                        "id": _AREA_ID,
+                        "name": "Raba",
+                        "area_km2": 120.4,
+                        "countries": ["PL"],
+                    },
+                    "way": "geometry",
+                    "replaced": ["sheet"],
+                }
+            ]
+        }
+    )
+
+    producer: str = Field(description="Producer id.")
+    command: str = Field(description="Command of the producer's catalog.")
+    options: dict[str, Any] = Field(
+        description=(
+            "The call's options with the area: the path of the area's GeoJSON"
+            " Archiwista keeps (which `validate` and the jobs accept), or the box"
+            " that encloses the area with its CRS; a country the command needs with"
+            " an area and the call did not give is the area's."
+        )
+    )
+    line: str = Field(
+        description=(
+            "The producer's command line of the call without a store root, which"
+            " `POST /commands/parse` reads back: paste it into a plan."
+        )
+    )
+    area: AreaRef = Field(description="The area the call was given.")
+    way: AreaWay = Field(
+        description=(
+            "`geometry`: the area went as the command's geometry file, so the"
+            " producer selects by its shape; `bbox`: the command takes no geometry"
+            " file, so the area went as the box that encloses it and the producer"
+            " may select data outside the area."
+        )
+    )
+    replaced: list[str] = Field(
+        description=(
+            "The given options that chose an area and are gone, in their order;"
+            " empty when the call named none."
+        )
+    )
+
+    @classmethod
+    def of(cls, found: AreaCommandLine) -> Self:
+        """Return the model of a call given an area."""
+        call = found.command.call
+        return cls(
+            producer=call.producer,
+            command=call.command,
+            options=dict(call.options),
+            line=found.line,
+            area=AreaRef.of(found.area),
+            way=found.command.way,
+            replaced=list(found.command.replaced),
+        )
 
 
 class VersionCommand(BaseModel):

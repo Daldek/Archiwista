@@ -47,7 +47,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | files of a project and the card of a file | `archiwista files PROJEKT`, `archiwista file PROJEKT PLIK` | `GET /projects/{project}/files`, `GET …/files/{file_id}` |
 | plan and making of a snapshot | `archiwista snapshot PROJEKT PLIK --plan`, `archiwista snapshot PROJEKT PLIK [--note TEKST]` | `GET …/files/{file_id}/snapshot-plan`, `POST …/files/{file_id}/snapshots` |
 | scan of the own-data folder | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
-| producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3), the call that selects a stored version again (A-ADR-049) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]`, `version-command MAGAZYN WERSJA` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format`, `GET /stores/{store}/versions/{version}/command` |
+| producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3), the call that selects a stored version again, a call given an area of Archiwista, e.g. a project's (A-ADR-049) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]`, `commands area PRODUCENT POLECENIE [--options JSON] --area-id OBSZAR`, `version-command MAGAZYN WERSJA` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format`, `/commands/area`, `GET /stores/{store}/versions/{version}/command` |
 | what the source has for an area and a product: the last report kept with its rows (labels, ranked variants, store badges), a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID] [--store ID] [--horizontal …] [--resolution …] [--vertical-crs …]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` and the same options | `GET /availability`, `POST /availability` |
 | a job of a producer's calls on a configured store (all the lines of a row in one job, ADR-044), kind `check` (the plan of a run of each call without its effects) or `download` (the run of each call, with the plans of a `check` job of the same calls if named; it writes the store; optionally pinning what it leaves into a new group of a project), and the plans a `check` job kept (v0.3) | `archiwista jobs start check PRODUCENT --store MAGAZYN --call JSON [--call JSON …]`, `jobs start download PRODUCENT --store MAGAZYN --call JSON [--call JSON …] [--plan ZADANIE] [--pin PROJEKT --pin-group ZESTAW]` (each `--call` a `{"command": "…", "options": {…}}`; the job in the foreground, printed as it ended), `jobs plan ZADANIE` | `POST /jobs`, `GET /jobs/{job}/plan` |
 | a file itself: a version's, an own file's or one file of its set, a snapshot's (v0.4) | — (HTTP only) | `GET /stores/{store}/versions/{version}/file`, `GET /projects/{project}/files/{file_id}/file`, `GET …/files/{file_id}/snapshots/{label}/file` (each also `HEAD`, a set's file by `?member=`) |
@@ -830,13 +830,38 @@ area's GeoJSON Archiwista wrote (`<data-dir>/areas/<area id>.geojson`), which
 the command lines of an availability report name (A-ADR-035 erratum 2); the
 same rule holds for the calls of `POST /jobs`. The producer's own refusal is
 `400 validation_error` with its text and hint and the option in
-`details.option`. Nothing here downloads or writes.
+`details.option`. Nothing here downloads or writes a store; `POST /commands/area`
+writes only Archiwista's GeoJSON of an area.
+
+**A call over an area of Archiwista (A-ADR-049 erratum 5).** `POST
+/commands/area` with `{"producer", "command", "options", "area_id"}` gives a call
+an area of `/areas` (drawn, uploaded, or a project's: `area.area_id` of `GET
+/projects/{project}`) in place of the area it names, for a pasted line run on a
+project's area. The options that choose an area go (a sheet, a box, a geometry
+file, a TERYT code…, with the box's CRS and the file's layer) and the area takes
+their place as the command's geometry file: Archiwista's GeoJSON of the area,
+`<data-dir>/areas/<area id>.geojson`, written then and accepted by `validate`
+and the jobs, so the producer selects by the polygon (`way` `geometry`). A
+command without a geometry option would get the box that encloses the area
+(`way` `bbox`, with its CRS: the producer may select data outside the area). A
+country the command needs and the call does not give is the area's (`auto` for
+an area of PL and CZ). The answer `CommandAreaItem` is the call, its `line`
+without a store root (ready for `POST /commands/parse` and a plan), the `area`,
+`way` and the `replaced` options; nothing is checked against a store (`POST
+/commands/validate` does). An unknown area is `404 not_found`, a command outside
+the catalog `400` (`unknown_command`), a command that takes no area `422
+unsupported` (`no_area_option`), as is a producer without commands
+(`no_commands`) or one that takes no area of Archiwista (`no_area_commands`;
+IMGWTools until its actions). `archiwista commands area` prints the same model
+with `--json`, otherwise the line and, below it, the replaced options.
 
 ```sh
 archiwista commands list --producer=kartograf --json
 archiwista commands parse kartograf "kartograf sheet parse --sheet N-34-130-D-d-2-4" --json
 archiwista commands validate kartograf "elevation download" --store=demo --json \
   --options='{"product": "nmt", "sheet": "N-34-130-D-d-2-4", "resolution": "1m", "vertical_crs": "EVRF2007"}'
+archiwista commands area kartograf "landcover download" --options='{"product": "bdot10k"}' \
+  --area-id="$(archiwista project kamiennik --json | jq -r .area.area_id)" --json
 curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
   -d '{"producer": "kartograf", "line": "kartograf sheet parse --sheet N-34-130-D-d-2-4"}' \
   "$BASE/commands/parse"
@@ -984,7 +1009,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 | 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |
 | 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `file_unreadable`: a download (`…/file`) of a working file its last scan could not read, of a snapshot that is not valid, or from a data folder that cannot be read; `own_folder_invalid`: a download or a preview (its description, images, tiles, features, members or build) of an own file or a snapshot whose data folder breaks the rules of its scan now (it leads out of the project's directory, lies in a store), an administrator or the project's owner fixes the folder; `last_admin` (team mode): the change would leave no administrator who can sign in (enabled, with a password that has not expired or through the proxy), give the role `admin` to another such account first; `local_mode`: signing in and changing a password exist in team mode only; `proxy_session`: a session of the reverse proxy changes no password |
 | 409 | `conflict` | a change of a project file (section 5): `project_exists` (a new project where the file is), `project_locked` (another change holds `.archiwista-project.lock`: `details.lock`, `details.owner`, `details.owner_ended`; wait and try again, remove the directory only when no program changes the project), `invalid_project_file` or `unsupported_project_schema` (the file breaks a rule or is of a newer format: nothing is changed) |
-| 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks) |
+| 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks); `no_area_option`: the command takes no area (`POST /commands/area`); `no_area_commands`: the producer takes no area of Archiwista in a command |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
 | 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; `scan_running`: the person's scan of a data folder waits or runs; `scan_too_soon`: the project's folder was asked to be scanned less than a minute ago; `too_many_downloads`: the person streams two file downloads (`…/file`) already; wait for `Retry-After` (also `details.retry_after_s`) |
 | 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |

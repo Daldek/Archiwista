@@ -2,20 +2,29 @@
 
 ``GET /commands`` lists the commands of the producers' catalogs, ``POST
 /commands/parse`` reads a pasted command line into a call, ``POST
-/commands/validate`` checks a call without the network and ``POST
-/commands/format`` writes the producer's command line of a call. The routes
-translate only: ``archiwista.services.commands`` does the work, and
+/commands/validate`` checks a call without the network, ``POST
+/commands/format`` writes the producer's command line of a call and ``POST
+/commands/area`` gives a call an area of Archiwista (A-ADR-049 erratum 5). The
+routes translate only: ``archiwista.services.commands`` does the work, and
 ``archiwista commands`` calls the same functions. A session is all they need:
-nothing here uses the network or writes.
+nothing here uses the network, and only ``area`` writes, the area's GeoJSON in
+Archiwista's data.
 """
 
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
-from archiwista.api.dependencies import app_paths, plugin_registry, settings_service
+from archiwista.api.dependencies import (
+    app_paths,
+    index_queries,
+    plugin_registry,
+    settings_service,
+)
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE, problem_example, problem_responses
 from archiwista.api.models_commands import (
+    AreaRequest,
+    CommandAreaItem,
     CommandCallItem,
     CommandLine,
     CommandList,
@@ -25,6 +34,7 @@ from archiwista.api.models_commands import (
 )
 from archiwista.auth import Principal
 from archiwista.config import AppPaths, SettingsService
+from archiwista.index import IndexQueries
 from archiwista.messages import message
 from archiwista.security import current_principal
 from archiwista.services import commands as command_service
@@ -36,6 +46,7 @@ _Principal = Annotated[Principal, Depends(current_principal)]
 _Registry = Annotated[PluginRegistry, Depends(plugin_registry)]
 _Settings = Annotated[SettingsService, Depends(settings_service)]
 _Paths = Annotated[AppPaths, Depends(app_paths)]
+_Queries = Annotated[IndexQueries, Depends(index_queries)]
 
 
 def _responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
@@ -57,6 +68,22 @@ def _responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
             }
         },
     }
+    return responses
+
+
+def _area_responses() -> dict[int | str, dict[str, Any]]:
+    """Return the problems of ``POST /commands/area``: the ``422`` of no area too."""
+    responses = _responses(400, 404, 503)
+    responses[422]["description"] = (
+        "`unsupported`: the producer's plugin offers no commands (reason"
+        " `no_commands`) or takes no area of Archiwista (`no_area_commands`), or"
+        " the command takes no area (`no_area_option`)."
+    )
+    responses[422]["content"][PROBLEM_MEDIA_TYPE]["example"] = problem_example(
+        "unsupported",
+        message("command.no_area_option", "en", command="store overview"),
+        reason="no_area_option",
+    )
     return responses
 
 
@@ -150,3 +177,35 @@ def format_command(
     """
     call = body.call()
     return CommandLine.of(call, command_service.format_command(registry, call))
+
+
+@router.post(
+    "/commands/area", response_model=CommandAreaItem, responses=_area_responses()
+)
+def apply_command_area(
+    body: AreaRequest,
+    principal: _Principal,
+    registry: _Registry,
+    queries: _Queries,
+    paths: _Paths,
+) -> CommandAreaItem:
+    """Give a call an area of Archiwista in place of the area it names.
+
+    For a pasted command run on a project's area, or on any area of `/areas`
+    (A-ADR-049 erratum 5). The options that choose an area go (a sheet, a box,
+    a file, a TERYT code…) and the area takes their place: as the command's
+    geometry file when it has one (`way` `geometry`: the path of the area's
+    GeoJSON Archiwista keeps, which `validate` and the jobs accept), else as
+    the box that encloses it (`way` `bbox`: the producer may select data
+    outside the area). A country the command needs with an area and the call
+    does not give is the area's. The answer is the call, its line without a
+    store root and the replaced options; nothing is checked against a store
+    (`POST /commands/validate` does). An unknown area is `404`; a command
+    outside the catalog `400` (`unknown_command`); a command that takes no
+    area `422 unsupported` (`no_area_option`), as is a producer without
+    commands (`no_commands`) or without areas (`no_area_commands`).
+    """
+    found = command_service.command_with_area(
+        registry, queries, body.call(), area_id=body.area_id, areas=paths.areas_dir
+    )
+    return CommandAreaItem.of(found)

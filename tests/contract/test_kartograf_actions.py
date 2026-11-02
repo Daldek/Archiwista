@@ -6,7 +6,9 @@ the producers' default roots (``tests/conftest.py``). Kartograf's
 ``kartograf-commands/1`` gives the commands and their example lines. The
 availability at the source (A2) is Kartograf's ``check_availability`` with
 Archiwista's own metadata cache; its network part is stood in for, its
-refusals before the network are Kartograf's own.
+refusals before the network are Kartograf's own. A call given an area of
+Archiwista (``AreaCommandAdapter``, A-ADR-049 erratum 5) is checked by
+Kartograf's own ``validate_command``.
 """
 
 import json
@@ -22,9 +24,10 @@ from shapely.geometry import shape
 import archiwista.adapter.kartograf.actions as actions_module
 from archiwista.adapter.kartograf import load
 from archiwista.areas import area_from_geometry, write_area_geojson
-from archiwista.errors import ProducerError
+from archiwista.errors import ProducerError, UnsupportedError
 from archiwista.sources import (
     ActionAdapter,
+    AreaCommandAdapter,
     AvailabilityArea,
     AvailabilityCampaign,
     AvailabilityCombination,
@@ -32,8 +35,12 @@ from archiwista.sources import (
     AvailabilityNotice,
     AvailabilityReport,
     AvailabilitySheet,
+    CommandCall,
+    CommandInfo,
+    CommandOption,
     GeoAdapter,
     GeoJSONGeometry,
+    OptionType,
     SourceContext,
 )
 from tests.fixtures.network import no_network
@@ -444,3 +451,161 @@ def test_availability_products_are_the_elevation_products(
 ) -> None:
     """Kartograf reports the availability of NMT, NMPT and LAZ (SPEC 6.3)."""
     assert adapter.availability_products() == ("nmt", "nmpt", "laz")
+
+
+# A WGS84 area in Poland alone (Kraków), as the index keeps it.
+KRAKOW = _box(19.9, 50.0, 20.0, 50.05)
+
+
+@pytest.mark.parametrize(
+    ("line", "replaced", "added"),
+    [
+        (
+            "imagery download --product orto --sheet N-34-130-D-d-2-4"
+            " --sheet-system 1992",
+            ("sheet",),
+            {"country": "pl"},
+        ),
+        ("landcover download --product bdot10k --teryt 1465", ("teryt",), {}),
+        (
+            "elevation download --product nmt --country pl"
+            " --bbox 500000,250000,501000,251000 --bbox-crs EPSG:2180"
+            " --sheet-system 1992 --resolution 1m --vertical-crs EVRF2007 --year 2023",
+            ("bbox", "bbox_crs"),
+            {},
+        ),
+    ],
+    ids=["sheet", "teryt", "bbox"],
+)
+def test_an_area_takes_the_place_of_the_area_a_call_names(
+    adapter: ActionAdapter,
+    tmp_path: Path,
+    line: str,
+    replaced: tuple[str, ...],
+    added: dict[str, object],
+) -> None:
+    """The area's GeoJSON is ``geometry``; Kartograf validates the call offline.
+
+    The options that chose an area go, the other options stay, a country the
+    command needs and the call lacks is the area's, and the call's line reads
+    back into it.
+    """
+    assert isinstance(adapter, AreaCommandAdapter)
+    geo = cast(GeoAdapter, adapter)
+    record = area_from_geometry(KRAKOW, adapter=geo, source="drawn")
+    area_file = write_area_geojson(tmp_path / "areas", record)
+    call = adapter.parse(line)
+    kept = {name: value for name, value in call.options.items() if name not in replaced}
+
+    with no_network() as attempts:
+        found = adapter.with_area(
+            call,
+            area_file=area_file,
+            geometry=record.geometry,
+            countries=record.countries,
+        )
+        read_back = adapter.parse(adapter.format(found.call))
+        adapter.validate(
+            found.call.command, found.call.options, root=tmp_path / "store"
+        )
+
+    assert record.countries == ("PL",)
+    assert (found.way, found.replaced) == ("geometry", replaced)
+    assert found.call == CommandCall(
+        "kartograf", call.command, {**kept, "geometry": str(area_file), **added}
+    )
+    assert read_back == found.call
+    assert attempts == []
+
+
+def _boxed_command() -> CommandInfo:
+    """Return a command that chooses its area by a sheet or a box, no geometry file."""
+
+    def option(name: str, kind: OptionType, group: str | None = None) -> CommandOption:
+        return CommandOption(name, kind, False, name, group=group)
+
+    return CommandInfo(
+        producer="kartograf",
+        command="boxes download",
+        group="boxes",
+        summary="",
+        description="",
+        options=(
+            option("product", "string"),
+            option("country", "string"),
+            option("sheet", "string", "area"),
+            option("bbox", "array", "area"),
+            option("bbox_crs", "string"),
+        ),
+        read_only=False,
+        writes="add",
+        network=True,
+        check=True,
+        store=True,
+        examples=(),
+    )
+
+
+@pytest.mark.parametrize(
+    ("countries", "crs"),
+    [(("PL",), "EPSG:2180"), (("CZ",), "EPSG:5514"), ((), "EPSG:4326")],
+)
+def test_a_command_without_a_geometry_file_gets_the_box_of_the_area(
+    tmp_path: Path, countries: tuple[str, ...], crs: str
+) -> None:
+    """The box encloses the polygon in the CRS of its first country, whole metres.
+
+    An area in neither country gives its WGS84 envelope. The call says so
+    (``way`` ``bbox``): the producer may select data outside the area.
+    """
+    call = CommandCall("kartograf", "boxes download", {"product": "p", "sheet": "A"})
+
+    found = actions_module.area_call(
+        _boxed_command(),
+        call,
+        area_file=tmp_path / "0123456789abcdef.geojson",
+        geometry=KRAKOW,
+        countries=countries,
+    )
+
+    options = dict(found.call.options)
+    box = cast(list[float], options.pop("bbox"))
+    assert (found.way, found.replaced) == ("bbox", ("sheet",))
+    assert options == {
+        "product": "p",
+        "bbox_crs": crs,
+        "country": actions_module.area_country(countries),
+    }
+    ring = shapely.get_coordinates(shapely.segmentize(shape(KRAKOW), 0.005))
+    if crs == "EPSG:4326":
+        xs, ys = ring[:, 0], ring[:, 1]
+        slack = 1e-6
+    else:
+        xs, ys = kartograf.pinned_transform("EPSG:4326", crs).transform(
+            ring[:, 0], ring[:, 1]
+        )
+        slack = 1.0
+        assert all(value == round(value) for value in box)
+    assert box[0] <= xs.min() <= box[0] + slack
+    assert box[1] <= ys.min() <= box[1] + slack
+    assert box[2] - slack <= xs.max() <= box[2]
+    assert box[3] - slack <= ys.max() <= box[3]
+
+
+def test_a_command_that_takes_no_area_is_refused(
+    adapter: ActionAdapter, tmp_path: Path
+) -> None:
+    """``store overview`` chooses no area; an unknown command is Kartograf's refusal."""
+    assert isinstance(adapter, AreaCommandAdapter)
+    area_file = tmp_path / "0123456789abcdef.geojson"
+
+    def given(call: CommandCall) -> None:
+        adapter.with_area(call, area_file=area_file, geometry=KRAKOW, countries=("PL",))
+
+    with pytest.raises(UnsupportedError) as without:
+        given(adapter.parse("store overview"))
+    with pytest.raises(ProducerError) as unknown:
+        given(CommandCall("kartograf", "boxes download", {}))
+
+    assert without.value.details["reason"] == "no_area_option"
+    assert unknown.value.code == "validation_error"

@@ -35,6 +35,9 @@ type TimeUnit = Literal["day", "month", "half_year"]
 # A statistic of a half-year characteristic that is an extreme of its variable.
 type Extreme = Literal["min", "max"]
 type DateRange = tuple[date, date]
+# How an area of Archiwista reaches a command (``AreaCommand.way``): as the
+# producer's geometry file, or as the box that encloses it.
+type AreaWay = Literal["geometry", "bbox"]
 
 # The statuses of a plan's positions in the order the producers define them.
 PLAN_STATUSES: tuple[PlanStatus, ...] = (
@@ -609,6 +612,29 @@ class CommandCall:
     command: str
     options: Mapping[str, object] = field(default_factory=dict)
     run: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class AreaCommand:
+    """A call whose area is an area of Archiwista (``AreaCommandAdapter``).
+
+    Parameters
+    ----------
+    call : CommandCall
+        The call with the area in place of the area options it named, as
+        ``ActionAdapter.parse`` would read it from its command line.
+    way : AreaWay
+        ``geometry``: the area went as the command's geometry file option;
+        ``bbox``: the command takes no geometry file, so the area went as the
+        box that encloses it, and the producer may select data outside it.
+    replaced : tuple[str, ...]
+        The options of the given call that named an area and are gone, in
+        the call's order.
+    """
+
+    call: CommandCall
+    way: AreaWay
+    replaced: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

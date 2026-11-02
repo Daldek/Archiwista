@@ -9,6 +9,22 @@ command-line interface may change.
 
 ### Added
 
+- A producer's call runs on an area of Archiwista, for example a project's
+  (A-ADR-049 erratum 5): `POST /commands/area` and `archiwista commands area PRODUCENT
+  POLECENIE [--options JSON] --area-id OBSZAR` take a call and an area of `/areas`
+  (drawn, uploaded, or a project's `area.area_id`) and answer the call with the area in
+  place of the options that named one (a sheet, a box, a geometry file, a TERYT
+  code…), its line without a store root, the area, `way` and `replaced`. The area goes
+  as the command's geometry file, Archiwista's `<data-dir>/areas/<id>.geojson`, which
+  `POST /commands/validate` and the jobs accept, so the producer selects by the polygon
+  (`way` `geometry`); a command without a geometry option would get the box that
+  encloses the area in its first country's CRS (`way` `bbox`: data outside it may be
+  selected). A country the command needs and the call does not give is the area's. A
+  command that takes no area is `422 unsupported` (`no_area_option`), a producer that
+  takes no area of Archiwista too (`no_area_commands`). The source interface gains the
+  optional capability `AreaCommandAdapter` (`with_area`; `AreaCommand`, `AreaWay`), which
+  Kartograf's adapter has; the hint of a refused file path (`path_outside_root`) points
+  to it.
 - A project's export unpacks a version stored as a ZIP that holds exactly one raster
   (A-ADR-049 erratum 4; GUGiK's NMT of 2020, `pl.gugik.nmt_xyz_5m`: one XYZ grid per
   sheet; also one ASC or GeoTIFF; the rule of previews, `formats.raster_member`): the
