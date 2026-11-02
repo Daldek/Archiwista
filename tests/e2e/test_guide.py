@@ -6,11 +6,17 @@ slides are 16:9 inside a computer's window, and at a phone's width the link is
 an icon inside the top bar and the guide one column without sideways scrolling.
 A team server serves the guide before anyone signs in, as it serves the sign-in
 page, and its signed-in top bar leads there too.
+
+The phone is a browser context of its own, at the phone's size from its first
+load. Resizing the app's tab once the guide's tab covers it could stall the
+run in Firefox: ``Page.set_viewport_size`` waits until the page has the new
+size, which Firefox may never give a covered tab, and it has no timeout.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from urllib.parse import urlsplit
 
+import pytest
 from playwright.sync_api import Locator, Page, ViewportSize, expect
 
 from tests.fixtures.browser import CSP_WATCH, Served, Tab
@@ -29,6 +35,20 @@ SLIDES = """() => [...document.querySelectorAll("main > section")].map((slide) =
   return [box.width, box.height];
 })"""
 OVERFLOW = "() => document.documentElement.scrollWidth - innerWidth"
+
+
+@pytest.fixture
+def phone_tab(engine_tab: Tab) -> Iterator[Tab]:
+    """Yield a recording page of a phone's width in the engine of ``engine_tab``."""
+    browser = engine_tab.page.context.browser
+    assert browser is not None
+    context = browser.new_context(
+        viewport=PHONE, locale="pl-PL", timezone_id="Europe/Warsaw"
+    )
+    phone = Tab(context.new_page())
+    phone.watch()
+    yield phone
+    context.close()
 
 
 def guide_link(page: Page) -> Locator:
@@ -55,7 +75,7 @@ def assert_guide_loaded(guide: Page) -> None:
 
 
 def test_the_top_bar_opens_the_guide_with_its_pictures_on_a_computer_and_a_phone(
-    serve: Callable[..., Served], engine_tab: Tab
+    serve: Callable[..., Served], engine_tab: Tab, phone_tab: Tab
 ) -> None:
     """A new tab with the guide; 16:9 slides; on a phone an icon and one column."""
     # Arrange
@@ -77,20 +97,31 @@ def test_the_top_bar_opens_the_guide_with_its_pictures_on_a_computer_and_a_phone
     for width, height in slides:
         assert abs(width / height - 16 / 9) < 0.01
         assert width <= window["width"] and height <= window["height"]
-
-    # Act: a phone's width, the guide and the app.
-    guide.set_viewport_size(PHONE)
-    page.set_viewport_size(PHONE)
-
-    # Assert
-    assert guide.evaluate(OVERFLOW) == 0
-    assert all(width <= PHONE["width"] for width, _ in guide.evaluate(SLIDES))
-    box = guide_link(page).bounding_box()
-    assert box is not None
-    assert box["x"] >= 0 and box["x"] + box["width"] <= PHONE["width"]
-    assert page.evaluate(OVERFLOW) == 0
     guide.close()
     engine_tab.assert_clean()
+
+    # Arrange: the app on a phone.
+    phone = phone_tab.page
+    phone.context.add_init_script(CSP_WATCH)
+    phone.goto(served.token_url())
+    expect(guide_link(phone)).to_be_visible()
+    phone_tab.settle()
+
+    # Assert: the link is inside the top bar and nothing scrolls sideways.
+    box = guide_link(phone).bounding_box()
+    assert box is not None
+    assert box["x"] >= 0 and box["x"] + box["width"] <= PHONE["width"]
+    assert phone.evaluate(OVERFLOW) == 0
+
+    # Act
+    guide = open_guide(phone)
+
+    # Assert
+    assert_guide_loaded(guide)
+    assert guide.evaluate(OVERFLOW) == 0
+    assert all(width <= PHONE["width"] for width, _ in guide.evaluate(SLIDES))
+    guide.close()
+    phone_tab.assert_clean()
 
 
 def test_a_team_server_serves_the_guide_before_and_after_signing_in(
