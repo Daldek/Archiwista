@@ -2531,6 +2531,20 @@
  */
 
 /**
+ * A call with a saved area substituted for its area options (`POST /commands/area`).
+ *
+ * @typedef {object} CommandAreaItem
+ * @property {string} producer
+ * @property {string} command
+ * @property {Object<string, *>} options
+ * @property {string} line - The producer's line without a store root.
+ * @property {{id: string, name: string|null, area_km2: number|null,
+ *   countries: string[]}} area
+ * @property {"geometry"|"bbox"} way - Geometry file or its enclosing box.
+ * @property {string[]} replaced - Names of the call's area options replaced, in order.
+ */
+
+/**
  * Body of `POST /commands/validate`: a call checked without the network.
  *
  * @typedef {object} ValidateRequest

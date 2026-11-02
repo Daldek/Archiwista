@@ -127,9 +127,9 @@ def serve_store(
     return served
 
 
-def open_area(page: Page, served: Served, url: str) -> Locator:
-    """Open the map on the area with the session of ``url``; return „U źródła”."""
-    query = urlencode({"view": "map", "area_id": AREA.id})
+def open_area(page: Page, served: Served, url: str, area_id: str = AREA.id) -> Locator:
+    """Open the map on an area with the session of ``url``; return „U źródła”."""
+    query = urlencode({"view": "map", "area_id": area_id})
     page.goto(f"{served.base}/?{query}#{urlsplit(url).fragment}")
     expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
     step = page.get_by_role("region", name="U źródła")
@@ -451,6 +451,54 @@ def test_a_session_that_may_not_write_sees_the_download_disabled_with_its_reason
     )
     shot(page, "05-bez-uprawnienia")
     assert call(page, "GET", "/jobs?kind=download")["items"] == []
+    tab.assert_clean()
+
+
+def test_report_plan_names_project_area_and_defaults_to_its_writable_project(
+    serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """A report's area is shown in the plan; pinning starts on its project."""
+    # Arrange: another writable project comes first alphabetically.
+    projects = tmp_path / "projekty"
+    projects.mkdir()
+    served = serve_store(serve, tmp_path, projects=projects)
+    page = tab.page
+    page.goto(served.token_url())
+    expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
+    call(
+        page,
+        "POST",
+        "/projects",
+        {"path": str(projects / "bez-obszaru"), "name": "Aardvark"},
+    )
+    area_project = call(
+        page,
+        "POST",
+        "/projects",
+        {"path": str(projects / "kamiennik"), "name": "Kamiennik", "area_id": AREA.id},
+    )
+    card = call(page, "GET", f"/projects/{area_project['project']}")
+    step = open_area(page, served, served.token_url(), card["area"]["area_id"])
+
+    # Act
+    dialog = open_plan(page, check_at_source(step).nth(0))
+
+    # Assert: report lines carry their area already; only its name is repeated.
+    expect(dialog.locator(".plan-facts")).to_contain_text("Obszar")
+    expect(dialog.locator(".plan-facts")).to_contain_text("Kamiennik")
+    expect(dialog.locator(".plan-facts")).to_contain_text("Obszar projektu Kamiennik")
+    expect(dialog.locator(".plan-facts")).not_to_contain_text("plik geometrii obszaru")
+    checkbox = dialog.get_by_role("checkbox", name="Dodaj do projektu")
+    expect(checkbox).not_to_be_checked()
+
+    # Act: the checkbox remains opt-in, but its select starts on the area project.
+    checkbox.check()
+
+    # Assert
+    expect(dialog.get_by_label("Projekt", exact=True)).to_have_value(
+        area_project["project"]
+    )
+    dialog.get_by_role("button", name="Anuluj").click()
     tab.assert_clean()
 
 

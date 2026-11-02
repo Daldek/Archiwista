@@ -1599,6 +1599,21 @@ export function parseCommand(producer, line) {
 }
 
 /**
+ * Replace a producer call's area options with a saved area's geometry or
+ * enclosing box; the line is ready for `/commands/parse` and the plan window.
+ *
+ * @param {{producer: string, command: string, options: Object<string, *>,
+ *   area_id: string}} body
+ * @returns {Promise<import("./types.js").CommandAreaItem>}
+ * @throws {ApiError} `404 not_found` (area), `422 unsupported` (no area
+ *   option or commands), `400 unknown_command` or producer `validation_error`,
+ *   `503` (producer unavailable).
+ */
+export function applyCommandArea(body) {
+  return request("POST", "/commands/area", { json: body });
+}
+
+/**
  * Check a call without the network (`validate_command`), a command that
  * works on a store with that store's directory of the producer.
  *

@@ -56,6 +56,16 @@ API_GET = """async (path) => {
   const answer = await fetch(`/api/v1${path}`, { headers });
   return { status: answer.status, body: await answer.json() };
 }"""
+API_POST = """async ([path, body]) => {
+  const headers = {
+    "X-Archiwista-CSRF": sessionStorage.getItem("archiwista_csrf"),
+    "Content-Type": "application/json",
+  };
+  const answer = await fetch(`/api/v1${path}`, {
+    method: "POST", headers, body: JSON.stringify(body),
+  });
+  return { status: answer.status, body: await answer.json() };
+}"""
 LOADED = re.compile("w widoku|Brak obrysów")
 # Installed before any page script: the canvas has no WebGL2 context to give.
 NO_WEBGL2 = """
@@ -166,6 +176,66 @@ def area_of(page: Page) -> dict[str, Any]:
     """Return the area of the address as the API keeps it."""
     area: dict[str, Any] = api_get(page, f"/areas/{query_of(page)['area_id']}")
     return area
+
+
+def create_project_area(
+    page: Page,
+    projects_dir: Path,
+    *,
+    name: str = "Kamiennik",
+    geometry: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Write a usable area into a new project, using a store footprint by default."""
+    if geometry is None:
+        footprints = api_get(page, f"/map/footprints?bbox={WORLD}&limit=5000")
+        geometry = footprints["items"][0]["geometry"]
+    saved = page.evaluate(API_POST, ["/areas", {"geometry": geometry, "name": name}])
+    assert saved["status"] == 201, saved
+    created = page.evaluate(
+        API_POST,
+        [
+            "/projects",
+            {
+                "path": str(projects_dir / "kamiennik"),
+                "name": name,
+                "area_id": saved["body"]["id"],
+            },
+        ],
+    )
+    assert created["status"] == 201, created
+    return {"area_id": saved["body"]["id"], "project": created["body"]["project"]}
+
+
+def test_project_area_is_chosen_on_map_with_its_local_state(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """A project's saved area can be picked at step 1 and used at steps 3 and 4."""
+    # Arrange
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    served = serve(offline_settings(store))
+    page = open_map(tab, served)
+    created = create_project_area(page, store.projects_dir)
+    page.goto(f"{served.base}/?view=map")
+
+    # Act
+    select = page.get_by_role("combobox", name="Obszar projektu", exact=True)
+    select.select_option(created["project"])
+
+    # Assert
+    expect(page).to_have_url(re.compile(f"area_id={created['area_id']}"))
+    card = page.locator(".step-anchor .area-card")
+    expect(card).to_contain_text("Obszar projektu Kamiennik")
+    expect(page.get_by_role("region", name="Stan lokalny")).to_contain_text(
+        "Pliki w obszarze:"
+    )
+    expect(
+        page.get_by_role("link", name="Pokaż pliki obszaru w Katalogu")
+    ).to_be_visible()
+    expect(select).to_have_value(created["project"])
+    expect(page.get_by_role("combobox", name="Obszar polecenia")).to_have_value(
+        "current"
+    )
+    tab.assert_clean()
 
 
 def test_draw_rectangle_and_polygon_areas(
@@ -616,8 +686,14 @@ def test_wheel_over_the_panel_brings_its_last_step_into_view(
     assert box is not None
 
     page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-    for _ in range(8):
-        page.mouse.wheel(0, 300)
+    for _ in range(40):
+        page.mouse.wheel(0, 100)
+        page.wait_for_timeout(25)
+        if source.evaluate(
+            "(heading) => { const rect = heading.getBoundingClientRect();"
+            " return rect.top >= 0 && rect.bottom <= innerHeight; }"
+        ):
+            break
 
     # The panel's content moved, not the panel: the page did not scroll.
     expect(source).to_be_in_viewport()

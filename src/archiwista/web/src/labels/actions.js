@@ -52,12 +52,26 @@ export const actions = {
     paste_submit: "Zaplanuj…",
     paste_title: "{producer} · {command}",
     paste_no_producer: "Nie wiadomo, czyje to polecenie: zacznij je od nazwy producenta ({producers}).",
+    paste_area: "Obszar polecenia",
+    paste_original: "jak w poleceniu",
+    paste_current: "obszar z kroku 1: {name}",
+    paste_project: "obszar projektu {name}",
+    paste_area_hint:
+      "Wybrany obszar zastąpi obszar podany w poleceniu: arkusz, prostokąt, " +
+      "plik geometrii albo kod TERYT.",
   },
   plan: {
     title: "Pobrać?",
     /** The title once something started. */
     title_started: "Pobieranie",
     area: "obszar {name}",
+    area_fact: "Obszar",
+    area_geometry: "plik geometrii obszaru",
+    area_bbox: "prostokąt obejmujący obszar",
+    area_bbox_warning:
+      "To polecenie nie przyjmuje pliku geometrii. Prostokąt obejmuje obszar, " +
+      "ale producent może wybrać dane spoza niego.",
+    area_replaced: "Zastąpiono opcje obszaru z polecenia:",
     format: "Format",
     format_choose: "Wybierz format: żaden format tego wariantu nie jest domyślny, więc nic nie zostało wybrane za Ciebie.",
     format_no_lines: "Producent nie podał polecenia dla tego formatu",

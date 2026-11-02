@@ -20,6 +20,7 @@ is merged into `develop` or released.
 | Plan window: bounded requests | done on `feature/archiwista-projects`, deployed on the test server | Four requests in flight (`requestEach`), a bare `503` is `server_busy`, after a 116-sheet set exceeded the server's 100 connections (`c9fd47b`); one „Zamknij” keeps a download's window reopenable from the list (`d4daea6`) |
 | Previews of a ZIP of one raster (GUGiK's XYZ of 2020) | done on `feature/archiwista-projects`, deployed on the test server | Previewed as that raster through `/vsizip/`, format named "XYZ (ZIP)" (`formats.raster_member`, the rule exports share; `43c2254`) |
 | Phone fields | done on `feature/archiwista-projects`, deployed on the test server | Fields at 16 px on a phone, so iOS does not zoom in after sign-in (`1f2ed39`) |
+| A project's area for the map, the Katalog and a producer's call (A-ADR-049 erratum 5) | done on `feature/archiwista-projects`, deployed on the test server | "Obszar projektu" in the map's step 1 and the Katalog's area filter; "Obszar polecenia" runs a pasted call on the area of step 1 or a project's (`POST /commands/area`, `archiwista commands area`, the source capability `AreaCommandAdapter`, Kartograf's `with_area`: the area as `--geometry`, else its box); the plan window's "Obszar" row; the project card's "Pliki obszaru w Katalogu" and file count |
 | User guide `/instrukcja` | done, in `feature/v0.4-team` | A-ADR-048 (proposed; the author decides on merging): twelve Polish slides served without a session, "Instrukcja" in the top bar; slide 9 shows the project card |
 | v0.4 "Team" | built on `feature/v0.4-team` | plan `docs/plans/2026-10-26-plan-v0.4.md` T1 to T12 (ADR-046, ADR-047; security D6, D7, D10); acceptance with three people, the permission matrix, the ASVS checklist; the LAN runbook ran once on one machine with real components (`docs/reports/v0.4-lan-runbook.md`); macOS fixes (no `RLIMIT_AS`, `TCP_NODELAY`, `F_GETPATH`) |
 | v0.3 "Actions" | built | plan `docs/plans/2026-10-25-archiwista-next.md` Part 3: A1 to A14 (ADR-034 to ADR-044): producer commands, availability at the source, the plan window, downloads and job controls, preview warm-up, background downloads; its project actions (A7, A8, A13) are replaced by A-ADR-049. Report `docs/reports/v0.3-measurements.md` |
@@ -67,7 +68,7 @@ Known gaps:
 
 - „U źródła” offers only NMT, NMPT and LAZ until Kartograf KD-3/KD-4 (availability of
   orthophoto, BDOT10k and unit products); meanwhile paste the producer's command
-  („Wklej polecenie producenta”).
+  („Wklej polecenie producenta”), which „Obszar polecenia” now runs on a project's area.
 - Plans show „rozmiar nieznany” until Kartograf KH (the size of a plan item).
 - The „pobrane” badge cannot match LAZ: Kartograf's LAZ sidecar records no survey work
   (Open questions).
@@ -112,6 +113,9 @@ Decisions awaiting the author:
   window"): the project card starts re-pin and restore at once, and the project's plan is
   its own action, "Sprawdź aktualizacje" (ADR-042 option I). Should a window built from
   that check stand before them as well (option H)?
+- A-ADR-049 erratum 5 adds `POST /commands/area`, `archiwista commands area` and the
+  source capability `AreaCommandAdapter` without a plan (DEV-17.4): confirm the
+  interface change.
 - `main` of this repository is not on GitHub: push and make it the default branch (ECO-008).
 
 Open outside this repository:

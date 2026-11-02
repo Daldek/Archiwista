@@ -404,7 +404,11 @@ sets; downloading to the store can be done by a person with the "zapis do magazy
 Marek pastes `kartograf elevation download --product nmt --sheet … -o
 ./data`. Archiwista recognizes the command (the same parser as
 `kartograf project add`), fills in the form, replaces `-o` with the selected
-store, shows the plan and starts a background job.
+store, shows the plan and starts a background job. With "Obszar polecenia" he
+runs it on the area of step 1 or a project's area instead of the line's sheet
+(`POST /commands/area`, A-ADR-049 erratum 5): Kasia pastes `kartograf landcover
+download --product bdot10k`, chooses the area of the project "Kamiennik", and the
+plan names that area and its project.
 
 ### UC-16. Stations in a catchment and series coverage (from v0.5)
 
@@ -1872,6 +1876,8 @@ the state of the sources and how to install the missing ones (`archiwista[imgw]`
    or clicked in the sheet grid), unit code (TERYT, KU; search by
    name after KB-7), geometry file (GPKG, SHP, GeoJSON — copied to
    Archiwista's local working directory and read in a separate process, 10.1),
+   a project's area ("Obszar projektu": the projects the session sees whose area
+   file is in order; the area's card names the project; A-ADR-049 erratum 5),
    country. Whatever its origin, the area goes to Kartograf as Archiwista's
    GeoJSON of it, `<data-dir>/areas/<area id>.geojson`: the polygon as it is,
    in WGS84 (RFC 7946), the same file a project keeps as its area; it stays as
@@ -2154,6 +2160,9 @@ the exports and the own data; the names and numbers are illustrative)
 ```text
 PROJEKT Raba                        katalog: ~/projekty/raba · właściciel: Kasia
 Zlewnia Raby do Dobczyc             obszar: zlewnia Raby · 1470 km² [Pokaż na mapie]
+                                    [Pliki obszaru w Katalogu]
+                                    Pliki w obszarze: 120 plików z obrysem w obszarze
+                                    · 3 pliki dla całego kraju
 [Weryfikuj] [Sprawdź aktualizacje] [Eksportuj…] [Udostępnij…]
 -----------------------------------------------------------------------------
 Zestaw           Pochodzenie                                Pliki  Stan
@@ -2176,7 +2185,8 @@ Dane własne kanalizacja.gpkg · zmieniony od migawki                 [Odśwież
 POBRAĆ?  NMT 1 m · EVRF2007 · 2023 · obszar Kraków
   12 arkuszy: 5 w magazynie, 7 do pobrania (ok. 265 MB)
   Magazyn: Zespół
-  [x] Dodaj do projektu [Raba v]  zestaw [NMT 2023]
+  Obszar: Kraków · Obszar projektu Kraków-centrum
+  [x] Dodaj do projektu [Kraków-centrum v]  zestaw [NMT 2023]
   Polecenie: kartograf elevation download --product nmt --country pl
     --bbox 561000,239000,573000,249000 --sheet-system 1992 --resolution 1m
     --vertical-crs EVRF2007 --year 2023 -o <store>              [Kopiuj]
@@ -2450,7 +2460,7 @@ Filters (in the panel and in the URL): product; country; horizontal reference sy
 reference system; resolution; data year (range); campaign or release
 (label); versions: "bieżące" (current, default), "wszystkie" (all), "pełne arkusze" (full sheets)
 (`full_sheet/`), "przypięte w projektach" (pinned in projects), "niebieżące i nieprzypięte" (non-current and unpinned);
-area (from the map); project ("używane przez" (used by), "nieużywane przez żaden
+area (from the map, or a project's: "Obszar projektu", A-ADR-049 erratum 5); project ("używane przez" (used by), "nieużywane przez żaden
 projekt" (not used by any project)); state ("w porządku" (OK), "brak pliku" (file missing), "bez sidecara" (no sidecar),
 "nierozpoznane" (unrecognised)); supplier and licence; download date.
 For IMGW measurements the following are added: station type (water gauge, climatological,

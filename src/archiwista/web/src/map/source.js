@@ -20,23 +20,30 @@
  * badge of SPEC 6.4 without a source report: „lokalnie 83% obszaru”).
  *
  * „Wklej polecenie producenta” takes a producer's command line, with or
- * without an area (UC-15): the producer is its first word when that names
- * an installed producer, else the step's; the line is read (`POST
- * /commands/parse`) and checked without the network against the target store
- * (`POST /commands/validate`), the producer's refusal shown at the field, and
- * a valid line opens the same plan window with the target store in place of
- * the line's own `-o`/`--root`.
+ * without an area (UC-15). The line is parsed, optionally given the map's
+ * area or another project's area (`POST /commands/area`), checked without
+ * the network against the target store (`POST /commands/validate`), and
+ * opened in the plan window with that area's name and substitution.
  */
 
-import { checkAvailability, getAvailability, listSources, parseCommand, validateCommand } from "../api.js";
+import {
+  applyCommandArea,
+  checkAvailability,
+  getAvailability,
+  listSources,
+  parseCommand,
+  validateCommand,
+} from "../api.js";
 import { useApp } from "../context.js";
 import { useDownloadActions, useDownloadEnd } from "../downloads.js";
 import { plural, size, stamp } from "../format.js";
 import { useResource } from "../hooks.js";
 import { actions } from "../labels/actions.js";
 import { t } from "../labels/index.js";
+import { projects as P } from "../labels/projects.js";
 import { map as M } from "../labels/map.js";
 import { html, Icon, ProblemView, Spinner, Tech, useId, useState } from "../ui.js";
+import { projectsOfArea } from "../views/project-areas.js";
 import { JobStatus, SUMMARY_STATES, useJob } from "../views/cards.js";
 
 const L = actions.source;
@@ -48,11 +55,12 @@ const BADGE_TONES = { all: "done", some: "some", none: "no" };
  * @param {object} props
  * @param {import("../types.js").Area|null} props.area
  * @param {string|null} props.areaLabel - The area's name for people.
+ * @param {{items: import("../views/project-areas.js").UsableProjectArea[]}} props.projectAreas
  * @param {import("./panel.js").MapFilters} props.filters
  * @param {import("../types.js").StoreSettings[]} props.stores
  * @param {Map<string, string>} props.names - Product names by key.
  */
-export function SourceStep({ area, areaLabel, filters, stores, names }) {
+export function SourceStep({ area, areaLabel, projectAreas, filters, stores, names }) {
   const { settings } = useApp();
   const { openPlan } = useDownloadActions();
   const id = useId();
@@ -158,18 +166,27 @@ export function SourceStep({ area, areaLabel, filters, stores, names }) {
               producer: info.producer,
               store: { id: store.id, name: store.name },
               title: planTitle(productName(choice), row, variant, areaLabel),
+              area: {
+                id: area.id,
+                name: areaLabel,
+                way: null,
+                replaced: [],
+                projects: projectsOfArea(area.id, projectAreas.items),
+              },
               variant,
             })} />`
       : null}
     ${store
       ? html`<${PasteCommand} store=${store} fallback=${choice?.producer ?? null}
           producers=${(sources.data?.items ?? []).map((item) => item.producer)}
+          area=${area} areaLabel=${areaLabel} projectAreas=${projectAreas}
           onPlan=${(found) =>
             openPlan({
               producer: found.producer,
               store: { id: store.id, name: store.name },
               title: found.title,
               line: found.line,
+              area: found.area,
             })} />`
       : null}
   </section>`;
@@ -184,12 +201,30 @@ export function SourceStep({ area, areaLabel, filters, stores, names }) {
  * @param {string[]} props.producers - Ids of the installed producers.
  * @param {string|null} props.fallback - The step's producer, for a line that
  *   does not start with a producer's id.
- * @param {(found: {producer: string, line: string, title: string}) => void} props.onPlan
+ * @param {(found: {producer: string, line: string, title: string,
+ *   area: object|null}) => void} props.onPlan
+ * @param {import("../types.js").Area|null} props.area
+ * @param {string|null} props.areaLabel
+ * @param {{items: import("../views/project-areas.js").UsableProjectArea[]}} props.projectAreas
  */
-function PasteCommand({ store, producers, fallback, onPlan }) {
+function PasteCommand({ store, producers, fallback, area, areaLabel, projectAreas, onPlan }) {
   const id = useId();
   const [text, setText] = useState("");
   const [problem, setProblem] = useState(null);
+  const [areaChoice, setAreaChoice] = useState(null);
+  const [problemField, setProblemField] = useState("line");
+  const selected = areaChoice && areaChoice.forArea === (area?.id ?? null)
+    ? areaChoice.value : area ? "current" : "original";
+  const otherProjects = projectAreas.items.filter((item) => item.area_id !== area?.id);
+  const chosen = selected === "current"
+    ? area && { id: area.id, name: areaLabel }
+    : otherProjects.find((item) => `project:${item.project}` === selected);
+  const currentProjects = projectsOfArea(area?.id, projectAreas.items);
+  const currentName = currentProjects.length
+    ? `${areaLabel} · ${t(P.area_choice.of, {
+        name: currentProjects.map((item) => item.name).join(", "),
+      })}`
+    : areaLabel;
   const [reading, setReading] = useState(false);
   const submit = async (event) => {
     event.preventDefault();
@@ -199,29 +234,60 @@ function PasteCommand({ store, producers, fallback, onPlan }) {
     const producer = producers.includes(first) ? first : fallback;
     if (producer === null) {
       setProblem({ detail: t(L.paste_no_producer, { producers: producers.join(", ") }) });
+      setProblemField("line");
       return;
     }
     setReading(true);
+    let stage = "parse";
     setProblem(null);
     try {
       const call = await parseCommand(producer, line);
-      await validateCommand({ producer, command: call.command, options: call.options, store: store.id });
-      onPlan({ producer, line, title: t(L.paste_title, { producer, command: call.command }) });
+      let applied = null;
+      if (chosen) {
+        stage = "area";
+        applied = await applyCommandArea({
+          producer, command: call.command, options: call.options,
+          area_id: chosen.id ?? chosen.area_id,
+        });
+      }
+      stage = "validate";
+      await validateCommand({
+        producer, command: call.command, options: applied?.options ?? call.options, store: store.id,
+      });
+      const usedArea = applied ? {
+        id: applied.area.id,
+        name: applied.area.name ?? chosen.name,
+        way: applied.way,
+        replaced: applied.replaced,
+        projects: projectsOfArea(applied.area.id, projectAreas.items),
+      } : null;
+      onPlan({
+        producer, line: applied?.line ?? line,
+        title: t(L.paste_title, { producer, command: call.command }),
+        area: usedArea,
+      });
     } catch (error) {
       if (!error.problem) throw error;
       setProblem(error.problem);
+      setProblemField(stage === "area" ? "area" : "line");
     } finally {
       setReading(false);
     }
   };
   const values = problem?.code ? [["code", problem.code]] : [];
   if (problem?.details?.option) values.push(["option", problem.details.option]);
+  const lineInvalid = Boolean(problem) && problemField === "line";
+  const areaInvalid = Boolean(problem) && problemField === "area";
+  const said = (errorId) => html`<span class="field-error" id=${errorId} role="alert">
+    ${values.length ? html`<${Tech} value=${values}>${problem.detail}</${Tech}>` : problem.detail}
+  </span>`;
   return html`<form class="src-paste" onSubmit=${submit}>
-    <div class=${`field${problem ? " invalid" : ""}`}>
+    <div class=${`field${lineInvalid ? " invalid" : ""}`}>
       <label for=${`${id}-line`}>${L.paste}</label>
       <textarea id=${`${id}-line`} class="mono src-paste-line" rows="2" value=${text} spellcheck="false"
-        autocomplete="off" placeholder=${L.paste_placeholder} aria-invalid=${problem ? "true" : null}
-        aria-describedby=${problem ? `${id}-error` : `${id}-hint`}
+        autocomplete="off" placeholder=${L.paste_placeholder}
+        aria-invalid=${lineInvalid ? "true" : null}
+        aria-describedby=${lineInvalid ? `${id}-error` : `${id}-hint`}
         onInput=${(event) => {
           setText(event.currentTarget.value);
           setProblem(null);
@@ -229,11 +295,34 @@ function PasteCommand({ store, producers, fallback, onPlan }) {
         onKeyDown=${(event) => {
           if (event.key === "Enter" && !event.shiftKey) submit(event);
         }}></textarea>
-      ${problem
-        ? html`<span class="field-error" id=${`${id}-error`} role="alert">
-            ${values.length ? html`<${Tech} value=${values}>${problem.detail}</${Tech}>` : problem.detail}</span>`
+      ${lineInvalid
+        ? said(`${id}-error`)
         : html`<span class="field-hint" id=${`${id}-hint`}>${t(L.paste_hint, { store: store.name })}</span>`}
     </div>
+    ${area || otherProjects.length
+      ? html`<div class=${`field${areaInvalid ? " invalid" : ""}`}>
+          <label for=${`${id}-area`}>${L.paste_area}</label>
+          <select id=${`${id}-area`} class="select-sm" value=${selected}
+            aria-invalid=${areaInvalid ? "true" : null}
+            aria-describedby=${areaInvalid ? `${id}-area-error` : `${id}-area-hint`}
+            onChange=${(event) => {
+              setAreaChoice({ forArea: area?.id ?? null, value: event.currentTarget.value });
+              setProblem(null);
+            }}>
+            <option value="original">${L.paste_original}</option>
+            ${area
+              ? html`<option value="current">${t(L.paste_current, { name: currentName })}</option>`
+              : null}
+            ${otherProjects.map(
+              (item) => html`<option key=${item.project} value=${`project:${item.project}`}>
+                ${t(L.paste_project, { name: item.name })}</option>`,
+            )}
+          </select>
+          ${areaInvalid
+            ? said(`${id}-area-error`)
+            : html`<span class="field-hint" id=${`${id}-area-hint`}>${L.paste_area_hint}</span>`}
+        </div>`
+      : null}
     <button type="submit" class="btn sm src-paste-plan" disabled=${reading || !text.trim()}>
       ${reading ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="search" size=${14} />`}
       ${L.paste_submit}</button>

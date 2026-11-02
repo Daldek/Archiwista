@@ -51,7 +51,8 @@ from tests.e2e.test_acceptance_v03 import (
     standin_workers,
     station_line,
 )
-from tests.e2e.test_projects_view import AREA, group, open_projects, served_store
+from tests.e2e.test_map import create_project_area
+from tests.e2e.test_projects_view import AREA, card, group, open_projects, served_store
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.permissions import add_people, principal, share
 
@@ -325,6 +326,44 @@ def shot(page: Page, panel: Locator) -> None:
         )
         panel.screenshot(path=str(Path(directory) / "08-projekt.png"))
         page.set_viewport_size(size)
+
+
+def test_project_card_shows_area_holdings_and_catalog_link(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """The card shows what the store holds in the area and opens that catalog filter."""
+    # Arrange
+    store, served = served_store(serve, tmp_path)
+    page = tab.page
+    open_projects(page, served, served.token_url(), None)
+    created = create_project_area(page, store.projects_dir)
+    page.goto(f"{served.base}/?view=projects&project={created['project']}")
+    area = card(page).locator(".pc-area")
+    groups = call(page, "GET", f"/slots?area_id={created['area_id']}&limit=1")
+    assert groups["status"] == 200, groups
+    assert groups["body"]["groups"]["footprint"] > 0
+
+    # Assert: counts for the whole store, not merely the project's pinned files.
+    expect(area.locator(".pc-area-holdings")).to_contain_text(
+        f"Pliki w obszarze: {groups['body']['groups']['footprint']}"
+    )
+    expect(area.locator(".pc-area-holdings")).to_contain_text(
+        f"{groups['body']['groups']['country']} plik"
+    )
+    expect(area.get_by_role("link", name="Pokaż na mapie")).to_have_attribute(
+        "title",
+        "Otwórz obszar na mapie: stan lokalny, dostępność u źródła i pobieranie",
+    )
+
+    # Act: the link opens the same area as a catalog filter.
+    area.get_by_role("link", name="Pliki obszaru w Katalogu").click()
+
+    # Assert
+    expect(page).to_have_url(re.compile(f"view=catalog.*area_id={created['area_id']}"))
+    expect(page.locator(".cat-area .area-card")).to_contain_text(
+        "Obszar projektu Kamiennik"
+    )
+    tab.assert_clean()
 
 
 def test_verify_runs_offline_and_marks_each_pin_while_network_jobs_say_why(

@@ -12,10 +12,12 @@
  * The chosen project (`?view=projects&project=<id>`) is in the side panel:
  * its directory to copy, the store of each producer with its match or that
  * it matches no configured one, its area with the state of the area file,
- * when and by whom it was created, its problems, and its groups („Zestawy”) in the file's
- * order — each with where its versions came from (a plan's command lines,
- * the first three and „i N więcej”, or the requests that chose them from the
- * store, in words), its jobs and its pins with their state, the state of
+ * links to its map and filtered catalog, and the store's file counts there;
+ * when and by whom it was created, its problems, and its groups („Zestawy”)
+ * in the file's order — each with where its versions came from (a plan's
+ * command lines, the first three and „i N więcej”, or the requests
+ * that chose them from the store, in words), its jobs and its pins with
+ * their state, the state of
  * their command (D5) and what the last job found, leading to their file
  * cards; „Odepnij” at a pin and „Usuń zestaw” (each after a question) for a
  * session that may change the project. „Zmień…” changes the name, the
@@ -49,6 +51,7 @@ import {
   listJobs,
   listOwnFiles,
   listProjects,
+  listSlots,
   removeProjectGroup,
   setProjectArea,
   setProjectStore,
@@ -673,7 +676,7 @@ function ProjectFacts({ card }) {
   </dl>`;
 }
 
-/** A project's area: its file's state and, when it is used, a link to the map. */
+/** A project's area: its file's state, links and holdings in the store. */
 function AreaValue({ area }) {
   if (!area) return html`<span class="faint">${L.card.no_area}</span>`;
   const state = area.state ?? "unread";
@@ -684,10 +687,29 @@ function AreaValue({ area }) {
     </${Badge}>
     <code class="path">${area.path}</code>
     ${area.state === "ok" && area.area_id
-      ? html`<${Link} class="btn ghost sm" view="map" params=${{ area_id: area.area_id }}>
-          <${Icon} name="map" size=${13} />${L.card.area_on_map}</${Link}>`
+      ? html`<${Link} class="btn ghost sm" view="map" params=${{ area_id: area.area_id }}
+          title=${L.card.area_on_map_title}>
+          <${Icon} name="map" size=${13} />${L.card.area_on_map}</${Link}>
+          <${Link} class="btn ghost sm" view="catalog" params=${{ area_id: area.area_id }}>
+            ${L.card.area_catalog}</${Link}>
+          <${AreaHoldings} areaId=${area.area_id} />`
       : null}
   </span>`;
+}
+
+/** Count all files intersecting the area, independently of the project's pins. */
+function AreaHoldings({ areaId }) {
+  const slots = useResource(
+    (signal) => listSlots({ area_id: areaId, limit: 1 }, { signal }),
+    [areaId],
+  );
+  if (slots.error) return html`<${ProblemView} problem=${slots.error.problem} compact />`;
+  if (!slots.data) return html`<span class="pc-area-holdings"><${Spinner} /></span>`;
+  const { footprint, country } = slots.data.groups;
+  return html`<span class="pc-area-holdings">${t(L.card.area_files, {
+    footprint: count(footprint, T.common.units.files),
+    country: count(country, T.common.units.files),
+  })}</span>`;
 }
 
 /**

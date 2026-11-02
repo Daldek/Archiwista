@@ -1,7 +1,8 @@
 /**
- * The „Wybór” panel of the map view (docs/SPEC.md 6.1, 6.3): the area and
- * its tools, the product from the index with the filters, the local state
- * of the area and what the source has for it (map/source.js). Each piece of
+ * The „Wybór” panel of the map view (docs/SPEC.md 6.1, 6.3): the area
+ * (including those of projects visible to the session) and its tools, the
+ * product from the index with the filters, the local state of the area
+ * and what the source has for it (map/source.js). Each piece of
  * information has this one place; the map shows the same choice. A station
  * product has the dataset and type chips in place of the files' filters.
  */
@@ -11,6 +12,7 @@ import { count } from "../format.js";
 import { useAction, useResource } from "../hooks.js";
 import { T, t } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
+import { projects as P } from "../labels/projects.js";
 import {
   html,
   Icon,
@@ -28,6 +30,7 @@ import { bboxText } from "./geo.js";
 import { productTitle } from "./products.js";
 import { scaleLabel, SHEET_GRIDS } from "./sheets.js";
 import { BOUNDARY_PARAM, METEO_KINDS } from "./stations.js";
+import { ProjectAreaSelect, projectsOfArea } from "../views/project-areas.js";
 import { SourceStep } from "./source.js";
 
 const KM2 = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
@@ -81,8 +84,9 @@ export function SelectionPanel(props) {
     <${LocalState} area=${props.area} filters=${props.filters} products=${props.products?.items ?? []}
       stores=${props.stores} names=${props.names} indexKey=${props.indexKey} layer=${props.mapLayer}
       onRefreshed=${props.onRefreshed} />
-    <${SourceStep} area=${props.area} areaLabel=${props.area ? areaName(props.area) : null} filters=${props.filters}
-      stores=${props.stores} names=${props.names} />
+    <${SourceStep} area=${props.area} areaLabel=${props.area ? areaName(props.area) : null}
+      projectAreas=${props.projectAreas} filters=${props.filters} stores=${props.stores}
+      names=${props.names} />
   </div>`;
 }
 
@@ -119,6 +123,8 @@ function Step({ number, done, title, aside, children }) {
  * @param {() => void} props.onClear
  * @param {import("preact").RefObject<HTMLElement>} props.areaRef - The step, to
  *   focus on „Zmień”.
+ * @param {{items: import("../views/project-areas.js").UsableProjectArea[]}} props.projectAreas
+ * @param {(areaId: string|null) => void} props.onProjectArea
  */
 function AreaStep({
   area,
@@ -135,6 +141,8 @@ function AreaStep({
   onGrid,
   onClear,
   areaRef,
+  projectAreas,
+  onProjectArea,
 }) {
   const file = useRef(null);
   const ids = useId();
@@ -151,6 +159,13 @@ function AreaStep({
     : null;
   return html`<div ref=${areaRef} tabindex="-1" class="step-anchor">
     <${Step} number="1" done=${Boolean(area)} title=${L.steps.area} aside=${aside}>
+      ${projectAreas.items.length
+        ? html`<${ProjectAreaSelect} projects=${projectAreas.items} areaId=${area?.id ?? null}
+            onChange=${onProjectArea} />`
+        : null}
+      ${projectAreas.error
+        ? html`<${ProblemView} problem=${projectAreas.error.problem} compact />`
+        : null}
       <div class="tool-row">
         <button type="button" class=${`btn ${tool === "rect" ? "active" : ""}`} aria-pressed=${tool === "rect" ? "true" : "false"}
           onClick=${() => toggle("rect")}><${Icon} name="rect" />${L.area.rect}</button>
@@ -214,14 +229,20 @@ function AreaStep({
       ${areaBusy ? html`<p class="hint"><${Spinner} label=${L.area.saving} /></p>` : null}
       ${areaProblem ? html`<${ProblemView} problem=${areaProblem} compact />` : null}
       ${areaNote ? html`<p class="hint warn" role="status">${areaNote}</p>` : null}
-      ${area ? html`<${AreaCard} area=${area} />` : html`<p class="hint">${L.area.hint}</p>`}
+      ${area
+        ? html`<${AreaCard} area=${area} projectAreas=${projectAreas} />`
+        : html`<p class="hint">${L.area.hint}</p>`}
     <//>
   </div>`;
 }
 
-function AreaCard({ area }) {
+function AreaCard({ area, projectAreas }) {
+  const names = projectsOfArea(area.id, projectAreas.items).map((item) => item.name);
   return html`<div class="area-card">
     <div class="big">${areaName(area)}</div>
+    ${names.length
+      ? html`<div class="muted">${t(P.area_choice.of, { name: names.join(", ") })}</div>`
+      : null}
     <div class="muted tabular">${areaSummary(area)}</div>
     <div class="area-tech">
       <${Tech} value=${[
@@ -233,7 +254,7 @@ function AreaCard({ area }) {
         <span class="faint">${L.area.source[area.source] ?? area.source}</span>
       <//>
     </div>
-    <${AreaToProject} key=${area.id} area=${area} />
+    <${AreaToProject} key=${area.id} area=${area} onChanged=${projectAreas.reload} />
   </div>`;
 }
 
@@ -241,7 +262,7 @@ function AreaCard({ area }) {
  * „Ustaw jako obszar projektu…”: the area written into a project the session
  * may change (`PUT /projects/{project}/area`, A-ADR-049 decision 4).
  */
-function AreaToProject({ area }) {
+function AreaToProject({ area, onChanged }) {
   const id = useId();
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState("");
@@ -262,6 +283,7 @@ function AreaToProject({ area }) {
     if (answer) {
       const name = writable.find((item) => item.project === project)?.name ?? project;
       setOpen(false);
+      onChanged();
       setDone(t(L.area.to_project_done, { project: name }));
     }
   };

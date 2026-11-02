@@ -4,6 +4,8 @@
  * switches apply at once; typed values (years, unit, rectangle) when the
  * field is left or Enter is pressed. A value the API refuses is marked on
  * its field with the API's message.
+ * The area can also come from any usable project visible to the session;
+ * choosing it replaces a typed rectangle and filters the same store rows.
  *
  * For a station product (views/catalog-stations.js) the fields are those of
  * `GET /stations` (SPEC 6.6 for IMGW measurements): the dataset, the station
@@ -24,10 +26,12 @@ import { int } from "../format.js";
 import { useResource } from "../hooks.js";
 import { catalog as L } from "../labels/catalog.js";
 import { t } from "../labels/index.js";
+import { projects as P } from "../labels/projects.js";
 import { METEO_KINDS, STATION_STATES } from "../map/stations.js";
-import { html, Icon, Seg, Tech, useEffect, useState } from "../ui.js";
+import { html, Icon, ProblemView, Seg, Tech, useEffect, useState } from "../ui.js";
 import { segmentVariantNames } from "../variant.js";
 import { STATION_FILTERS } from "./catalog-stations.js";
+import { ProjectAreaSelect, projectsOfArea, useProjectAreas } from "./project-areas.js";
 import { useYearType, YEAR_TYPES } from "./year-type.js";
 
 const F = L.filters;
@@ -417,6 +421,8 @@ function VariantField({ product, query, errors, select }) {
 
 /** The area of the map (`area_id`) or a typed rectangle (`bbox`, `bbox_crs`). */
 function AreaFields({ query, errors, onChange }) {
+  const projects = useProjectAreas();
+  const projectNames = projectsOfArea(query.area_id, projects.items).map((item) => item.name);
   const area = useResource(
     (signal) => (query.area_id ? getArea(query.area_id, { signal }) : Promise.resolve(null)),
     [query.area_id ?? ""],
@@ -432,6 +438,11 @@ function AreaFields({ query, errors, onChange }) {
               aria-label=${F.area_remove} onClick=${() => onChange({ area_id: null })}>
               <${Icon} name="x" size=${14} /></button>
           </div>
+          ${projectNames.length
+            ? html`<span class="muted">${t(P.area_choice.of, {
+                name: projectNames.join(", "),
+              })}</span>`
+            : null}
           <${Tech} value=${[["area_id", query.area_id], ...(data ? [["bbox", data.bbox.join(",")]] : [])]}>
             <span class="muted">${data?.area_km2 != null ? t(F.area_km2, { area: int(data.area_km2) }) : ""}
               ${data?.countries.length ? ` · ${data.countries.join(", ")}` : ""}</span>
@@ -439,6 +450,13 @@ function AreaFields({ query, errors, onChange }) {
           ${errors.area_id ? html`<span class="field-error" role="alert">${errors.area_id}</span>` : null}
         </div>`
       : html`<span class="field-hint">${F.area_none}</span>`}
+    ${!query.area_id && projects.items.length
+      ? html`<${ProjectAreaSelect} projects=${projects.items} areaId=${null}
+          onChange=${(id) => onChange({ area_id: id, bbox: null, bbox_crs: null })} />`
+      : null}
+    ${projects.error
+      ? html`<${ProblemView} problem=${projects.error.problem} compact />`
+      : null}
     <div class=${`field${errors.bbox ? " invalid" : ""}`}>
       <label for="cat-f-bbox">${F.bbox}</label>
       <${TextFilter} id="cat-f-bbox" value=${query.bbox ?? ""} placeholder=${F.bbox_placeholder} mono

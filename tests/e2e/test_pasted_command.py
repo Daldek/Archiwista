@@ -26,6 +26,8 @@ from playwright.sync_api import Locator, Page, expect
 
 from archiwista.config import AppSettings, StoreConfig
 from archiwista.jobs import JobSupervisor
+from tests.e2e.test_map import create_project_area
+from tests.e2e.test_projects_view import AREA
 from tests.fixtures.actions import ACTION_WORKER, standin_in_settings
 from tests.fixtures.availability import register_standin
 from tests.fixtures.browser import Served, Tab
@@ -86,7 +88,13 @@ def serve_team(serve: Serve, tmp_path: Path) -> Served:
     """Serve Kartograf's fixture store ``zespol`` offline."""
     built = build_fixture_store(tmp_path / "nas" / "kartograf")
     config = StoreConfig(id=TEAM, name="Zespół", kartograf=built.root, kind="local")
-    return serve(AppSettings(offline=True, basemaps=(), stores=(config,)))
+    projects = tmp_path / "projekty"
+    projects.mkdir()
+    return serve(
+        AppSettings(
+            offline=True, basemaps=(), stores=(config,), project_dirs=(projects,)
+        )
+    )
 
 
 def open_step(page: Page, served: Served, url: str) -> Locator:
@@ -251,4 +259,79 @@ def test_offline_a_pasted_kartograf_line_is_read_and_its_plan_refused(
     assert tab.foreign_requests(served.base) == []
     dialog.get_by_role("button", name="Anuluj").click()
     expect(dialog).to_be_hidden()
+    tab.assert_clean()
+
+
+@pytest.mark.parametrize(
+    ("line", "replaced"),
+    [
+        ("kartograf imagery download --product orto --sheet-system 1992", False),
+        (KARTOGRAF_LINE, True),
+    ],
+    ids=["without-own-area", "replaces-box"],
+)
+def test_project_area_replaces_a_pasted_kartograf_line_offline(
+    serve: Serve, tab: Tab, tmp_path: Path, line: str, replaced: bool
+) -> None:
+    """A project's polygon replaces the line's own area before offline planning."""
+    # Arrange
+    served = serve_team(serve, tmp_path)
+    page = tab.page
+    step = open_step(page, served, served.token_url())
+    created = create_project_area(page, tmp_path / "projekty", geometry=AREA)
+    page.reload()
+    step = page.get_by_role("region", name="U źródła")
+    choice = step.get_by_label("Obszar polecenia")
+    expect(choice).to_have_value("original")
+
+    # Act
+    choice.select_option(f"project:{created['project']}")
+    expect(choice).to_have_value(f"project:{created['project']}")
+    paste(step, line)
+    dialog = page.get_by_role("dialog")
+
+    # Assert: the area is passed as geometry, including when the line had a box.
+    expect(dialog.locator(".plan-facts")).to_contain_text("Kamiennik")
+    expect(dialog.locator(".plan-facts")).to_contain_text("plik geometrii obszaru")
+    expect(dialog.locator(".plan-facts")).to_contain_text("Obszar projektu Kamiennik")
+    note = dialog.get_by_role("note").filter(
+        has_text="Zastąpiono opcje obszaru z polecenia:"
+    )
+    if replaced:
+        expect(note).to_contain_text("bbox")
+    else:
+        expect(note).to_have_count(0)
+    expect(dialog.get_by_role("alert")).to_contain_text(
+        "Tryb offline jest włączony: to zadanie potrzebuje sieci"
+    )
+    assert action_jobs(page) == []
+    assert tab.foreign_requests(served.base) == []
+    dialog.get_by_role("button", name="Anuluj").click()
+    tab.assert_clean()
+
+
+def test_pasted_command_without_area_option_explains_refusal_at_area_field(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """A command unable to take any area refuses the project selection at its field."""
+    # Arrange
+    served = serve_team(serve, tmp_path)
+    page = tab.page
+    open_step(page, served, served.token_url())
+    created = create_project_area(page, tmp_path / "projekty", geometry=AREA)
+    page.reload()
+    step = page.get_by_role("region", name="U źródła")
+    choice = step.get_by_label("Obszar polecenia")
+    choice.select_option(f"project:{created['project']}")
+
+    # Act
+    paste(step, "kartograf store overview")
+
+    # Assert: there is no window and the source's refusal names the chosen field.
+    expect(choice).to_have_attribute("aria-invalid", "true")
+    error = described(page, choice)
+    expect(error).to_contain_text("nie przyjmuje obszaru")
+    expect(error).to_have_attribute("role", "alert")
+    expect(page.get_by_role("dialog")).to_have_count(0)
+    assert action_jobs(page) == []
     tab.assert_clean()

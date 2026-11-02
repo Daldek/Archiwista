@@ -87,7 +87,10 @@ The panel "Wybór" (selection) leads through four steps:
    map view), a sheet code typed or clicked in the "Siatka godeł" (sheet grid:
    PL-1992, PL-2000, the chosen scale) and "Plik…" (file): GeoJSON,
    GeoPackage or a ZIP with one Shapefile; of a file with several layers you
-   choose one.
+   choose one. "Obszar projektu" (a project's area) offers the area of every
+   project you see whose area file is in order: chosen, it is the area of the
+   next steps and its card names the project ("Obszar projektu Kamiennik"), so
+   the local state, the check at the source and the downloads work on it.
 2. **Product and filters:** a product from the list (with the number of slots
    and versions), variants (segments) and filters: store, country, data
    years, unit code, versions, file state, text. Active filters show above the
@@ -114,7 +117,8 @@ The panel "Wybór" (selection) leads through four steps:
    the producer's plan of the chosen format with the positions by status
    ("aktualne", "nowsze u źródła", "brak w magazynie", "nie do sprawdzenia"),
    what will be downloaded and its size ("co najmniej …" when the producer
-   tells only some sizes), the store and the producer's command line to copy.
+   tells only some sizes), the store, the area ("Obszar", with the project whose
+   area it is) and the producer's command line to copy.
    A set can have a line per sheet (sheets of the grid without data, as at sea);
    the window reads them a few at a time, and a problem of several lines shows
    once with their number ("Dotyczy 65 z 130 poleceń."). "Serwer chwilowo
@@ -159,6 +163,19 @@ The panel "Wybór" (selection) leads through four steps:
    same plan window for that line, which writes to the target store instead of
    the line's `-o` or `--root`. A line naming a file is refused, unless the
    file is an area's GeoJSON Archiwista wrote (as the lines of a report do).
+   "Obszar polecenia" (the command's area) chooses the area the line runs on:
+   "jak w poleceniu" (as the line says), "obszar z kroku 1: …" (the area of
+   step 1, chosen by default once there is one) or "obszar projektu …" of
+   another project. A chosen area replaces the line's own (a sheet, a box, a
+   geometry file or a TERYT code) before the check: the line gets the area's
+   GeoJSON, so a line without an area, e.g. `kartograf landcover download
+   --product bdot10k`, downloads BDOT10k, orthophotos or land cover for a
+   project's area, which "U źródła" does not offer. A command that takes no area
+   is refused at that field. The plan window then names the area ("Obszar": its
+   name, "plik geometrii obszaru", the project) and the options it replaced;
+   "prostokąt obejmujący obszar" with a warning would mean that the command took
+   only the box around the area. "Dodaj do projektu" starts at the area's project
+   when you may change it.
 
 File footprints are visible at once; with more than 5,000 footprints in view
 the map shows a density grid, and clicking a cell zooms in. Clicking a
@@ -222,7 +239,8 @@ versions a scan has just indexed.
   code), versions (current, all, full sheets `full_sheet/`, pinned in
   projects, non-current and unpinned), state, and an area or a rectangle in
   the chosen coordinate system. `Ctrl+K` from the map carries its filters and
-  area over.
+  area over; without an area, "Obszar projektu" chooses a project's area (it
+  replaces a typed rectangle), and the area's card names the project.
 - **Variants:** the store keeps each variant of a product (a resolution and a
   height system) in its own directory with its own current version, so one
   sheet can be several rows under "bieżące", one per variant: "bieżąca =
@@ -290,9 +308,12 @@ the producers' manifests (`kartograf-project.json`, `imgw-project.json`) are not
 and a directory holding only one of them is no project.
 
 - **The project's card** ("Projekty", a project chosen in the list): its directory to
-  copy, the store of each producer, its area ("Pokaż na mapie" opens it on the map; on
-  the map, "Ustaw jako obszar projektu…" under the chosen area writes it into a project
-  the session may change), who created it and its problems. "Zmień…" changes the name,
+  copy, the store of each producer, its area ("Pokaż na mapie" opens it on the map, for
+  its local state, the check at the source and downloads; "Pliki obszaru w Katalogu"
+  lists the store's files in it; a line counts them, "Pliki w obszarze: 120 plików z
+  obrysem w obszarze · 3 pliki dla całego kraju", whatever the project pins; on the map,
+  "Ustaw jako obszar projektu…" under the chosen area writes it into a project the
+  session may change), who created it and its problems. "Zmień…" changes the name,
   the description, the area and a producer's store, "Udostępnij…" who sees it (both the
   owner's or an administrator's). "Weryfikuj" and "Sprawdź aktualizacje" run the
   project's jobs (below). Each set shows where its versions came from — a plan
@@ -426,8 +447,10 @@ and a directory holding only one of them is no project.
   person who created the project owns it. A directory outside the project directories
   is refused at its field.
 - **The project card** shows the project's directory (to copy), the store of each
-  producer, its area with the state of the area file ("Pokaż na mapie" when it is in
-  order), who created it and when, its problems with how to fix them, and its groups of
+  producer, its area with the state of the area file ("Pokaż na mapie", "Pliki obszaru
+  w Katalogu" and the count of the store's files in the area when it is in order; the
+  map, the Katalog's area filter and "Obszar polecenia" offer such an area too), who
+  created it and when, its problems with how to fix them, and its groups of
   pinned versions in the file's order: each with where its versions came from (a plan
   of a producer, with its commands to copy, or the store, with where they were chosen)
   and its versions with their state ("w magazynie", "brak w magazynie", "inna treść niż

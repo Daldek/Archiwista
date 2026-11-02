@@ -18,6 +18,9 @@
  * when the producer tells only some sizes, „rozmiar nieznany” when it tells
  * none, never 0), the store with the producer's directory, each position with
  * the ones the producer would refuse to write, and each command line to copy.
+ * With an area chosen, its name and how the command uses it are facts of the
+ * plan; a bounding box warns that the producer may select beyond the polygon.
+ * Pinning stays opt-in, but starts at the area's writable project when possible.
  * „Pobierz” starts one `download` of all the lines (`plan_job`: each line
  * fetches what was shown) and hands it to the downloads of the shell
  * (downloads.js), which follow it to its files, its failed units and the
@@ -47,6 +50,7 @@ import { CancelDownload, downloadActive, DownloadStatus, useDownloads } from "..
 import { bytes, count, int, plural } from "../format.js";
 import { actions } from "../labels/actions.js";
 import { t } from "../labels/index.js";
+import { projects as P } from "../labels/projects.js";
 import { pins } from "../labels/pins.js";
 import {
   CopyButton,
@@ -90,6 +94,9 @@ const LEVELS = { current: "ok", newer: "info", missing: "info", unverifiable: "p
  *   lines by format; none with `line`.
  * @param {string|null} [props.line] - One pasted line of the producer (no format
  *   to choose).
+ * @param {{id: string, name: string, way: "geometry"|"bbox"|null,
+ *   replaced: string[], projects: Array<{project: string, name: string}>}|null}
+ *   [props.area] - Area used by the plan.
  * @param {() => void} props.onClose - Close the window; once something
  *   started it only hides and what it started goes on.
  */
@@ -101,6 +108,7 @@ export function DownloadPlan({
   title,
   variant = null,
   line = null,
+  area = null,
   onClose,
 }) {
   const { session, settings } = useApp();
@@ -129,7 +137,9 @@ export function DownloadPlan({
   else if (projects.data && !writable.length) pinWhy = PL.no_project;
   else if (!planned || !sum.plans.length) pinWhy = PL.no_plan;
   const pinning = pin.on && pinWhy === null && writable.length > 0;
-  const pinProject = pin.project ?? writable[0]?.project ?? null;
+  const areaProject = area?.projects.find((item) =>
+    writable.some((entry) => entry.project === item.project));
+  const pinProject = pin.project ?? areaProject?.project ?? writable[0]?.project ?? null;
   const pinGroup = pin.group.trim();
   const pinTarget =
     pinning && pinProject && pinGroup ? { project: pinProject, group: pinGroup } : null;
@@ -253,11 +263,35 @@ export function DownloadPlan({
           : null}
         <dt>${L.store}</dt>
         <dd><${Tech} value=${[["store", store.id]]}>${store.name}</${Tech}></dd>
+        ${area
+          ? html`<dt>${L.area_fact}</dt>
+              <dd>${area.name}
+                ${area.way
+                  ? html` · ${area.way === "geometry" ? L.area_geometry : L.area_bbox}`
+                  : null}
+                ${area.projects.length
+                  ? html`<span class="muted">
+                      · ${t(P.area_choice.of, {
+                        name: area.projects.map((item) => item.name).join(", "),
+                      })}</span>`
+                  : null}
+              </dd>`
+          : null}
         ${sum.root
           ? html`<dt>${L.root}</dt>
               <dd class="plan-root"><code class="path">${sum.root}</code><${CopyButton} text=${sum.root} label=${L.copy_root} /></dd>`
           : null}
       </dl>
+      ${area?.way === "bbox"
+        ? html`<p class="plan-line warn" role="note">
+            <${Icon} name="alert" size=${15} /><span>${L.area_bbox_warning}</span></p>`
+        : null}
+      ${area?.replaced.length
+        ? html`<p class="plan-line" role="note"><${Icon} name="info" size=${15} />
+            <span>${L.area_replaced}
+              ${area.replaced.map((option, index) => html`${index ? ", " : " "}
+                <code key=${option}>${option}</code>`)}</span></p>`
+        : null}
       ${variant && format === null
         ? html`<p class="plan-line warn" role="note"><${Icon} name="info" size=${15} /><span>${L.format_choose}</span></p>`
         : null}

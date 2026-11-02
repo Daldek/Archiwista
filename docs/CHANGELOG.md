@@ -25,6 +25,18 @@ command-line interface may change.
   optional capability `AreaCommandAdapter` (`with_area`; `AreaCommand`, `AreaWay`), which
   Kartograf's adapter has; the hint of a refused file path (`path_outside_root`) points
   to it.
+- The web interface offers a project's area wherever an area is chosen (A-ADR-049
+  erratum 5): "Obszar projektu" in the map's step 1 (the projects the session sees whose
+  area file is in order; the area's card names the project, and the local state, the
+  check at the source and the downloads work on it), the same choice in the Katalog's
+  area filter, and "Obszar polecenia" under "Wklej polecenie producenta" ("jak w
+  poleceniu", the area of step 1 or another project's area), which runs the pasted line
+  on that area through `POST /commands/area`. The plan window gains an "Obszar" row
+  naming the area, how the command takes it (a geometry file, or a box with a warning
+  that the producer may select beyond it) and its project, notes the options the area
+  replaced, and starts "Dodaj do projektu" at that project when the session may change
+  it. A project's card gains "Pliki obszaru w Katalogu" and a line counting the store's
+  files in the area ("Pliki w obszarze: …").
 - A project's export unpacks a version stored as a ZIP that holds exactly one raster
   (A-ADR-049 erratum 4; GUGiK's NMT of 2020, `pl.gugik.nmt_xyz_5m`: one XYZ grid per
   sheet; also one ASC or GeoTIFF; the rule of previews, `formats.raster_member`): the

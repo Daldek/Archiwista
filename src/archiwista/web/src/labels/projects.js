@@ -18,6 +18,12 @@ export const projects = {
     "katalogi projektów dodasz w Ustawieniach.",
   settings: "Ustawienia",
   store_filter: "Magazyn",
+  /** Project areas offered by the map, catalog and pasted commands. */
+  area_choice: {
+    label: "Obszar projektu",
+    placeholder: "Wybierz projekt…",
+    of: "Obszar projektu {name}",
+  },
   all_stores: "wszystkie",
   columns: {
     name: "Projekt",
@@ -111,6 +117,10 @@ export const projects = {
       unread: "nieodczytany",
     },
     area_on_map: "Pokaż na mapie",
+    area_on_map_title:
+      "Otwórz obszar na mapie: stan lokalny, dostępność u źródła i pobieranie",
+    area_catalog: "Pliki obszaru w Katalogu",
+    area_files: "Pliki w obszarze: {footprint} z obrysem w obszarze · {country} dla całego kraju",
     created: "Utworzono",
     created_value: "{at} · {by}",
     scanned_at: "Plik projektu odczytano",

@@ -23,6 +23,7 @@ from archiwista.config import AppSettings, StoreConfig
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.jobs import scheduler
 from archiwista.sources.registry import load_registry
+from tests.e2e.test_map import create_project_area
 from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.layer_store import make_variant_store
 from tests.fixtures.local_server import local_paths
@@ -168,6 +169,46 @@ def grid(page: Page) -> Locator:
 def address(page: Page) -> dict[str, str]:
     """Return the parameters of the page's address."""
     return dict(parse_qsl(urlsplit(page.url).query))
+
+
+def test_project_area_filters_catalog_files(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """Choosing a project area filters the store's files by its saved geometry."""
+    # Arrange
+    served, store = start_store(serve, tmp_path, slots=24)
+    page = tab.page
+    open_catalog(page, served)
+    created = create_project_area(page, store.projects_dir)
+    page.reload()
+    select = page.get_by_role("combobox", name="Obszar projektu", exact=True)
+    expect(select).to_be_visible()
+    bbox = api(page, served.base, f"/areas/{created['area_id']}")["bbox"]
+    page.get_by_label("Prostokąt (bbox)").fill(",".join(map(str, bbox)))
+    page.get_by_label("Prostokąt (bbox)").press("Enter")
+    page.get_by_label("Układ prostokąta").fill("EPSG:4326")
+    page.get_by_label("Układ prostokąta").press("Enter")
+    assert address(page)["bbox_crs"] == "EPSG:4326"
+
+    # Act
+    select.select_option(created["project"])
+
+    # Assert
+    expect(page).to_have_url(re.compile(f"area_id={created['area_id']}"))
+    assert address(page)["area_id"] == created["area_id"]
+    assert "bbox" not in address(page)
+    assert "bbox_crs" not in address(page)
+    counts = api(
+        page, served.base, "/slots", {"area_id": created["area_id"], "limit": 1}
+    )
+    assert counts["groups"]["footprint"] > 0
+    expect(page.locator(".cat-area .area-card")).to_contain_text(
+        "Obszar projektu Kamiennik"
+    )
+    expect(grid(page)).to_have_attribute(
+        "aria-rowcount", str(sum(counts["groups"].values()) + 1)
+    )
+    tab.assert_clean()
 
 
 def test_filters_paging_and_url_state(serve: Serve, tab: Tab, tmp_path: Path) -> None:

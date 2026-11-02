@@ -2,10 +2,10 @@
  * „Mapa” — the start view (docs/SPEC.md 6.1–6.3, plan v0.1 step 10b, v0.2
  * steps 12b and 13).
  *
- * The left panel „Wybór” holds the area, the product of the index with the
- * filters and the area's local state; the centre is the map of the store's
- * outlines in the view (`/map/footprints`: up to 5000, above that their
- * grid) with the sheet grid (`/map/sheets`) and the drawing tools. Files
+ * The left panel „Wybór” chooses a drawn, uploaded or project area, the
+ * product of the index with filters and the area's local state; the centre
+ * shows the store's outlines (`/map/footprints`: up to 5000, then a grid)
+ * with the sheet grid (`/map/sheets`) and the drawing tools. Files
  * without an outline never go on the map: their counter opens the catalog
  * with the same filters. With an area and a product, the product's year
  * layers in the area are buttons on the map: the chosen one shows the
@@ -111,6 +111,7 @@ import {
   useState,
 } from "../ui.js";
 import { DetailsToggle, SetDetails } from "./set-details.js";
+import { useProjectAreas } from "./project-areas.js";
 import { FAN_MODE, MODE_PARAM, SPLIT_MIN, ViewSwitch } from "./switch.js";
 
 await loadStylesheet(new URL("../map/map.css", import.meta.url));
@@ -196,6 +197,7 @@ export default function MapScreen({ route, embedded = false }) {
     [areaId],
   );
   const currentArea = areaId && area.data?.id === areaId ? area.data : null;
+  const projectAreas = useProjectAreas();
   const dataKey = `${indexKey}|${round}`;
   // The project in context: its own files' extents (map/own.js), also after a scan of them.
   const own = useOwnLayer(filters.project ?? null, `${dataKey}|${health?.own_data?.finished_at ?? ""}`);
@@ -340,6 +342,14 @@ export default function MapScreen({ route, embedded = false }) {
     areaProblem: areaProblem ?? (areaId && area.error ? area.error.problem : null),
     areaNote,
     areaRef: areaStep,
+    projectAreas,
+    onProjectArea: (id) => {
+      setTool(null);
+      setFileLayers(null);
+      setAreaProblem(null);
+      setAreaNote(null);
+      setParams({ area_id: id, [LAYER_PARAM]: null });
+    },
     tool,
     onTool: (next) => {
       setTool(next);
