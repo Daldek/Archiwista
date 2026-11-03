@@ -4303,7 +4303,7 @@ over TLS.
   with a mock second adapter registered through an entry point and a test of a
   broken plugin (an exception on loading does not bring the server down).
   A separate CI job: contract tests against Kartograf's `develop`
-  and IMGWTools' `master` (early detection of breaking changes); one
+  and IMGWTools' `develop` (early detection of breaking changes); one
   lock file for both configurations.
 - **Interface:** Playwright offline on the test store with sources
   from recordings: the main flow (UC-01), the file card, a job with cancellation,
