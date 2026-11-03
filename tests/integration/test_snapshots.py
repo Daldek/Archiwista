@@ -12,6 +12,7 @@ import os
 import shutil
 import sqlite3
 import stat
+import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
@@ -34,7 +35,6 @@ from archiwista.errors import (
 from archiwista.index import (
     IndexQueries,
     IndexWriter,
-    ManifestStamp,
     OwnFileDetail,
     TransformerFactory,
     own_file_id,
@@ -62,8 +62,8 @@ from archiwista.owndata.snapshots import (
     make_snapshot,
 )
 from archiwista.sandbox import process_owner, process_work_dir
-from archiwista.sources import ProjectInfo
 from archiwista.sources.registry import SourceRegistry, load_registry
+from tests.fixtures.index_data import indexed_project
 from tests.fixtures.job_worker import SNAPSHOT_FAULT_ENV
 from tests.fixtures.jobs import JOB_TIMEOUT_S, TEST_WORKER, worker_path
 from tests.fixtures.own_data import GpkgEditor, make_own_folder, project_inside_store
@@ -114,10 +114,8 @@ class SnapshotEnv:
         """Index a project; return its key and its directory (created)."""
         place = directory or self.root / "projekty" / name.lower()
         place.mkdir(parents=True, exist_ok=True)
-        info = ProjectInfo("kartograf", str(self.root / "magazyn"), place, name)
-        key = self.writer.write_project(
-            info, store=None, stamp=ManifestStamp(None, None)
-        )
+        root = str(self.root / "magazyn")
+        key = indexed_project(self.writer, place, name, root=root)
         return key, place
 
     def scan(self) -> None:
@@ -265,6 +263,21 @@ def _leftovers(folder: Path) -> list[str]:
 
 def _mode(path: Path) -> int:
     return stat.S_IMODE(path.lstat().st_mode)
+
+
+# Where a test finds the path of an open file: procfs (Linux) or F_GETPATH (macOS).
+DESCRIPTOR_PATHS = sys.platform == "darwin" or Path("/proc/self/fd").is_dir()
+
+
+def _descriptor_path(descriptor: int) -> Path:
+    """Return the real path of the file open as ``descriptor``."""
+    if sys.platform == "darwin":
+        import fcntl
+
+        # F_GETPATH fills a buffer of MAXPATHLEN (1024) bytes, ended by NUL.
+        found = fcntl.fcntl(descriptor, fcntl.F_GETPATH, bytes(1024))
+        return Path(os.path.realpath(os.fsdecode(found.split(b"\0", 1)[0])))
+    return Path(os.path.realpath(f"/proc/self/fd/{descriptor}"))
 
 
 def _diameters(copy: Path) -> list[int]:
@@ -585,6 +598,7 @@ def test_same_content_makes_no_second_snapshot(env: SnapshotEnv) -> None:
     assert _leftovers(root) == []
 
 
+@pytest.mark.usefixtures("polish")
 def test_fileset_changing_during_copy_retries_then_fails(
     env: SnapshotEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -623,7 +637,10 @@ def test_fileset_changing_during_copy_retries_then_fails(
 
     # Assert
     assert retried.status == "created" and copies_once == 2
-    assert failed.value.code == "inconsistent_copy"
+    assert (failed.value.code, failed.value.details["reason"]) == (
+        "conflict",
+        "inconsistent_copy",
+    )
     assert "zmieniał się w trakcie kopiowania" in str(failed.value)
     assert copied.count("dzialki.shp") == 3
     assert _labels(root, "dzialki.shp") == [retried.label]
@@ -668,6 +685,7 @@ def test_read_only_folder_blocked(env: SnapshotEnv, locked: str) -> None:
 
 
 @pytest.mark.parametrize("tight", ["folder", "work"])
+@pytest.mark.usefixtures("polish")
 def test_insufficient_space_blocked(
     env: SnapshotEnv, monkeypatch: pytest.MonkeyPatch, tight: str
 ) -> None:
@@ -705,6 +723,7 @@ def test_insufficient_space_blocked(
     assert not (root / ".wersje").exists()
 
 
+@pytest.mark.usefixtures("polish")
 def test_default_folder_inside_store_is_refused(env: SnapshotEnv) -> None:
     """A project with its manifest in a store: the job is ``snapshot_blocked``.
 
@@ -726,14 +745,16 @@ def test_default_folder_inside_store_is_refused(env: SnapshotEnv) -> None:
     # Assert
     assert record.state == "failed" and record.error is not None
     assert (record.error.code, record.error.reason) == (
+        "conflict",
         "snapshot_blocked",
-        "folder_invalid",
     )
+    assert record.error.details["blocked_by"] == "folder_invalid"
     assert "leży w magazynie" in record.error.detail
     assert _tree(store) == before
     assert not (directory / "dane" / ".wersje").exists()
 
 
+@pytest.mark.usefixtures("polish")
 def test_second_snapshot_of_file_conflicts(env: SnapshotEnv) -> None:
     """One snapshot of a file at a time; another file's snapshot runs alongside.
 
@@ -807,7 +828,7 @@ def test_published_files_read_only(env: SnapshotEnv) -> None:
 
     # Assert
     names = {"dzialki.shp", "dzialki.shx", "dzialki.dbf", "dzialki.prj", "dzialki.cpg"}
-    assert seen["rename"] == {name: 0o444 for name in [*names, "migawka.json"]}
+    assert seen["rename"] == dict.fromkeys([*names, "migawka.json"], 0o444)
     assert seen["published"] == seen["rename"]
     assert seen["directory"] == {result.label: 0o700}
     assert _mode(result.directory) == 0o555
@@ -815,6 +836,7 @@ def test_published_files_read_only(env: SnapshotEnv) -> None:
     assert _leftovers(root) == []
 
 
+@pytest.mark.skipif(not DESCRIPTOR_PATHS, reason="no procfs and no F_GETPATH")
 def test_chmod_and_directory_fsync_errors_are_notices(
     env: SnapshotEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -827,7 +849,7 @@ def test_chmod_and_directory_fsync_errors_are_notices(
     real_chmod, real_fsync = os.fchmod, os.fsync
 
     def chmod(descriptor: int, mode: int) -> None:
-        path = Path(os.path.realpath(f"/proc/self/fd/{descriptor}"))
+        path = _descriptor_path(descriptor)
         if path.is_relative_to(real_root):
             raise PermissionError(errno.EPERM, os.strerror(errno.EPERM), str(path))
         real_chmod(descriptor, mode)
@@ -885,7 +907,10 @@ def test_label_taken_before_rename_is_target_exists(
         env.make(key, "nmt.tif", on_phase=publish_first)
 
     # Assert
-    assert failed.value.code == "target_exists"
+    assert (failed.value.code, failed.value.details["reason"]) == (
+        "conflict",
+        "target_exists",
+    )
     target = taken_dirs[0]
     expected = ["nmt.tif"] if taken == "complete" else []
     assert sorted(os.listdir(target)) == expected

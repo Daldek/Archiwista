@@ -10,6 +10,7 @@ import contextlib
 import functools
 import hashlib
 import json
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -22,13 +23,16 @@ from archiwista.errors import (
     PreviewBusyError,
     PreviewTimeoutError,
     PreviewUnavailableError,
+    RendererStartError,
 )
+from archiwista.previews import pool as pool_module
 from archiwista.previews.cache import INFO_NAME, PreviewCache, cache_key
 from archiwista.previews.pool import RenderPool, RenderResult
 from archiwista.previews.types import PreviewProbe, PreviewSource
 from tests.fixtures.hostile_files import SECRET_TEXT, SECRET_VALUE, hostile_files
 from tests.fixtures.http_listener import listening
 from tests.fixtures.jobs import worker_path
+from tests.fixtures.refused_start import refuse_starts
 from tests.fixtures.render_worker import TEST_RENDER_WORKER
 
 THUMBNAIL = {"style": "gray", "size": 256}
@@ -168,6 +172,10 @@ def test_timeout_kills_and_respawns_worker(
     assert [op for _, op in _log(log)] == ["probe", "probe", "probe"]
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="child_limits caps the address space on Linux only (DEV-7.7)",
+)
 def test_memory_limit_kills_worker(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -323,20 +331,15 @@ def test_vrt_refused_after_warpedvrt_in_same_worker(
 def test_failure_detail_has_no_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A library's message reaches the pool with file names, never with paths."""
+    """A library's message reaches the pool with file names, never with paths.
+
+    A source's paths are real (``PreviewSource``): a render process refuses a
+    file reached through a symbolic link (review of v0.4, D2), so the message
+    names real paths of a project's data folder only.
+    """
     # Arrange
     real = tmp_path / "projekty" / "ola" / "dane"
-    shown = tmp_path / "widok"
-    sources = []
-    for name in ("plik.tif", "drugi.tif"):
-        target = _source(real, name, fail=True).paths[0]
-        shown.mkdir(exist_ok=True)
-        link = shown / f"skrot-{name}"
-        link.symlink_to(target)
-        content = hashlib.sha256(target.read_bytes() + name.encode()).hexdigest()
-        sources.append(
-            PreviewSource(ref=f"test:{name}", content_key=content, paths=(link,))
-        )
+    sources = [_source(real, name, fail=True) for name in ("plik.tif", "drugi.tif")]
 
     with _pool(tmp_path, monkeypatch) as pool:
         # Act
@@ -350,7 +353,7 @@ def test_failure_detail_has_no_paths(
         (caught.value.detail, "drugi.tif"),
     ):
         assert detail is not None
-        assert f"skrot-{name}" in detail and name in detail
+        assert name in detail and "dane" in detail
         assert "/" not in detail and str(tmp_path) not in detail
     assert probed.probe().reason == caught.value.reason == "unreadable"
 
@@ -390,3 +393,88 @@ def test_unreadable_cached_as_code_and_timeout_not_cached(
     assert pool.stats().rendered == rendered + 1 == timed_out == final
     assert repeated_s < 0.5
     assert slow_kept is None
+
+
+def test_crashed_process_not_kept_and_next_request_renders(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A process killed by a signal answers ``unreadable`` once; nothing is kept.
+
+    The crash is not the file's verdict: once the cause is gone (here the
+    instruction to crash), the next request renders the file.
+    """
+    # Arrange
+    source = _source(tmp_path / "data", "a.tif", signal="SIGSEGV")
+
+    with _pool(tmp_path, monkeypatch) as pool:
+        # Act
+        with pytest.raises(PreviewUnavailableError) as caught:
+            pool.request("probe", source)
+        kept = pool.cache.get(cache_key(source), INFO_NAME)
+        source.paths[0].write_text(json.dumps({"name": "a.tif"}), encoding="utf-8")
+        result = pool.request("probe", source)
+
+    # Assert
+    assert caught.value.reason == "unreadable"
+    assert "SIGSEGV" in str(caught.value.detail)
+    assert kept is None
+    assert not result.cached and result.probe().driver == "test"
+
+
+def test_retry_passes_over_cached_verdict_and_remembered_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``retry`` renders again what the cache or the memory of failures answers.
+
+    The retried probe replaces the verdict, so later requests get the new one.
+    """
+    # Arrange
+    data = tmp_path / "data"
+    stale = _source(data, "stale.tif")
+    slow = _source(data, "slow.tif", sleep_s={"probe": 60})
+    verdict = PreviewProbe(kind="raster", reason="unreadable").to_bytes()
+
+    with _pool(tmp_path, monkeypatch, timeouts={"probe": 1.0}) as pool:
+        pool.cache.put(cache_key(stale), INFO_NAME, verdict)
+        with pytest.raises(PreviewTimeoutError):
+            pool.request("probe", slow)
+        slow.paths[0].write_text(json.dumps({"name": "slow.tif"}), encoding="utf-8")
+
+        # Act
+        cached = pool.request("probe", stale)
+        retried = pool.request("probe", stale, retry=True)
+        after = pool.request("probe", stale)
+        with pytest.raises(PreviewTimeoutError):
+            pool.request("probe", slow)
+        recovered = pool.request("probe", slow, retry=True)
+
+    # Assert
+    assert cached.cached and cached.data == verdict
+    assert not retried.cached and retried.probe().driver == "test"
+    assert after.cached and after.data == retried.data
+    assert not recovered.cached and recovered.probe().driver == "test"
+
+
+def test_process_that_cannot_start_is_coded_and_not_remembered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refused start is ``renderer_not_started``; the file renders once it starts."""
+    # Arrange
+    source = _source(tmp_path / "data", "a.tif")
+    refused = refuse_starts(monkeypatch, pool_module)
+
+    with _pool(tmp_path, monkeypatch) as pool:
+        # Act
+        with pytest.raises(RendererStartError) as caught:
+            pool.request("probe", source)
+        kept = pool.cache.get(cache_key(source), INFO_NAME)
+        refused.on = False
+        result = pool.request("probe", source)
+
+    # Assert
+    assert (caught.value.code, caught.value.details["reason"]) == (
+        "missing_dependency",
+        "renderer_not_started",
+    )
+    assert kept is None
+    assert not result.cached and result.probe().driver == "test"

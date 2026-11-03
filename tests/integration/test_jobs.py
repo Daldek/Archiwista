@@ -31,17 +31,18 @@ from archiwista.errors import (
     OfflineModeError,
 )
 from archiwista.index import IndexQueries, own_file_id
-from archiwista.jobs import JobEvent, JobRecord, JobSupervisor, ScanScheduler, label
+from archiwista.jobs import JobEvent, JobRecord, JobSupervisor, ScanScheduler
 from archiwista.jobs.foreground import run_foreground
 from archiwista.jobs.protocol import decode_message
 from archiwista.jobs.reindex import reindex_main
-from archiwista.messages import MESSAGES
-from archiwista.previews.cache import COG_NAME, PreviewCache, cache_key
+from archiwista.messages import label, message
+from archiwista.previews.cache import COG_NAME, INFO_NAME, PreviewCache, cache_key
 from archiwista.previews.types import PreviewSource
 from archiwista.sources.registry import load_registry
+from tests.fixtures.cli_errors import refusal
 from tests.fixtures.job_worker import (
     BUILD_PROCESSES_ENV,
-    BUILD_TIMEOUT_ENV,
+    BUILD_START_REFUSED_ENV,
     PREVIEW_SOURCES_ENV,
 )
 from tests.fixtures.jobs import (
@@ -203,7 +204,10 @@ def test_worker_crash_fails_job(env: JobsEnv, monkeypatch: pytest.MonkeyPatch) -
     # Assert
     assert crashed.state == "failed"
     assert crashed.error is not None
-    assert crashed.error.code == "worker_crashed"
+    assert (crashed.error.code, crashed.error.reason) == (
+        "internal_error",
+        "worker_crashed",
+    )
     assert "SIGKILL" in crashed.error.detail
     assert f"{crashed.id}.log" in crashed.error.detail
     assert after == before
@@ -244,9 +248,10 @@ def test_close_interrupts_running_and_waiting_jobs(
     ]
     error = records[running.id].error
     assert error is not None
-    assert (error.code, error.detail) == (
+    assert (error.code, error.reason, error.detail) == (
+        "cancelled",
         "interrupted",
-        MESSAGES["job_interrupted_stop"],
+        message("job.interrupted_stop"),
     )
 
 
@@ -293,9 +298,10 @@ def test_restart_marks_running_job_interrupted(
     assert recovered == 1
     assert record is not None and record.state == "interrupted"
     assert record.error is not None
-    assert (record.error.code, record.error.detail) == (
+    assert (record.error.code, record.error.reason, record.error.detail) == (
+        "cancelled",
         "interrupted",
-        MESSAGES["job_interrupted_restart"],
+        message("job.interrupted_restart"),
     )
     assert record.finished_at is not None
     with IndexQueries(paths.index_file) as queries:
@@ -386,7 +392,7 @@ def test_footprints_job_refused_offline(env: JobsEnv) -> None:
         env.jobs.submit("footprints", store=STORE, actor=LOCAL_OWNER)
 
     # Assert
-    assert str(raised.value) == MESSAGES["job_offline_mode"]
+    assert str(raised.value) == message("job.offline_mode")
     assert env.jobs.list().items == ()
 
 
@@ -432,6 +438,7 @@ def test_link_check_reports_mismatch(env: JobsEnv) -> None:
     assert issues == [("link_mismatch", "check")]
 
 
+@pytest.mark.usefixtures("polish")
 def test_reindex_runs_full_scan_in_foreground(env: JobsEnv) -> None:
     """``archiwista reindex`` records a full scan by ``local`` and reports it."""
     # Arrange
@@ -461,30 +468,34 @@ def test_reindex_conflict_exits_nonzero(
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
     running = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
     env.follow(running.id, lambda event: event.type == "progress")
-    err = io.StringIO()
+    out, err = io.StringIO(), io.StringIO()
 
     # Act
-    status = reindex_main(env.paths, NoSources(), io.StringIO(), err, store=STORE)
+    status = reindex_main(env.paths, NoSources(), out, err, store=STORE)
     env.jobs.cancel(running.id)
 
     # Assert
-    assert status == 1
-    assert "(kod conflict)" in err.getvalue()
-    assert running.id in err.getvalue()
+    document = refusal(out.getvalue(), err.getvalue(), status)
+    assert (status, document["code"]) == (4, "conflict")
+    assert document["details"]["job"]["id"] == running.id
     assert [job.id for job in env.jobs.list(kind="scan").items] == [running.id]
 
 
 def test_reindex_unknown_store(env: JobsEnv) -> None:
     """An unknown store is an argument error; nothing is recorded."""
-    err = io.StringIO()
+    out, err = io.StringIO(), io.StringIO()
 
-    status = reindex_main(env.paths, NoSources(), io.StringIO(), err, store="brak")
+    status = reindex_main(env.paths, NoSources(), out, err, store="brak")
 
-    assert status == 2
-    assert err.getvalue() == MESSAGES["job_store_unknown"].format(store="brak") + "\n"
+    document = refusal(out.getvalue(), err.getvalue(), status)
+    assert (status, document["code"]) == (3, "not_found")
+    assert document["details"]["reason"] == "unknown_store"
+    first = err.getvalue().splitlines()[0]
+    assert first == message("job.store_unknown", "pl", store="brak")
     assert env.jobs.list().items == ()
 
 
+@pytest.mark.usefixtures("polish")
 def test_reindex_on_foreground_helper(
     env: JobsEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -492,7 +503,7 @@ def test_reindex_on_foreground_helper(
 
     The scan runs on ``jobs/foreground.py``: its progress reaches standard
     error, Ctrl+C (pressed here while ``wait`` follows the scan) cancels it
-    and waits for its end, and ``reindex`` exits 1 with the job's state; a
+    and waits for its end, and ``reindex`` exits 130 with the job's state; a
     version gone since the last scan is not marked missing.
     """
     # Arrange
@@ -529,12 +540,12 @@ def test_reindex_on_foreground_helper(
     record = env.jobs.get(pressed[0])
 
     # Assert
-    assert status == 1 and out.getvalue() == ""
+    assert status == 130 and out.getvalue() == ""
     assert record is not None and record.state == "cancelled"
     lines = err.getvalue().splitlines()
-    assert lines[0] == MESSAGES["reindex_started"].format(store=STORE, job=record.id)
+    assert lines[0] == message("reindex.started", store=STORE, job=record.id)
     assert any(line.startswith(f"Magazyn „{STORE}”: segmenty ") for line in lines)
-    assert MESSAGES["reindex_cancelling"].format(job=record.id) in lines
+    assert message("reindex.cancelling", job=record.id) in lines
     assert lines[-1].endswith("(kod cancelled)")
     assert env.rows() == before
 
@@ -592,8 +603,8 @@ def test_foreground_follows_joined_job_then_runs_own(
     assert record.started_at is not None and first.finished_at is not None
     assert record.started_at >= first.finished_at
     assert err.getvalue().splitlines() == [
-        MESSAGES["job_foreground_waiting"].format(
-            job=server.id, kind=label("job_kind", "preview")
+        message(
+            "job.foreground_waiting", job=server.id, kind=label("job.kind", "preview")
         ),
         f"started {record.id}",
     ]
@@ -621,14 +632,22 @@ def test_job_list_pages_with_cursor_of_its_filters(env: JobsEnv) -> None:
 
 
 def test_server_scans_configured_store_at_start(tmp_path: Path) -> None:
-    """``archiwista serve`` fully scans a store it never indexed, as ``local``."""
+    """``archiwista serve`` fully scans a store it never indexed, as ``local``.
+
+    The scheduler asks the server's registry which sources can scan a store's
+    directories (SPEC 5.8), so the server has the real plugins.
+    """
     # Arrange
     store = make_store(tmp_path / "store", slots=24, seed=7)
     paths = AppPaths(config_file=tmp_path / "config.toml", data_dir=tmp_path / "data")
     ConfigStore(paths.config_file).save(store_settings(store))
+    registry = load_registry(cache_dir=paths.cache_dir)
 
     # Act
-    with serving(paths), IndexQueries(paths.index_file) as queries:
+    with (
+        serving(paths, registry=registry),
+        IndexQueries(paths.index_file) as queries,
+    ):
         _await(lambda: _last_scan(queries) == "succeeded")
         state = next(s for s in queries.status().stores if s.store == STORE)
 
@@ -716,10 +735,11 @@ def test_link_check_refuses_standard_path_leaving_store(
     # Assert
     assert (record.state, record.result) == ("failed", None)
     assert record.error is not None
-    assert record.error.code == "path_outside_root"
-    assert record.error.detail == MESSAGES["path_outside_root"].format(
-        path=planted.path
+    assert (record.error.code, record.error.reason) == (
+        "forbidden",
+        "path_outside_root",
     )
+    assert record.error.detail == message("ref.path_outside_root", path=planted.path)
     assert not [i for i in env.queries.issues(STORE) if i.code == "link_mismatch"]
 
 
@@ -760,7 +780,11 @@ def test_footprints_job_on_disconnected_store_changes_nothing(env: JobsEnv) -> N
 
     # Assert
     assert record.state == "failed"
-    assert record.error is not None and record.error.code == "store_unavailable"
+    assert record.error is not None
+    assert (record.error.code, record.error.reason) == (
+        "store_unavailable",
+        "store_unreadable",
+    )
     assert env.state().status == "unavailable"
     assert env.rows() == before
 
@@ -826,7 +850,88 @@ def test_worker_rejects_unreadable_job() -> None:
 
     message = decode_message(finished.stdout.decode("utf-8"))
     assert finished.returncode == 2
-    assert (message.type, message.data["code"]) == ("error", "protocol_error")
+    assert (message.type, message.data["code"]) == ("error", "internal_error")
+    assert message.data["details"] == {"reason": "protocol_error"}
+
+
+# A process that is interrupted and then waits in an exit handler for good, as
+# a job worker does when the interrupt left a lock of coverage's tracer held.
+STALLED_STOP = """
+import atexit, os, signal, threading
+from archiwista.jobs.worker import _handle_interrupts
+
+_handle_interrupts(2.0)
+atexit.register(threading.Event().wait)
+try:
+    os.kill(os.getpid(), signal.SIGINT)
+    threading.Event().wait(60)
+except KeyboardInterrupt:
+    pass
+"""
+
+
+def test_interrupted_worker_that_stalls_in_an_exit_handler_ends_itself() -> None:
+    """The first interrupt arms a watchdog that ends a process stalled at exit."""
+    # Act
+    finished = subprocess.run(
+        [sys.executable, "-c", STALLED_STOP],
+        capture_output=True,
+        timeout=WAIT_S,
+        check=False,
+    )
+
+    # Assert
+    log = finished.stderr.decode("utf-8", "replace")
+    assert finished.returncode == 1
+    assert "Timeout (0:00:02)!" in log
+    assert "in wait" in log  # the stack of the thread that stalls
+
+
+def test_error_of_an_earlier_version_reads_with_a_registry_code(env: JobsEnv) -> None:
+    """A stored job error of 0.2.x is read as a registry code and its reason."""
+    # Arrange
+    link = env.store.by_kind("link")[0].path
+    job = env.run("link_check", slot=link)
+    old = {
+        "code": "snapshot_blocked",
+        "detail": "Folder jest tylko do odczytu.",
+        "reason": "read_only_folder",
+    }
+    with sqlite3.connect(env.paths.index_file) as db:
+        db.execute(
+            "UPDATE jobs SET state = 'failed', summary = NULL, error = ? WHERE id = ?",
+            (json.dumps(old), job.id),
+        )
+        last = db.execute(
+            "SELECT max(seq) FROM job_events WHERE job_id = ?", (job.id,)
+        ).fetchone()[0]
+        db.execute(
+            "UPDATE job_events SET data = ? WHERE job_id = ? AND seq = ?",
+            (json.dumps({"state": "failed", "error": old}), job.id, last),
+        )
+    db.close()
+
+    # Act
+    record = env.jobs.get(job.id)
+    listed = env.jobs.list(kind="link_check").items[0]
+    final = env.jobs.events(job.id)[-1]
+    with sqlite3.connect(env.paths.index_file) as db:
+        stored = db.execute(
+            "SELECT error FROM jobs WHERE id = ?", (job.id,)
+        ).fetchone()[0]
+    db.close()
+
+    # Assert
+    current = {
+        "code": "conflict",
+        "detail": old["detail"],
+        "details": {"reason": "snapshot_blocked", "blocked_by": "read_only_folder"},
+    }
+    assert record is not None and record.error is not None
+    assert record.error.to_json() == current
+    assert listed.error == record.error
+    assert final.data == {"state": "failed", "error": current}
+    assert json.loads(stored) == old  # read as current, never rewritten
 
 
 def test_start_forgets_old_jobs_but_each_store_last(env: JobsEnv) -> None:
@@ -891,16 +996,20 @@ def test_prune_forgets_routine_scans_after_48_hours_but_newest(env: JobsEnv) -> 
             " VALUES (?, 1000, 'notice', '{}', ?)",
             (noticed.id, now.isoformat()),
         )
-        # Outlines failing again are retried by every scan: no change, no alert.
+        # Outlines failing again are retried by every scan, and an unavailable source
+        # is said so at every scan: no change, no alert.
         db.execute(
             "UPDATE jobs SET summary = json_set(summary, '$.footprints_failed', 2)"
             " WHERE id = ?",
             (oldest.id,),
         )
-        db.execute(
+        db.executemany(
             "INSERT INTO job_events (job_id, seq, type, data, at)"
-            " VALUES (?, 1000, 'notice', ?, ?)",
-            (oldest.id, '{"code": "footprints_failed"}', now.isoformat()),
+            " VALUES (?, ?, 'notice', ?, ?)",
+            [
+                (oldest.id, 1000, '{"code": "footprints_failed"}', now.isoformat()),
+                (oldest.id, 1001, '{"code": "source_skipped"}', now.isoformat()),
+            ],
         )
     db.close()
     log = env.paths.jobs_dir / f"{oldest.id}.log"
@@ -975,19 +1084,22 @@ def test_preview_build_joins_running_job(
 def test_preview_build_item_timeout_fails_item_only(
     env: JobsEnv, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A build past its time limit fails that file alone; the others are built."""
+    """A build past its time limit fails that file alone; the others are built.
+
+    Only the slow file has a limit, one second: it sleeps for an hour. The
+    other files keep the real limit, so how long their processes take to
+    start (a loaded computer) cannot fail them.
+    """
     # Arrange
-    monkeypatch.setenv(BUILD_TIMEOUT_ENV, "1")
     sources = _preview_sources(
         tmp_path,
         monkeypatch,
         {
-            "slow": {"needs_cog": True, "sleep_s": {"build": 60}},
+            "slow": {"needs_cog": True, "sleep_s": {"build": 3600}, "timeout_s": 1},
             "ok1": {"needs_cog": True},
             "ok2": {"needs_cog": True},
         },
     )
-    started = time.monotonic()
 
     # Act
     job = env.jobs.submit(
@@ -996,7 +1108,6 @@ def test_preview_build_item_timeout_fails_item_only(
         actor=LOCAL_OWNER,
     )
     record = env.wait(job.id)
-    elapsed_s = time.monotonic() - started
 
     # Assert
     assert record.state == "succeeded", record
@@ -1006,10 +1117,33 @@ def test_preview_build_item_timeout_fails_item_only(
     ]
     detail = record.result["failed"][0]["detail"]
     assert detail and "/" not in detail
-    assert elapsed_s < 30
     with PreviewCache(env.paths.previews_dir, limit_bytes=1024**3) as cache:
         assert not cache.has(cache_key(sources["slow"]), COG_NAME)
         assert cache.has(cache_key(sources["ok1"]), COG_NAME)
+
+
+def test_preview_build_process_that_cannot_start_fails_job_coded(
+    env: JobsEnv, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No build process starts: ``renderer_not_started``, nothing kept of the file."""
+    # Arrange
+    monkeypatch.setenv(BUILD_START_REFUSED_ENV, "1")
+    sources = _preview_sources(tmp_path, monkeypatch, {"a": {"needs_cog": True}})
+
+    # Act
+    job = env.jobs.submit(
+        "preview", params=_preview_params(sources, "a"), actor=LOCAL_OWNER
+    )
+    record = env.wait(job.id)
+
+    # Assert
+    assert record.state == "failed" and record.error is not None, record
+    assert (record.error.code, record.error.reason) == (
+        "missing_dependency",
+        "renderer_not_started",
+    )
+    with PreviewCache(env.paths.previews_dir, limit_bytes=1024**3) as cache:
+        assert not cache.has(cache_key(sources["a"]), INFO_NAME)
 
 
 def test_preview_builds_at_most_n_children(

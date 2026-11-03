@@ -6,6 +6,7 @@ on ``sys.path``, discovered by ``load_registry``.
 """
 
 import importlib
+import logging
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -15,16 +16,24 @@ import pytest
 from archiwista.config import AppPaths
 from archiwista.doctor import run_doctor
 from archiwista.errors import SourceIncompatibleError, SourceUnavailableError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.sources import (
+    ActionAdapter,
+    AreaCommandAdapter,
+    CurrentVersionAdapter,
+    DefaultRoot,
+    DefaultRootAdapter,
+    ExportFolderAdapter,
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SheetGridAdapter,
     SourceState,
 )
-from archiwista.sources.registry import load_registry
+from archiwista.sources.registry import load_registry, read_default_root
+from tests.fixtures.isolation import Canary
 
 SECOND_SOURCE = Path(__file__).parents[1] / "fixtures" / "second_source"
 FIXTURE_MODULES = ("external_source_plugin", "external_producer")
@@ -78,16 +87,70 @@ def test_plugins_second_entry_point_works_beside_kartograf(tmp_path: Path) -> No
     assert not any(
         isinstance(adapter, capability)
         for capability in (
+            ActionAdapter,
+            AreaCommandAdapter,
+            CurrentVersionAdapter,
+            SegmentDescriptionAdapter,
             SegmentedAdapter,
             PartitionedAdapter,
             GeoAdapter,
             LinkCheckAdapter,
             SheetGridAdapter,
+            DefaultRootAdapter,
+            ExportFolderAdapter,
         )
     )
     assert registry.probe("external", store) == replace(EXTERNAL, store=str(store))
 
 
+def test_plugins_probe_carries_the_reason_and_hint_of_the_adapter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The verdict of an adapter on a directory reaches the caller whole."""
+    registry = load_registry(cache_dir=tmp_path / "cache")
+    refused = SourceState(
+        "external",
+        "incompatible",
+        detail="not a store of mine",
+        reason="foreign_store",
+        hint="give another directory",
+    )
+    monkeypatch.setattr(registry.adapter("external"), "probe", lambda root: refused)
+
+    state = registry.probe("external", tmp_path)
+
+    assert (state.status, state.detail, state.reason, state.hint) == (
+        "incompatible",
+        "not a store of mine",
+        "foreign_store",
+        "give another directory",
+    )
+    assert (state.store, state.supported_versions) == (str(tmp_path), ">=1,<2")
+
+
+def test_plugins_probe_reason_and_hint_reach_the_state(tmp_path: Path) -> None:
+    """A probe says why a directory is refused and what fixes it; else neither."""
+    unmarked = tmp_path / "unmarked"
+    unmarked.mkdir()
+    registry = load_registry(cache_dir=tmp_path / "cache")
+
+    refused = registry.probe("external", unmarked)
+    accepted = registry.probe("external", tmp_path)
+
+    assert (refused.status, refused.reason, refused.hint) == (
+        "incompatible",
+        "no_marker",
+        f"external init --root {unmarked}",
+    )
+    assert refused.detail == "brak znacznika"
+    assert (accepted.status, accepted.reason, accepted.hint) == (
+        "available",
+        None,
+        None,
+    )
+
+
+@pytest.mark.usefixtures("polish")
 def test_plugins_second_plugin_shown_by_doctor(tmp_path: Path) -> None:
     """The diagnostics list the second plugin without changes in the doctor."""
     paths = AppPaths(config_file=tmp_path / "config.toml", data_dir=tmp_path / "data")
@@ -112,7 +175,7 @@ def test_plugins_missing_producer_package_is_not_installed(
 
     assert (state.status, state.detail) == (
         "not_installed",
-        MESSAGES["plugin_module_missing"].format(module="external_producer"),
+        message("plugin.module_missing", module="external_producer"),
     )
     with pytest.raises(SourceUnavailableError) as raised:
         registry.adapter("external")
@@ -160,10 +223,10 @@ def test_plugins_unsupported_schema_is_incompatible(
     ("value", "detail"),
     [
         ("external_source_plugin:load_failing", "RuntimeError: uszkodzona wtyczka"),
-        ("external_source_plugin:load_not_adapter", MESSAGES["plugin_not_adapter"]),
+        ("external_source_plugin:load_not_adapter", message("plugin.not_adapter")),
         (
             "external_source_plugin:load",
-            MESSAGES["plugin_wrong_producer"].format(declared="external"),
+            message("plugin.wrong_producer", declared="external"),
         ),
         ("missing_plugin_module:load", "ModuleNotFoundError"),
     ],
@@ -209,8 +272,53 @@ def test_plugins_failing_probe_and_unknown_producer_are_states(
     registry = load_registry(cache_dir=tmp_path)
 
     failed = registry.probe("external", tmp_path / "missing")
-    unknown = registry.probe("imgw", tmp_path)
+    unknown = registry.probe("unregistered", tmp_path)
 
     assert (failed.status, failed.store) == ("error", str(tmp_path / "missing"))
     assert failed.detail is not None and "FileNotFoundError" in failed.detail
     assert (unknown.status, unknown.store) == ("not_installed", str(tmp_path))
+
+
+def test_plugins_default_root_comes_from_the_source_that_has_one(
+    tmp_path: Path, producer_canary: Canary
+) -> None:
+    """Kartograf reports its root; a source without the capability has none.
+
+    Nor has a producer that no plugin registers. IMGWTools reports its root as
+    well (``test_imgw_default_root.py``, collected with the extra ``imgw``).
+    """
+    # Arrange
+    registry = load_registry(cache_dir=tmp_path / "cache")
+
+    # Act
+    kartograf = read_default_root(registry, "kartograf")
+    external = read_default_root(registry, "external")
+    unregistered = read_default_root(registry, "unregistered")
+
+    # Assert
+    assert kartograf == DefaultRoot(
+        producer_canary.kartograf_root, "env", "KARTOGRAF_ROOT", False, False
+    )
+    assert (external, unregistered) == (None, None)
+
+
+def test_plugins_default_root_that_fails_is_none_and_logged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An offer must not stop its caller: a failing plugin has no root, and a log."""
+    # Arrange
+    registry = load_registry(cache_dir=tmp_path / "cache")
+
+    def broken() -> DefaultRoot:
+        raise RuntimeError("no home directory")
+
+    monkeypatch.setattr(registry.adapter("kartograf"), "default_root", broken)
+
+    # Act
+    with caplog.at_level(logging.ERROR, logger="archiwista.sources.registry"):
+        root = read_default_root(registry, "kartograf")
+
+    # Assert
+    assert root is None
+    assert "Reading the default root of producer kartograf failed" in caplog.text
+    assert "no home directory" in caplog.text

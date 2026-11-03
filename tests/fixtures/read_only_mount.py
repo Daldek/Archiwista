@@ -4,7 +4,9 @@ An unprivileged user and mount namespace (``unshare``) binds a directory
 onto itself read-only and executes the console script installed next to the
 interpreter; the network namespace is shared, so a browser reaches the
 server. ``tree`` records a directory's names, sizes, modification times and
-inodes, so a test can show that nothing was written below it.
+inodes, so a test can show that nothing was written below it. ``set_read_only``
+takes the write permission from a tree by its modes, for tests that run in the
+process.
 """
 
 import os
@@ -40,6 +42,19 @@ def tree(directory: Path) -> Snapshot:
                 info.st_ino,
             )
     return found
+
+
+def set_read_only(directory: Path, *, read_only: bool) -> None:
+    """Make ``directory`` and all below it read-only, or writable again.
+
+    Directories get the mode ``0555`` and files ``0444``; back, ``0755`` and
+    ``0644``. A test that locks a tree unlocks it in a ``finally`` block, so that
+    its directory can be removed.
+    """
+    for top, _, filenames in os.walk(directory):
+        os.chmod(top, 0o555 if read_only else 0o755)
+        for name in filenames:
+            os.chmod(os.path.join(top, name), 0o444 if read_only else 0o644)
 
 
 def require_read_only_mounts(tmp_path: Path) -> None:

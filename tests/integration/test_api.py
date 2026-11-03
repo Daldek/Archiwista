@@ -16,21 +16,23 @@ import pytest
 from pydantic import BaseModel
 
 import archiwista.api.models as models
-from archiwista.api.errors import service_problem
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
-from archiwista.config import ConfigStore
+from archiwista.config import AppSettings, ConfigStore, TeamSettings
+from archiwista.error_document import describe
 from archiwista.errors import (
+    ArchiwistaError,
     IndexQueryError,
     PathOutsideRootError,
     ProducerError,
     SourceUnavailableError,
 )
-from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, MapQuery
+from archiwista.index import IndexQueries, IndexWriter, MapQuery
 from archiwista.security import CSRF_HEADER
-from archiwista.sources import ProjectInfo, SourceAdapter, SourceState
+from archiwista.sources import SourceAdapter, SourceState
 from archiwista.sources.registry import source_error
 from tests.fixtures.api_session import assert_problem, running_api
 from tests.fixtures.api_store import ALIAS, STORE, ServedStore, served_store
+from tests.fixtures.layer_store import SHEET_NW, make_variant_store
 from tests.fixtures.local_server import NoSources, local_paths, serving
 
 pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
@@ -46,14 +48,34 @@ ROUTES = {
     ("get", "/api/v1/stores/{store}/slots/{slot}"),
     ("get", "/api/v1/stores/{store}/versions/{version}"),
     ("get", "/api/v1/stores/{store}/versions/{version}/sidecar"),
+    ("get", "/api/v1/stores/{store}/versions/{version}/file"),
+    ("get", "/api/v1/projects/{project}/files/{file_id}/file"),
+    ("get", "/api/v1/projects/{project}/files/{file_id}/snapshots/{label}/file"),
     ("get", "/api/v1/requests/{parent_request}"),
     ("get", "/api/v1/map/footprints"),
     ("get", "/api/v1/map/sheets"),
     ("get", "/api/v1/projects"),
     ("get", "/api/v1/projects/{project}"),
-    ("get", "/api/v1/projects/{project}/status"),
+    ("patch", "/api/v1/projects/{project}"),
+    ("put", "/api/v1/projects/{project}/area"),
+    ("put", "/api/v1/projects/{project}/stores/{producer}"),
     ("get", "/api/v1/settings"),
     ("put", "/api/v1/settings"),
+    ("get", "/api/v1/preferences"),
+    ("put", "/api/v1/preferences"),
+    ("get", "/api/v1/log"),
+    ("get", "/api/v1/log/export"),
+    ("get", "/api/v1/commands"),
+    ("post", "/api/v1/commands/parse"),
+    ("post", "/api/v1/commands/validate"),
+    ("post", "/api/v1/commands/format"),
+    ("get", "/api/v1/availability"),
+    ("post", "/api/v1/users/{user_id}/password"),
+    ("get", "/api/v1/session/methods"),
+    ("post", "/api/v1/session/login"),
+    ("post", "/api/v1/session/proxy"),
+    ("put", "/api/v1/session/password"),
+    ("get", "/api/v1/sessions"),
 }
 
 
@@ -123,9 +145,11 @@ def test_api_every_read_route_answers_from_the_index(served: ServedStore) -> Non
     assert version["paths"]["local"] == str(root / path)
     assert footprints["aggregated"] and footprints["total"] > 1
     assert sheets["status"] == "available" and sheets["items"][0]["geometry"]
-    assert project["tasks"] and project["project"] == projects["items"][0]["project"]
-    assert [item["producer"] for item in sources["items"]] == ["kartograf"]
-    assert sources["items"][0]["status"] == "available"
+    assert sheets["items"][0]["zone"] is None  # PL-1992 has no zones
+    assert project["groups"] and project["project"] == projects["items"][0]["project"]
+    producers = {item["producer"]: item["status"] for item in sources["items"]}
+    assert list(producers) == ["imgw", "kartograf"]
+    assert producers["kartograf"] == "available"
     assert not page["stale"] and page["stale_stores"] == []
 
 
@@ -170,12 +194,57 @@ def test_api_slots_filters_limit_and_cursor(served: ServedStore) -> None:
     assert paged == every and len(every) > 7
     assert nmt and set(nmt) < set(every)
     assert all(2019 <= row["version"]["data_year"] <= 2021 for row in years["items"])
-    assert_problem(too_many, 422, "validation_error")
-    assert too_many.json()["errors"][0]["field"] == "query.limit"
-    assert_problem(foreign, 422, "validation_error")
-    assert_problem(misspelt, 422, "validation_error")
-    assert_problem(unknown, 422, "validation_error")
-    assert_problem(reversed_years, 422, "validation_error")
+    assert_problem(too_many, 400, "validation_error")
+    assert too_many.json()["errors"][0]["pointer"] == "/query/limit"
+    assert_problem(foreign, 400, "validation_error")
+    assert_problem(misspelt, 400, "validation_error")
+    assert_problem(unknown, 400, "validation_error")
+    assert_problem(reversed_years, 400, "validation_error")
+
+
+def test_api_slots_segment_keeps_one_variant_of_a_sheet(tmp_path: Path) -> None:
+    """Each variant keeps its own current version; ``segment`` keeps one variant."""
+    # Arrange
+    store = make_variant_store(tmp_path / "store")
+    five_m = "nmt/pl_1992_5m_evrf2007"
+    with served_store(tmp_path, written=store.manifest) as served:
+        # Act
+        current = _get(served, f"/slots?unit={SHEET_NW}")["items"]
+        one_variant = _get(served, f"/slots?unit={SHEET_NW}&segment={five_m}")["items"]
+        its_versions = _get(
+            served, f"/slots?unit={SHEET_NW}&segment={five_m}&versions=all"
+        )["items"]
+        unknown = _get(served, "/slots?segment=nmt/pl_1992_9m_evrf2007")["items"]
+        products = _get(served, "/products")["items"]
+
+    # Assert
+    assert {
+        (
+            row["segment"]["path"],
+            row["version"]["data_year"],
+            row["version"]["resolution"],
+            row["version"]["crs"]["vertical"],
+        )
+        for row in current
+    } == {
+        ("nmt/pl_1992_1m_kron86", 2014, "1m", "EPSG:9650"),
+        (five_m, 2025, "5m", "EPSG:9651"),
+        ("nmt/pl_1992_1m_evrf2007", 2024, "1m", "EPSG:9651"),
+    }
+    assert [
+        (row["segment"]["path"], row["version"]["data_year"]) for row in one_variant
+    ] == [(five_m, 2025)]
+    assert sorted(row["version"]["data_year"] for row in its_versions) == [2020, 2025]
+    assert unknown == []
+    assert {
+        item["segment"]["path"]: (item["resolution"], item["crs"]["vertical"])
+        for product in products
+        for item in product["segments"]
+    } == {
+        "nmt/pl_1992_1m_kron86": ("1m", "EPSG:9650"),
+        five_m: ("5m", "EPSG:9651"),
+        "nmt/pl_1992_1m_evrf2007": ("1m", "EPSG:9651"),
+    }
 
 
 def test_api_problems_for_routes_methods_and_unknown_files(served: ServedStore) -> None:
@@ -202,35 +271,46 @@ def test_api_problems_for_routes_methods_and_unknown_files(served: ServedStore) 
     assert members.headers["allow"] == "PUT"
     assert_problem(slot, 404, "not_found")
     assert_problem(group, 404, "not_found")
-    assert_problem(sheets, 422, "validation_error")
-    assert_problem(scale, 422, "kartograf_error")
-    assert scale.json()["kartograf"]["exception"] == "ValidationError"
+    assert_problem(sheets, 400, "validation_error")
+    assert_problem(scale, 500, "data_error", "kartograf_error")
+    assert scale.json()["details"]["kartograf"]["exception"] == "ValidationError"
 
 
 @pytest.mark.parametrize(
-    ("error", "status", "code"),
+    ("error", "status", "code", "reason"),
     [
-        (PathOutsideRootError("poza"), 403, "path_outside_root"),
-        (IndexQueryError("kursor"), 422, "validation_error"),
+        (PathOutsideRootError("poza"), 403, "forbidden", "path_outside_root"),
+        (IndexQueryError("kursor"), 400, "validation_error", None),
         (
             ProducerError("kartograf", "ValidationError", "zła skala"),
-            422,
+            500,
+            "data_error",
             "kartograf_error",
         ),
-        (ProducerError("external-producer", "Boom", "x"), 422, "producer_error"),
-        (SourceUnavailableError("magazyn odłączony"), 503, "store_unavailable"),
+        (
+            ProducerError("external-producer", "Boom", "x"),
+            500,
+            "data_error",
+            "producer_error",
+        ),
+        (
+            SourceUnavailableError("magazyn odłączony"),
+            503,
+            "store_unavailable",
+            "store_unreadable",
+        ),
     ],
 )
-def test_api_service_errors_map_to_stable_codes(
-    error: Exception, status: int, code: str
+def test_api_service_errors_map_to_registry_codes(
+    error: ArchiwistaError, status: int, code: str, reason: str | None
 ) -> None:
-    """Each service error has one status and code, independent of the text."""
+    """Each service error has one registry code and status, whatever the text."""
     # Act
-    body = service_problem(error)  # type: ignore[arg-type]
+    problem = describe(error)
 
     # Assert
-    assert body is not None
-    assert (body["status"], body["code"], body["detail"]) == (status, code, str(error))
+    assert (problem.status, problem.code, problem.detail) == (status, code, str(error))
+    assert problem.details.get("reason") == reason
 
 
 class _Incompatible(NoSources):
@@ -244,14 +324,14 @@ class _Incompatible(NoSources):
 
 
 @pytest.mark.parametrize(
-    ("registry", "code", "state"),
+    ("registry", "reason", "state"),
     [
         (NoSources(), "source_unavailable", "not_installed"),
         (_Incompatible(), "source_incompatible", "incompatible"),
     ],
 )
 def test_source_states_map_to_503(
-    tmp_path: Path, registry: NoSources, code: str, state: str
+    tmp_path: Path, registry: NoSources, reason: str, state: str
 ) -> None:
     """Requests needing a producer say which plugin is missing and how to fix it."""
     # Arrange
@@ -259,8 +339,6 @@ def test_source_states_map_to_503(
     with running_api(paths, registry) as api:
         with IndexWriter(paths.index_file) as writer:
             writer.sync_stores({STORE: {"kartograf": str(tmp_path / "data")}})
-            info = ProjectInfo("kartograf", str(tmp_path), tmp_path / "raba", "raba")
-            writer.write_project(info, store=STORE, stamp=ManifestStamp(1, 1))
         owner = api.session(LOCAL_OWNER)
 
         # Act
@@ -269,14 +347,13 @@ def test_source_states_map_to_503(
                 "GET", f"/map/sheets?bbox={KRAKOW}&system=1992&scale=1:10000"
             ),
             owner.request("GET", f"/slots?bbox={KRAKOW}"),
-            owner.request("GET", "/projects/raba/status"),
         ]
         listed = owner.request("GET", "/slots")
 
     # Assert
     for answer in answers:
-        assert_problem(answer, 503, code)
-        source = answer.json()["source"]
+        assert_problem(answer, 503, "missing_dependency", reason)
+        source = answer.json()["details"]["source"]
         assert (source["id"], source["state"]) == ("kartograf", state)
         assert source["requirement"].startswith("kartograf")
         assert "pip install" in answer.json()["detail"]
@@ -284,30 +361,23 @@ def test_source_states_map_to_503(
 
 
 def test_api_disconnected_store_answers_stale(tmp_path: Path) -> None:
-    """Lists stay 200 from the index; the live project check falls back or 503."""
+    """Lists stay 200 from the index, marked stale with the store's detail."""
     with served_store(tmp_path) as served:
         # Arrange
         paths = served.api.paths
-        project = _get(served, "/projects")["items"][0]["project"]
         with IndexWriter(paths.index_file) as writer:
             writer.set_store_status(STORE, "unavailable", detail="udział odłączony")
-            info = ProjectInfo("kartograf", "x", tmp_path / "nowy", "nowy")
-            writer.write_project(info, store=STORE, stamp=ManifestStamp(1, 1))
 
         # Act
         page = _get(served, "/slots?limit=5")
         footprints = _get(served, "/map/footprints?bbox=14,49,24.2,55")
         stores = _get(served, "/stores")
-        status = _get(served, f"/projects/{project}/status")
-        unchecked = served.owner.request("GET", "/projects/nowy/status")
 
     # Assert
     assert page["items"] and page["stale"] and footprints["stale"]
     assert page["stale_stores"][0]["store"] == STORE
     assert page["stale_stores"][0]["detail"] == "udział odłączony"
     assert stores["items"][0]["state"]["stale"]
-    assert status["stale"] and status["stale_reason"] == "store_unavailable"
-    assert_problem(unchecked, 503, "store_unavailable")
 
 
 def test_api_settings_change_checked_saved_and_in_csp(tmp_path: Path) -> None:
@@ -333,13 +403,55 @@ def test_api_settings_change_checked_saved_and_in_csp(tmp_path: Path) -> None:
         no_csrf = served.owner.request("PUT", "/settings", json=current, csrf=False)
 
     # Assert
-    assert_problem(refused, 422, "validation_error")
-    assert refused.json()["problems"][0]["field"] == "stores[0].kartograf"
+    assert_problem(refused, 400, "validation_error")
+    assert refused.json()["details"]["problems"][0]["field"] == "stores[0].kartograf"
     assert unchanged == before
     assert saved.status_code == 200 and saved.json()["offline"] is True
     assert "https://tiles.openfreemap.org" in online["content-security-policy"]
     assert "tiles.openfreemap.org" not in offline["content-security-policy"]
-    assert_problem(no_csrf, 403, "csrf_rejected")
+    assert_problem(no_csrf, 403, "forbidden", "csrf_rejected")
+
+
+def test_api_settings_keep_the_team_table_and_round_trip_the_team_numbers(
+    tmp_path: Path,
+) -> None:
+    """PUT /settings writes [team] back as read; no body shows or changes it."""
+    paths = local_paths(tmp_path)
+    team = TeamSettings(
+        origin="https://archiwista.firma.local",
+        trusted_proxies=("10.0.0.2",),
+        proxy_user_header="X-Remote-User",
+    )
+    ConfigStore(paths.config_file).save(AppSettings(team=team))
+    with running_api(paths) as api:
+        owner = api.session(LOCAL_OWNER)
+        current = owner.request("GET", "/settings").json()
+        changed = {**current, "network_jobs_per_person": 1}
+        saved = owner.request(
+            "PUT", "/settings", json={**changed, "action_log_retention_days": 30}
+        )
+        read = owner.request("GET", "/settings").json()
+        widened = owner.request(
+            "PUT", "/settings", json={**current, "team": {"enabled": True}}
+        )
+    loaded = ConfigStore(paths.config_file).load()
+
+    assert "team" not in current
+    assert (
+        current["network_jobs_per_person"],
+        current["action_log_retention_days"],
+    ) == (
+        2,
+        365,
+    )
+    assert saved.status_code == 200, saved.text
+    assert (read["network_jobs_per_person"], read["action_log_retention_days"]) == (
+        1,
+        30,
+    )
+    assert loaded.team == team
+    assert (loaded.network_jobs_per_person, loaded.action_log_retention_days) == (1, 30)
+    assert_problem(widened, 400, "validation_error")
 
 
 def test_api_openapi_documents_routes_examples_and_problems(
@@ -369,15 +481,17 @@ def test_api_openapi_documents_routes_examples_and_problems(
         for status, response in responses.items():
             if int(status) >= 400:
                 assert list(response["content"]) == ["application/problem+json"]
-        ok = responses["200"]["content"]["application/json"]
-        reference = ok.get("schema", {}).get("$ref")
+        ok = responses["200"]["content"]
+        reference = ok.get("application/json", {}).get("schema", {}).get("$ref")
         if reference is not None:
             assert schemas[reference.rsplit("/", 1)[1]]["examples"]
+    # A 422 a route documents itself stays (a producer without commands).
+    assert "422" in operations[("get", "/api/v1/commands")]["responses"]
     names = {
         item["name"] for item in operations[("get", "/api/v1/slots")]["parameters"]
     }
     assert names == {
-        "q", "store", "product", "country", "years", "unit", "location",
+        "q", "store", "product", "segment", "country", "years", "unit", "location",
         "versions", "status", "project", "area_id", "bbox", "bbox_crs", "limit",
         "cursor",
     }  # fmt: skip
@@ -386,7 +500,7 @@ def test_api_openapi_documents_routes_examples_and_problems(
         "/api/docs/swagger-ui-bundle.js",
         "/api/docs/archiwista-docs.js",
     ]
-    assert_problem(anonymous, 401, "session_required")
+    assert_problem(anonymous, 401, "unauthorized", "session_required")
 
 
 def test_api_agent_with_cookie_jar_sees_state(tmp_path: Path) -> None:
@@ -405,7 +519,7 @@ def test_api_agent_with_cookie_jar_sees_state(tmp_path: Path) -> None:
     # Assert
     assert exchanged.status_code == 200
     assert health.status_code == 200 and health.json()["archiwista"]
-    assert_problem(refused, 401, "session_required")
+    assert_problem(refused, 401, "unauthorized", "session_required")
 
 
 def test_api_examples_validate_against_their_models() -> None:

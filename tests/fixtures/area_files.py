@@ -167,6 +167,7 @@ def upload(
     query: str = "",
     content_type: str = "application/octet-stream",
     csrf: bool = True,
+    accept_language: str | None = None,
 ) -> httpx.Response:
     """Send a file as the raw body of ``POST /api/v1/areas`` in the session."""
     headers = {
@@ -175,6 +176,8 @@ def upload(
     }
     if csrf:
         headers[CSRF_HEADER] = caller.csrf
+    if accept_language is not None:
+        headers["accept-language"] = accept_language
     response: httpx.Response = caller.client.post(
         f"/api/v1/areas{query}", content=content, headers=headers
     )

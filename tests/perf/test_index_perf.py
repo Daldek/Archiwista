@@ -25,15 +25,9 @@ from pathlib import Path
 import pytest
 
 from archiwista.auth import ALL_PROJECTS
-from archiwista.errors import ProducerError
-from archiwista.index import (
-    AreaFilter,
-    IndexQueries,
-    IndexWriter,
-    ManifestStamp,
-    MapQuery,
-    SlotQuery,
-)
+from archiwista.config import StoreConfig
+from archiwista.index import AreaFilter, IndexQueries, IndexWriter, MapQuery, SlotQuery
+from archiwista.index.projects import scan_projects
 from archiwista.sources import (
     GeoJSONGeometry,
     ScanScope,
@@ -89,17 +83,10 @@ def built() -> Iterator[_Build]:
         started = time.perf_counter()
         first = _pass(writer, adapter, root, segments, full=True)
         seconds = time.perf_counter() - started
-        for manifest in sorted((output / "projects").glob("*/kartograf-project.json")):
-            try:
-                info = adapter.read_project(manifest.parent)
-            except ProducerError:  # an invalid manifest stays out of this index
-                continue
-            stat = manifest.stat()
-            writer.write_project(
-                info,
-                store=STORE if Path(info.store) == root else None,
-                stamp=ManifestStamp(stat.st_mtime_ns, stat.st_size),
-            )
+        config = StoreConfig(id=STORE, name=STORE, kartograf=root, kind="local")
+        scan_projects(
+            writer, project_dirs=[output / "projects"], stores=[config], geo=None
+        )
         rescan = _pass(writer, adapter, root, segments, full=False)
     size = sum(
         item.stat().st_size for item in work.glob("index.sqlite*") if item.is_file()

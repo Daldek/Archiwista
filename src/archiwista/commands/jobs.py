@@ -1,0 +1,679 @@
+"""``archiwista jobs``: background jobs (plan of 2026-10-25, A4 to A6).
+
+``jobs start RODZAJ PRODUCENT --store ID --call JSON [--call JSON …] [--plan
+ZADANIE] [--pin PROJEKT --pin-group ZESTAW [--pin-add | --pin-open]]``
+starts a job of calls of commands of the producer's catalog on a
+configured store (``POST /jobs``; all the lines of a row in one job, ADR-044)
+and follows it to its end in the foreground (``archiwista.jobs.foreground``):
+kind ``check`` plans a run of each call without its effects, ``download``
+runs them in the store, with ``--plan`` the plans a ``check`` job of the same
+calls kept, and with ``--pin`` pins what it leaves into a new set of a
+project (``--pin-open``: left open) or an open one (``--pin-add``). It
+prints the job as it ended (``GET /jobs/{job}``,
+``JobDetail``) and exits with its outcome: ``0`` succeeded, ``10`` partial,
+``11`` failed, ``130`` cancelled or interrupted (ERR §1). ``jobs retry
+ZADANIE`` starts a job that did not succeed again (``POST
+/jobs/{job}/retry``) and follows the new job the same way. ``jobs plan
+ZADANIE`` prints the plans a ``check`` job kept (``GET /jobs/{job}/plan``,
+``ActionPlanInfo``) without the network; ``jobs list`` the jobs (``GET
+/jobs``, ``JobList``, with its filters), ``jobs show ZADANIE`` one job
+(``JobDetail``), ``jobs cancel ZADANIE`` cancels a job that waits or runs,
+also one a running server supervises (``POST /jobs/{job}/cancel``: the job as
+it is right after the request), and ``jobs log ZADANIE`` prints the end of its
+log (``GET /jobs/{job}/log``, ``JobLog``); these exit ``0``. All of them call
+``archiwista.services`` without HTTP, as the owner of the installation
+(``LOCAL_OWNER``, who may write the stores and sees every job), with the
+``Authorizer`` over the state database; ``--json`` prints the route's model,
+a refusal prints no model and ends standard error with its
+``archiwista-error/1`` document.
+"""
+
+import argparse
+import sqlite3
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import ExitStack
+from typing import Any, TextIO
+
+from pydantic import BaseModel, ValidationError
+
+from archiwista.api.models import JobDetail, JobFilters, JobList, JobLog
+from archiwista.api.models_actions import ActionPlanInfo, JobRequest
+from archiwista.api.slots import checked_project
+from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
+from archiwista.auth.authorize import Authorizer
+from archiwista.commands import Commands, add_parser
+from archiwista.commands.producer_commands import json_object
+from archiwista.config import (
+    AppPaths,
+    ConfigStore,
+    SettingsService,
+    SettingsValidationError,
+)
+from archiwista.error_document import (
+    describe,
+    exception_problem,
+    refuse,
+    validation_problem,
+)
+from archiwista.errors import ArchiwistaError, StateError
+from archiwista.index import IndexQueries, IndexUnsupportedError
+from archiwista.jobs import (
+    ACTIVE_STATES,
+    FINISHED_STATES,
+    JobEvent,
+    JobRecord,
+    JobSupervisor,
+)
+from archiwista.jobs.foreground import exit_status, run_foreground
+from archiwista.jobs.protocol import STOP_TIMEOUT_S
+from archiwista.messages import label, message, with_detail
+from archiwista.services import jobs as job_controls
+from archiwista.services.actions import kept_plans, start
+from archiwista.sources import (
+    FILE_STATUSES,
+    PLAN_STATUSES,
+    PLAN_TODO,
+    PlanStatus,
+)
+from archiwista.sources.registry import PluginRegistry
+from archiwista.state import StateStore
+
+COMMANDS = frozenset({"jobs"})
+
+
+def add_commands(commands: Commands) -> None:
+    """Add ``archiwista jobs`` and its actions (see the module).
+
+    Parameters
+    ----------
+    commands : argparse._SubParsersAction
+        Subcommands of the ``archiwista`` parser.
+    """
+    text = message("cli.jobs_help")
+    parser = commands.add_parser("jobs", help=text, description=text)
+    actions = parser.add_subparsers(
+        dest="action", required=True, metavar=message("metavar.action")
+    )
+    started = add_parser(actions, "start", "cli.jobs_start_help")
+    started.add_argument(
+        "kind", metavar=message("metavar.kind"), help=message("cli.jobs_kind_help")
+    )
+    started.add_argument(
+        "producer",
+        metavar=message("metavar.producer"),
+        help=message("cli.commands_producer_help"),
+    )
+    started.add_argument(
+        "--store", metavar=message("metavar.store"), help=message("cli.jobs_store_help")
+    )
+    started.add_argument(
+        "--call",
+        dest="calls",
+        type=json_object,
+        action="append",
+        metavar="JSON",
+        help=message("cli.jobs_call_help"),
+    )
+    started.add_argument(
+        "--plan",
+        dest="plan_job",
+        metavar=message("metavar.job"),
+        help=message("cli.jobs_plan_job_help"),
+    )
+    started.add_argument(
+        "--pin",
+        dest="pin_project",
+        metavar=message("metavar.project"),
+        help=message("cli.jobs_pin_help"),
+    )
+    started.add_argument(
+        "--pin-group",
+        metavar=message("metavar.group"),
+        help=message("cli.jobs_pin_group_help"),
+    )
+    pin_mode = started.add_mutually_exclusive_group()
+    pin_mode.add_argument(
+        "--pin-add", action="store_true", help=message("cli.jobs_pin_add_help")
+    )
+    pin_mode.add_argument(
+        "--pin-open", action="store_true", help=message("cli.jobs_pin_open_help")
+    )
+    listed = add_parser(actions, "list", "cli.jobs_list_help")
+    listed.add_argument(
+        "--kind",
+        metavar=message("metavar.kind"),
+        help=message("cli.jobs_list_kind_help"),
+    )
+    listed.add_argument(
+        "--store",
+        metavar=message("metavar.store"),
+        help=message("cli.jobs_list_store_help"),
+    )
+    listed.add_argument(
+        "--state",
+        metavar=message("metavar.state"),
+        help=message("cli.jobs_list_state_help"),
+    )
+    listed.add_argument(
+        "--project",
+        metavar=message("metavar.project"),
+        help=message("cli.jobs_list_project_help"),
+    )
+    listed.add_argument(
+        "--limit",
+        metavar=message("metavar.number"),
+        help=message("cli.jobs_list_limit_help"),
+    )
+    listed.add_argument(
+        "--cursor",
+        metavar=message("metavar.cursor"),
+        help=message("cli.jobs_list_cursor_help"),
+    )
+    for action, help_key in (
+        ("plan", "cli.jobs_plan_help"),
+        ("show", "cli.jobs_show_help"),
+        ("cancel", "cli.jobs_cancel_help"),
+        ("retry", "cli.jobs_retry_help"),
+        ("log", "cli.jobs_log_help"),
+    ):
+        one = add_parser(actions, action, help_key)
+        one.add_argument(
+            "job", metavar=message("metavar.job"), help=message("cli.jobs_job_help")
+        )
+
+
+def main(
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Run an action of ``archiwista jobs``; return the exit status.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments of ``jobs`` (``action`` names the action).
+    paths : AppPaths
+        Local index, configuration (the stores, offline mode) and jobs.
+    registry : PluginRegistry
+        Producer plugins: the producer's catalog and its check of the options.
+    out, err : TextIO
+        The route's model (as JSON with ``--json``); a refusal's Polish
+        message and its ``archiwista-error/1`` document, and the progress of
+        a job, go to ``err``.
+
+    Returns
+    -------
+    int
+        ``0``; the outcome of a job that did not succeed (``10``, ``11`` or
+        ``130``); the exit code of the registry code of a refusal.
+    """
+    with ExitStack() as stack:
+        if args.action == "start":
+            return _start(stack, args, paths, registry, out, err)
+        if args.action == "list":
+            return _list(stack, args, paths, registry, out, err)
+        if args.action == "plan":
+            return _plan(stack, args, paths, registry, out, err)
+        return _control(stack, args, paths, registry, out, err)
+
+
+def _start(
+    stack: ExitStack,
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Start a job as ``POST /jobs`` does, follow it and print it as it ended."""
+    given: dict[str, Any] = {"kind": args.kind, "producer": args.producer}
+    for name in ("store", "calls", "plan_job"):
+        if getattr(args, name) is not None:
+            given[name] = getattr(args, name)
+    if args.pin_project is not None or args.pin_group is not None:
+        given["pin"] = {"project": args.pin_project, "group": args.pin_group}
+        if args.pin_add:
+            given["pin"]["add"] = True
+        if args.pin_open:
+            given["pin"]["open"] = True
+    try:
+        request = JobRequest.model_validate(given)
+    except ValidationError as error:
+        located = ({**item, "loc": ("body", *item["loc"])} for item in error.errors())
+        return refuse(validation_problem(located), err)
+    try:
+        service = SettingsService(ConfigStore(paths.config_file), registry)
+        settings = service.get()
+        decisions = Authorizer(StateStore(paths.state_file), service.get)
+        queries = stack.enter_context(IndexQueries(paths.index_file))
+        jobs = stack.enter_context(JobSupervisor(paths, service))
+    except _UNUSABLE as error:
+        return _unusable(error, err)
+
+    def submit() -> JobRecord:
+        return start(
+            registry,
+            settings,
+            jobs,
+            queries,
+            decisions,
+            kind=request.kind,
+            store=request.store,
+            calls=request.command_calls(),
+            actor=LOCAL_OWNER,
+            visible=ALL_PROJECTS,
+            areas=paths.areas_dir,
+            plan_job=request.plan_job,
+            pin=request.pin_target(),
+        )
+
+    return foreground(jobs, submit, args, out, err)
+
+
+def foreground(
+    jobs: JobSupervisor,
+    submit: Callable[[], JobRecord],
+    args: argparse.Namespace,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Submit a job, follow it to its end and print it as it ended.
+
+    Parameters
+    ----------
+    jobs : JobSupervisor
+        Started supervisor of the job.
+    submit : Callable[[], JobRecord]
+        Submits the job; a refusal raises before a job exists.
+    args : argparse.Namespace
+        The command's arguments: ``json`` chooses the output.
+    out, err : TextIO
+        The job's ``JobDetail`` (as JSON with ``--json``); its progress, its
+        notices, why it did not succeed and a refusal go to ``err``.
+
+    Returns
+    -------
+    int
+        ``0`` succeeded, ``10`` partial, ``11`` failed, ``130`` cancelled or
+        interrupted; the exit code of the registry code of a refusal.
+    """
+
+    def heard(event: JobEvent) -> str | None:
+        if event.type != "notice":
+            return None
+        text = event.data["message"]
+        return message("cli.jobs_notice", job=event.job_id, message=text)
+
+    try:
+        record = run_foreground(
+            jobs,
+            submit,
+            err,
+            started=lambda job: message(
+                "cli.jobs_started", kind=label("job.kind", job.kind), job=job.id
+            ),
+            event=heard,
+            cancelling=lambda job: message(
+                "cli.jobs_cancelling", kind=label("job.kind", job.kind), job=job.id
+            ),
+        )
+    except ArchiwistaError as error:
+        return refuse(describe(error), err)
+    detail = JobDetail.of(jobs.get(record.id) or record)
+    if detail.state in FINISHED_STATES and detail.error is not None:
+        err.write(_failure(detail) + "\n")
+    out.write((detail.model_dump_json() if args.json else _job_text(detail)) + "\n")
+    return exit_status(detail.state)
+
+
+def _list(
+    stack: ExitStack,
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Print the jobs as ``GET /jobs`` lists them, with its filters."""
+    names = ("kind", "store", "state", "project", "limit", "cursor")
+    given = {name: getattr(args, name) for name in names}
+    try:
+        filters = JobFilters.model_validate(
+            {name: value for name, value in given.items() if value is not None}
+        )
+    except ValidationError as error:
+        located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
+        return refuse(validation_problem(located), err)
+    try:
+        queries = stack.enter_context(IndexQueries(paths.index_file))
+        service = SettingsService(ConfigStore(paths.config_file), registry)
+        jobs = stack.enter_context(JobSupervisor(paths, service))
+    except _UNUSABLE as error:
+        return _unusable(error, err)
+    try:
+        checked_project(queries, filters.project, ALL_PROJECTS)
+    except ArchiwistaError as error:
+        return refuse(describe(error), err)
+    page = jobs.list(
+        kind=filters.kind,
+        store=filters.store,
+        state=filters.state,
+        project=filters.project,
+        limit=filters.limit,
+        cursor=filters.cursor,
+        visible=ALL_PROJECTS,
+    )
+    listed = JobList.of(page)
+    out.write((listed.model_dump_json() if args.json else _list_text(listed)) + "\n")
+    return 0
+
+
+def _control(
+    stack: ExitStack,
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Show, cancel, retry a job or print its log, as the routes of the job do."""
+    try:
+        service = SettingsService(ConfigStore(paths.config_file), registry)
+        decisions = Authorizer(StateStore(paths.state_file), service.get)
+        queries = stack.enter_context(IndexQueries(paths.index_file))
+        jobs = stack.enter_context(JobSupervisor(paths, service))
+    except _UNUSABLE as error:
+        return _unusable(error, err)
+    if args.action == "retry":
+
+        def submit() -> JobRecord:
+            return job_controls.retry(
+                jobs,
+                decisions,
+                queries,
+                service.get(),
+                job_id=args.job,
+                actor=LOCAL_OWNER,
+                visible=ALL_PROJECTS,
+            )
+
+        return foreground(jobs, submit, args, out, err)
+    model: BaseModel
+    try:
+        if args.action == "log":
+            tail = job_controls.log(jobs, job_id=args.job, visible=ALL_PROJECTS)
+            model, text = JobLog.of(args.job, tail), tail.text
+            if tail.truncated and not args.json:
+                err.write(
+                    message("cli.jobs_log_truncated", size=tail.size_bytes) + "\n"
+                )
+        elif args.action == "cancel":
+            record = job_controls.cancel(
+                jobs,
+                decisions,
+                job_id=args.job,
+                actor=LOCAL_OWNER,
+                visible=ALL_PROJECTS,
+            )
+            model = detail = JobDetail.of(record)
+            text = _job_text(detail)
+            if detail.state in ACTIVE_STATES:
+                stopping = message(
+                    "cli.jobs_cancel_requested", seconds=round(STOP_TIMEOUT_S)
+                )
+                text = f"{text}\n{stopping}"
+        else:
+            detail = JobDetail.of(
+                job_controls.visible_job(jobs, args.job, ALL_PROJECTS)
+            )
+            model, text = detail, _job_text(detail)
+            if detail.error is not None:
+                text = f"{text}\n{_failure(detail)}"
+    except ArchiwistaError as error:
+        return refuse(describe(error), err)
+    if args.json:
+        out.write(model.model_dump_json() + "\n")
+    else:
+        out.write(text if text.endswith("\n") or not text else f"{text}\n")
+    return 0
+
+
+def _plan(
+    stack: ExitStack,
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Print the plan a ``check`` job kept, as ``GET /jobs/{job}/plan``."""
+    try:
+        queries = stack.enter_context(IndexQueries(paths.index_file))
+        service = SettingsService(ConfigStore(paths.config_file), registry)
+        jobs = stack.enter_context(JobSupervisor(paths, service))
+    except _UNUSABLE as error:
+        return _unusable(error, err)
+    try:
+        kept = kept_plans(queries, jobs, args.job, visible=ALL_PROJECTS)
+    except ArchiwistaError as error:
+        return refuse(describe(error), err)
+    plan = ActionPlanInfo.of(kept)
+    out.write((plan.model_dump_json() if args.json else _plan_text(plan)) + "\n")
+    return 0
+
+
+# What keeps a command from opening the settings, the state, the index or the jobs.
+_UNUSABLE = (
+    SettingsValidationError,
+    StateError,
+    IndexUnsupportedError,
+    OSError,
+    sqlite3.Error,
+)
+
+
+def _unusable(error: Exception, err: TextIO) -> int:
+    """Refuse a command whose settings, index or jobs cannot be opened."""
+    detail = with_detail(message("cli.jobs_failed"), str(error))
+    return refuse(exception_problem(error, detail), err)
+
+
+def _job_text(detail: JobDetail) -> str:
+    """Return a job as it ended for a person.
+
+    A plan adds its counts and the line of each call (or why it has no
+    plan), a download the files by status, the units that failed and the
+    calls that failed or were skipped, a project's verification, check or
+    restore its pins by state (a check also the positions without a pin), a
+    project's re-pin what became of its group's pins, a warm-up of previews
+    what it selected and how each file went.
+    """
+    kind = label("job.kind", detail.kind)
+    state = label("job.state", detail.state)
+    lines: list[str] = [message("cli.jobs_job", kind=kind, job=detail.id, state=state)]
+    result = detail.result
+    if result is None:
+        return lines[0]
+    if detail.kind == "check":
+        counts = result["counts"]
+        todo = sum(counts[status] for status in PLAN_TODO)
+        size, complete = result["size_bytes"], result["size_complete"]
+        lines.append(_counts(counts, todo=todo, size=size, complete=complete))
+        lines += _call_lines(result["calls"])
+    if detail.kind == "download":
+        files: Mapping[str, int] = result["counts"]
+        named = ", ".join(
+            f"{label('job.file', status)} {files[status]}" for status in FILE_STATUSES
+        )
+        lines.append(
+            message(
+                "cli.jobs_files",
+                files=sum(files.values()),
+                counts=named,
+                failed=result["failed"],
+            )
+        )
+        lines += _taken_lines(result.get("taken", ()))
+        lines += _call_lines(result["calls"])
+    if detail.kind == "preview_warm":
+        lines.append(
+            message(
+                "cli.jobs_warm",
+                versions=result["versions"],
+                files=result["files"],
+                warmed=result["warmed"],
+                cached=result["cached"],
+                needs_build=result["needs_build"],
+                failed=result["failed"],
+                skipped=result["skipped"],
+            )
+        )
+    if detail.kind in ("project_verify", "project_check", "project_restore"):
+        pins: Mapping[str, int] = result["counts"]
+        named = ", ".join(
+            f"{label('job.pin', status)} {count}"
+            for status, count in pins.items()
+            if count
+        )
+        lines.append(
+            message("cli.jobs_project_pins", pins=sum(pins.values()), counts=named)
+        )
+        if result.get("added"):
+            lines.append(message("cli.jobs_project_added", added=len(result["added"])))
+    if detail.kind == "project_repin":
+        repinned: Mapping[str, int] = result["pins"]
+        lines.append(
+            message(
+                "cli.jobs_project_repin",
+                group=result["group"],
+                status=label("job.repin", result["status"]),
+                kept=repinned["kept"],
+                new=repinned["new"],
+                dropped=repinned["dropped"],
+            )
+        )
+    return "\n".join(lines)
+
+
+def _failure(detail: JobDetail) -> str:
+    """Return why a job did not succeed, for a person."""
+    assert detail.error is not None
+    return message(
+        "cli.jobs_job_failed",
+        kind=label("job.kind", detail.kind),
+        job=detail.id,
+        state=label("job.state", detail.state),
+        detail=detail.error.detail,
+    )
+
+
+def _list_text(listed: JobList) -> str:
+    """Return a page of jobs for a person: a line per job, then the next page."""
+    lines = [
+        message(
+            "cli.jobs_list_line",
+            job=item.id,
+            kind=label("job.kind", item.kind),
+            state=label("job.state", item.state),
+            actor=item.actor,
+            created=item.created_at.isoformat(timespec="seconds"),
+        )
+        for item in listed.items
+    ]
+    if not lines:
+        lines.append(message("cli.jobs_list_none"))
+    if listed.next_cursor is not None:
+        lines.append(message("cli.jobs_list_next", cursor=listed.next_cursor))
+    return "\n".join(lines)
+
+
+def _call_lines(calls: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Return what became of each call of a job of calls, for a person.
+
+    A planned call is its command line; one that failed says why, one a
+    download skipped says why. A call a download ran is not named: its
+    files and failed units are counted with the others.
+    """
+    count = len(calls)
+    lines: list[str] = []
+    for place, call in enumerate(calls, start=1):
+        values = {"place": place, "count": count, "line": call["line"]}
+        if call["status"] == "failed":
+            detail = call["error"]["detail"]
+            lines.append(message("cli.jobs_call_failed", **values, detail=detail))
+        elif call["status"] == "skipped":
+            key = {
+                "not_planned": "cli.jobs_call_not_planned",
+                "taken": "cli.jobs_call_taken",
+            }.get(call["reason"], "cli.jobs_call_nothing")
+            lines.append(message(key, **values))
+        elif "positions" in call:
+            lines.append(message("cli.jobs_line", line=call["line"]))
+    return lines
+
+
+def _taken_lines(taken: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Return the positions other jobs download, one line per such job."""
+    holders = Counter((str(item["job"]), str(item["actor"])) for item in taken)
+    return [
+        message("job.taken_by_job", count=count, actor=actor, job=job)
+        for (job, actor), count in holders.items()
+    ]
+
+
+def _plan_text(plan: ActionPlanInfo) -> str:
+    """Return kept plans for a person: each call's line and positions, the counts."""
+    checked_at = plan.checked_at.isoformat(timespec="seconds")
+    lines: list[str] = [
+        message(
+            "cli.jobs_plan", job=plan.job_id, store=plan.store, checked_at=checked_at
+        )
+    ]
+    none = message("cli.jobs_no_label")
+    for call in plan.calls:
+        lines.append(message("cli.jobs_line", line=call.line))
+        lines += [
+            message(
+                "cli.jobs_plan_entry",
+                status=label("job.plan", entry.status),
+                path=entry.path,
+                local=entry.local_label or none,
+                available=entry.available_label or none,
+            )
+            for entry in call.entries
+        ]
+    size, complete = plan.size_bytes, plan.size_complete
+    lines.append(_counts(plan.counts, todo=plan.todo, size=size, complete=complete))
+    return "\n".join(lines)
+
+
+def _counts(
+    counts: Mapping[PlanStatus, int], *, todo: int, size: int | None, complete: bool
+) -> str:
+    """Return the positions of a plan by status, what a run downloads and its size."""
+    named = ", ".join(
+        f"{label('job.plan', status)} {counts[status]}"
+        for status in PLAN_STATUSES
+        if counts[status]
+    )
+    return message(
+        "cli.jobs_counts",
+        positions=sum(counts.values()),
+        counts=named,
+        todo=todo,
+        size=_size(size, complete=complete),
+    )
+
+
+def _size(size: int | None, *, complete: bool) -> str:
+    """Return the size of a run for a person: unknown, at least, or whole."""
+    if size is None:
+        return message("cli.jobs_size_unknown")
+    megabytes = f"{size / 1_000_000:.1f} MB".replace(".", ",")
+    if complete:
+        return message("cli.jobs_size", size=megabytes)
+    return message("cli.jobs_size_partial", size=megabytes)

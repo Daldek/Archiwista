@@ -4,13 +4,16 @@ The application serves a generated Kartograf store with a real job
 supervisor whose workers carry test hooks (``tests.fixtures.job_worker``):
 jobs are started, listed and followed over HTTP as the interface and agents
 do, offline. The test client buffers a response, so it reads a stream whole
-once the job has ended; one test follows a stream on a real server.
+once the job has ended; the tests of a stream's own end follow it on a real
+server.
 """
 
 import json
 import queue
 import threading
+import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -19,11 +22,18 @@ import pytest
 
 from archiwista.api import API_PREFIX
 from archiwista.app import create_app
-from archiwista.auth import LOCAL_OWNER
+from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
 from archiwista.jobs import JobSupervisor
-from archiwista.messages import MESSAGES
-from archiwista.security import CSRF_HEADER, SESSION_COOKIE, issue_one_time_token
-from archiwista.server import LaunchFile, LocalServer, bind_loopback
+from archiwista.messages import message
+from archiwista.security import (
+    CSRF_HEADER,
+    LOOPBACK_HOST,
+    SESSION_COOKIE,
+    TokenKind,
+    issue_one_time_token,
+    revoke_agent_sessions,
+)
+from archiwista.server import AppServer, LaunchFile, bind_address
 from archiwista.state import StateStore
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.jobs import (
@@ -32,11 +42,12 @@ from tests.fixtures.jobs import (
     SLOW_ENTRY_S,
     STORE,
     TEST_WORKER,
+    JobsEnv,
     jobs_env,
 )
 from tests.fixtures.jobs_api import JobsApi, jobs_api
 from tests.fixtures.local_server import NoSources
-from tests.fixtures.permissions import OTHER, add_people, principal
+from tests.fixtures.permissions import ADMIN, add_people, principal, share
 
 # Headers of the synthetic JPEG sheets carry no geotransform (their outline
 # comes from the world file); rasterio says so while reading them.
@@ -54,7 +65,13 @@ def served(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[JobsApi]
         yield created
 
 
-def _stream(served: JobsApi, job: str, last_event_id: str | None = None) -> Any:
+def _stream(
+    served: JobsApi,
+    job: str,
+    last_event_id: str | None = None,
+    *,
+    accept_language: str | None = None,
+) -> Any:
     """Read a job's event stream (to its end) with the owner's session."""
     headers = {
         "cookie": f"{SESSION_COOKIE}={served.owner.session_id}",
@@ -62,6 +79,8 @@ def _stream(served: JobsApi, job: str, last_event_id: str | None = None) -> Any:
     }
     if last_event_id is not None:
         headers["Last-Event-ID"] = last_event_id
+    if accept_language is not None:
+        headers["accept-language"] = accept_language
     return served.api.client.get(f"{API_PREFIX}/jobs/{job}/events", headers=headers)
 
 
@@ -144,7 +163,8 @@ def test_second_scan_of_store_returns_409_with_job_id(
     for refused in (scan, footprints):
         assert_problem(refused, 409, "conflict")
         body = refused.json()
-        assert body["job"] == {"id": first["id"], "kind": "scan", "state": "running"}
+        running = {"id": first["id"], "kind": "scan", "state": "running"}
+        assert body["details"]["job"] == running
         assert first["id"] in body["detail"]
     assert [job["id"] for job in recorded] == [first["id"]]
 
@@ -167,19 +187,89 @@ def test_footprints_refused_offline(
     served.env.wait(accepted.json()["id"])
 
     # Assert
-    assert_problem(refused, 409, "offline_mode")
-    assert refused.json()["detail"] == MESSAGES["job_offline_mode"]
+    assert_problem(refused, 409, "conflict", "offline_mode")
+    assert refused.json()["detail"] == message("job.offline_mode")
     assert listed.json() == {"items": [], "next_cursor": None}
     assert accepted.status_code == 202
     assert (accepted.json()["kind"], accepted.json()["params"]) == ("footprints", {})
 
 
+def test_failed_job_has_a_registry_code_in_detail_and_stream(served: JobsApi) -> None:
+    """A job that fails reports the error of a problem: registry code and reason."""
+    # Arrange: the share is gone, an empty directory takes its place.
+    served.env.scan("full")
+    root = served.env.store.root
+    root.rename(root.with_name("data-away"))
+    root.mkdir()
+
+    # Act
+    started = served.owner.request("POST", f"/stores/{STORE}/footprints")
+    job = started.json()["id"]
+    served.env.wait(job)
+    detail = served.owner.request("GET", f"/jobs/{job}").json()
+    listed = served.owner.request("GET", "/jobs?kind=footprints").json()["items"]
+    final = _messages(_stream(served, job))[-1]
+
+    # Assert
+    error = detail["error"]
+    assert detail["state"] == "failed"
+    assert (error["code"], error["details"]) == (
+        "store_unavailable",
+        {"reason": "store_unreadable"},
+    )
+    assert error["hint"] is None and str(root) in error["detail"]
+    assert listed == [detail]
+    assert final[1:] == (
+        "state",
+        {
+            "state": "failed",
+            "error": {
+                "code": "store_unavailable",
+                "detail": error["detail"],
+                "details": {"reason": "store_unreadable"},
+            },
+        },
+    )
+
+
+def test_error_of_a_job_is_in_the_language_of_the_request(served: JobsApi) -> None:
+    """The worker stores the error in Polish with its key; each reader gets its own."""
+    # Arrange: the share is gone, an empty directory takes its place.
+    served.env.scan("full")
+    root = served.env.store.root
+    root.rename(root.with_name("data-away"))
+    root.mkdir()
+    job = served.owner.request("POST", f"/stores/{STORE}/footprints").json()["id"]
+    served.env.wait(job)
+
+    # Act
+    english = served.owner.request("GET", f"/jobs/{job}")
+    polish = served.owner.request("GET", f"/jobs/{job}", accept_language="pl")
+    streamed = _messages(_stream(served, job, accept_language="pl"))[-1][2]
+    store = served.owner.request("GET", f"/stores/{STORE}", accept_language="en")
+
+    # Assert
+    assert english.json()["error"]["detail"] == message(
+        "scan.store_empty", "en", path=root
+    )
+    assert polish.json()["error"]["detail"] == message(
+        "scan.store_empty", "pl", path=root
+    )
+    assert streamed["error"]["detail"] == polish.json()["error"]["detail"]
+    assert polish.json()["error"]["code"] == "store_unavailable"
+    # What is stored when it is found stays Polish for every reader.
+    assert store.json()["state"]["detail"] == polish.json()["error"]["detail"]
+
+
 def test_job_detail_has_actor(served: JobsApi) -> None:
-    """A job keeps who started it: an account, also behind its agent's token."""
+    """A job keeps who started it: an account, also behind its agent's token.
+
+    A link check is an administrator's (``store.scan``), so the account is one.
+    """
     # Arrange
     served.env.scan("full")
     add_people(served.api.state)
-    person = principal(served.api.state, "other")
+    person = principal(served.api.state, "admin")
     link = served.env.store.by_kind("link")[0].path
     callers = {
         "person": served.api.session(person),
@@ -204,8 +294,8 @@ def test_job_detail_has_actor(served: JobsApi) -> None:
 
     # Assert
     assert {who: detail["actor"] for who, detail in details.items()} == {
-        "person": OTHER,
-        "agent": OTHER,
+        "person": ADMIN,
+        "agent": ADMIN,
         "owner": "local",
     }
     for detail in details.values():
@@ -215,6 +305,53 @@ def test_job_detail_has_actor(served: JobsApi) -> None:
     assert {job["id"]: job["actor"] for job in listed} == {
         detail["id"]: detail["actor"] for detail in details.values()
     }
+
+
+def test_a_job_of_a_hidden_project_is_listed_without_its_details(
+    served: JobsApi,
+) -> None:
+    """Everyone sees the queue; a job of a project igor does not see stays bare.
+
+    Olga's scan of her private project's data folder is listed for igor as
+    `hidden`, with its kind, store, who, state, times and progress counts,
+    and nothing else; its address, events and log are `404` as for an
+    unknown job (ADR-047 decision 3).
+    """
+    # Arrange
+    served.env.scan("full")
+    add_people(served.api.state)
+    project = served.env.queries.projects(visible=ALL_PROJECTS)[0]
+    share(served.api.state, project.access_key, "private")
+    owner = served.api.session(principal(served.api.state, "owner"))
+    other = served.api.session(principal(served.api.state, "other"))
+    started = owner.request("POST", f"/projects/{project.key}/scan")
+    assert started.status_code == 202, started.text
+    job = started.json()["id"]
+    served.env.wait(job)
+
+    # Act
+    shown = owner.request("GET", f"/jobs/{job}").json()
+    listed = other.request("GET", "/jobs?kind=own_scan").json()["items"]
+    answers = [
+        other.request("GET", f"/jobs/{job}{tail}") for tail in ("", "/events", "/log")
+    ]
+
+    # Assert
+    assert shown["hidden"] is False and shown["session"] is not None
+    assert shown["progress"].keys() > {"current", "total"}
+    assert listed == [
+        {
+            **shown,
+            "params": {},
+            "session": None,
+            "progress": {key: shown["progress"][key] for key in ("current", "total")},
+            "result": None,
+            "error": None,
+            "hidden": True,
+        }
+    ]
+    for answer in answers:
+        assert_problem(answer, 404, "not_found")
 
 
 def test_sse_resume_from_last_event_id(served: JobsApi) -> None:
@@ -233,7 +370,7 @@ def test_sse_resume_from_last_event_id(served: JobsApi) -> None:
     assert len(whole) > 4 and whole[-1][2]["state"] == "succeeded"
     assert resumed == whole[3:]
     assert ended.status_code == 204 and ended.content == b""
-    assert_problem(invalid, 422, "validation_error")
+    assert_problem(invalid, 400, "validation_error")
     assert_problem(unknown, 404, "not_found")
 
 
@@ -276,7 +413,7 @@ def test_post_without_csrf_rejected(served: JobsApi) -> None:
 
     # Assert
     for response in refused:
-        assert_problem(response, 403, "csrf_rejected")
+        assert_problem(response, 403, "forbidden", "csrf_rejected")
     assert listed["items"] == []
 
 
@@ -328,7 +465,61 @@ def test_job_list_filters_and_pages(served: JobsApi) -> None:
         scan.id,
     ]
     for refused in (foreign, misspelt, unknown_state):
-        assert_problem(refused, 422, "validation_error")
+        assert_problem(refused, 400, "validation_error")
+
+
+@contextmanager
+def _serving(env: JobsEnv) -> Iterator[tuple[AppServer, threading.Thread, str]]:
+    """Serve the application over ``env`` on a loopback port in a thread.
+
+    Yields the server, its thread and the address of the API; the server
+    stops when the block ends, unless the test stopped it first.
+    """
+    sock = bind_address(LOOPBACK_HOST, 0)
+    port = sock.getsockname()[1]
+    app = create_app(
+        port=port,
+        settings=env.settings,
+        index_path=env.paths.index_file,
+        state=StateStore(env.paths.state_file),
+        registry=NoSources(),
+        areas_dir=env.paths.areas_dir,
+        jobs=env.jobs,
+    )
+    server = AppServer(
+        sock,
+        app,
+        url="",
+        launch=LaunchFile(env.paths.data_dir),
+        access_log=False,
+        on_stop=app.state.job_streams.close,
+    )
+    serving = threading.Thread(target=server.run, daemon=True)
+    serving.start()
+    try:
+        yield server, serving, f"http://127.0.0.1:{port}{API_PREFIX}"
+    finally:
+        server.stop()
+        serving.join(timeout=WAIT_S / 3)
+
+
+def _signed_in(env: JobsEnv, api: str, kind: TokenKind) -> httpx.Client:
+    """Return a client of a session the owner's one-time token of ``kind`` opened."""
+    token = issue_one_time_token(env.paths.index_file, kind, minted_by=LOCAL_OWNER)
+    client = httpx.Client(base_url=api, timeout=None)
+    exchanged = client.post("/session", json={"token": token.token})
+    assert exchanged.status_code == 200, exchanged.text
+    client.headers[CSRF_HEADER] = exchanged.json()["csrf_token"]
+    return client
+
+
+def _follow(client: httpx.Client, job: str, lines: queue.Queue[str | None]) -> None:
+    """Put the status and lines of a job's event stream into ``lines``, then None."""
+    with client.stream("GET", f"/jobs/{job}/events") as response:
+        lines.put(str(response.status_code))
+        for line in response.iter_lines():
+            lines.put(line)
+    lines.put(None)
 
 
 def test_event_stream_ends_when_server_stops(
@@ -338,47 +529,15 @@ def test_event_stream_ends_when_server_stops(
     # Arrange: a scan of about 16 s followed over a real connection.
     monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S * 4))
     lines: queue.Queue[str | None] = queue.Queue()
-    with jobs_env(tmp_path, monkeypatch) as env:
-        sock = bind_loopback(0)
-        port = sock.getsockname()[1]
-        app = create_app(
-            port=port,
-            settings=env.settings,
-            index_path=env.paths.index_file,
-            state=StateStore(env.paths.state_file),
-            registry=NoSources(),
-            areas_dir=env.paths.areas_dir,
-            jobs=env.jobs,
-        )
-        server = LocalServer(
-            sock,
-            app,
-            url="",
-            launch=LaunchFile(env.paths.data_dir),
-            access_log=False,
-            on_stop=app.state.job_streams.close,
-        )
-        serving = threading.Thread(target=server.run, daemon=True)
-        serving.start()
+    with (
+        jobs_env(tmp_path, monkeypatch) as env,
+        _serving(env) as (server, serving, api),
+    ):
         job = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
-        token = issue_one_time_token(
-            env.paths.index_file, "startup", minted_by=LOCAL_OWNER
+        client = _signed_in(env, api, "startup")
+        follower = threading.Thread(
+            target=_follow, args=(client, job.id, lines), daemon=True
         )
-        client = httpx.Client(
-            base_url=f"http://127.0.0.1:{port}{API_PREFIX}", timeout=None
-        )
-        exchanged = client.post("/session", json={"token": token.token})
-        assert exchanged.status_code == 200
-        client.headers[CSRF_HEADER] = exchanged.json()["csrf_token"]
-
-        def follow() -> None:
-            with client.stream("GET", f"/jobs/{job.id}/events") as response:
-                lines.put(str(response.status_code))
-                for line in response.iter_lines():
-                    lines.put(line)
-            lines.put(None)
-
-        follower = threading.Thread(target=follow, daemon=True)
         follower.start()
         opened = [lines.get(timeout=WAIT_S) for _ in range(4)]
 
@@ -394,4 +553,49 @@ def test_event_stream_ends_when_server_stops(
     # Assert
     assert opened == ["200", "id: 1", "event: state", 'data: {"state":"queued"}']
     assert not serving.is_alive() and not follower.is_alive()
+    assert record is not None and record.state == "running"
+
+
+@pytest.mark.parametrize("ending", ["sign-out", "agents revoked"])
+def test_event_stream_ends_with_its_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ending: str
+) -> None:
+    """An open stream ends about a second after its session ends; the job goes on.
+
+    After a sign-out, or the revocation of agent sessions under an agent's
+    stream, the stream used to follow the job to its end (review of v0.4,
+    D6; ASVS 7.4.1, 7.4.2).
+    """
+    # Arrange: a scan of about 16 s followed over a real connection.
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S * 4))
+    lines: queue.Queue[str | None] = queue.Queue()
+    kind: TokenKind = "startup" if ending == "sign-out" else "agent"
+    with jobs_env(tmp_path, monkeypatch) as env, _serving(env) as (_, _, api):
+        job = env.jobs.submit("scan", store=STORE, actor=LOCAL_OWNER)
+        client = _signed_in(env, api, kind)
+        threading.Thread(
+            target=_follow, args=(client, job.id, lines), daemon=True
+        ).start()
+        opened = [lines.get(timeout=WAIT_S) for _ in range(4)]
+
+        # Act
+        if ending == "sign-out":
+            with httpx.Client(
+                base_url=api, headers=client.headers, cookies=client.cookies
+            ) as other:
+                assert other.delete("/session").status_code == 204
+        else:
+            revoke_agent_sessions(env.paths.index_file)
+        ended = time.monotonic()
+        while lines.get(timeout=WAIT_S) is not None:
+            pass
+        took_s = time.monotonic() - ended
+        record = env.jobs.get(job.id)
+        env.jobs.cancel(job.id)
+        env.wait(job.id)
+        client.close()
+
+    # Assert
+    assert opened == ["200", "id: 1", "event: state", 'data: {"state":"queued"}']
+    assert took_s < 3, took_s
     assert record is not None and record.state == "running"

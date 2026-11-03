@@ -4,13 +4,18 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from archiwista.sources import (
+    ActionAdapter,
+    AreaCommandAdapter,
+    CurrentVersionAdapter,
+    DefaultRootAdapter,
     EntryMeta,
+    ExportFolderAdapter,
     Footprint,
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
-    ProjectInfo,
     ScanScope,
+    SegmentDescriptionAdapter,
     SegmentedAdapter,
     SheetGridAdapter,
     SourceAdapter,
@@ -49,14 +54,6 @@ class MinimalSource:
         """Report unavailable location instead of inventing coordinates."""
         return Footprint(location="none", reason="no_source")
 
-    def read_project(self, path: Path) -> ProjectInfo:
-        """Read the producer's existing project."""
-        return ProjectInfo(producer=self.producer, store="demo", path=path, name="demo")
-
-    def project_status(self, path: Path) -> ProjectInfo:
-        """Read the existing project's status."""
-        return self.read_project(path)
-
 
 def load_minimal(context: SourceContext) -> SourceAdapter:
     """Plugin factory of the minimal producer."""
@@ -71,10 +68,16 @@ def test_source_protocol_does_not_require_optional_capabilities() -> None:
 
     assert isinstance(adapter, SourceAdapter)
     for capability in (
+        ActionAdapter,
+        AreaCommandAdapter,
+        CurrentVersionAdapter,
+        SegmentDescriptionAdapter,
         SegmentedAdapter,
         PartitionedAdapter,
         GeoAdapter,
         LinkCheckAdapter,
+        DefaultRootAdapter,
         SheetGridAdapter,
+        ExportFolderAdapter,
     ):
         assert not isinstance(adapter, capability)

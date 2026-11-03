@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from archiwista.errors import FormatRefusedError
-from archiwista.formats import file_format, vector_source
+from archiwista.formats import file_format, raster_member, vector_source
 
 _NATIVE = """!table
 !version 300
@@ -99,3 +99,31 @@ def test_formats_vector_source_refuses_names_gdal_reads_otherwise(name: str) -> 
     # Act / Assert
     with pytest.raises(FormatRefusedError):
         vector_source(Path(name), file_format(name))
+
+
+@pytest.mark.parametrize(
+    ("names", "member"),
+    [
+        (["N-33-66-C-d-3-3.xyz"], "N-33-66-C-d-3-3.xyz"),
+        (["dane/", "dane/arkusz.ASC"], "dane/arkusz.ASC"),
+        (["a.xyz", "a.xyz.aux.xml"], None),
+        (["opis.txt"], None),
+        (["dane/"], None),
+        (["../a.xyz"], None),
+        (["a\\b.xyz"], None),
+    ],
+    ids=[
+        "xyz",
+        "asc_in_folder",
+        "two_files",
+        "no_raster",
+        "empty",
+        "dotdot",
+        "backslash",
+    ],
+)
+def test_formats_raster_member_is_the_one_plain_raster(
+    names: list[str], member: str | None
+) -> None:
+    """Exactly one file, a raster, under a plain name; directories do not count."""
+    assert raster_member(names) == member

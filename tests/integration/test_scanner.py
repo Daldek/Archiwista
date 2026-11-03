@@ -21,6 +21,8 @@ from archiwista.index import (
     IndexQueries,
     IndexWriter,
     LocationRef,
+    ProjectPinRef,
+    ProjectRecord,
     SlotDetail,
     SlotQuery,
     StoreIndexState,
@@ -35,12 +37,14 @@ from archiwista.index.scanner import (
     refresh_view,
     scan_store,
 )
+from archiwista.messages import localize
 from archiwista.sources import (
     Footprint,
     GeoJSONGeometry,
     ScanScope,
     SourceAdapter,
     SourceEntry,
+    SourceState,
 )
 from archiwista.sources.registry import load_registry
 from tests.fixtures.make_store import (
@@ -141,8 +145,8 @@ def _removable(store: StoreManifest) -> dict[str, tuple[ExpectedEntry, ExpectedE
     held |= {
         pin.version
         for project in store.projects
-        for task in project.tasks
-        for pin in task.pins
+        for group in project.groups
+        for pin in group.pins
     }
     found = {}
     for link in store.by_kind("link"):
@@ -380,8 +384,8 @@ def test_pins_survive_rescan(env: _Env) -> None:
     project = env.store.project("projekt-01")
     pin = next(
         pin
-        for task in project.tasks
-        for pin in task.pins
+        for group in project.groups
+        for pin in group.pins
         if not pin.current and pin.present
     )
     env.scan("full")
@@ -392,7 +396,7 @@ def test_pins_survive_rescan(env: _Env) -> None:
     )
     record = env.queries.project(key, visible=ALL_PROJECTS)
     assert record is not None
-    slot = next(item.slot for item in record.pins if item.version == pin.version)
+    slot = next(item.slot for item in _pins(record) if item.version == pin.version)
     assert slot is not None
 
     # Act
@@ -408,14 +412,19 @@ def test_pins_survive_rescan(env: _Env) -> None:
 
     # Assert
     assert rescanned == record
-    assert {item.state for item in record.pins} == {"ok"}
+    assert {item.state for item in _pins(record)} == {"ok"}
     assert [(ref.project, ref.state) for ref in pinned_by] == [(project.name, "ok")]
     assert marked is not None and dropped is not None
     for later in (marked, dropped):
-        states = {item.version: item.state for item in later.pins}
+        states = {item.version: item.state for item in _pins(later)}
         assert states.pop(pin.version) == "missing"
         assert set(states.values()) == {"ok"}
     assert env.queries.version(STORE, pin.version, visible=ALL_PROJECTS) is None
+
+
+def _pins(record: ProjectRecord) -> list[ProjectPinRef]:
+    """Return the pins of every group of a project."""
+    return [pin for group in record.groups for pin in group.pins]
 
 
 def test_empty_mount_point_keeps_index(env: _Env) -> None:
@@ -453,7 +462,8 @@ def test_empty_mount_point_keeps_index(env: _Env) -> None:
     # Assert
     assert all(str(root) in message for message in errors)
     assert (unavailable.status, unavailable.stale) == ("unavailable", True)
-    assert unavailable.detail == errors[-1]
+    # The status is stored in Polish, whatever language the caller works in.
+    assert unavailable.detail == localize(errors[-1], "pl")
     assert unavailable.status_at is not None
     assert next(s for s in view.stores if s.store == STORE).stale is True
     assert unchanged == rows
@@ -461,6 +471,38 @@ def test_empty_mount_point_keeps_index(env: _Env) -> None:
     assert unavailable.missing_versions == 0
     assert back.finished.missing == 0
     assert (env.state().status, env.state().stale) == ("available", False)
+    assert _rows(env.queries) == rows
+
+
+def test_store_refused_by_the_probe_keeps_its_reason_and_hint(
+    env: _Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A store the producer refuses is unavailable with the producer's reason."""
+    # Arrange
+    env.scan("full")
+    rows = _rows(env.queries)
+    refused = SourceState(
+        producer="kartograf",
+        status="incompatible",
+        detail="no marker here",
+        reason="no_marker",
+        hint="run the init command",
+    )
+    monkeypatch.setattr(env.adapter, "probe", lambda root: refused)
+
+    # Act
+    with pytest.raises(SourceUnavailableError) as raised:
+        env.scan("incremental")
+
+    # Assert
+    error = raised.value
+    assert (error.code, error.details["reason"], error.hint) == (
+        "store_unavailable",
+        "no_marker",
+        "run the init command",
+    )
+    assert "no marker here" in str(error)
+    assert (env.state().status, env.state().stale) == ("unavailable", True)
     assert _rows(env.queries) == rows
 
 
@@ -619,7 +661,9 @@ def test_refresh_view_unit_missing_its_slot_marks_nothing(env: _Env) -> None:
     tile = next(entry for entry in env.store.by_kind("link") if entry.segment == LAZ)
     env.scan("full")
     before = env.slot(tile.path)
-    area = kartograf.read_sidecar(env.store.root / tile.path).request["bbox"]
+    request = kartograf.read_sidecar(env.store.root / tile.path).request
+    assert request is not None
+    area = request["bbox"]
     unit = "_".join(format(value, ".10g") for value in area)
 
     # Act
@@ -766,7 +810,7 @@ def test_scans_never_confirm_links(env: _Env, monkeypatch: pytest.MonkeyPatch) -
 def test_read_only_store_scan_leaves_store_unchanged(env: _Env) -> None:
     """Scans read a store without write permission and change nothing in it."""
     # Arrange
-    output = env.store.output_dir
+    output = env.store.base
     before = _tree(output)
     _make_tree_read_only(output, read_only=True)
 

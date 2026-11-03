@@ -9,23 +9,35 @@ documented problems. It also snapshots a project's own file: the plan, the
 
 import io
 import json
+import ssl
 from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
 
+from archiwista.auth import LOCAL_OWNER, passwords
 from archiwista.cli import main
 from archiwista.config import ConfigStore
 from archiwista.jobs.reindex import reindex_main
-from archiwista.security import CSRF_HEADER
+from archiwista.security import CSRF_HEADER, TokenKind, issue_one_time_token
 from archiwista.sources.registry import load_registry
+from archiwista.state import StateStore
+from tests.fixtures.api_session import assert_problem, running_api
 from tests.fixtures.api_store import STORE, store_settings
 from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import make_store
 from tests.fixtures.own_data import make_own_folder
 from tests.fixtures.own_data_api import DATA_DIR, FIRST, scan_own
 from tests.fixtures.preview_api import scanned_store
+from tests.fixtures.team_server import (
+    ADMIN_ACCOUNT,
+    ADMIN_PASSWORD,
+    cheap_hasher,
+    save_team,
+    team_serving,
+    team_site,
+)
 
 pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
 KRAKOW = "19.9,50.0,20.0,50.05"
@@ -97,24 +109,20 @@ def test_agent_session_paging_and_errors(
     # Assert
     assert issued["url"] == f"http://127.0.0.1:{server.port}/#token={issued['token']}"
     assert session.status_code == 200 and session.json()["actor"] == "local"
-    assert reused.status_code == 401 and reused.json()["code"] == "session_required"
+    assert_problem(reused, 401, "unauthorized", "session_required")
     assert len(pages) > 1
     assert _rows([page["items"] for page in pages]) == _rows([whole.json()["items"]])
-    assert foreign.status_code == 422 and foreign.json()["code"] == "validation_error"
-    assert unchecked.status_code == 403
-    assert unchecked.json()["code"] == "csrf_rejected"
+    assert_problem(foreign, 400, "validation_error")
+    assert_problem(unchecked, 403, "forbidden", "csrf_rejected")
     # The session cookie alone reads nothing either.
-    assert unchecked_read.status_code == 403
-    assert unchecked_read.json()["code"] == "csrf_rejected"
+    assert_problem(unchecked_read, 403, "forbidden", "csrf_rejected")
     assert scan.status_code == 202, scan.text
     assert scan.headers["location"] == f"/api/v1/jobs/{scan.json()['id']}"
     assert scan.json()["actor"] == "local"
     assert events[-1][0] == "state" and events[-1][1]["state"] == job["state"]
     assert job["state"] == "succeeded" and job["error"] is None
-    assert no_plugin.status_code == 503
-    assert no_plugin.headers["content-type"] == "application/problem+json"
-    assert no_plugin.json()["code"] == "source_unavailable"
-    assert no_plugin.json()["source"]["id"] == "kartograf"
+    assert_problem(no_plugin, 503, "missing_dependency", "source_unavailable")
+    assert no_plugin.json()["details"]["source"]["id"] == "kartograf"
 
 
 def test_agent_snapshot_flow(
@@ -123,7 +131,7 @@ def test_agent_snapshot_flow(
     """Token, session, snapshot plan, snapshot job followed over SSE, the card."""
     # Arrange: a project with a scanned data folder, served with jobs and previews.
     store, paths = scanned_store(tmp_path)
-    project_dir = store.output_dir / store.project(FIRST).path
+    project_dir = store.base / store.project(FIRST).path
     folder = make_own_folder(project_dir / DATA_DIR, families=("tif_2180",))
     scan_own(paths)
     registry = load_registry(cache_dir=paths.cache_dir)
@@ -160,3 +168,114 @@ def test_agent_snapshot_flow(
         (job["result"]["label"], "Od agenta")
     ]
     assert card["last_snapshot"]["label"] == job["result"]["label"]
+
+
+def test_agent_of_a_team_account_acts_with_its_roles(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Team mode: a token names its account, its address is the team's origin."""
+    # Arrange: a team server over TLS; kasia may write the stores, nothing more.
+    monkeypatch.setattr(passwords, "HASHER", cheap_hasher())
+    paths = local_paths(tmp_path)
+    site = team_site(tmp_path / "tls")
+    trust = ssl.create_default_context(cafile=site.tls.ca_file)
+    with team_serving(paths, site):
+        StateStore(paths.state_file).add_user(
+            "kasia", roles=["store_writer"], actor=LOCAL_OWNER
+        )
+        capsys.readouterr()
+        without_account = main(["token", "--json"], paths=paths)
+        refused = capsys.readouterr().err
+        assert main(["token", "--user", "kasia", "--json"], paths=paths) == 0
+        issued = json.loads(capsys.readouterr().out)
+        base = f"{site.origin}/api/v1"
+        with httpx.Client(base_url=base, verify=trust, timeout=None) as agent:
+            # Act
+            session = agent.post("/session", json={"token": issued["token"]})
+            agent.headers[CSRF_HEADER] = session.json()["csrf_token"]
+            own = agent.get("/session")
+            users = agent.get("/users")
+            further = agent.post("/session/tokens")
+        with httpx.Client(base_url=base, verify=trust, timeout=None) as anna:
+            signed_in = anna.post(
+                "/session/login",
+                json={"account": ADMIN_ACCOUNT, "password": ADMIN_PASSWORD},
+            )
+            anna.headers[CSRF_HEADER] = signed_in.json()["csrf_token"]
+            minted = anna.post("/session/tokens")
+
+    # Assert
+    assert without_account == 2
+    assert json.loads(refused.splitlines()[-1])["details"]["reason"] == "user_required"
+    assert issued["url"] == f"{site.origin}/#token={issued['token']}"
+    assert session.status_code == 200, session.text
+    assert (own.json()["actor"], own.json()["kind"], own.json()["method"]) == (
+        "kasia",
+        "agent",
+        "token",
+    )
+    assert (own.json()["roles"], own.json()["store_write"]) == (["store_writer"], True)
+    assert_problem(users, 403, "forbidden", "permission_denied")
+    assert_problem(further, 403, "forbidden", "permission_denied")
+    assert minted.status_code == 201, minted.text
+    assert minted.json()["url"] == f"{site.origin}/#token={minted.json()['token']}"
+
+
+def test_tokens_of_the_computers_owner_open_no_session_in_team_mode(
+    tmp_path: Path,
+) -> None:
+    """A startup or an agent's token the local owner minted is 401 on a team server.
+
+    A team has no local owner (ADR-046 decision 3); such a token, left from a
+    run in local mode or handed to an agent, used to open a session with the
+    owner's roles, administrator included (review of v0.4, D4).
+    """
+    # Arrange
+    paths = local_paths(tmp_path)
+    save_team(paths)
+    kinds: tuple[TokenKind, ...] = ("startup", "agent")
+    with running_api(paths) as api:
+        issued = [
+            issue_one_time_token(paths.index_file, kind, minted_by=LOCAL_OWNER)
+            for kind in kinds
+        ]
+
+        # Act
+        answers = [
+            api.client.post("/api/v1/session", json={"token": token.token})
+            for token in issued
+        ]
+
+    # Assert
+    for answer in answers:
+        assert_problem(answer, 401, "unauthorized", "session_required")
+
+
+def test_token_for_an_account_needs_an_enabled_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An unknown account exits 3 (not_found), a disabled one or --revoke-all 2."""
+    # Arrange
+    paths = local_paths(tmp_path)
+    state = StateStore(paths.state_file)
+    state.add_user("ola", actor=LOCAL_OWNER)
+    state.update_user("ola", disabled=True, actor=LOCAL_OWNER)
+
+    # Act
+    statuses = [
+        main(argv, paths=paths)
+        for argv in (
+            ["token", "--user", "nikt"],
+            ["token", "--user", "ola"],
+            ["token", "--user", "ola", "--revoke-all"],
+        )
+    ]
+    reasons = [
+        json.loads(line)["details"].get("reason")
+        for line in capsys.readouterr().err.splitlines()
+        if line.startswith("{")
+    ]
+
+    # Assert
+    assert statuses == [3, 2, 2]
+    assert reasons == [None, "user_disabled", "user_with_revoke_all"]

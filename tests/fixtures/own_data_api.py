@@ -20,17 +20,12 @@ import httpx
 
 from archiwista.auth import ALL_PROJECTS, access_key
 from archiwista.config import AppPaths, ConfigStore
-from archiwista.index import (
-    IndexQueries,
-    IndexWriter,
-    ManifestStamp,
-    own_file_id,
-)
+from archiwista.index import IndexQueries, IndexWriter, own_file_id
 from archiwista.jobs import JobRecord, JobSupervisor
 from archiwista.owndata.scan import OwnScanSummary, scan_own_data
-from archiwista.sources import ProjectInfo
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Api, Caller
+from tests.fixtures.index_data import indexed_project
 from tests.fixtures.own_data import OwnFolderManifest, make_own_folder
 from tests.fixtures.permissions import Who, add_people, principal
 from tests.fixtures.preview_api import PreviewApi, scanned_store, serve_previews
@@ -164,14 +159,13 @@ def own_data_api(
         Render processes.
     """
     store, paths = scanned_store(tmp_path)
-    first_dir = store.output_dir / store.project(FIRST).path
+    first_dir = store.base / store.project(FIRST).path
     first_folder = make_own_folder(first_dir / DATA_DIR, families=first)
     second_dir = tmp_path / "projekty" / SECOND
     second_dir.mkdir(parents=True)
     second_folder = make_own_folder(second_dir / DATA_DIR, families=second)
     with IndexWriter(paths.index_file) as writer:
-        info = ProjectInfo("kartograf", str(store.root), second_dir, "Odra")
-        key = writer.write_project(info, store=None, stamp=ManifestStamp(None, None))
+        key = indexed_project(writer, second_dir, "Odra", root=str(store.root))
     assert key == SECOND, key
     scan_own(paths)
     with serve_previews(store, paths, workers=workers) as served:

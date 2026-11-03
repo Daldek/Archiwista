@@ -2,6 +2,7 @@
 
 import os
 import stat
+import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,7 +16,9 @@ from archiwista.config import (
     SettingsService,
     SettingsValidationError,
     StoreConfig,
+    TeamSettings,
     detect_store_kind,
+    dump_settings,
     parse_settings,
     validate_settings,
 )
@@ -41,8 +44,8 @@ class ProbeRegistry:
         )
 
 
-def make_store(store_id: str, root: Path, **values: object) -> StoreConfig:
-    """Build a valid local store pointing at ``root``."""
+def make_store(store_id: str, root: Path | None, **values: object) -> StoreConfig:
+    """Build a valid local store with the Kartograf directory ``root`` (or none)."""
     return StoreConfig.model_validate(
         {"id": store_id, "name": store_id.title(), "kartograf": root, **values}
     )
@@ -142,8 +145,12 @@ def test_config_store_missing_file_gives_specified_defaults(tmp_path: Path) -> N
     ]
     assert settings.store_write_for_all is False
     assert settings.default_project_visibility == "public"
+    assert settings.network_jobs_per_person == 2
+    assert settings.action_log_retention_days == 365
+    assert settings.team.enabled is False
 
 
+@pytest.mark.usefixtures("polish")
 def test_config_store_invalid_toml_reported_in_polish(tmp_path: Path) -> None:
     """A syntax error names the file instead of raising a parser traceback."""
     path = tmp_path / "config.toml"
@@ -156,6 +163,7 @@ def test_config_store_invalid_toml_reported_in_polish(tmp_path: Path) -> None:
     assert "nie jest poprawnym TOML" in error.value.problems[0].message
 
 
+@pytest.mark.usefixtures("polish")
 def test_config_parse_reports_every_invalid_field() -> None:
     """Each bad value is reported with its location and a Polish reason."""
     with pytest.raises(SettingsValidationError) as error:
@@ -204,12 +212,160 @@ def test_config_full_scan_interval_rejects_out_of_range(hours: int) -> None:
         ("vector", "https://tiles.example/{z}/{x}/{y}.pbf", "adres TileJSON"),
     ],
 )
+@pytest.mark.usefixtures("polish")
 def test_config_basemap_url_fits_its_kind(kind: str, url: str, reason: str) -> None:
     """XYZ needs a tile template; a vector basemap its TileJSON, not a template."""
     with pytest.raises(SettingsValidationError) as error:
         parse_settings({"basemaps": [{"name": "X", "kind": kind, "url": url}]})
 
     assert reason in error.value.problems[0].message
+
+
+TEAM = {
+    "enabled": True,
+    "origin": "https://archiwista.firma.local",
+    "tls_cert": "/etc/archiwista/tls/fullchain.pem",
+    "tls_key": "/etc/archiwista/tls/privkey.pem",
+    "trusted_proxies": ["127.0.0.1", "10.0.0.0/24"],
+    "proxy_user_header": "X-Remote-User",
+    "proxy_autocreate": True,
+}
+
+
+def test_config_store_round_trip_keeps_the_team_table(
+    tmp_path: Path, roots: tuple[Path, Path]
+) -> None:
+    """[team] is a table after the scalars and loads back equal, before the stores."""
+    settings = AppSettings(
+        stores=(make_store("zespol", roots[0]),),
+        network_jobs_per_person=3,
+        action_log_retention_days=30,
+        team=TeamSettings.model_validate(TEAM),
+    )
+    store = ConfigStore(tmp_path / "config.toml")
+
+    store.save(settings)
+
+    text = store.path.read_text("utf-8")
+    assert store.load() == settings
+    assert tomllib.loads(text)["team"] == TEAM
+    assert text.index("action_log_retention_days =") < text.index("\n[team]\n")
+    assert text.index("\n[team]\n") < text.index("\n[[stores]]\n")
+
+
+def test_config_store_writes_no_team_table_for_local_mode(tmp_path: Path) -> None:
+    """The table of the defaults (local mode) is left out of the file."""
+    store = ConfigStore(tmp_path / "config.toml")
+
+    store.save(AppSettings(network_jobs_per_person=1))
+
+    assert "team" not in tomllib.loads(store.path.read_text("utf-8"))
+    assert store.load() == AppSettings(network_jobs_per_person=1)
+
+
+def test_config_team_origin_kept_lower_case_without_the_https_port() -> None:
+    """An origin compares with a browser's Origin; proxies keep what was written."""
+    team = parse_settings(
+        {
+            "team": {
+                "enabled": True,
+                "origin": "HTTPS://Archiwista.Firma.Local:443",
+                "trusted_proxies": [" 10.0.0.7 ", "fd00::/120", "192.168.5.0/24"],
+            }
+        }
+    ).team
+    other_port = parse_settings({"team": {"origin": "https://[FD00::5]:8443"}}).team
+
+    assert team.origin == "https://archiwista.firma.local"
+    assert team.trusted_proxies == ("10.0.0.7", "fd00::/120", "192.168.5.0/24")
+    assert other_port.origin == "https://[fd00::5]:8443"
+
+
+@pytest.mark.parametrize(
+    ("team", "field"),
+    [
+        ({"enabled": True}, "team.origin"),
+        ({"origin": "http://archiwista.firma.local"}, "team.origin"),
+        ({"origin": "https://archiwista.firma.local/"}, "team.origin"),
+        ({"origin": "https://archiwista.firma.local/archiwista"}, "team.origin"),
+        ({"origin": "https://kasia@archiwista.firma.local"}, "team.origin"),
+        ({"origin": "https://archiwista.firma.local?a=1"}, "team.origin"),
+        ({"origin": "https://archiwista firma"}, "team.origin"),
+        ({"origin": "https://archiwista.firma.local:0"}, "team.origin"),
+        ({"origin": "archiwista.firma.local"}, "team.origin"),
+        ({"tls_cert": "/etc/tls/cert.pem"}, "team.tls_key"),
+        ({"tls_key": "/etc/tls/key.pem"}, "team.tls_key"),
+        ({"tls_cert": "cert.pem", "tls_key": "/etc/tls/key.pem"}, "team.tls_cert"),
+        ({"trusted_proxies": ["0.0.0.0/0"]}, "team.trusted_proxies[0]"),
+        ({"trusted_proxies": ["127.0.0.1", "10.0.0.0/16"]}, "team.trusted_proxies[1]"),
+        ({"trusted_proxies": ["10.0.0.0/23"]}, "team.trusted_proxies[0]"),
+        ({"trusted_proxies": ["fd00::/64"]}, "team.trusted_proxies[0]"),
+        ({"trusted_proxies": ["proxy.firma.local"]}, "team.trusted_proxies[0]"),
+        ({"proxy_user_header": "X-Remote-User"}, "team.proxy_user_header"),
+        ({"proxy_autocreate": True}, "team.proxy_autocreate"),
+        ({"login": "ldap"}, "team.login"),
+    ],
+)
+def test_config_team_problems_name_their_field(
+    team: dict[str, object], field: str
+) -> None:
+    """Each rule of the table [team] refuses its value at its own field."""
+    with pytest.raises(SettingsValidationError) as error:
+        parse_settings({"team": team})
+
+    assert [problem.field for problem in error.value.problems] == [field]
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "Host",
+        "cookie",
+        "Authorization",
+        "ORIGIN",
+        "X-Forwarded-User",
+        "x-forwarded-for",
+        "X-Archiwista-User",
+        "X Remote User",
+        "X-Remote-User:",
+        "",
+    ],
+)
+def test_config_team_refuses_a_header_name_a_proxy_may_not_use(header: str) -> None:
+    """The person's header is a token outside the request's and Archiwista's own."""
+    team = {"trusted_proxies": ["10.0.0.2"], "proxy_user_header": header}
+
+    with pytest.raises(SettingsValidationError) as error:
+        parse_settings({"team": team})
+
+    assert [problem.field for problem in error.value.problems] == [
+        "team.proxy_user_header"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "accepted"),
+    [
+        ("network_jobs_per_person", 1, True),
+        ("network_jobs_per_person", 10, True),
+        ("network_jobs_per_person", 0, False),
+        ("network_jobs_per_person", 11, False),
+        ("action_log_retention_days", 30, True),
+        ("action_log_retention_days", 3650, True),
+        ("action_log_retention_days", 29, False),
+        ("action_log_retention_days", 3651, False),
+    ],
+)
+def test_config_team_numbers_within_their_bounds(
+    key: str, value: int, accepted: bool
+) -> None:
+    """One to ten network jobs per person; a month to ten years of the action log."""
+    if accepted:
+        assert getattr(parse_settings({key: value}), key) == value
+        return
+    with pytest.raises(SettingsValidationError) as error:
+        parse_settings({key: value})
+    assert [problem.field for problem in error.value.problems] == [key]
 
 
 def test_config_store_failed_save_keeps_previous_file(
@@ -260,6 +416,7 @@ def test_config_validate_rejects_unreadable_root(roots: tuple[Path, Path]) -> No
     assert registry.probed == []
 
 
+@pytest.mark.usefixtures("polish")
 def test_config_validate_rejects_missing_root(tmp_path: Path) -> None:
     """A disconnected share is reported, not silently accepted."""
     problems = validate_settings(
@@ -311,12 +468,315 @@ def test_config_validate_reports_incompatible_store(roots: tuple[Path, Path]) ->
     assert "schema x/2" in problems[0].message
 
 
+def test_config_validate_carries_reason_and_hint_of_a_refused_store(
+    roots: tuple[Path, Path],
+) -> None:
+    """What a producer says about a directory it refuses reaches the problem."""
+    refused = SourceState(
+        producer="kartograf",
+        status="incompatible",
+        detail="no marker",
+        reason="no_marker",
+        hint="run the init command",
+    )
+    settings = AppSettings(
+        stores=(make_store("a", roots[0]), make_store("b", roots[1]))
+    )
+    registry = ProbeRegistry(failing={roots[0]: refused})
+
+    problems = validate_settings(settings, registry)
+    error = SettingsValidationError(problems)
+
+    assert [(p.code, p.field, p.reason, p.hint) for p in problems] == [
+        (
+            "source_incompatible",
+            "stores[0].kartograf",
+            "no_marker",
+            "run the init command",
+        )
+    ]
+    assert error.details["problems"] == [
+        {
+            "code": "source_incompatible",
+            "field": "stores[0].kartograf",
+            "message": problems[0].message,
+            "reason": "no_marker",
+            "hint": "run the init command",
+        }
+    ]
+
+
+def test_config_problem_without_reason_has_only_code_field_and_message(
+    roots: tuple[Path, Path],
+) -> None:
+    """A probe with nothing to add leaves the members of the problem as they were."""
+    failing = SourceState(producer="kartograf", status="error", detail="boom")
+    registry = ProbeRegistry(failing={roots[0]: failing})
+
+    problems = validate_settings(
+        AppSettings(stores=(make_store("a", roots[0]),)), registry
+    )
+
+    assert (problems[0].reason, problems[0].hint) == (None, None)
+    assert set(SettingsValidationError(problems).details["problems"][0]) == {
+        "code",
+        "field",
+        "message",
+    }
+
+
 def test_config_validate_skips_unchanged_disconnected_store(tmp_path: Path) -> None:
     """Changing offline mode works while an existing share is unplugged."""
     previous = AppSettings(stores=(make_store("a", tmp_path / "unplugged"),))
     changed = previous.model_copy(update={"offline": True})
 
     assert validate_settings(changed, ProbeRegistry(), previous=previous) == ()
+
+
+def _mark(directory: Path, marker: str) -> Path:
+    """Create ``directory`` holding the marker file of a producer's store."""
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / marker).write_text("{}", encoding="utf-8")
+    return directory
+
+
+def test_config_store_keeps_the_directories_it_has_and_loads_old_files(
+    tmp_path: Path,
+) -> None:
+    """Stores of one or both directories round-trip; an old file is unchanged."""
+    # Arrange
+    old = tmp_path / "old.toml"
+    old.write_text(
+        "[[stores]]\n"
+        'id = "zespol"\n'
+        'name = "Zespół"\n'
+        'kartograf = "/mnt/nas/kartograf"\n',
+        encoding="utf-8",
+    )
+    settings = AppSettings(
+        stores=(
+            make_store("kart", tmp_path / "k"),
+            make_store("imgw", None, imgw=tmp_path / "i"),
+            make_store("both", tmp_path / "b", imgw=tmp_path / "bi"),
+        )
+    )
+    config = ConfigStore(tmp_path / "config.toml")
+
+    # Act
+    loaded = ConfigStore(old).load().stores[0]
+    config.save(settings)
+    text = config.path.read_text(encoding="utf-8")
+
+    # Assert
+    assert config.load() == settings
+    assert [store.roots() for store in settings.stores] == [
+        {"kartograf": tmp_path / "k"},
+        {"imgw": tmp_path / "i"},
+        {"kartograf": tmp_path / "b", "imgw": tmp_path / "bi"},
+    ]
+    assert (text.count("kartograf = "), text.count("imgw = ")) == (2, 2)
+    assert loaded.imgw is None and loaded.roots() == {
+        "kartograf": Path("/mnt/nas/kartograf")
+    }
+    again = AppSettings(stores=(loaded,))
+    assert "imgw" not in dump_settings(again)
+    assert parse_settings(tomllib.loads(dump_settings(again))) == again
+
+
+def test_config_store_ignores_a_retired_setting_until_the_next_save(
+    tmp_path: Path,
+) -> None:
+    """An earlier build's ``year_types`` loads as absent and the next save drops it."""
+    # Arrange
+    config = ConfigStore(tmp_path / "config.toml")
+    config.path.write_text(
+        'port = 8123\n\n[year_types]\nhydro = "calendar"\nmeteo = "lunar"\n',
+        encoding="utf-8",
+    )
+
+    # Act
+    loaded = config.load()
+    named = config.retired()
+    config.save(loaded)
+    saved = tomllib.loads(config.path.read_text(encoding="utf-8"))
+
+    # Assert
+    assert loaded == AppSettings(port=8123)
+    assert named == ("year_types",)
+    assert "year_types" not in saved and saved["port"] == 8123
+    assert config.retired() == ()
+    assert config.load() == loaded
+
+
+@pytest.mark.parametrize("store", [{}, {"kartograf": None, "imgw": None}])
+def test_config_store_needs_a_directory_and_detects_its_kind_from_any(
+    store: dict[str, None],
+) -> None:
+    """A store with no directory is refused as a whole; IMGW's gives the kind."""
+    with pytest.raises(SettingsValidationError) as error:
+        parse_settings({"stores": [{"id": "a", "name": "A", **store}]})
+    share = parse_settings(
+        {"stores": [{"id": "a", "name": "A", "imgw": "\\\\nas\\dane\\imgw"}]}
+    )
+
+    problem = error.value.problems[0]
+    assert (problem.code, problem.field) == ("invalid_value", "stores[0]")
+    assert "at least one producer directory: kartograf or imgw" in problem.message
+    assert share.stores[0].kind == "share"
+
+
+def test_config_validate_checks_each_directory_of_a_store_at_its_own_field(
+    tmp_path: Path,
+) -> None:
+    """The IMGW directory is checked like the Kartograf one and named by its field."""
+    # Arrange
+    kartograf = tmp_path / "kartograf"
+    kartograf.mkdir()
+    both = AppSettings(stores=(make_store("a", kartograf, imgw=tmp_path / "brak"),))
+    imgw = tmp_path / "imgw"
+    imgw.mkdir()
+    only = AppSettings(stores=(make_store("a", None, imgw=imgw),))
+    failing = ProbeRegistry(
+        failing={imgw: SourceState(producer="imgw", status="not_installed")}
+    )
+
+    # Act
+    missing = validate_settings(both, ProbeRegistry())
+    accepted = validate_settings(only, ProbeRegistry())
+    refused = validate_settings(only, failing)
+
+    # Assert
+    assert [(p.code, p.field) for p in missing] == [("root_missing", "stores[0].imgw")]
+    assert "imgw" in missing[0].message
+    assert accepted == ()
+    assert [(p.code, p.field) for p in refused] == [
+        ("source_not_installed", "stores[0].imgw")
+    ]
+
+
+def test_config_validate_finds_a_directory_inside_a_store_by_its_marker(
+    tmp_path: Path,
+) -> None:
+    """A marker of either producer in an ancestor nests the directory under it."""
+    # Arrange
+    imgw_store = _mark(tmp_path / "imgw", "imgw-store.json")
+    kartograf_store = _mark(tmp_path / "kartograf", "kartograf-store.json")
+    inside_imgw = imgw_store / "kartograf"
+    inside_kartograf = kartograf_store / "nmt" / "imgw"
+    inside_imgw.mkdir()
+    inside_kartograf.mkdir(parents=True)
+    settings = AppSettings(
+        stores=(make_store("a", inside_imgw, imgw=inside_kartograf),)
+    )
+
+    # Act
+    problems = validate_settings(settings, ProbeRegistry())
+
+    # Assert
+    assert [(p.code, p.field) for p in problems] == [
+        ("root_nested", "stores[0].kartograf"),
+        ("root_nested", "stores[0].imgw"),
+    ]
+    assert str(imgw_store) in problems[0].message
+    assert "imgw-store.json" in problems[0].message
+    assert str(kartograf_store) in problems[1].message
+    assert "kartograf-store.json" in problems[1].message
+
+
+@pytest.mark.parametrize(
+    ("below", "found"),
+    [
+        (("segment",), True),
+        (("product", "segment"), True),
+        (("product", "segment", "slot"), False),
+    ],
+)
+def test_config_validate_looks_two_levels_below_a_directory_for_a_store(
+    tmp_path: Path, below: tuple[str, ...], found: bool
+) -> None:
+    """A store down in the tree is found to the bounded depth, not deeper."""
+    # Arrange
+    root = _mark(tmp_path / "kartograf", "kartograf-store.json")
+    folder = _mark(root.joinpath(*below), "imgw-store.json")
+
+    # Act
+    problems = validate_settings(
+        AppSettings(stores=(make_store("a", root),)), ProbeRegistry()
+    )
+
+    # Assert
+    assert [(p.code, p.field) for p in problems] == (
+        [("root_nested", "stores[0].kartograf")] if found else []
+    )
+    if found:
+        assert str(folder) in problems[0].message
+
+
+def test_config_validate_accepts_stores_beside_each_other_with_their_own_markers(
+    tmp_path: Path,
+) -> None:
+    """A marker in the directory itself, or in a sibling's, nests nothing."""
+    kartograf = _mark(tmp_path / "data" / "kartograf", "kartograf-store.json")
+    imgw = _mark(tmp_path / "data" / "imgw", "imgw-store.json")
+
+    problems = validate_settings(
+        AppSettings(stores=(make_store("a", kartograf, imgw=imgw),)), ProbeRegistry()
+    )
+
+    assert problems == ()
+
+
+def test_config_validate_judges_by_the_real_path_and_enters_no_link(
+    tmp_path: Path,
+) -> None:
+    """A link into a store nests; a link out of a directory is not followed."""
+    # Arrange
+    store = _mark(tmp_path / "imgw", "imgw-store.json")
+    inner = store / "kartograf"
+    inner.mkdir()
+    shortcut = tmp_path / "shortcut"
+    shortcut.symlink_to(inner, target_is_directory=True)
+    elsewhere = _mark(tmp_path / "elsewhere", "kartograf-store.json")
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "link").symlink_to(elsewhere, target_is_directory=True)
+
+    # Act
+    linked = validate_settings(
+        AppSettings(stores=(make_store("a", shortcut),)), ProbeRegistry()
+    )
+    entered = validate_settings(
+        AppSettings(stores=(make_store("b", root),)), ProbeRegistry()
+    )
+
+    # Assert
+    assert [(p.code, p.field) for p in linked] == [
+        ("root_nested", "stores[0].kartograf")
+    ]
+    assert entered == ()
+
+
+def test_config_validate_reads_markers_only_around_new_or_moved_directories(
+    tmp_path: Path,
+) -> None:
+    """Markers are read around new or moved directories only: a share may be gone."""
+    # Arrange
+    store = _mark(tmp_path / "imgw", "imgw-store.json")
+    (store / "kartograf").mkdir()
+    (store / "other").mkdir()
+    saved = AppSettings(stores=(make_store("a", store / "kartograf"),))
+    edited = saved.model_copy(update={"offline": True})
+    moved = AppSettings(stores=(make_store("a", store / "other"),))
+
+    # Act
+    unchanged = validate_settings(edited, ProbeRegistry(), previous=saved)
+    first = validate_settings(saved, ProbeRegistry())
+    relocated = validate_settings(moved, ProbeRegistry(), previous=saved)
+
+    # Assert
+    assert unchanged == ()
+    assert [p.code for p in first] == ["root_nested"]
+    assert [p.code for p in relocated] == ["root_nested"]
 
 
 def test_config_store_aliases_translate_between_computers() -> None:
@@ -401,6 +861,7 @@ def test_settings_service_rejected_change_keeps_file_and_state(tmp_path: Path) -
     assert calls == []
 
 
+@pytest.mark.usefixtures("polish")
 def test_own_data_dir_validation(tmp_path: Path, roots: tuple[Path, Path]) -> None:
     """A data folder in a store, nested with another project's or absent is refused.
 

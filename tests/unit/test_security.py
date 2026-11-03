@@ -1,4 +1,4 @@
-"""Local-mode access protection: Host, tokens, session, CSRF, paths (SPEC 10.1)."""
+"""Access protection: Host, tokens, session, CSRF, paths; team transport (SPEC 10)."""
 
 import hashlib
 import logging
@@ -14,30 +14,53 @@ import httpx
 import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
+from starlette.datastructures import Headers
+from starlette.types import Scope
 
 from archiwista.app import create_app
 from archiwista.auth import LOCAL_OWNER, LOCAL_ROLES, Principal
-from archiwista.config import AppSettings, BasemapConfig, ConfigStore, SettingsService
+from archiwista.auth.authorize import principal_for
+from archiwista.config import (
+    AppSettings,
+    BasemapConfig,
+    ConfigStore,
+    SettingsService,
+    TeamSettings,
+)
 from archiwista.index.schema import initialize
 from archiwista.security import (
+    AGENT_SESSION_MAX_AGE,
     CSRF_HEADER,
+    PROXY_HEADER_LOG_INTERVAL,
     SESSION_COOKIE,
+    TEAM_IDLE_TIMEOUT,
+    TEAM_MAX_AGE,
     TOKEN_TTL,
+    ProxyHeaderLog,
     SessionStore,
     TokenKind,
+    Transport,
+    client_address,
     csp_header,
     current_principal,
     issue_one_time_token,
+    named_by_proxy,
+    origin_rejection,
     redeem_one_time_token,
     revoke_agent_sessions,
+    session_principals,
+    transport_rejection,
 )
 from archiwista.state import StateStore
 from tests.fixtures.local_server import NoSources, local_paths, serving
+from tests.fixtures.permissions import log_entries
 
 PORT = 8090
 BASE_URL = f"http://127.0.0.1:{PORT}"
 OPENFREEMAP = "https://tiles.openfreemap.org"
 START = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
+# The user guide of the interface files the tests serve (app.py GUIDE_PATH).
+GUIDE_HTML = "<!doctype html><title>Instrukcja</title>"
 
 
 class Clock:
@@ -84,14 +107,16 @@ def cookies(session_id: str, csrf: str | None = None) -> dict[str, str]:
 
 @pytest.fixture
 def api(tmp_path: Path) -> Iterator[Api]:
-    """Serve the application with an empty index and two interface files."""
+    """Serve the application with an empty index and three interface files."""
     index_path = tmp_path / "data" / "index.sqlite"
     initialize(index_path)
     config = ConfigStore(tmp_path / "config" / "config.toml")
     settings = SettingsService(config, NoSources())
     web_dir = tmp_path / "web"
     (web_dir / "src").mkdir(parents=True)
+    (web_dir / "guide").mkdir()
     (web_dir / "index.html").write_text("<!doctype html><title>A</title>", "utf-8")
+    (web_dir / "guide" / "index.html").write_text(GUIDE_HTML, "utf-8")
     (web_dir / "src" / "main.js").write_text("export {};\n", "utf-8")
     clock = Clock(START)
     app = create_app(
@@ -121,14 +146,18 @@ def api(tmp_path: Path) -> Iterator[Api]:
         yield Api(client, index_path, settings, clock)
 
 
-def assert_problem(response: httpx.Response, status: int, code: str) -> None:
-    """Check an RFC 9457 problem with a Polish detail."""
+def assert_problem(
+    response: httpx.Response, status: int, code: str, reason: str | None = None
+) -> None:
+    """Check an RFC 9457 problem: registry code and status, reason, Polish detail."""
     assert response.status_code == status
     assert response.headers["content-type"] == "application/problem+json"
     body = response.json()
     assert body["status"] == status
     assert body["code"] == code
     assert body["detail"]
+    if reason is not None:
+        assert body["details"]["reason"] == reason
 
 
 # Host ----------------------------------------------------------------------
@@ -154,8 +183,8 @@ def test_security_foreign_host_rejected(api: Api, host: str) -> None:
         "/api/v1/session", headers={"host": host, **cookies(session_id)}
     )
 
-    assert_problem(page, 400, "invalid_host")
-    assert_problem(data, 400, "invalid_host")
+    assert_problem(page, 403, "forbidden", "invalid_host")
+    assert_problem(data, 403, "forbidden", "invalid_host")
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1:8090", "localhost:8090"])
@@ -197,7 +226,7 @@ def test_security_token_exchange_starts_session(api: Api) -> None:
     for attribute in ("httponly", "samesite=strict", "path=/"):
         assert attribute in set_cookie.lower()
     assert session_id not in (issued.token, csrf)
-    assert_problem(cookie_only, 403, "csrf_rejected")
+    assert_problem(cookie_only, 403, "forbidden", "csrf_rejected")
     assert state.status_code == 200
     assert state.json() == {key: body[key] for key in state.json()}
     assert "csrf_token" not in state.json()
@@ -213,7 +242,7 @@ def test_security_token_used_twice_rejected(api: Api) -> None:
     second = api.client.post("/api/v1/session", json={"token": issued.token})
 
     assert first.status_code == 200
-    assert_problem(second, 401, "session_required")
+    assert_problem(second, 401, "unauthorized", "session_required")
     assert "set-cookie" not in second.headers
 
 
@@ -308,7 +337,7 @@ def test_security_expired_token_rejected_over_http(api: Api) -> None:
 
     response = api.client.post("/api/v1/session", json={"token": issued.token})
 
-    assert_problem(response, 401, "session_required")
+    assert_problem(response, 401, "unauthorized", "session_required")
 
 
 def test_security_index_keeps_only_token_hash(tmp_path: Path) -> None:
@@ -344,8 +373,8 @@ def test_security_api_without_session_rejected(
     missing = api.client.request(method, path)
     unknown = api.client.request(method, path, headers=cookies("forged-session"))
 
-    assert_problem(missing, 401, "session_required")
-    assert_problem(unknown, 401, "session_required")
+    assert_problem(missing, 401, "unauthorized", "session_required")
+    assert_problem(unknown, 401, "unauthorized", "session_required")
 
 
 def test_security_session_ends_after_idle_timeout(api: Api) -> None:
@@ -359,7 +388,110 @@ def test_security_session_ends_after_idle_timeout(api: Api) -> None:
 
     assert kept.status_code == 200
     assert kept.json()["expires_at"] == "2026-10-20T11:00:00Z"
-    assert_problem(ended, 401, "session_required")
+    assert_problem(ended, 401, "unauthorized", "session_required")
+
+
+def test_security_team_session_ends_after_8_idle_hours() -> None:
+    """In team mode each request extends a session by 8 hours, not by a day."""
+    clock = Clock(START)
+    store = SessionStore(team=True, clock=clock)
+    session_id, session = store.create("anna", "user", method="password")
+
+    clock.now = START + timedelta(hours=7)
+    extended = store.extend(session_id)
+    clock.now = START + timedelta(hours=7) + TEAM_IDLE_TIMEOUT
+    ended = store.get(session_id)
+
+    assert session.expires_at == START + TEAM_IDLE_TIMEOUT
+    assert extended is not None
+    assert extended.expires_at == START + timedelta(hours=15)
+    assert extended.last_seen_at == START + timedelta(hours=7)
+    assert ended is None
+
+
+def test_security_team_session_ends_7_days_after_its_start() -> None:
+    """A team session used every 7 hours still ends a week after its start."""
+    clock = Clock(START)
+    store = SessionStore(team=True, clock=clock)
+    session_id, _ = store.create("anna", "user", method="password")
+
+    answers = []
+    for step in range(1, 25):
+        clock.now = START + timedelta(hours=7 * step)
+        answers.append(store.extend(session_id))
+
+    kept = [answer for answer in answers if answer is not None]
+    assert len(kept) == 23 and answers[-1] is None
+    assert kept[-1].expires_at == START + TEAM_MAX_AGE == START + timedelta(days=7)
+
+
+def test_security_team_agent_session_ends_12_hours_after_its_start() -> None:
+    """An agent's session of team mode, used every hour, ends after 12 hours."""
+    clock = Clock(START)
+    store = SessionStore(team=True, clock=clock)
+    session_id, session = store.create("anna", "agent", method="token")
+
+    answers = []
+    for hour in range(1, 13):
+        clock.now = START + timedelta(hours=hour)
+        answers.append(store.extend(session_id))
+
+    kept = [answer for answer in answers if answer is not None]
+    assert session.expires_at == START + TEAM_IDLE_TIMEOUT
+    assert len(kept) == 11 and answers[-1] is None
+    assert kept[-1].expires_at == START + AGENT_SESSION_MAX_AGE
+
+
+def test_security_revocation_ends_what_was_issued_before_it(tmp_path: Path) -> None:
+    """Revoking an account's sessions ends those issued before it, not later ones.
+
+    A one-time token issued before the revocation opens no session either,
+    even when it is exchanged after it.
+    """
+    index_path = tmp_path / "index.sqlite"
+    initialize(index_path)
+    state = StateStore(tmp_path / "state.sqlite")
+    state.add_user("anna", actor=LOCAL_OWNER)
+    anna = principal_for(state, "anna")
+    assert anna is not None
+    store = SessionStore(team=True)
+    _, before = store.create("anna", "user", method="password")
+    issued = issue_one_time_token(index_path, "agent", minted_by=anna)
+
+    state.revoke_sessions("anna", actor=LOCAL_OWNER)
+    _, after = store.create("anna", "user", method="password")
+    grant = redeem_one_time_token(index_path, issued.token)
+    assert grant is not None
+    _, agent = store.create(
+        grant.principal_id,
+        grant.kind,
+        method="token",
+        label=grant.label,
+        issued_at=grant.issued_at,
+        generation=grant.generation,
+    )
+    acting = session_principals(state, index_path)
+
+    assert acting(before) is None
+    assert acting(agent) is None
+    now = acting(after)
+    assert now is not None and (now.id, now.kind) == ("anna", "user")
+
+
+def test_security_new_session_ends_the_one_of_its_cookie(api: Api) -> None:
+    """An exchange carrying a session cookie ends that session (no fixation)."""
+    old_id, old_csrf = api.login()
+    issued = issue_one_time_token(api.index_path, "startup", minted_by=LOCAL_OWNER)
+
+    exchanged = api.client.post(
+        "/api/v1/session", json={"token": issued.token}, headers=cookies(old_id)
+    )
+    api.client.cookies.clear()
+    old = api.client.get("/api/v1/session", headers=cookies(old_id, old_csrf))
+
+    assert exchanged.status_code == 200
+    assert exchanged.cookies[SESSION_COOKIE] != old_id
+    assert_problem(old, 401, "unauthorized", "session_required")
 
 
 # CSRF, Origin and Sec-Fetch-Site ------------------------------------------
@@ -379,9 +511,9 @@ def test_security_every_request_needs_csrf_token(
     api.clock.now = START + timedelta(hours=25)
     later = api.client.get("/api/v1/session", headers=cookies(session_id, csrf))
 
-    assert_problem(response, 403, "csrf_rejected")
+    assert_problem(response, 403, "forbidden", "csrf_rejected")
     # A refused request does not keep the session alive.
-    assert_problem(later, 401, "session_required")
+    assert_problem(later, 401, "unauthorized", "session_required")
 
 
 def test_security_logout_ends_session(api: Api) -> None:
@@ -393,7 +525,7 @@ def test_security_logout_ends_session(api: Api) -> None:
 
     assert ended.status_code == 204
     assert "max-age=0" in ended.headers["set-cookie"].lower()
-    assert_problem(after, 401, "session_required")
+    assert_problem(after, 401, "unauthorized", "session_required")
 
 
 def _agent(api: Api, session_id: str, csrf: str) -> tuple[str, str]:
@@ -417,7 +549,7 @@ def test_security_agent_cannot_issue_tokens(api: Api) -> None:
         "/api/v1/session/tokens", headers=cookies(agent_id, agent_csrf)
     )
 
-    assert_problem(refused, 403, "permission_denied")
+    assert_problem(refused, 403, "forbidden", "permission_denied")
 
 
 def test_security_agent_session_ends_after_max_age(api: Api) -> None:
@@ -432,7 +564,7 @@ def test_security_agent_session_ends_after_max_age(api: Api) -> None:
 
     assert [answer.status_code for answer in answers[:-1]] == [200] * 11
     assert answers[0].json()["expires_at"] == "2026-10-19T00:00:00Z"
-    assert_problem(answers[-1], 401, "session_required")
+    assert_problem(answers[-1], 401, "unauthorized", "session_required")
 
 
 def test_security_revoke_agent_sessions(api: Api) -> None:
@@ -449,9 +581,9 @@ def test_security_revoke_agent_sessions(api: Api) -> None:
     fresh = api.client.get("/api/v1/session", headers=cookies(*next_agent))
 
     assert refused == 1
-    assert_problem(agent, 401, "session_required")
+    assert_problem(agent, 401, "unauthorized", "session_required")
     assert kept.status_code == 200
-    assert_problem(late, 401, "session_required")
+    assert_problem(late, 401, "unauthorized", "session_required")
     assert fresh.status_code == 200 and fresh.json()["kind"] == "agent"
 
 
@@ -474,7 +606,7 @@ def test_security_body_over_limit_refused_before_reading(api: Api) -> None:
     )
 
     for response in (declared, chunked, settings):
-        assert_problem(response, 413, "request_too_large")
+        assert_problem(response, 400, "validation_error", "request_too_large")
 
 
 def test_security_docs_files_need_no_session(api: Api) -> None:
@@ -483,7 +615,7 @@ def test_security_docs_files_need_no_session(api: Api) -> None:
     document = api.client.get("/api/v1/openapi.json")
 
     assert page.status_code == 200
-    assert_problem(document, 401, "session_required")
+    assert_problem(document, 401, "unauthorized", "session_required")
 
 
 def test_security_client_without_origin_passes_with_session_and_csrf(
@@ -516,15 +648,15 @@ def test_security_foreign_origin_rejected(api: Api, origin: str) -> None:
         "/api/v1/session", json={"token": issued.token}, headers={"origin": origin}
     )
 
-    assert_problem(read, 403, "csrf_rejected")
-    assert_problem(exchange, 403, "csrf_rejected")
+    assert_problem(read, 403, "forbidden", "csrf_rejected")
+    assert_problem(exchange, 403, "forbidden", "csrf_rejected")
     later = api.client.post("/api/v1/session", json={"token": issued.token})
     assert later.status_code == 200
 
 
 @pytest.mark.parametrize("site", ["cross-site", "same-site"])
 def test_security_cross_site_read_rejected(api: Api, site: str) -> None:
-    """A browser read started by another site is refused, page or API."""
+    """A browser read started by another site, not opening a tab, is refused."""
     session_id, _ = api.login()
 
     page = api.client.get("/", headers={"sec-fetch-site": site})
@@ -532,8 +664,106 @@ def test_security_cross_site_read_rejected(api: Api, site: str) -> None:
         "/api/v1/session", headers={"sec-fetch-site": site, **cookies(session_id)}
     )
 
-    assert_problem(page, 403, "csrf_rejected")
-    assert_problem(data, 403, "csrf_rejected")
+    assert_problem(page, 403, "forbidden", "csrf_rejected")
+    assert_problem(data, 403, "forbidden", "csrf_rejected")
+
+
+@pytest.mark.parametrize("site", ["cross-site", "same-site"])
+@pytest.mark.parametrize("dest", ["document", None])
+@pytest.mark.parametrize("path", ["/?view=catalog", "/instrukcja"])
+def test_security_top_level_navigation_from_another_site_opens_the_page(
+    api: Api, site: str, dest: str | None, path: str
+) -> None:
+    """A link elsewhere or a sign-in proxy's redirect opens a page or the guide."""
+    navigation = {"sec-fetch-site": site, "sec-fetch-mode": "navigate"}
+    if dest is not None:
+        navigation["sec-fetch-dest"] = dest
+
+    page = api.client.get(path, headers=navigation)
+    # The page then loads its modules itself: same-origin.
+    module = api.client.get(
+        "/static/src/main.js",
+        headers={
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-dest": "script",
+        },
+    )
+
+    assert page.status_code == 200
+    assert page.headers["content-type"].startswith("text/html")
+    assert module.status_code == 200
+
+
+@pytest.mark.parametrize("site", ["cross-site", "same-site"])
+def test_security_navigation_from_another_site_never_reads_the_api(
+    api: Api, site: str
+) -> None:
+    """``/api/*`` stays refused to another site, even opened in a tab."""
+    session_id, csrf = api.login()
+    navigation = {
+        "sec-fetch-site": site,
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-dest": "document",
+    }
+
+    data = api.client.get(
+        "/api/v1/session", headers={**navigation, **cookies(session_id, csrf)}
+    )
+    docs = api.client.get("/api/docs", headers=navigation)
+
+    assert_problem(data, 403, "forbidden", "csrf_rejected")
+    assert_problem(docs, 403, "forbidden", "csrf_rejected")
+
+
+@pytest.mark.parametrize(
+    ("mode", "dest"),
+    [
+        ("cors", "empty"),
+        ("no-cors", "script"),
+        ("no-cors", "image"),
+        ("navigate", "iframe"),
+        ("navigate", "frame"),
+        ("navigate", "embed"),
+        ("navigate", "object"),
+        (None, "document"),
+    ],
+)
+def test_security_other_site_subresource_or_frame_refused(
+    api: Api, mode: str | None, dest: str
+) -> None:
+    """Only a top-level navigation passes; a frame or subresource does not."""
+    headers = {"sec-fetch-site": "cross-site", "sec-fetch-dest": dest}
+    if mode is not None:
+        headers["sec-fetch-mode"] = mode
+
+    page = api.client.get("/", headers=headers)
+
+    assert_problem(page, 403, "forbidden", "csrf_rejected")
+
+
+@pytest.mark.parametrize("path", ["/", "/api/v1/session/tokens"])
+def test_security_navigation_from_another_site_changes_no_state(
+    api: Api, path: str
+) -> None:
+    """A form of another site posting in a tab is still refused."""
+    session_id, csrf = api.login()
+    headers = {
+        **cookies(session_id, csrf),
+        "origin": "https://evil.example",
+        "sec-fetch-site": "cross-site",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-dest": "document",
+    }
+    without_origin = {key: headers[key] for key in headers if key != "origin"}
+
+    posted = api.client.post(path, headers=headers)
+    bare = api.client.post(path, headers=without_origin)
+    options = api.client.options(path, headers=without_origin)
+
+    assert_problem(posted, 403, "forbidden", "csrf_rejected")
+    assert_problem(bare, 403, "forbidden", "csrf_rejected")
+    assert_problem(options, 403, "forbidden", "csrf_rejected")
 
 
 @pytest.mark.parametrize(
@@ -600,23 +830,44 @@ def test_security_no_cors_headers(api: Api) -> None:
 
 
 def test_security_interface_files_need_no_session(api: Api) -> None:
-    """The page and its modules load without a session, with security headers."""
+    """The page, the user guide and the modules load without a session, secured."""
     page = api.client.get("/")
+    guide = api.client.get("/instrukcja")
     module = api.client.get("/static/src/main.js")
 
     assert page.status_code == 200
+    assert guide.status_code == 200
+    assert guide.text == GUIDE_HTML
     assert module.status_code == 200
     assert "javascript" in module.headers["content-type"]
-    for response in (page, module):
+    for response in (page, guide, module):
         assert response.headers["content-security-policy"] == csp_header(AppSettings())
         assert response.headers["referrer-policy"] == "no-referrer"
         assert response.headers["x-content-type-options"] == "nosniff"
 
 
+def test_security_interface_files_are_revalidated(api: Api) -> None:
+    """Page and modules say ``no-cache``; a request naming the ``ETag`` gets ``304``.
+
+    A browser reusing them by heuristic freshness kept the interface of the
+    previous version after an upgrade.
+    """
+    for path in ("/", "/instrukcja", "/static/src/main.js"):
+        first = api.client.get(path)
+        again = api.client.get(path, headers={"if-none-match": first.headers["etag"]})
+
+        assert first.status_code == 200
+        assert first.headers["cache-control"] == "no-cache"
+        assert again.status_code == 304
+        assert again.content == b""
+        assert again.headers["cache-control"] == "no-cache"
+        assert again.headers["content-security-policy"] == csp_header(AppSettings())
+
+
 def test_security_interface_files_stay_in_web_dir(api: Api, tmp_path: Path) -> None:
     """Neither ``..`` nor a symbolic link serves a file outside the interface."""
     secret = tmp_path / "secret.txt"
-    secret.write_text("secret", "utf-8")
+    secret.write_text("classified", "utf-8")
     (tmp_path / "web" / "link.txt").symlink_to(secret)
 
     linked = api.client.get("/static/link.txt")
@@ -624,7 +875,7 @@ def test_security_interface_files_stay_in_web_dir(api: Api, tmp_path: Path) -> N
 
     assert linked.status_code == 404
     assert climbed.status_code == 404
-    assert "secret" not in linked.text + climbed.text
+    assert "classified" not in linked.text + climbed.text
 
 
 def test_security_csp_lists_basemaps_only_online() -> None:
@@ -715,3 +966,154 @@ def test_token_not_logged(
     assert queried.status_code == 200
     assert "/api/v1/session?token=***" in logs
     assert token not in logs
+
+
+# Team mode -----------------------------------------------------------------
+
+TEAM_ORIGIN = "https://archiwista.firma.local"
+
+
+def team_transport(**team: object) -> Transport:
+    """Return the transport of team mode at ``TEAM_ORIGIN`` with ``team``."""
+    table = {"enabled": True, "origin": TEAM_ORIGIN, **team}
+    return Transport.of(AppSettings(team=TeamSettings.model_validate(table)), PORT)
+
+
+def request_scope(
+    peer: str, *, scheme: str = "http", headers: tuple[tuple[str, str], ...] = ()
+) -> Scope:
+    """Return the ASGI scope of a request from ``peer`` with ``headers``."""
+    return {
+        "type": "http",
+        "scheme": scheme,
+        "client": (peer, 50_000),
+        "headers": [(name.encode(), value.encode()) for name, value in headers],
+    }
+
+
+@pytest.mark.parametrize(
+    ("peer", "forwarded", "client"),
+    [
+        ("10.0.0.5", ("6.6.6.6",), "10.0.0.5"),
+        ("10.0.0.2", (), "10.0.0.2"),
+        ("10.0.0.2", ("10.0.0.5",), "10.0.0.5"),
+        ("10.0.0.2", ("6.6.6.6, 10.0.0.5",), "10.0.0.5"),
+        ("10.0.0.2", ("6.6.6.6", "10.0.0.5"), "10.0.0.5"),
+        ("10.0.0.2", ("10.0.0.5, 192.168.7.3",), "10.0.0.5"),
+        ("10.0.0.2", ("192.168.7.3",), "192.168.7.3"),
+        ("10.0.0.2", ("unknown",), "10.0.0.2"),
+        ("::ffff:10.0.0.2", ("10.0.0.5",), "10.0.0.5"),
+        ("fd00::7", ("10.0.0.5",), "fd00::7"),
+    ],
+)
+def test_security_client_address_follows_only_trusted_proxies(
+    peer: str, forwarded: tuple[str, ...], client: str
+) -> None:
+    """The client is the right-most forwarded address that is no trusted proxy."""
+    transport = team_transport(trusted_proxies=["10.0.0.2", "192.168.7.0/24"])
+    headers = tuple(("x-forwarded-for", value) for value in forwarded)
+
+    assert client_address(request_scope(peer, headers=headers), transport) == client
+
+
+def test_security_client_address_of_local_mode_is_the_peer() -> None:
+    """Local mode trusts no proxy, so a forwarded address is never believed."""
+    scope = request_scope("127.0.0.1", headers=(("x-forwarded-for", "6.6.6.6"),))
+
+    assert client_address(scope, Transport.of(AppSettings(), PORT)) == "127.0.0.1"
+
+
+@pytest.mark.parametrize(
+    ("peer", "scheme", "proto", "reason"),
+    [
+        ("10.0.0.2", "http", "https", None),
+        ("10.0.0.2", "http", "http", "tls_required"),
+        ("10.0.0.2", "http", None, "tls_required"),
+        ("10.0.0.5", "http", "https", "tls_required"),
+        ("10.0.0.5", "https", None, None),
+    ],
+)
+def test_security_forwarded_https_believed_only_from_a_trusted_peer(
+    peer: str, scheme: str, proto: str | None, reason: str | None
+) -> None:
+    """A request is over TLS by its connection, or by what a trusted proxy says."""
+    transport = team_transport(
+        tls_cert="/etc/tls/cert.pem",
+        tls_key="/etc/tls/key.pem",
+        trusted_proxies=["10.0.0.2"],
+    )
+    headers = () if proto is None else (("x-forwarded-proto", proto),)
+
+    rejection = transport_rejection(
+        request_scope(peer, scheme=scheme, headers=headers), transport
+    )
+
+    assert (None if rejection is None else rejection.reason) == reason
+
+
+@pytest.mark.parametrize(
+    ("peer", "values", "named"),
+    [
+        ("10.0.0.2", ("Kasia",), "kasia"),
+        ("10.0.0.2", ("  marek.nowak ",), "marek.nowak"),
+        ("10.0.0.2", (), None),
+        ("10.0.0.2", ("  ",), None),
+        ("10.0.0.2", ("kasia", "marek"), None),
+        ("10.0.0.5", ("kasia",), None),
+    ],
+)
+def test_security_only_a_trusted_proxy_names_the_person(
+    peer: str, values: tuple[str, ...], named: str | None
+) -> None:
+    """One value of the header from a trusted peer, trimmed and lower-cased."""
+    transport = team_transport(
+        trusted_proxies=["10.0.0.2"], proxy_user_header="X-Remote-User"
+    )
+    headers = tuple(("x-remote-user", value) for value in values)
+
+    assert named_by_proxy(request_scope(peer, headers=headers), transport) == named
+
+
+def test_security_proxy_header_is_logged_once_an_hour_per_address(
+    tmp_path: Path,
+) -> None:
+    """The header of another peer is logged again only an hour later."""
+    # Arrange
+    state = StateStore(tmp_path / "state.sqlite")
+    clock = Clock(START)
+    ignored = ProxyHeaderLog(state, clock=clock)
+
+    # Act
+    ignored.ignored("10.0.0.9")
+    clock.now = START + PROXY_HEADER_LOG_INTERVAL - timedelta(seconds=1)
+    ignored.ignored("10.0.0.9")
+    ignored.ignored("10.0.0.8")
+    clock.now = START + PROXY_HEADER_LOG_INTERVAL
+    ignored.ignored("10.0.0.9")
+
+    # Assert
+    assert [
+        (entry.action, entry.actor, entry.target, entry.outcome, entry.client)
+        for entry in log_entries(state)
+    ] == [
+        ("session.proxy_header_ignored", "-", address, "denied", address)
+        for address in ("10.0.0.9", "10.0.0.8", "10.0.0.9")
+    ]
+
+
+def test_security_team_host_and_origin_compare_with_the_origin() -> None:
+    """Host is the origin's host, with :443 or without; Origin must be the origin."""
+    transport = team_transport()
+    other_port = team_transport(origin="https://archiwista.firma.local:8443")
+
+    def refused(origin: str) -> bool:
+        headers = Headers({"origin": origin, "sec-fetch-site": "same-origin"})
+        return origin_rejection("POST", "/", headers, transport.origin) is not None
+
+    assert transport.hosts == {"archiwista.firma.local", "archiwista.firma.local:443"}
+    assert other_port.hosts == {"archiwista.firma.local:8443"}
+    assert not refused(TEAM_ORIGIN)
+    assert refused("http://archiwista.firma.local")
+    assert refused("https://archiwista.firma.local:8443")
+    assert refused(f"http://127.0.0.1:{PORT}")
+    assert refused("null")

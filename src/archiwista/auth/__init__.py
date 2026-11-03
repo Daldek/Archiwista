@@ -1,0 +1,36 @@
+"""Who acts and which projects they see and change.
+
+``Principal``, ``ProjectVisibility`` and ``WritableProjects`` are plain
+values that every layer passes along; the decisions themselves
+(``Authorizer``: ``can``, ``require``, ``visible_projects``,
+``writable_projects``) live in ``archiwista.auth.authorize``, which reads
+the state database.
+"""
+
+from archiwista.auth.principal import (
+    LOCAL_OWNER,
+    LOCAL_PRINCIPAL_ID,
+    LOCAL_ROLES,
+    SCHEDULER,
+    Principal,
+    PrincipalKind,
+)
+from archiwista.auth.visibility import (
+    ALL_PROJECTS,
+    ProjectVisibility,
+    WritableProjects,
+    access_key,
+)
+
+__all__ = [
+    "ALL_PROJECTS",
+    "LOCAL_OWNER",
+    "LOCAL_PRINCIPAL_ID",
+    "LOCAL_ROLES",
+    "SCHEDULER",
+    "Principal",
+    "PrincipalKind",
+    "ProjectVisibility",
+    "WritableProjects",
+    "access_key",
+]

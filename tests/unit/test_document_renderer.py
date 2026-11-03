@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from archiwista.errors import PreviewUnavailableError
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.previews.renderers.document import DocumentRenderer
 from archiwista.previews.types import PreviewSource
 from tests.fixtures.store_files import pdf_document, world_file
@@ -49,8 +49,8 @@ def test_document_probe_gives_reason_with_polish_text(
     # Assert
     assert (probe.reason, probe.driver) == (reason, driver)
     assert thumbnail.value.reason == tile.value.reason == reason
-    assert MESSAGES[f"preview_reason_{reason}"]
-    assert MESSAGES[f"preview_fix_{reason}"]
+    assert message(f"preview.reason_{reason}")
+    assert message(f"preview.fix_{reason}")
 
 
 def test_document_pdf_without_signature_has_no_driver(tmp_path: Path) -> None:

@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from archiwista.config import AppPaths
-from archiwista.sandbox import process_work_dir, run_untrusted
+from archiwista.sandbox import child_limits, process_work_dir, run_untrusted
 
 GIB = 1024**3
 CHILD_TIMEOUT_S = 60.0
@@ -65,7 +65,8 @@ def _running(pid: int) -> bool:
     """Whether a process exists and is not a zombie (Linux ``/proc``)."""
     try:
         status = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
+        # Gone, or reaped between the open and the read (ESRCH).
         return False
     return status.rpartition(")")[2].split()[0] != "Z"
 
@@ -106,14 +107,39 @@ def test_sandbox_child_env_has_no_proxy_credentials_or_network(
 
 
 def test_sandbox_child_memory_limited_and_files_private() -> None:
-    """``memory_bytes`` caps the child's address space; its umask is 077."""
+    """``memory_bytes`` caps the address space on Linux; the umask is 077 everywhere.
+
+    macOS refuses every ``RLIMIT_AS``, so ``child_limits`` sets the cap on
+    Linux only and a child there keeps the inherited limit.
+    """
+    # Arrange
+    capped = sys.platform == "linux"
+
     # Act
-    limited = _report(memory_bytes=GIB, allocate=2 * GIB)
+    limited = _report(memory_bytes=GIB, allocate=2 * GIB if capped else 0)
 
     # Assert
-    assert limited["address_space"] == GIB
-    assert limited["allocated"] is False
+    if capped:
+        assert limited["address_space"] == GIB
+        assert limited["allocated"] is False
     assert limited["umask"] == 0o077
+
+
+@pytest.mark.parametrize(("platform", "limited"), [("linux", True), ("darwin", False)])
+def test_child_limits_memory_cap_on_linux_only(
+    monkeypatch: pytest.MonkeyPatch, platform: str, limited: bool
+) -> None:
+    """The memory cap is Linux-only: macOS refuses every ``RLIMIT_AS``."""
+    # Arrange
+    monkeypatch.setattr(sys, "platform", platform)
+
+    # Act
+    limits = child_limits(GIB)
+
+    # Assert
+    assert ("preexec_fn" in limits) is limited
+    assert limits["start_new_session"] is True
+    assert limits["umask"] == 0o077
 
 
 def test_sandbox_child_killed_with_its_group_at_time_limit(tmp_path: Path) -> None:

@@ -28,7 +28,7 @@ from archiwista.api.errors import PROBLEM_MEDIA_TYPE
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig, StoreKind
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.jobs import FINISHED_STATES, scheduler
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.security import CSRF_HEADER
 from archiwista.sources.registry import load_registry
 from tests.fixtures.browser import Served, Tab, session_headers
@@ -97,9 +97,9 @@ def generate(tmp_path: Path) -> StoreManifest:
 
 
 def archive_pin(store: StoreManifest) -> ExpectedPin:
-    """Return the pin of an older version: task ``archiwum`` of ``projekt-01``."""
-    tasks = store.project("projekt-01").tasks
-    return next(task for task in tasks if task.name == "archiwum").pins[0]
+    """Return the pin of an older version: group ``archiwum`` of ``projekt-01``."""
+    groups = store.project("projekt-01").groups
+    return next(group for group in groups if group.name == "archiwum").pins[0]
 
 
 def link_of(store: StoreManifest, slot: str) -> ExpectedEntry:
@@ -208,13 +208,16 @@ def wait_job(page: Page, base: str, job: str) -> dict[str, Any]:
         page.wait_for_timeout(250)
 
 
-def assert_problem(response: APIResponse, status: int, code: str, detail: str) -> None:
-    """Check an RFC 9457 problem: status, stable code and the Polish detail."""
+def assert_problem(
+    response: APIResponse, status: int, code: str, reason: str, detail: str
+) -> None:
+    """Check an RFC 9457 problem: status, registry code, reason and Polish detail."""
     assert response.status == status, response.text()
     assert response.headers["content-type"] == PROBLEM_MEDIA_TYPE
     body = response.json()
-    assert {"type", "title", "status", "detail", "code"} <= set(body)
+    assert {"type", "title", "status", "detail", "code", "instance"} <= set(body)
     assert (body["status"], body["code"], body["detail"]) == (status, code, detail)
+    assert body["details"]["reason"] == reason
     assert body["title"]
 
 
@@ -357,14 +360,12 @@ def browse_every_view(page: Page, base: str, store: StoreManifest) -> None:
     page.goto(f"{base}/?view=projects&project={project.name}")
     panel = page.get_by_role("complementary", name="Projekt")
     expect(panel.get_by_role("heading", name=project.name)).to_be_visible()
-    expect(value(panel, "Stan teraz")).to_contain_text(
-        "sprawdzono", timeout=READ_TIMEOUT_MS
-    )
-    for task in project.tasks:
-        pins = panel.locator(".pc-task").filter(
-            has=page.locator(".pc-task-head b").get_by_text(task.name, exact=True)
+    expect(value(panel, "Magazyny")).to_contain_text(f"kartograf: {STORE_NAME}")
+    for group in project.groups:
+        pins = panel.locator(".pc-group").filter(
+            has=page.locator(".pc-group-head b").get_by_text(group.name, exact=True)
         )
-        expect(pins.locator(".pc-pin")).to_have_count(len(task.pins))
+        expect(pins.locator(".pc-pin")).to_have_count(len(group.pins))
 
     detail = api(page, base, f"/stores/{STORE}")
     page.goto(f"{base}/?view=store")
@@ -495,15 +496,13 @@ def test_acceptance_first_run_to_every_view(
     page.get_by_role("link", name=project.name, exact=True).click()
     panel = page.get_by_role("complementary", name="Projekt")
     expect(panel.get_by_role("heading", name=project.name)).to_be_visible()
-    expect(value(panel, "Stan teraz")).to_contain_text(
-        "sprawdzono", timeout=READ_TIMEOUT_MS
-    )
-    for task in project.tasks:
-        pins = panel.locator(".pc-task").filter(
-            has=page.locator(".pc-task-head b").get_by_text(task.name, exact=True)
+    expect(value(panel, "Magazyny")).to_contain_text(f"kartograf: {STORE_NAME}")
+    for group in project.groups:
+        pins = panel.locator(".pc-group").filter(
+            has=page.locator(".pc-group-head b").get_by_text(group.name, exact=True)
         )
-        expect(pins.locator(".pc-pin")).to_have_count(len(task.pins))
-        for pin in task.pins:
+        expect(pins.locator(".pc-pin")).to_have_count(len(group.pins))
+        for pin in group.pins:
             expect(pins.get_by_role("link", name=pin.label)).to_be_visible()
 
     detail = api(page, base, f"/stores/{STORE}")
@@ -550,9 +549,9 @@ def test_acceptance_read_only_store_every_view(
     its names, sizes, modification times and inodes.
     """
     store = generate(tmp_path)
-    read_only(store.output_dir, locked=True)
+    read_only(store.base, locked=True)
     try:
-        before = tree(store.output_dir)
+        before = tree(store.base)
         served = serve(offline_settings(store))
         base = served.base
         page = tab.page
@@ -565,9 +564,9 @@ def test_acceptance_read_only_store_every_view(
         )
         done = scans(page, base)
         browse_every_view(page, base, store)
-        after = tree(store.output_dir)
+        after = tree(store.base)
     finally:
-        read_only(store.output_dir, locked=False)
+        read_only(store.base, locked=False)
 
     assert [(job["params"]["mode"], job["state"]) for job in done] == [
         ("incremental", "succeeded"),
@@ -654,7 +653,11 @@ def test_acceptance_api_requests_with_browser_session(
     try:
         without_session = anonymous.request.get(f"{base}/api/v1/health")
         assert_problem(
-            without_session, 401, "session_required", MESSAGES["api_session_required"]
+            without_session,
+            401,
+            "unauthorized",
+            "session_required",
+            message("api.session_required"),
         )
     finally:
         anonymous.close()
@@ -676,19 +679,28 @@ def test_acceptance_api_requests_with_browser_session(
     assert card.json()["current"] == current["path"]
     assert len(versions) == len(versions_of(store, slot))
     assert set(cookies) == {"archiwista_session"}
-    assert_problem(cookie_only, 403, "csrf_rejected", MESSAGES["api_csrf_missing"])
-    assert_problem(refused, 403, "csrf_rejected", MESSAGES["api_csrf_missing"])
+    assert_problem(
+        cookie_only, 403, "forbidden", "csrf_rejected", message("api.csrf_missing")
+    )
+    assert_problem(
+        refused, 403, "forbidden", "csrf_rejected", message("api.csrf_missing")
+    )
     assert started.status == 202, started.text()
     assert started.headers["location"] == f"/api/v1/jobs/{started.json()['id']}"
     assert (finished["state"], finished["actor"]) == ("succeeded", "local")
     assert finished["params"]["mode"] == "incremental"
-    assert_problem(cross_site, 403, "csrf_rejected", MESSAGES["api_cross_site"])
-    assert_problem(other_origin, 403, "csrf_rejected", MESSAGES["api_cross_site"])
+    assert_problem(
+        cross_site, 403, "forbidden", "csrf_rejected", message("api.cross_site")
+    )
+    assert_problem(
+        other_origin, 403, "forbidden", "csrf_rejected", message("api.cross_site")
+    )
     assert_problem(
         foreign_host,
-        400,
+        403,
+        "forbidden",
         "invalid_host",
-        MESSAGES["api_invalid_host"].format(port=served.server.port),
+        message("api.invalid_host", port=served.server.port),
     )
     tab.assert_clean()
 
@@ -785,10 +797,10 @@ def test_acceptance_serve_on_read_only_mount(
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
     monkeypatch.setenv("PYTHONUNBUFFERED", "1")
     ConfigStore(AppPaths.default().config_file).save(offline_settings(store))
-    before = tree(store.output_dir)
+    before = tree(store.base)
     page = tab.page
 
-    with serving_read_only(store.output_dir, dict(os.environ), tmp_path) as (
+    with serving_read_only(store.base, dict(os.environ), tmp_path) as (
         process,
         url,
     ):
@@ -797,7 +809,7 @@ def test_acceptance_serve_on_read_only_mount(
         wait_indexed(page, base)
         indexed = scans(page, base)
         browse_every_view(page, base, store)
-        options = mount_options(process.pid, store.output_dir)
+        options = mount_options(process.pid, store.base)
         tab.assert_clean()
         page.goto("about:blank")
 
@@ -806,7 +818,7 @@ def test_acceptance_serve_on_read_only_mount(
         ("full", "succeeded")
     ]
     assert process.returncode == 0, (tmp_path / "serve.err").read_text("utf-8")
-    assert tree(store.output_dir) == before
+    assert tree(store.base) == before
 
 
 # The in-process scan reads the synthetic JPEG sheets, whose headers carry no
@@ -829,7 +841,7 @@ def test_acceptance_second_plugin_beside_kartograf(
 
     def roots(config: StoreConfig) -> dict[str, Path]:
         if config.id == "pomiary":
-            return {"external": config.kartograf}
+            return {"external": kartograf_roots(config)["kartograf"]}
         return kartograf_roots(config)
 
     monkeypatch.setattr(StoreConfig, "roots", roots)
@@ -893,10 +905,10 @@ def test_acceptance_second_plugin_beside_kartograf(
     expect(card).to_be_visible()
     expect(axis(card)).to_have_count(1)
 
-    assert {producer: item["status"] for producer, item in sources.items()} == {
-        "external": "available",
-        "kartograf": "available",
-    }
+    assert set(sources) == {"external", "imgw", "kartograf"}
+    assert (
+        sources["external"]["status"] == sources["kartograf"]["status"] == "available"
+    )
     assert shown == [card_of(item) for item in rows]
     assert {item["store"] for item in rows} == {STORE, "pomiary"}
     assert address(page) == {

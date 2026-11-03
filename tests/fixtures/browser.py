@@ -1,10 +1,12 @@
-"""A real ``archiwista serve`` and a Chromium tab that records what went wrong.
+"""A real ``archiwista serve`` and a browser tab that records what went wrong.
 
 ``Served`` is a server over a test directory with the real plugin registry,
 job supervisor and scan scheduler; ``Tab`` a Playwright page recording CSP
 violations (``securitypolicyviolation``), page errors, console errors,
 requests and workers, so interface tests can assert the page stayed within
-its policy and made no request outside the server.
+its policy and made no request outside the server; ``Tab.settle`` waits for
+the page's requests to end before a test navigates away from it, and
+``Tab.most_in_flight`` is the most of them in flight at once.
 
 For frame rates (plan v0.2, decision 1) ``gpu_browser`` gives a Chromium
 drawing WebGL on the GPU when it can: Chrome of a graphical session over CDP
@@ -34,9 +36,14 @@ from playwright.sync_api import (
 from archiwista.auth import LOCAL_OWNER
 from archiwista.config import AppPaths, AppSettings, ConfigStore
 from archiwista.security import CSRF_HEADER, fragment_url, issue_one_time_token
-from archiwista.server import LocalServer
+from archiwista.server import AppServer
 
 VIEWPORT: ViewportSize = {"width": 1440, "height": 900}
+# How long an expectation waits for the page, the server or a build before it
+# fails: a bound for what never arrives, not a speed the page has to keep. How
+# fast the state arrives depends on the load of the computer (a gate runs next
+# to other test suites); once it has arrived the expectation passes at once.
+EXPECT_TIMEOUT_MS = 30_000
 CDP_VARIABLE = "ARCHIWISTA_BROWSER_CDP"
 REQUIRE_GPU_VARIABLE = "ARCHIWISTA_REQUIRE_GPU"
 # nouveau is on Chromium's GPU blocklist; ANGLE on EGL takes Mesa's driver of
@@ -81,13 +88,17 @@ document.addEventListener("securitypolicyviolation", (event) => {
 # Chromium logs every 4xx/5xx answer like this; expected API problems are
 # asserted by the tests themselves.
 FAILED_RESOURCE = "Failed to load resource"
+# How long a page has had no request in flight when it counts as settled, and
+# the bound of the wait for it.
+QUIET_S = 0.5
+SETTLE_TIMEOUT_S = 30.0
 
 
 @dataclass(frozen=True)
 class Served:
     """A running server over a test directory."""
 
-    server: LocalServer
+    server: AppServer
     paths: AppPaths
 
     @property
@@ -100,7 +111,7 @@ class Served:
         issued = issue_one_time_token(
             self.paths.index_file, "startup", minted_by=LOCAL_OWNER
         )
-        return fragment_url(self.server.port, issued.token)
+        return fragment_url(self.base, issued.token)
 
     def settings(self) -> AppSettings:
         """Return the settings saved in the configuration file."""
@@ -109,13 +120,15 @@ class Served:
 
 @dataclass
 class Tab:
-    """A Chromium page and what happened on it."""
+    """A browser page (Chromium or Firefox) and what happened on it."""
 
     page: Page
     page_errors: list[str] = field(default_factory=list)
     console_errors: list[str] = field(default_factory=list)
     requests: list[str] = field(default_factory=list)
     workers: list[str] = field(default_factory=list)
+    in_flight: set[Request] = field(default_factory=set)
+    most_in_flight: int = 0
 
     def watch(self) -> None:
         """Start recording; call once, before the first navigation."""
@@ -123,7 +136,33 @@ class Tab:
         self.page.on("pageerror", lambda error: self.page_errors.append(str(error)))
         self.page.on("console", self._console)
         self.page.on("request", self._request)
+        self.page.on("requestfinished", self._ended)
+        self.page.on("requestfailed", self._ended)
         self.page.on("worker", self._worker)
+
+    def settle(self) -> None:
+        """Wait until the page has had no request in flight for ``QUIET_S``.
+
+        Call it before navigating away from a page that may still be loading.
+        Firefox fails the loads of the page it leaves (module scripts,
+        stylesheets, ``fetch``) and runs the page's handlers of those
+        failures, which then report errors of a page nobody sees any more;
+        Chromium drops the page without running them, and Playwright never
+        reports the end of a request the page left: it stays in flight, so
+        a later ``settle`` would wait for it in vain.
+        """
+        deadline = time.monotonic() + SETTLE_TIMEOUT_S
+        quiet_since = time.monotonic()
+        while time.monotonic() - quiet_since < QUIET_S:
+            pending = sorted(request.url for request in self.in_flight)
+            assert time.monotonic() < deadline, f"the page did not settle: {pending}"
+            self.page.wait_for_timeout(50)
+            if self.in_flight:
+                quiet_since = time.monotonic()
+
+    def reset_most_in_flight(self) -> None:
+        """Count ``most_in_flight`` again from the requests in flight now."""
+        self.most_in_flight = len(self.in_flight)
 
     def csp_violations(self) -> list[dict[str, str]]:
         """Return the CSP violations of the current document."""
@@ -152,6 +191,11 @@ class Tab:
 
     def _request(self, request: Request) -> None:
         self.requests.append(request.url)
+        self.in_flight.add(request)
+        self.most_in_flight = max(self.most_in_flight, len(self.in_flight))
+
+    def _ended(self, request: Request) -> None:
+        self.in_flight.discard(request)
 
     def _worker(self, worker: Worker) -> None:
         self.workers.append(worker.url)

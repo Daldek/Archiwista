@@ -14,8 +14,9 @@ from typing import Any
 import pytest
 
 from archiwista.auth import access_key
-from archiwista.index import IndexWriter, ManifestStamp
-from archiwista.sources import ProjectInfo, ProjectPin, SourceEntry
+from archiwista.index import IndexWriter
+from archiwista.messages import message
+from archiwista.sources import SourceEntry
 from tests.fixtures.api_session import Api, assert_problem, running_api
 from tests.fixtures.index_data import (
     NMT,
@@ -23,7 +24,10 @@ from tests.fixtures.index_data import (
     ROOT,
     STORE,
     box,
+    indexed_project,
     link,
+    pin,
+    sha,
     slot_path,
     version,
     write_pass,
@@ -64,15 +68,11 @@ def api(tmp_path: Path) -> Iterator[Api]:
                 },
             )
             for name, directory, pinned in (
-                ("Raba", RABA_DIR, (A_OLDER, B_CURRENT)),
-                ("Odra", Path("/projekty/odra"), (B_OLDER,)),
+                ("Raba", RABA_DIR, ((A_OLDER, 2), (B_CURRENT, 3))),
+                ("Odra", Path("/projekty/odra"), ((B_OLDER, 4),)),
             ):
-                pins = tuple(
-                    ProjectPin(ROOT, entry.relative_path, None, "teren")
-                    for entry in pinned
-                )
-                info = ProjectInfo(PRODUCER, ROOT, directory, name, pins=pins)
-                writer.write_project(info, store=STORE, stamp=ManifestStamp(1, 1))
+                pins = [pin(_path(entry), sha(seed)) for entry, seed in pinned]
+                indexed_project(writer, directory, name, store=STORE, pins=pins)
         add_people(served.state)
         yield served
 
@@ -131,7 +131,7 @@ def test_project_filter_cursor_belongs_to_the_project(api: Api) -> None:
         [_path(A_OLDER), _path(B_CURRENT)]
     )
     assert following.json()["next_cursor"] is None
-    assert_problem(elsewhere, 422, "validation_error")
+    assert_problem(elsewhere, 400, "validation_error")
 
 
 @pytest.mark.parametrize("route", ROUTES)
@@ -150,5 +150,5 @@ def test_hidden_and_unknown_project_filter_is_not_found(api: Api, route: str) ->
     # Assert
     assert_problem(hidden, 404, "not_found")
     assert_problem(missing, 404, "not_found")
-    assert hidden.json()["detail"] == "Nie ma projektu „raba”."
+    assert hidden.json()["detail"] == message("project.not_found", project="raba")
     assert seen.status_code == 200, seen.text

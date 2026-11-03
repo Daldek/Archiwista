@@ -26,7 +26,7 @@ from shapely.geometry import mapping, shape
 from archiwista.area_reader import MAX_VERTICES, UNPACKED_LIMIT_BYTES
 from archiwista.areas import AREA_BODY_LIMIT_BYTES, AreaFiles
 from archiwista.auth import LOCAL_OWNER
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from archiwista.sources.registry import load_registry
 from tests.fixtures import fetching_area_reader
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
@@ -211,9 +211,9 @@ def test_areas_body_over_50_mb_refused(api: Api, owner: Caller) -> None:
     )
 
     # Assert
-    assert_problem(at_limit, 422, "area_unreadable")
-    assert_problem(over, 413, "area_too_large")
-    assert_problem(json_over, 413, "area_too_large")
+    assert_problem(at_limit, 500, "data_error", "area_unreadable")
+    assert_problem(over, 400, "validation_error", "area_too_large")
+    assert_problem(json_over, 400, "validation_error", "area_too_large")
     assert "50 MB" in over.json()["detail"]
     assert _copies(api) == []
 
@@ -235,7 +235,7 @@ def test_areas_archive_over_200_mb_unpacked_refused_before_unpacking(
 
     # Assert
     assert len(content) < 1024**2
-    assert_problem(response, 413, "area_too_large")
+    assert_problem(response, 400, "validation_error", "area_too_large")
     assert "200 MB" in response.json()["detail"]
     assert _copies(api) == []
 
@@ -251,7 +251,7 @@ def test_areas_archive_member_leaving_its_directory_refused(
     response = upload(owner, escaping_zip(member))
 
     # Assert
-    assert_problem(response, 422, "area_unreadable")
+    assert_problem(response, 500, "data_error", "area_unreadable")
     assert member in response.json()["detail"]
     assert _copies(api) == []
     data_dir = _files(api).directory.parent
@@ -276,7 +276,7 @@ def test_areas_slow_reader_killed_at_time_limit(
     elapsed = time.monotonic() - started
 
     # Assert
-    assert_problem(response, 422, "area_unreadable")
+    assert_problem(response, 500, "data_error", "area_unreadable")
     assert "1 s" in response.json()["detail"]
     assert 1.0 <= elapsed < 10.0
     pid = int(pid_file.read_text(encoding="utf-8"))
@@ -309,8 +309,8 @@ def test_areas_geojson_crs_link_refused_without_fetching(
         response = upload(owner, _square_with_crs(where, crs))
 
     # Assert
-    assert_problem(response, 422, "area_unreadable")
-    assert response.json()["detail"] == MESSAGES["area_crs_not_named"]
+    assert_problem(response, 500, "data_error", "area_unreadable")
+    assert response.json()["detail"] == message("area.crs_not_named")
     assert listener.received == []
     assert _copies(api) == []
 
@@ -366,7 +366,7 @@ def test_areas_reader_environment_keeps_gdal_offline(
 
     # Assert
     assert unchecked.received, "GDAL no longer fetches a link CRS: probe is moot"
-    assert_problem(response, 422, "area_unreadable")
+    assert_problem(response, 500, "data_error", "area_unreadable")
     assert response.json()["detail"] == "crs: EPSG:4326"  # GDAL ran, gave up
     assert listener.received == []
 
@@ -390,12 +390,16 @@ def test_areas_more_than_100000_vertices_refused_never_simplified(
     assert kept.status_code == 201, kept.text
     ring = kept.json()["geometry"]["coordinates"][0]
     assert len(ring) == MAX_VERTICES
-    assert_problem(refused, 422, "area_too_complex")
+    assert_problem(refused, 400, "validation_error", "area_too_complex")
     assert "100001" in refused.json()["detail"]
 
 
 def test_areas_copies_older_than_7_days_pruned_at_start_up(tmp_path: Path) -> None:
-    """Old copies go at start-up; the areas stay in the index."""
+    """Old copies go at start-up; the areas stay in the index.
+
+    So do the areas' GeoJSON files, however old: a kept plan, a job or a
+    project's group may name one (A-ADR-035 erratum 2).
+    """
     # Arrange
     paths = local_paths(tmp_path)
     registry = load_registry(cache_dir=paths.cache_dir)
@@ -406,10 +410,13 @@ def test_areas_copies_older_than_7_days_pruned_at_start_up(tmp_path: Path) -> No
     now = datetime.now(UTC)
     leftover = paths.areas_dir / ".incoming" / "crashed"
     leftover.mkdir(parents=True)
+    area_file = paths.areas_dir / f"{old['id']}.geojson"
+    area_file.write_bytes(b"{}")
     for path, age in (
         (paths.areas_dir / old["id"], timedelta(days=7, minutes=1)),
         (paths.areas_dir / recent["id"], timedelta(days=6)),
         (leftover, timedelta(days=8)),
+        (area_file, timedelta(days=400)),
     ):
         stamp = (now - age).timestamp()
         os.utime(path, (stamp, stamp))
@@ -420,7 +427,7 @@ def test_areas_copies_older_than_7_days_pruned_at_start_up(tmp_path: Path) -> No
         kept_old = owner.request("GET", f"/areas/{old['id']}")
 
         # Assert
-        assert _copies(api) == [recent["id"]]
+        assert _copies(api) == sorted([area_file.name, recent["id"]])
         assert kept_old.status_code == 200
         assert kept_old.json()["geometry"] == old["geometry"]
 
@@ -461,12 +468,16 @@ def test_areas_copies_older_than_7_days_pruned_at_start_up(tmp_path: Path) -> No
 def test_areas_malformed_file_refused_with_reason(
     api: Api, owner: Caller, tmp_path: Path, make: Any, query: str, fragment: str
 ) -> None:
-    """A file that cannot be an area says why, in Polish, and leaves no copy."""
+    """A file that cannot be an area says why, in the language asked, no copy kept.
+
+    The reader is a process of its own that words the refusal in English; the
+    server words it again in Polish from the key and values of its answer.
+    """
     # Act
-    response = upload(owner, make(tmp_path), query=query)
+    response = upload(owner, make(tmp_path), query=query, accept_language="pl")
 
     # Assert
-    assert_problem(response, 422, "area_unreadable")
+    assert_problem(response, 500, "data_error", "area_unreadable")
     assert fragment in response.json()["detail"]
     assert _copies(api) == []
 
@@ -488,8 +499,8 @@ def test_areas_file_with_several_layers_lists_them_then_reads_one(
     chosen = upload(owner, content, query="?layer=powiaty")
 
     # Assert
-    assert_problem(refused, 422, "area_unreadable")
-    assert refused.json()["layers"] == ["gminy", "powiaty"]
+    assert_problem(refused, 500, "data_error", "area_unreadable")
+    assert refused.json()["details"]["layers"] == ["gminy", "powiaty"]
     assert chosen.status_code == 201, chosen.text
     assert chosen.json()["area_km2"] == pytest.approx(SQUARE_KM2, rel=1e-4)
 
@@ -497,7 +508,7 @@ def test_areas_file_with_several_layers_lists_them_then_reads_one(
 def test_areas_invalid_requests_refused(
     api: Api, owner: Caller, tmp_path: Path
 ) -> None:
-    """Bad GeoJSON is 422, a missing CSRF token 403, no producer plugin 503."""
+    """Bad GeoJSON is 400, a missing CSRF token 403, no producer plugin 503."""
     # Arrange
     bowtie = {
         "type": "Polygon",
@@ -532,14 +543,14 @@ def test_areas_invalid_requests_refused(
 
     # Assert
     for response in (point, beyond, unknown_field, file_source, not_json):
-        assert_problem(response, 422, "validation_error")
-    assert unknown_field.json()["errors"][0]["field"] == "body.colour"
-    assert_problem(no_csrf, 403, "csrf_rejected")
+        assert_problem(response, 400, "validation_error")
+    assert unknown_field.json()["errors"][0]["pointer"] == "/body/colour"
+    assert_problem(no_csrf, 403, "forbidden", "csrf_rejected")
     assert repaired.status_code == 201, repaired.text
     fixed = shape(repaired.json()["geometry"])
     assert shapely.is_valid(fixed) and fixed.area == pytest.approx(0.005)
     assert_problem(unknown, 404, "not_found")
-    assert_problem(no_plugin, 503, "source_unavailable")
+    assert_problem(no_plugin, 503, "missing_dependency", "source_unavailable")
 
 
 def test_areas_openapi_documents_both_bodies(owner: Caller) -> None:
@@ -553,7 +564,7 @@ def test_areas_openapi_documents_both_bodies(owner: Caller) -> None:
     content = operation["requestBody"]["content"]
     assert content["application/json"]["schema"]["properties"]["geometry"]
     assert content["application/octet-stream"]["schema"]["format"] == "binary"
-    assert {"201", "413", "422"} <= set(operation["responses"])
+    assert {"201", "400", "500", "503"} <= set(operation["responses"])
     get = document["paths"]["/api/v1/areas/{area_id}"]["get"]
     coverage = document["paths"]["/api/v1/local-coverage"]["get"]
     assert (get["operationId"], coverage["operationId"]) == (

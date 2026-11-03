@@ -28,7 +28,6 @@ from archiwista.config import AppPaths, AppSettings, StoreConfig
 from archiwista.index import (
     IndexQueries,
     IndexWriter,
-    ManifestStamp,
     OwnFileDetail,
     OwnFolderRecord,
     TransformerFactory,
@@ -40,8 +39,8 @@ from archiwista.owndata.formats import fileset_members
 from archiwista.owndata.reader import OwnFileInfo, OwnReader
 from archiwista.owndata.scan import OwnScanSummary, scan_own_data
 from archiwista.services.owndata import own_problems
-from archiwista.sources import ProjectInfo
 from archiwista.sources.registry import load_registry
+from tests.fixtures.index_data import indexed_project
 from tests.fixtures.own_data import (
     GpkgEditor,
     SnapshotFixture,
@@ -74,10 +73,8 @@ class OwnEnv:
         """Index a project; return its key and its directory (created)."""
         place = directory or self.root / "projekty" / name.lower()
         place.mkdir(parents=True, exist_ok=True)
-        info = ProjectInfo("kartograf", str(self.root / "magazyn"), place, name)
-        key = self.writer.write_project(
-            info, store=None, stamp=ManifestStamp(None, None)
-        )
+        root = str(self.root / "magazyn")
+        key = indexed_project(self.writer, place, name, root=root)
         return key, place
 
     def scan(self, project: str | None = None, **options: object) -> OwnScanSummary:
@@ -615,6 +612,48 @@ def test_overlapping_folders_invalid_for_both(env: OwnEnv) -> None:
         assert env.paths_listed(key) == []
     assert env.folder(third).state == "ok"
     assert env.paths_listed(third) == ["punkty_wgs84.geojson"]
+
+
+@pytest.mark.parametrize("source", ["default", "setting"])
+def test_folder_replaced_by_a_link_out_is_refused(env: OwnEnv, source: str) -> None:
+    """A folder inside the project that a link out replaced is ``invalid``, not read.
+
+    The default ``dane/`` and a folder set inside the project's directory (as
+    ``set_data_dir`` saves it: its real path) are scanned; replaced later by
+    a symbolic link to a folder outside the project, the next scan records
+    ``own_folder_invalid`` (``outside_project``), reads nothing there and
+    keeps none of the folder's files.
+    """
+    # Arrange
+    key, project = env.project("Raba")
+    folder = project / ("dane" if source == "default" else "gis")
+    make_own_folder(folder, families=("geojson_wgs84",))
+    if source == "setting":
+        real = access_key(project)
+        env.settings = AppSettings(own_data_dirs={real: str(Path(real) / "gis")})
+    env.scan()
+    assert env.paths_listed(key) == ["punkty_wgs84.geojson"]
+    outside = env.root / "cudze"
+    make_own_folder(outside, families=("geojson_wgs84", "txt"))
+    shutil.rmtree(folder)
+    folder.symlink_to(outside, target_is_directory=True)
+
+    # Act
+    summary = env.scan(reader=_no_reads())
+
+    # Assert
+    record = env.folder(key)
+    assert (record.state, record.reason, record.source, record.files) == (
+        "invalid",
+        "outside_project",
+        source,
+        0,
+    )
+    assert [(p.code, p.reason) for p in record.problems] == [
+        ("own_folder_invalid", "outside_project")
+    ]
+    assert env.paths_listed(key) == []
+    assert (summary.projects, summary.files, summary.new) == (1, 0, 0)
 
 
 def test_too_large_folder_indexes_first_10000_by_path(env: OwnEnv) -> None:

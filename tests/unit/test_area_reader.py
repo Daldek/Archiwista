@@ -7,7 +7,7 @@ import pytest
 from shapely.geometry import mapping
 
 from archiwista.area_reader import UPLOAD_NAME, AreaFileError, main, read_area
-from archiwista.messages import MESSAGES
+from archiwista.messages import message
 from tests.fixtures.area_files import geojson_file, square_wgs84
 
 _LINK = '{"type": "link", "properties": {"href": "http://127.0.0.1:9/crs"}}'
@@ -47,7 +47,7 @@ def test_area_reader_read_area_repeated_member_cannot_hide_link(
 
     # Assert
     assert refused.value.code == "area_unreadable"
-    assert refused.value.detail == MESSAGES["area_crs_not_named"]
+    assert refused.value.detail == message("area.crs_not_named")
 
 
 def test_area_reader_read_area_text_not_utf8_still_read(tmp_path: Path) -> None:
@@ -88,5 +88,5 @@ def test_area_reader_main_json_not_decoded_answers_unreadable(
     answer = json.loads(capsys.readouterr().out)
     assert code == 0
     assert answer["error"] == "area_unreadable"
-    prefix = MESSAGES["area_read_failed"].split("{", 1)[0]
+    prefix = message("area.read_failed", detail="")
     assert answer["detail"].startswith(prefix)

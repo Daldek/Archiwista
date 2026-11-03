@@ -5,6 +5,8 @@ tests build entries directly: a store directory that never touches the disk,
 versions under ``<segment>/versions/…``, links at the standard path and in
 ``full_sheet/``, problems, and box footprints in WGS84. Coordinate
 operations come from pyproj (``PyprojOperation``), not from a producer.
+Projects are recorded as discovery records a valid project file
+(``indexed_project``), without a file on the disk.
 """
 
 from collections.abc import Iterable, Sequence
@@ -14,7 +16,20 @@ from pathlib import Path, PurePosixPath
 
 import pyproj
 
-from archiwista.index import IndexWriter, PassSummary
+from archiwista.index import (
+    CurrentVersionLookup,
+    IndexWriter,
+    PassSummary,
+    ProjectStamp,
+    ProjectWrite,
+)
+from archiwista.projects import (
+    LocalOrigin,
+    Pin,
+    PinGroup,
+    ProjectDocument,
+    StoreRoot,
+)
 from archiwista.sources import (
     EntryKind,
     EntryMeta,
@@ -44,6 +59,9 @@ SEGMENTS = {
     CZ_NMT: SourceSegment(CZ_NMT, "nmt", "CZ", "cz.cuzk.dmr5g", "DMR 5G", True),
 }
 DOWNLOADED = datetime(2025, 7, 1, 12, 0, tzinfo=UTC)
+CREATED = datetime(2026, 10, 1, 9, 0, tzinfo=UTC)
+"""When the projects of ``indexed_project`` were created and pinned."""
+PROJECT_AUTHOR = "local"
 
 
 def slot_path(segment: str, unit: str, suffix: str = ".asc") -> str:
@@ -231,6 +249,58 @@ class PyprojOperation:
         return str(self._transformer.definition)
 
 
+def pin(path: str | Path, sha256: str, *, producer: str = PRODUCER) -> Pin:
+    """Return a pin of the version at ``path`` (its file's SHA-256)."""
+    return Pin(
+        producer=producer,
+        version=Path(path).as_posix(),
+        sha256=sha256,
+        content_sha256=None,
+        size_bytes=1000,
+        unit=None,
+        label=None,
+        pinned_at=CREATED,
+        pinned_by=PROJECT_AUTHOR,
+    )
+
+
+def indexed_project(
+    writer: IndexWriter,
+    directory: Path,
+    name: str,
+    *,
+    store: str | None = None,
+    producer: str = PRODUCER,
+    root: str = ROOT,
+    pins: Sequence[Pin] = (),
+    group: str = "teren",
+) -> str:
+    """Record a valid project file of ``directory``; return the project's key.
+
+    The file names the store ``root`` of ``producer``, matched to the
+    configured ``store`` (``None``: to none); ``pins`` form one local group
+    ``group``.
+    """
+    groups = (PinGroup(group, LocalOrigin(), tuple(pins)),) if pins else ()
+    document = ProjectDocument(
+        name=name,
+        description="",
+        created_at=CREATED,
+        created_by=PROJECT_AUTHOR,
+        stores=(StoreRoot(producer, root),),
+        groups=groups,
+    )
+    return writer.write_project(
+        ProjectWrite(
+            path=directory,
+            stamp=ProjectStamp(1, 1),
+            name=name,
+            document=document,
+            stores={producer: store},
+        )
+    )
+
+
 def write_pass(
     writer: IndexWriter,
     entries: Sequence[SourceEntry],
@@ -241,11 +311,14 @@ def write_pass(
     slots: Iterable[str] | None = None,
     store: str = STORE,
     segments: Iterable[SourceSegment] | None = None,
+    current: CurrentVersionLookup | None = None,
 ) -> PassSummary:
     """Run one complete pass: segments, entries, footprints, finish.
 
     ``footprints`` maps a version path to its location; versions without
     one get ``none`` (``no_source``) when the writer asks for them.
+    ``current`` is the producer's answer for the current version of a slot
+    with a key, as ``finish_pass`` takes it.
     """
     described = list(SEGMENTS.values()) if segments is None else list(segments)
     writer.write_segments(store, PRODUCER, described)
@@ -271,7 +344,7 @@ def write_pass(
             for entry in result.needs_footprint
         ],
     )
-    return writer.finish_pass()
+    return writer.finish_pass(current=current)
 
 
 def _year(label: str) -> int | None:

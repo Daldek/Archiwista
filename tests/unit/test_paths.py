@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from archiwista.errors import PathOutsideRootError
-from archiwista.paths import private_directory, resolve_indexed_path
+from archiwista.paths import open_real_file, private_directory, resolve_indexed_path
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
 
@@ -62,6 +62,42 @@ def test_paths_resolve_indexed_path_follows_link_inside_root(store: Path) -> Non
     resolved = resolve_indexed_path(store, "nmt/a.asc")
 
     assert resolved == target.resolve()
+
+
+def test_paths_open_real_file_reads_what_a_link_inside_root_resolved_to(
+    store: Path,
+) -> None:
+    """The real path of a standard path linked inside the store opens and reads."""
+    target = store / "nmt" / "versions" / "a_2023_f3015407" / "a.asc"
+    os.symlink(target, store / "nmt" / "a.asc")
+    resolved = resolve_indexed_path(store, "nmt/a.asc")
+
+    with os.fdopen(open_real_file(resolved), "rb") as opened:
+        read = opened.read()
+
+    assert read == b"data"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX links and FIFOs")
+@pytest.mark.parametrize("swapped", ["file", "directory", "fifo"])
+def test_paths_open_real_file_refuses_what_was_swapped_in_after_the_check(
+    store: Path, tmp_path: Path, swapped: str
+) -> None:
+    """A link in the file's or a directory's place, or a FIFO, is refused at once."""
+    resolved = resolve_indexed_path(store, "nmt/versions/a_2023_f3015407/a.asc")
+    if swapped == "file":
+        resolved.unlink()
+        resolved.symlink_to(tmp_path / "outside.txt")
+    elif swapped == "directory":
+        elsewhere = tmp_path / "elsewhere"
+        resolved.parent.rename(elsewhere)
+        resolved.parent.symlink_to(elsewhere, target_is_directory=True)
+    else:
+        resolved.unlink()
+        os.mkfifo(resolved)
+
+    with pytest.raises(PathOutsideRootError):
+        open_real_file(resolved)
 
 
 @posix_only

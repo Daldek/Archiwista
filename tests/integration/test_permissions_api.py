@@ -11,7 +11,7 @@ job worker (``tests.fixtures.own_data_api``).
 import json
 import zipfile
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlencode
@@ -23,14 +23,14 @@ import rasterio
 from rasterio.transform import from_bounds
 
 from archiwista.auth import LOCAL_OWNER, access_key
-from archiwista.index import MAX_PAGE_LIMIT, IndexWriter, ManifestStamp
+from archiwista.index import MAX_PAGE_LIMIT, IndexWriter
 from archiwista.refs import version_ref
 from archiwista.security import issue_one_time_token
-from archiwista.sources import ProjectInfo
-from archiwista.state import Visibility
+from archiwista.services import owndata as own_service
+from archiwista.state import ActionEntry, StateSnapshot, Visibility
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
 from tests.fixtures.api_store import STORE as GENERATED_STORE
-from tests.fixtures.index_data import PRODUCER, ROOT, STORE
+from tests.fixtures.index_data import PRODUCER, ROOT, STORE, indexed_project
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.own_data_api import OwnDataApi, own_data_api
 from tests.fixtures.permissions import (
@@ -45,6 +45,8 @@ from tests.fixtures.permissions import (
     WHO,
     Who,
     add_people,
+    last_entry,
+    log_entries,
     principal,
     share,
 )
@@ -58,6 +60,8 @@ ADMIN_ROUTES = [
     ("POST", "/users", {"id": "nowy"}),
     ("PATCH", f"/users/{OTHER}", {"roles": ["admin"]}),
     ("DELETE", f"/users/{OTHER}", None),
+    ("POST", f"/users/{OTHER}/password", None),
+    ("DELETE", f"/users/{OTHER}/sessions", None),
     ("GET", "/groups", None),
     ("POST", "/groups", {"id": "geodezja"}),
     ("PUT", f"/groups/{GROUP}/members", {"members": [OTHER]}),
@@ -90,8 +94,7 @@ def api(tmp_path: Path) -> Iterator[Api]:
     with running_api(paths) as served:
         with IndexWriter(paths.index_file) as writer:
             writer.sync_stores({STORE: {PRODUCER: ROOT}})
-            project = ProjectInfo(PRODUCER, ROOT, PROJECT_DIR, "Raba")
-            writer.write_project(project, store=STORE, stamp=ManifestStamp(1, 1))
+            indexed_project(writer, PROJECT_DIR, "Raba", store=STORE)
         add_people(served.state)
         yield served
 
@@ -117,7 +120,7 @@ def test_project_access_follows_visibility_matrix(
     if who not in SEES[visibility]:
         assert_problem(response, 404, "not_found")
     elif who not in MANAGES:
-        assert_problem(response, 403, "permission_denied")
+        assert_problem(response, 403, "forbidden", "permission_denied")
     else:
         assert response.status_code == 200
         assert response.json() == {
@@ -135,7 +138,7 @@ def test_project_access_follows_visibility_matrix(
 def test_project_routes_follow_visibility_matrix(
     api: Api, visibility: Visibility, who: Who
 ) -> None:
-    """/projects lists, and its detail and status show, only visible projects."""
+    """/projects lists, and its detail shows, only visible projects."""
     # Arrange
     share(api.state, KEY, visibility)
     caller = api.session(principal(api.state, who))
@@ -143,18 +146,14 @@ def test_project_routes_follow_visibility_matrix(
     # Act
     listed = caller.request("GET", "/projects").json()["items"]
     detail = caller.request("GET", "/projects/raba")
-    status = caller.request("GET", "/projects/raba/status")
 
     # Assert
     if who in SEES[visibility]:
         assert [item["project"] for item in listed] == ["raba"]
         assert detail.status_code == 200 and detail.json()["name"] == "Raba"
-        # Visible: the producer is asked, and this server has none.
-        assert_problem(status, 503, "source_unavailable")
     else:
         assert listed == []
         assert_problem(detail, 404, "not_found")
-        assert_problem(status, 404, "not_found")
 
 
 def test_settings_change_needs_administrator(api: Api) -> None:
@@ -169,7 +168,7 @@ def test_settings_change_needs_administrator(api: Api) -> None:
     accepted = admin.request("PUT", "/settings", json={**current, "offline": True})
 
     # Assert
-    assert_problem(refused, 403, "permission_denied")
+    assert_problem(refused, 403, "forbidden", "permission_denied")
     assert accepted.status_code == 200 and accepted.json()["offline"] is True
 
 
@@ -189,18 +188,34 @@ def test_unknown_and_hidden_projects_answer_alike(api: Api) -> None:
 
 
 def test_other_person_cannot_change_access(api: Api) -> None:
-    """Seeing a public project does not allow sharing it; nothing changes."""
+    """Seeing a public project does not allow sharing it; only the refusal is logged."""
     # Arrange
     share(api.state, KEY, "public")
-    before = api.state.snapshot()
     caller = api.session(principal(api.state, "other"))
+    before = api.state.snapshot()
 
     # Act
     response = caller.request("PUT", ACCESS, json={"visibility": "private"})
 
     # Assert
-    assert_problem(response, 403, "permission_denied")
-    assert api.state.snapshot() == before
+    assert_problem(response, 403, "forbidden", "permission_denied")
+    refused = only_refusals(api, before)
+    assert [(item.actor, item.target) for item in refused] == [(OTHER, KEY)]
+    assert refused[0].details == {
+        "action": "project.share",
+        "route": "PUT /projects/{project}/access",
+    }
+
+
+def only_refusals(api: Api, before: StateSnapshot) -> list[ActionEntry]:
+    """Return the entries a refused request added; nothing else may change."""
+    after = api.state.snapshot()
+    assert replace(after, actions=before.actions) == before
+    added = list(after.actions[len(before.actions) :])
+    assert {(item.action, item.outcome) for item in added} == {
+        ("permission.denied", "denied")
+    }
+    return added
 
 
 def test_owner_shares_project_and_change_is_logged(api: Api) -> None:
@@ -219,7 +234,7 @@ def test_owner_shares_project_and_change_is_logged(api: Api) -> None:
     # Assert
     assert response.status_code == 200
     assert response.json()["users"] == [LISTED]
-    change = api.state.changes()[-1]
+    change = api.state.actions().entries[0]
     assert (change.actor, change.action, change.target) == (
         OWNER,
         "project.access",
@@ -229,7 +244,7 @@ def test_owner_shares_project_and_change_is_logged(api: Api) -> None:
     assert change.after is not None and change.after["users"] == [LISTED]
     # Lena now sees the project, without managing it.
     assert_problem(hidden, 404, "not_found")
-    assert_problem(listed.request("GET", ACCESS), 403, "permission_denied")
+    assert_problem(listed.request("GET", ACCESS), 403, "forbidden", "permission_denied")
 
 
 def test_admin_transfers_ownership_of_scanned_project(api: Api) -> None:
@@ -279,7 +294,7 @@ def test_share_rejects_entries_that_do_not_fit(
     response = admin.request("PUT", ACCESS, json=body)
 
     # Assert
-    assert_problem(response, 422, "validation_error")
+    assert_problem(response, 400, "validation_error")
     assert api.state.project_access(KEY) is None
 
 
@@ -287,41 +302,55 @@ def test_share_rejects_entries_that_do_not_fit(
 def test_admin_routes_refuse_people_without_admin(
     api: Api, method: str, path: str, body: dict[str, object] | None
 ) -> None:
-    """Accounts and groups are an administrator's: others get 403, nothing changes."""
+    """Accounts and groups are an administrator's: others get 403, nothing changes.
+
+    Only the refusal is logged, about the accounts or the groups.
+    """
     # Arrange
-    before = api.state.snapshot()
     caller = api.session(principal(api.state, "owner"))
+    before = api.state.snapshot()
 
     # Act
     response = caller.request(method, path, json=body)
 
     # Assert
-    assert_problem(response, 403, "permission_denied")
-    assert api.state.snapshot() == before
+    assert_problem(response, 403, "forbidden", "permission_denied")
+    refused = only_refusals(api, before)
+    assert [(item.actor, item.target) for item in refused] == [
+        (OWNER, path.split("/")[1])
+    ]
 
 
 @pytest.mark.parametrize(("method", "path", "body"), CHANGES)
 def test_changes_need_csrf_token(
     api: Api, method: str, path: str, body: dict[str, object] | None
 ) -> None:
-    """Every change of accounts, groups or access needs the session's CSRF token."""
+    """Every change of accounts, groups or access needs the session's CSRF token.
+
+    The refusal is audited (D7) and changes nothing else.
+    """
     # Arrange
-    before = api.state.snapshot()
     caller = api.session(principal(api.state, "admin"))
+    before = api.state.snapshot()
 
     # Act
     response = caller.request(method, path, json=body, csrf=False)
 
     # Assert
-    assert_problem(response, 403, "csrf_rejected")
-    assert api.state.snapshot() == before
+    assert_problem(response, 403, "forbidden", "csrf_rejected")
+    after = api.state.snapshot()
+    assert replace(after, actions=before.actions) == before
+    added = after.actions[len(before.actions) :]
+    assert [(item.action, item.target, item.outcome) for item in added] == [
+        ("request.refused", "csrf_rejected", "denied")
+    ]
 
 
 def test_admin_manages_accounts_and_groups(api: Api) -> None:
     """Create, change and remove accounts and groups; each change is logged."""
     # Arrange
     admin = api.session(principal(api.state, "admin"))
-    logged = len(api.state.changes())
+    logged = last_entry(api.state)
 
     # Act
     created = admin.request(
@@ -347,18 +376,18 @@ def test_admin_manages_accounts_and_groups(api: Api) -> None:
     assert created.status_code == 201
     assert created.json()["roles"] == ["store_writer"]
     assert_problem(taken, 409, "conflict")
-    assert_problem(reserved, 422, "validation_error")
+    assert_problem(reserved, 400, "validation_error")
     assert promoted.json()["roles"] == ["admin"]
     assert grouped.status_code == 201
     assert grouped.json()["members"] == [OTHER, "jan"]
-    assert_problem(unknown, 422, "validation_error")
+    assert_problem(unknown, 400, "validation_error")
     assert regrouped.json()["members"] == ["jan"]
     assert removed.status_code == 204 and not removed.content
     assert_problem(gone, 404, "not_found")
     assert dropped.status_code == 204
     assert "jan" not in {user["id"] for user in users}
     assert "geodezja" not in {group["id"] for group in groups}
-    actions = [change.action for change in api.state.changes()[logged:]]
+    actions = [entry.action for entry in log_entries(api.state, after=logged)]
     assert actions == [
         "user.add",
         "user.update",
@@ -368,7 +397,7 @@ def test_admin_manages_accounts_and_groups(api: Api) -> None:
         "group.members",
         "group.remove",
     ]
-    assert {change.actor for change in api.state.changes()[logged:]} == {"ada"}
+    assert {entry.actor for entry in log_entries(api.state, after=logged)} == {"ada"}
 
 
 def test_local_owner_sees_and_manages_everything(api: Api) -> None:
@@ -385,7 +414,7 @@ def test_local_owner_sees_and_manages_everything(api: Api) -> None:
     # Assert
     assert access.status_code == 200
     assert changed.json()["visibility"] == "public"
-    assert api.state.changes()[-1].actor == "local"
+    assert api.state.actions().entries[0].actor == "local"
     assert [user["id"] for user in users.json()["items"]] == sorted(
         ["ada", "igor", "lena", "olga"]
     )
@@ -415,7 +444,7 @@ def test_revoked_admin_role_holds_for_live_session(
     assert before.status_code == 200
     assert signed_in.json()["roles"] == ["admin"]
     assert revoked.status_code == 200 and revoked.json()["roles"] == []
-    assert_problem(after, 403, "permission_denied")
+    assert_problem(after, 403, "forbidden", "permission_denied")
     assert still_signed_in.status_code == 200
     assert still_signed_in.json()["roles"] == []
 
@@ -442,8 +471,8 @@ def test_disabled_or_removed_account_ends_its_sessions(
     # Assert
     assert before.status_code == 200
     assert done.status_code in (200, 204)
-    assert_problem(ended, 401, "session_required")
-    assert_problem(again, 401, "session_required")
+    assert_problem(ended, 401, "unauthorized", "session_required")
+    assert_problem(again, 401, "unauthorized", "session_required")
 
 
 @pytest.mark.parametrize("token", ["startup", "agent"])
@@ -463,18 +492,18 @@ def test_token_of_disabled_account_starts_no_session(
 
     # Assert
     assert disabled.status_code == 200
-    assert_problem(exchanged, 401, "session_required")
+    assert_problem(exchanged, 401, "unauthorized", "session_required")
     assert "set-cookie" not in exchanged.headers
 
 
-def test_permission_log_records_how_and_in_which_session(api: Api) -> None:
-    """A logged change keeps who acted, how (owner, person, agent) and the session."""
+def test_action_log_records_how_and_in_which_session(api: Api) -> None:
+    """A logged change keeps who acted, how, the session and the client address."""
     # Arrange
     local = api.session(LOCAL_OWNER)
     owner = api.session(principal(api.state, "owner"))
     agent = api.session(principal(api.state, "admin"), token="agent")
     share(api.state, KEY, "private")
-    logged = len(api.state.changes())
+    logged = last_entry(api.state)
     labels = [
         caller.request("GET", "/session").json()["label"]
         for caller in (local, owner, agent)
@@ -486,7 +515,7 @@ def test_permission_log_records_how_and_in_which_session(api: Api) -> None:
     agent.request("POST", "/groups", json={"id": "geodezja"})
 
     # Assert
-    changes = api.state.changes()[logged:]
+    changes = log_entries(api.state, after=logged)
     assert [
         (change.actor, change.actor_kind, change.session, change.action)
         for change in changes
@@ -495,13 +524,18 @@ def test_permission_log_records_how_and_in_which_session(api: Api) -> None:
         (OWNER, "user", labels[1], "project.access"),
         (ADMIN, "agent", labels[2], "group.add"),
     ]
+    # The peer of TestClient, as the transport names it (ADR-046).
+    assert {change.client for change in changes} == {"testclient"}
+    assert {change.outcome for change in changes} == {"ok"}
     assert len(set(labels)) == 3
 
 
 # Headers of the generated store's JPEG sheets carry no geotransform (their
 # outline comes from the world file); rasterio says so while reading them.
 @pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
-def test_own_data_visibility_matrix(tmp_path: Path) -> None:
+def test_own_data_visibility_matrix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Own data, its snapshots and its jobs follow the visibility of the project.
 
     Under each visibility, for each person and for the computer's owner:
@@ -510,10 +544,12 @@ def test_own_data_visibility_matrix(tmp_path: Path) -> None:
     a note, the preview of a file, the scan of its folder) are ``404`` or left
     out for one who does not see the project; a ``preview`` job of a store
     version and a file of the project shows such a person only the version,
-    with whole counts. A snapshot needs ``project.write`` (``403``), another
-    data folder an administrator, every change the session's CSRF token;
-    local mode may do everything.
+    with whole counts. A snapshot and another data folder need
+    ``project.write`` (``403``), every change the session's CSRF token;
+    local mode may do everything. The minute between two scans of the
+    folder is not waited for here (``test_team_projects.py`` tests it).
     """
+    monkeypatch.setattr(own_service, "SCAN_INTERVAL_S", 0)
     with own_data_api(tmp_path, first=("gpkg_layers", "tif_2180"), second=()) as served:
         # Arrange
         routes = _own_routes(served)
@@ -526,22 +562,16 @@ def test_own_data_visibility_matrix(tmp_path: Path) -> None:
             for who in WHO:
                 observed[visibility, who] = _own_answers(served, callers[who], routes)
         observed["private", "local"] = _own_answers(served, served.owner, routes)
-        _settle(served)
 
     # Assert
     expected: dict[tuple[str, str], dict[str, object]] = {
         (visibility, who): _own_expected(
-            routes,
-            sees=who in SEES[visibility],
-            manages=who in MANAGES,
-            admin=who == "admin",
+            routes, sees=who in SEES[visibility], manages=who in MANAGES
         )
         for visibility in VISIBILITY_VALUES
         for who in WHO
     }
-    expected["private", "local"] = _own_expected(
-        routes, sees=True, manages=True, admin=True
-    )
+    expected["private", "local"] = _own_expected(routes, sees=True, manages=True)
     assert [
         (visibility, who, route, observed[visibility, who].get(route), answer)
         for (visibility, who), answers in expected.items()
@@ -704,7 +734,11 @@ def _own_routes(served: OwnDataApi) -> _OwnRoutes:
 def _own_answers(
     served: OwnDataApi, caller: Caller, routes: _OwnRoutes
 ) -> dict[str, object]:
-    """Ask every route of the project's own data and its jobs as ``caller``."""
+    """Ask every route of the project's own data and its jobs as ``caller``.
+
+    The scans asked for end before the answers return, so the person's next
+    round finds no scan of theirs waiting or running (``scan_running``).
+    """
     answers: dict[str, object] = {
         route: _answer(served.get(caller, url)) for route, url in routes.reads.items()
     }
@@ -734,13 +768,14 @@ def _own_answers(
     answers["jobs of project"] = (
         _probes(filtered, routes) if filtered.status_code == 200 else _answer(filtered)
     )
+    _settle(served)
     return answers
 
 
 def _own_expected(
-    routes: _OwnRoutes, *, sees: bool, manages: bool, admin: bool
+    routes: _OwnRoutes, *, sees: bool, manages: bool
 ) -> dict[str, object]:
-    """Return what one seeing the project, managing it or administering gets."""
+    """Return what one seeing the project or managing it gets."""
 
     def shown(answer: object) -> object:
         return answer if sees else HIDDEN
@@ -756,7 +791,7 @@ def _own_expected(
             "POST snapshot preview": shown("200"),
             "POST scan": shown("202"),
             "POST snapshots": shown("202" if manages else "403 permission_denied"),
-            "PUT data-dir": "200" if admin else "403 permission_denied",
+            "PUT data-dir": shown("200" if manages else "403 permission_denied"),
         }
     )
     for name in PROBE_JOBS:
@@ -765,15 +800,22 @@ def _own_expected(
     if not sees:  # its store part stays, with whole counts
         expected["job mixed"] = routes.hidden_mixed
         expected["job mixed events"] = routes.hidden_mixed_events
-    expected["jobs"] = (PROBE_JOBS if sees else ("mixed",), sees)
-    expected["jobs of project"] = shown(PROBE_JOBS)
+    # Everyone sees every job of the queue; a job only of the project is
+    # listed hidden for one not seeing it (ADR-047 decision 3).
+    expected["jobs"] = (
+        tuple((name, not sees and name != "mixed") for name in PROBE_JOBS),
+        sees,
+    )
+    expected["jobs of project"] = shown(tuple((name, False) for name in PROBE_JOBS))
     return expected
 
 
 def _answer(response: httpx.Response) -> str:
-    """Return a status, with the problem's code for a problem (``404 not_found``)."""
+    """Return a status, with the problem's reason or code (``403 csrf_rejected``)."""
     if response.headers.get("content-type") == "application/problem+json":
-        return f"{response.status_code} {response.json()['code']}"
+        body = response.json()
+        cause = body.get("details", {}).get("reason", body["code"])
+        return f"{response.status_code} {cause}"
     return str(response.status_code)
 
 
@@ -801,11 +843,16 @@ def _without_failures(events: list[_Event]) -> list[_Event]:
     ]
 
 
-def _probes(listed: httpx.Response, routes: _OwnRoutes) -> tuple[str, ...]:
-    """Return the names of the project's jobs a page of ``GET /jobs`` holds."""
+def _probes(listed: httpx.Response, routes: _OwnRoutes) -> tuple[tuple[str, bool], ...]:
+    """Return the names of the project's jobs a page of ``GET /jobs`` holds.
+
+    Each name comes with whether the page marks that job ``hidden``.
+    """
     assert listed.status_code == 200, listed.text
-    shown = {item["id"] for item in listed.json()["items"]}
-    return tuple(sorted(name for name, job in routes.ids.items() if job in shown))
+    shown = {item["id"]: item["hidden"] for item in listed.json()["items"]}
+    return tuple(
+        sorted((name, shown[job]) for name, job in routes.ids.items() if job in shown)
+    )
 
 
 def _info(served: OwnDataApi, url: str) -> dict[str, Any]:

@@ -18,14 +18,15 @@ import pytest
 import rasterio
 import shapely
 from kartograf import (
-    ValidationError,
     file_footprint,
+    init_store,
     iter_store,
     link_target,
-    open_project,
 )
 from rasterio.enums import ColorInterp
 
+from archiwista.errors import ProjectFileError
+from archiwista.projects import PROJECT_FILE, read_project_file
 from tests.fixtures.make_store import (
     BDOT_GPKG,
     CZ_OUTLINE,
@@ -49,6 +50,7 @@ from tests.fixtures.store_files import (
     OVERVIEW_FACTORS,
     SOIL_NODATA,
 )
+from tests.fixtures.store_marker import MARKED_AT
 
 SLOTS = MIN_SLOTS + 40
 PROJECTS = MIN_PROJECTS + 2
@@ -75,6 +77,17 @@ def test_store_fixture_iter_store_yields_exactly_the_manifest(
     )
 
 
+def test_store_fixture_root_has_the_marker_kartograf_writes(
+    store: StoreManifest,
+) -> None:
+    """The generator marks its root through ``init_store``: nothing is left to write."""
+    marked = init_store(store.root)
+
+    assert (marked.created, marked.tool) == (False, "kartograf")
+    assert marked.marker.name == "kartograf-store.json"
+    assert marked.created_at == MARKED_AT.isoformat(timespec="seconds")
+
+
 def test_store_fixture_sidecars_give_expected_metadata(store: StoreManifest) -> None:
     """Sidecars read by Kartograf carry the generator's metadata."""
     expected = {entry.row: entry for entry in store.entries}
@@ -84,6 +97,7 @@ def test_store_fixture_sidecars_give_expected_metadata(store: StoreManifest) -> 
         if found.kind == "problem":
             continue
         meta = found.sidecar
+        assert meta is not None
         assert (meta.sha256, meta.dataset_key, meta.unit, meta.data_year) == (
             wanted.sha256,
             wanted.dataset_key,
@@ -120,12 +134,13 @@ def test_store_fixture_data_year_never_comes_from_download(
     by_download = [
         meta
         for meta in versions
-        if meta.extra["version"]["label_source"] == "downloaded"
+        if (meta.extra or {})["version"]["label_source"] == "downloaded"
     ]
 
     assert by_download and all(meta.data_year is None for meta in by_download)
     assert any(
-        meta.data_year is not None and meta.data_year != int(meta.downloaded_at[:4])
+        meta.data_year is not None
+        and meta.data_year != int((meta.downloaded_at or "")[:4])
         for meta in versions
     )
 
@@ -224,7 +239,7 @@ def test_store_fixture_files_give_offline_footprints(
 
     assert entries
     assert all(f is not None and f.source == source for f in footprints), family
-    assert all(f.native.min_x < f.native.max_x for f in footprints)
+    assert all(f is not None and f.native.min_x < f.native.max_x for f in footprints)
 
 
 @pytest.mark.parametrize(
@@ -268,8 +283,12 @@ def test_store_fixture_footprints_lie_in_their_country(store: StoreManifest) -> 
     footprints = [(entry, file_footprint(entry)) for entry in entries]
 
     placed = [(entry, found) for entry, found in footprints if found is not None]
-    czech = [(e, found) for e, found in placed if e.sidecar.country == "CZ"]
-    polish = [(e, found) for e, found in placed if e.sidecar.country != "CZ"]
+    countries: dict[Path, str | None] = {}
+    for entry, _ in placed:
+        assert entry.sidecar is not None
+        countries[entry.path] = entry.sidecar.country
+    czech = [(e, found) for e, found in placed if countries[e.path] == "CZ"]
+    polish = [(e, found) for e, found in placed if countries[e.path] != "CZ"]
     assert czech and polish
     for outline, group in ((CZ_OUTLINE, czech), (PL_OUTLINE, polish)):
         centres = {e.path: shapely.box(*found.wgs84[:4]).centroid for e, found in group}
@@ -342,12 +361,13 @@ def test_store_fixture_two_formats_share_the_variant(store: StoreManifest) -> No
 
     assert len({link.segment for link in links}) == 2
     assert len({link.unit for link in links}) == 1
-    assert (
-        len(
-            {(m.product, m.horizontal_crs, m.vertical_crs, m.resolution) for m in metas}
-        )
-        == 1
-    )
+    assert None not in metas
+    variants = {
+        (m.product, m.horizontal_crs, m.vertical_crs, m.resolution)
+        for m in metas
+        if m is not None
+    }
+    assert len(variants) == 1
 
 
 def test_store_fixture_standard_path_file_without_sha256(store: StoreManifest) -> None:
@@ -360,28 +380,31 @@ def test_store_fixture_standard_path_file_without_sha256(store: StoreManifest) -
 
 
 def test_store_fixture_projects_open_as_expected(store: StoreManifest) -> None:
-    """Valid manifests open with their pins; the invalid one is rejected."""
+    """Valid project files read with their pins; the invalid one is refused."""
     for project in store.projects:
-        directory = store.output_dir / project.path
+        directory = store.base / project.path
         if not project.valid:
-            with pytest.raises(ValidationError):
-                open_project(directory)
+            with pytest.raises(ProjectFileError):
+                read_project_file(directory)
             continue
-        opened = open_project(directory)
-        store_dir = (store.output_dir / project.store).resolve()
-        assert opened.output_dir.resolve() == store_dir
-        pins = {(task.name, pin.version) for task in opened.tasks for pin in task.files}
-        assert pins == {
-            (task.name, pin.version) for task in project.tasks for pin in task.pins
+        opened = read_project_file(directory)
+        (root,) = opened.stores
+        store_dir = (store.base / project.store).resolve()
+        assert (directory / root.root).resolve() == store_dir
+        pins = {
+            (group.name, pin.version) for group in opened.groups for pin in group.pins
         }
-    every_pin = [pin for p in store.projects for t in p.tasks for pin in t.pins]
+        assert pins == {
+            (group.name, pin.version) for group in project.groups for pin in group.pins
+        }
+    every_pin = [pin for p in store.projects for g in p.groups for pin in g.pins]
     assert all((store.root / pin.version).is_file() == pin.present for pin in every_pin)
     assert any(pin.present and not pin.current for pin in every_pin)
     assert {p.case for p in store.projects} == {
         "regular",
         "missing_version",
         "other_store",
-        "invalid_manifest",
+        "invalid_project_file",
     }
 
 
@@ -408,13 +431,13 @@ def test_verify_store_rejects_store_kartograf_reads_differently(
         verify_store(manifest)
 
 
-def test_verify_store_rejects_accepted_invalid_manifest(tmp_path: Path) -> None:
-    """An invalid manifest that opens stops the generator's verification."""
+def test_verify_store_rejects_accepted_invalid_project_file(tmp_path: Path) -> None:
+    """An invalid project file that reads stops the generator's verification."""
     manifest = make_store(tmp_path / "store", slots=MIN_SLOTS, seed=2)
     invalid = next(p for p in manifest.projects if not p.valid)
-    path = manifest.output_dir / invalid.path / "kartograf-project.json"
+    path = manifest.base / invalid.path / PROJECT_FILE
     doc = json.loads(path.read_text(encoding="utf-8"))
-    doc["tasks"][0]["command"] = "elevation download"
+    doc["groups"][0]["name"] = "teren"
     path.write_text(json.dumps(doc), encoding="utf-8")
 
     with pytest.raises(StoreFixtureError, match=invalid.name):

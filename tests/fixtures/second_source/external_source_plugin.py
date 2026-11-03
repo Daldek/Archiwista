@@ -15,7 +15,6 @@ import external_producer  # type: ignore[import-not-found]
 from archiwista.sources import (
     EntryMeta,
     Footprint,
-    ProjectInfo,
     ScanScope,
     SourceAdapter,
     SourceContext,
@@ -42,9 +41,21 @@ class ExternalAdapter:
         self.cache_dir = context.cache_dir
 
     def probe(self, root: Path) -> SourceState:
-        """Accept an existing directory; fail loudly on a missing one."""
+        """Accept an existing directory; fail loudly on a missing one.
+
+        A directory named ``unmarked`` is refused with a reason and a hint.
+        """
         if not root.is_dir():
             raise FileNotFoundError(root)
+        if root.name == "unmarked":
+            return SourceState(
+                self.producer,
+                "incompatible",
+                store=str(root),
+                detail="brak znacznika",
+                reason="no_marker",
+                hint=f"external init --root {root}",
+            )
         return SourceState(self.producer, "available", store=str(root))
 
     def iter_entries(
@@ -73,16 +84,6 @@ class ExternalAdapter:
     def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
         """Report that the producer has no location for its files."""
         return Footprint(location="none", reason="no_source")
-
-    def read_project(self, path: Path) -> ProjectInfo:
-        """Describe a project directory without a manifest."""
-        return ProjectInfo(
-            producer=self.producer, store=str(path), path=path, name=path.name
-        )
-
-    def project_status(self, path: Path) -> ProjectInfo:
-        """Report the project as read."""
-        return self.read_project(path)
 
 
 def load(context: SourceContext) -> SourceAdapter:

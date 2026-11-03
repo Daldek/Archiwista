@@ -1,6 +1,5 @@
 """``archiwista serve`` and ``archiwista token`` with a real server in a thread."""
 
-import asyncio
 import json
 import os
 import re
@@ -9,7 +8,6 @@ import stat
 import threading
 import time
 import webbrowser
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 
@@ -18,9 +16,11 @@ import pytest
 
 from archiwista import server as server_module
 from archiwista.cli import main
-from archiwista.security import CSRF_HEADER, SESSION_COOKIE, TOKEN_TTL
-from archiwista.server import LocalServer, bind_loopback, open_in_browser
-from tests.fixtures.local_server import NoSources, local_paths, serving
+from archiwista.security import CSRF_HEADER, LOOPBACK_HOST, SESSION_COOKIE, TOKEN_TTL
+from archiwista.server import AppServer, LaunchFile, open_in_browser
+from tests.fixtures.api_session import assert_problem
+from tests.fixtures.cli_errors import refusal
+from tests.fixtures.local_server import NoSources, local_paths, server_nodelay, serving
 
 FRAGMENT_URL = re.compile(r"http://127\.0\.0\.1:(\d+)/#token=([A-Za-z0-9_-]+)")
 
@@ -76,8 +76,8 @@ def test_serve_prints_fragment_url(tmp_path: Path) -> None:
     assert port == server.port
     assert exchanged.status_code == 200
     assert state.json()["actor"] == "local"
-    assert replayed.status_code == 401
-    assert rebound.status_code == 400
+    assert_problem(replayed, 401, "unauthorized", "session_required")
+    assert_problem(rebound, 403, "forbidden", "invalid_host")
 
 
 def test_serve_reports_busy_port(
@@ -95,44 +95,31 @@ def test_serve_reports_busy_port(
             paths=local_paths(tmp_path),
         )
 
-    assert status == 1
-    assert f"Nie można nasłuchiwać na 127.0.0.1:{port}" in capsys.readouterr().err
+    captured = capsys.readouterr()
+    document = refusal(captured.out, captured.err, status)
+    assert (status, document["code"]) == (4, "conflict")
+    assert document["details"]["reason"] == "port_unavailable"
+    assert f"Nie można nasłuchiwać na 127.0.0.1:{port}" in captured.err
 
 
-def test_serve_connections_send_without_nagle_delay() -> None:
-    """Connections of the server's socket send at once (``TCP_NODELAY``).
+def test_serve_connections_send_without_nagle_delay(tmp_path: Path) -> None:
+    """The server's end of a connection sends at once (``TCP_NODELAY``).
 
-    asyncio disables Nagle's algorithm only on connections accepted by an
-    ``IPPROTO_TCP`` socket. Without it every response written in parts on a
-    kept-alive connection waited for the client's delayed acknowledgement:
-    about 40 ms added to each request of the browser.
+    Without it every response written in parts on a kept-alive connection
+    waited for the client's delayed acknowledgement: about 40 ms added to each
+    request of the browser. asyncio sets it only on an accepted socket that
+    reports ``IPPROTO_TCP``: never on macOS, and nowhere for the server's
+    listening socket, so this fails wherever the server relies on asyncio.
     """
+    with (
+        serving(local_paths(tmp_path)) as (server, _),
+        socket.create_connection((LOOPBACK_HOST, server.port), timeout=10) as client,
+    ):
+        client.sendall(b"GET /api/v1/health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+        answered = client.recv(64)
+        nodelay = server_nodelay(client)
 
-    async def accepted_nodelay() -> int:
-        listening = bind_loopback(0)
-        loop = asyncio.get_running_loop()
-        accepted: asyncio.Future[int] = loop.create_future()
-
-        class Probe(asyncio.Protocol):
-            def connection_made(self, transport: asyncio.BaseTransport) -> None:
-                raw = transport.get_extra_info("socket")
-                accepted.set_result(
-                    raw.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
-                )
-                transport.close()
-
-        async with await loop.create_server(Probe, sock=listening):
-            _, writer = await asyncio.open_connection(*listening.getsockname())
-            try:
-                return await asyncio.wait_for(accepted, timeout=10)
-            finally:
-                writer.close()
-                await writer.wait_closed()
-
-    # Its own thread: the session's Playwright may run an event loop here.
-    with ThreadPoolExecutor(1) as pool:
-        nodelay = pool.submit(asyncio.run, accepted_nodelay()).result()
-
+    assert answered.startswith(b"HTTP/1.1 ")
     assert nodelay != 0
 
 
@@ -177,7 +164,7 @@ def test_serve_browser_opens_private_file_removed_once_token_used(
     paths = local_paths(tmp_path)
     with serving(paths, on_ready=open_in_browser) as (server, _):
         assert browsed.wait(10)
-        launch = server.launch.path
+        launch = _launch(server).path
         assert launch is not None
         mode = stat.S_IMODE(launch.stat().st_mode)
         page = launch.read_text("utf-8")
@@ -195,13 +182,13 @@ def test_serve_browser_opens_private_file_removed_once_token_used(
     assert f'content="0;url={server.url}"' in page
     assert exchanged.status_code == 200
     assert not kept_after_use
-    assert server.launch.path is None
+    assert _launch(server).path is None
 
 
 def test_serve_launch_file_removed_on_stop(tmp_path: Path) -> None:
     """A token nobody used leaves no launch file once the server stops."""
     with serving(local_paths(tmp_path), on_ready=_write_launch) as (server, _):
-        launch = server.launch.path
+        launch = _launch(server).path
         assert launch is not None
         existed = launch.exists()
 
@@ -216,7 +203,7 @@ def test_serve_launch_file_removed_when_token_expires(
     expiring = {**TOKEN_TTL, "startup": timedelta(seconds=0.2)}
     monkeypatch.setattr(server_module, "TOKEN_TTL", expiring)
     with serving(local_paths(tmp_path), on_ready=_write_launch) as (server, _):
-        launch = server.launch.path
+        launch = _launch(server).path
         assert launch is not None
         deadline = time.monotonic() + 10
         while launch.exists() and time.monotonic() < deadline:
@@ -255,14 +242,21 @@ def test_token_revoke_all_ends_agent_sessions_of_running_server(
     assert "unieważnione niewykorzystane tokeny agentów: 1." in printed
     assert before.status_code == 200 and before.json()["kind"] == "agent"
     assert ended.status_code == 401
-    assert ended.json()["code"] == "session_required"
+    assert ended.json()["code"] == "unauthorized"
+    assert ended.json()["details"]["reason"] == "session_required"
     assert kept.status_code == 200 and kept.json()["kind"] == "local_owner"
     assert late.status_code == 401
 
 
-def _write_launch(server: LocalServer) -> None:
+def _write_launch(server: AppServer) -> None:
     """Write the launch file as ``open_in_browser`` does, opening no browser."""
-    server.launch.write(server.url)
+    _launch(server).write(server.url)
+
+
+def _launch(server: AppServer) -> LaunchFile:
+    """Return the launch file of a server of local mode."""
+    assert server.launch is not None
+    return server.launch
 
 
 def _session(client: httpx.Client, token: str) -> dict[str, str]:

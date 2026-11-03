@@ -6,8 +6,8 @@ directory listings, never confirm links during a scan and keep Kartograf's
 pinned coordinate operations.
 """
 
-import importlib.metadata
 import inspect
+import json
 import os
 import socket
 from collections import Counter
@@ -20,24 +20,24 @@ from typing import Any, cast
 import kartograf
 import numpy as np
 import pytest
-from packaging.requirements import Requirement
+import shapely
+from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 import archiwista.adapter.kartograf.adapter as adapter_module
-from archiwista.adapter.kartograf import load
+from archiwista.adapter.kartograf import SUPPORTED_VERSIONS, load
 from archiwista.adapter.kartograf.adapter import UNIT_CACHE_FILE, KartografAdapter
 from archiwista.adapter.kartograf.unit_cache import UnitBBoxCache
 from archiwista.errors import ProducerError, SourceUnavailableError
-from archiwista.messages import MESSAGES
 from archiwista.sources import (
     Footprint,
     GeoJSONGeometry,
-    ProjectPin,
     ScanScope,
     SourceContext,
     SourceEntry,
 )
 from tests.fixtures.make_store import (
+    LEGACY_KARTOGRAF,
     MIN_SLOTS,
     ExpectedEntry,
     StoreManifest,
@@ -51,14 +51,14 @@ KEYWORD = inspect.Parameter.KEYWORD_ONLY
 # KA-1..KA-6, list_segments and list_partitions (Kartograf ADR-045, ARCH
 # 3.3.1): parameter name, kind and default.
 STORE_API: dict[str, list[tuple[str, inspect._ParameterKind, object]]] = {
-    "list_segments": [("output_dir", POSITIONAL, EMPTY)],
+    "list_segments": [("root", POSITIONAL, EMPTY)],
     "list_partitions": [
-        ("output_dir", POSITIONAL, EMPTY),
+        ("root", POSITIONAL, EMPTY),
         ("segment", POSITIONAL, EMPTY),
         ("target", KEYWORD, 32),
     ],
     "iter_store": [
-        ("output_dir", POSITIONAL, EMPTY),
+        ("root", POSITIONAL, EMPTY),
         ("segment", KEYWORD, None),
         ("units", KEYWORD, None),
         ("skip_versions", KEYWORD, None),
@@ -76,6 +76,8 @@ STORE_API: dict[str, list[tuple[str, inspect._ParameterKind, object]]] = {
         ("src_crs", POSITIONAL, EMPTY),
         ("dst_crs", POSITIONAL, EMPTY),
     ],
+    # The call of a stored version (KB-6, A-ADR-049 D-10).
+    "command_for_file": [("sidecar", POSITIONAL, EMPTY)],
 }
 # Record fields the adapter reads.
 STORE_RECORDS: dict[str, set[str]] = {
@@ -98,6 +100,8 @@ STORE_RECORDS: dict[str, set[str]] = {
         "country",
         "product",
         "request",
+        "provider",
+        "kartograf_version",
         "license",
         "downloaded_at",
         "extra",
@@ -269,16 +273,11 @@ def test_kartograf_bbox_and_pinned_transform_shape() -> None:
     assert isinstance(pinned.accuracy_m, float)
 
 
-def test_installed_kartograf_within_pinned_range() -> None:
-    """The imported Kartograf satisfies the pin of the installed Archiwista."""
-    pins = [
-        Requirement(line)
-        for line in importlib.metadata.requires("archiwista") or []
-        if Requirement(line).name == "kartograf"
-    ]
+def test_installed_kartograf_within_supported_range() -> None:
+    """The imported Kartograf is one the adapter declares it reads."""
+    supported = SpecifierSet(SUPPORTED_VERSIONS)
 
-    assert len(pins) == 1
-    assert pins[0].specifier.contains(Version(kartograf.__version__), prereleases=True)
+    assert supported.contains(Version(kartograf.__version__), prereleases=True)
 
 
 def test_adapter_entries_match_iter_store(
@@ -299,6 +298,7 @@ def test_adapter_entries_match_iter_store(
             assert entry.meta is None
             continue
         assert entry.meta is not None
+        assert sidecar is not None
         assert (
             entry.meta.sha256,
             entry.meta.size_bytes,
@@ -312,6 +312,36 @@ def test_adapter_entries_match_iter_store(
             sidecar.unit,
             by_path[entry.relative_path].label,
         )
+
+
+def test_adapter_carries_the_common_core_of_the_sidecar(
+    store: StoreManifest, adapter: KartografAdapter
+) -> None:
+    """Provider, writing package and its version come from the sidecar (DEV-19.16)."""
+    raw = {
+        Path(e.path).relative_to(store.root): e
+        for e in kartograf.iter_store(store.root)
+    }
+
+    found = {
+        entry.relative_path: entry.meta
+        for entry in adapter.iter_entries(store.root)
+        if entry.meta is not None
+    }
+
+    for path, meta in found.items():
+        sidecar = raw[path].sidecar
+        assert sidecar is not None
+        assert (meta.provider, meta.producer_version) == (
+            sidecar.provider,
+            sidecar.kartograf_version,
+        )
+        assert meta.written_by == ("kartograf" if sidecar.kartograf_version else None)
+    assert {meta.provider for meta in found.values()} >= {"GUGiK", "CUZK"}
+    assert {meta.producer_version for meta in found.values()} >= {
+        kartograf.__version__,
+        LEGACY_KARTOGRAF,
+    }
 
 
 def test_adapter_link_and_its_version_share_the_slot(
@@ -596,20 +626,18 @@ def test_confirm_link_detects_link_that_moved_off_its_sidecar(
     assert adapter.confirm_link(_entry(entries, mismatch)) is None
 
 
-def test_probe_accepts_store_and_rejects_its_parent(
+def test_probe_accepts_the_generated_store_and_rejects_its_parent(
     store: StoreManifest, adapter: KartografAdapter, tmp_path: Path
 ) -> None:
-    """Only Kartograf's ``--output`` directory is a store; a new one is empty."""
+    """Only the store root is a store; the generator marked it, a new one is empty."""
     empty = tmp_path / "new-store"
     empty.mkdir()
 
     assert adapter.probe(store.root).status == "available"
     assert adapter.probe(empty).status == "available"
-    parent = adapter.probe(store.output_dir)
-    assert (parent.status, parent.detail) == (
-        "incompatible",
-        MESSAGES["kartograf_not_store"],
-    )
+    parent = adapter.probe(store.base)  # Kartograf: a store lies below it
+    assert (parent.status, parent.reason) == ("incompatible", "foreign_store")
+    assert parent.detail is not None and str(store.root) in parent.detail
     assert adapter.probe(tmp_path / "missing").status == "error"
 
 
@@ -629,57 +657,6 @@ def test_scan_errors_keep_kartograf_messages(
     assert "units" in raised.value.message
 
 
-def test_read_project_gives_tasks_and_pins_of_the_manifest(
-    store: StoreManifest, adapter: KartografAdapter
-) -> None:
-    """A project lists its tasks and pins, including older versions."""
-    expected = store.project("projekt-01")
-
-    project = adapter.read_project(store.output_dir / expected.path)
-
-    assert project.store == str(store.root)
-    assert [(t.task_id, t.command) for t in project.tasks] == [
-        (t.name, t.command) for t in expected.tasks
-    ]
-    assert project.pins == tuple(
-        ProjectPin(str(store.root), Path(pin.version), pin.sha256, task.name)
-        for task in expected.tasks
-        for pin in task.pins
-    )
-
-
-def test_project_status_reports_missing_and_undownloaded_tasks(
-    store: StoreManifest, adapter: KartografAdapter
-) -> None:
-    """Status names the worst pinned file of each task and of the project."""
-    expected = store.project("projekt-01")
-    regular = adapter.project_status(store.output_dir / expected.path)
-    missing = adapter.project_status(store.output_dir / "projects" / "brak-wersji")
-
-    assert {t.task_id: t.status for t in regular.tasks} == {
-        task.name: "ok" if task.pins else "not_downloaded" for task in expected.tasks
-    }
-    assert regular.status == "not_downloaded"
-    assert (missing.status, [t.status for t in missing.tasks]) == (
-        "missing",
-        ["missing"],
-    )
-
-
-def test_invalid_manifest_reports_kartograf_message(
-    store: StoreManifest, adapter: KartografAdapter
-) -> None:
-    """A broken manifest is Kartograf's validation error, text unchanged."""
-    with pytest.raises(ProducerError) as raised:
-        adapter.read_project(store.output_dir / "projects" / "zepsuty")
-
-    assert (raised.value.package, raised.value.exception) == (
-        "kartograf",
-        "ValidationError",
-    )
-    assert raised.value.message
-
-
 def test_sheet_grid_outlines_cover_the_area(adapter: KartografAdapter) -> None:
     """Grid sheets of both Polish systems come with WGS84 outlines."""
     area = (19.001, 50.001, 19.002, 50.002)
@@ -692,6 +669,37 @@ def test_sheet_grid_outlines_cover_the_area(adapter: KartografAdapter) -> None:
     )
     assert len(grid_2000.outlines) == len(grid_2000.sheets) == 1
     assert _contains(grid_2000.outlines[0], 19.0015, 50.0015)
+
+
+def test_sheet_grid_outlines_each_zone_on_its_own_side(
+    adapter: KartografAdapter,
+) -> None:
+    """Each PL-2000 zone's sheets are outlined only on its own side.
+
+    Across the zone 6/7 boundary (Kartograf ADR-055: zones of powiats) the map
+    never draws two grids over each other; a cut sheet keeps the extent of the
+    whole sheet, by which ``GET /map/sheets`` sizes a view.
+    """
+    grid = adapter.sheet_grid((19.3, 51.95, 19.7, 52.05), "2000", "1:2000")
+    shapes = [shapely.from_geojson(json.dumps(outline)) for outline in grid.outlines]
+    by_zone: dict[int | None, list[Any]] = {}
+    for zone, shape in zip(grid.zones, shapes, strict=True):
+        by_zone.setdefault(zone, []).append(shape)
+
+    overlap = shapely.intersection(
+        shapely.union_all(by_zone[6]), shapely.union_all(by_zone[7])
+    )
+    assert set(by_zone) == {6, 7}
+    assert list(grid.zones) == [int(sheet.split(".")[0]) for sheet in grid.sheets]
+    assert shapely.area(overlap) < 1e-12  # square degrees: under 0.01 m2
+    assert all(
+        shapely.covers(shapely.box(*extent), shape)
+        for extent, shape in zip(grid.extents, shapes, strict=True)
+    )
+    assert any(
+        shapely.area(shape) < 0.9 * shapely.area(shapely.box(*extent))
+        for extent, shape in zip(grid.extents, shapes, strict=True)
+    )
 
 
 def test_countries_of_a_border_area(adapter: KartografAdapter) -> None:

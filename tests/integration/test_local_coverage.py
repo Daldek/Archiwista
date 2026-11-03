@@ -19,6 +19,8 @@ from shapely.geometry import box, mapping, shape
 
 from archiwista.api.areas import read_local_coverage
 from archiwista.api.models import CoverageQuery
+from archiwista.messages import message
+from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE, ServedStore, served_store
 from tests.fixtures.area_files import gdal_file, upload
 from tests.fixtures.make_store import NMT, ExpectedEntry
@@ -99,7 +101,9 @@ def test_local_coverage_refreshes_area_slots_before_answering(
 
     # Assert
     assert before["results"][0]["percent"] == 100
-    assert before["results"][0]["label"] == "lokalnie 100% obszaru"
+    assert before["results"][0]["label"] == message(
+        "local.coverage_percent", percent=100
+    )
     assert (before["stale"], after["stale"], after["stale_reason"]) == (
         False,
         False,
@@ -235,7 +239,7 @@ def test_local_coverage_without_rescan_answers_from_index(
 def test_local_coverage_refuses_unknown_area_store_and_parameters(
     served: ServedStore,
 ) -> None:
-    """Unknown areas, stores and parameters are 422, never an empty answer."""
+    """Unknown areas, stores and parameters are 400, never an empty answer."""
     # Arrange
     _, outline = _sheets(served)[0]
     area = _area(served, outline)
@@ -253,5 +257,4 @@ def test_local_coverage_refuses_unknown_area_store_and_parameters(
 
     # Assert
     for response in answers:
-        assert response.status_code == 422, response.text
-        assert response.json()["code"] == "validation_error"
+        assert_problem(response, 400, "validation_error")

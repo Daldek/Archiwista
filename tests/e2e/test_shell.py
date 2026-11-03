@@ -2,23 +2,34 @@
 
 A session from the one-time token of the address, the instruction without a
 session, the first-run wizard, offline mode with MapLibre's worker and the
-packaged glyphs under the CSP, and every ES module loading without errors
-(the syntax check without Node.js).
+packaged glyphs under the CSP, every ES module loading without errors (the
+syntax check without Node.js), and in Chromium and Firefox an interface
+upgraded on the same address reaching the next visit, view modules included.
 """
 
+import os
 import re
+import shutil
+import time
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
+import pytest
 from playwright.sync_api import Browser, Page, expect
 
 import archiwista.web
-from archiwista.config import AppSettings, StoreConfig
+from archiwista.config import AppSettings, ConfigStore, StoreConfig
 from tests.fixtures.browser import Served, Tab
+from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import make_store
 
 WEB_DIR = Path(archiwista.web.__file__).resolve().parent
+# The map view's panel, a module the view imports once the page has loaded.
+PANEL_MODULE = "src/map/panel.js"
+# A file this old stays fresh by heuristic for a tenth of its age (three
+# days): a browser would reuse it without asking, were it not ``no-cache``.
+MONTH_S = 30 * 24 * 3600
 GLYPHS = "/static/vendor/glyphs/noto-sans-regular/"
 # A map like a map view's: a polygon and a label whose letters need three
 # glyph ranges (Latin-1, Latin Extended-A for „Ł” and „ź”, punctuation „–”).
@@ -93,9 +104,26 @@ def open_shell(page: Page, url: str) -> None:
     expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
 
 
+def open_map_view(page: Page, served: Served) -> None:
+    """Open the map view with a new session, in one page load."""
+    fragment = urlsplit(served.token_url()).fragment
+    page.goto(f"{served.base}/?view=map#{fragment}")
+
+
 def zespol(root: Path) -> StoreConfig:
     """Return the generated store as the ``zespol`` store."""
     return StoreConfig(id="zespol", name="Zespół", kartograf=root, kind="local")
+
+
+def interface_copy(directory: Path, build: str, modified: float) -> Path:
+    """Copy the interface, dated ``modified``; its panel marks the page ``build``."""
+    shutil.copytree(WEB_DIR, directory)
+    panel = directory / PANEL_MODULE
+    mark = f'\ndocument.documentElement.dataset.build = "{build}";\n'
+    panel.write_text(panel.read_text("utf-8") + mark, "utf-8")
+    for path in directory.rglob("*"):
+        os.utime(path, (modified, modified))
+    return directory
 
 
 def test_fragment_token_starts_session_and_is_removed_from_url(
@@ -195,6 +223,97 @@ def test_first_run_wizard_saves_settings(
     tab.assert_clean()
 
 
+def test_first_run_wizard_offers_the_default_root_and_enters_it_on_a_click(
+    serve: Serve, tab: Tab, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kartograf's own store is offered under the empty field, entered by a click."""
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    monkeypatch.setenv("KARTOGRAF_ROOT", str(store.root))
+    served = serve()
+    page = tab.page
+    open_shell(page, served.token_url())
+    field = page.get_by_label("Katalog Kartografa")
+    offer = page.get_by_text("Kartograf zapisuje domyślnie w katalogu")
+    use = page.get_by_role("button", name="Użyj tego katalogu")
+
+    expect(offer).to_contain_text(str(store.root))
+    expect(offer).to_contain_text("zmienna KARTOGRAF_ROOT")
+    expect(field).to_have_value("")  # offered, not entered
+    page.get_by_label("Nazwa", exact=True).fill("Zespół")
+    use.click()
+    expect(field).to_have_value(str(store.root))
+    expect(use).to_have_count(0)  # it is entered: nothing left to offer
+    for _ in range(3):
+        page.get_by_role("button", name="Dalej").click()
+    page.get_by_role("button", name="Zapisz i zindeksuj").click()
+    expect(page.get_by_text("Zapisano ustawienia.")).to_be_visible()
+    expect(page.get_by_text("Magazyn „Zespół” zindeksowany")).to_be_visible(
+        timeout=60_000
+    )
+
+    assert served.settings().stores == (zespol(store.root),)
+    tab.assert_clean()
+
+
+def test_first_run_wizard_offers_both_default_roots_each_under_its_own_field(
+    serve: Serve, tab: Tab, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kartograf's and IMGWTools' stores are offered, each entered by its own click."""
+    imgwtools = pytest.importorskip("imgwtools")
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    imgw_root = tmp_path / "imgw"
+    imgwtools.init_store(imgw_root)
+    monkeypatch.setenv("KARTOGRAF_ROOT", str(store.root))
+    monkeypatch.setenv("IMGW_ROOT", str(imgw_root))
+    served = serve()
+    page = tab.page
+    open_shell(page, served.token_url())
+    kartograf = page.get_by_label("Katalog Kartografa")
+    imgw = page.get_by_label("Katalog IMGWTools")
+    kartograf_offer = page.get_by_text("Kartograf zapisuje domyślnie w katalogu")
+    imgw_offer = page.get_by_text("IMGWTools zapisuje domyślnie w katalogu")
+
+    expect(kartograf_offer).to_contain_text(str(store.root))
+    expect(imgw_offer).to_contain_text(str(imgw_root))
+    expect(imgw_offer).to_contain_text("zmienna IMGW_ROOT")
+    expect(imgw).to_have_value("")  # offered, not entered
+    page.get_by_role("button", name="Użyj tego katalogu").nth(1).click()
+    expect(imgw).to_have_value(str(imgw_root))
+    expect(kartograf).to_have_value("")
+    expect(imgw_offer).to_have_count(0)  # it is entered: nothing left to offer
+    expect(kartograf_offer).to_have_count(1)
+    tab.assert_clean()
+
+
+@pytest.mark.parametrize("exists", [True, False], ids=["no-marker", "no-directory"])
+def test_first_run_wizard_offers_no_default_root_that_is_no_store(
+    serve: Serve,
+    tab: Tab,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exists: bool,
+) -> None:
+    """A default root without the marker, or that is not there, is not offered."""
+    root = tmp_path / "kartograf"
+    if exists:
+        root.mkdir()
+    monkeypatch.setenv("KARTOGRAF_ROOT", str(root))
+    served = serve()
+    page = tab.page
+    with page.expect_response(re.compile(r"/api/v1/sources$")):
+        open_shell(page, served.token_url())
+    # Two frames after the answer, the page has drawn what it made of it.
+    page.evaluate(
+        "() => new Promise((done) => requestAnimationFrame(()"
+        " => requestAnimationFrame(done)))"
+    )
+
+    expect(page.get_by_label("Katalog Kartografa")).to_be_visible()
+    expect(page.get_by_role("button", name="Użyj tego katalogu")).to_have_count(0)
+    assert root.exists() == exists  # looking at it created nothing
+    tab.assert_clean()
+
+
 def test_no_csp_violations_offline(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     """Offline, the shell and MapLibre (worker, glyphs) stay within the CSP."""
     store = make_store(tmp_path / "store", slots=24, seed=7)
@@ -253,3 +372,39 @@ def test_all_modules_load_without_errors(serve: Serve, tab: Tab) -> None:
     assert "vendor/maplibre-gl/maplibre-gl.mjs" in vendored
     assert failures == []
     tab.assert_clean()
+
+
+def test_an_upgraded_interface_reaches_the_next_visit(
+    engine_tab: Tab, tmp_path: Path
+) -> None:
+    """After an upgrade on the same address the next visit runs the new modules.
+
+    A view's modules are imported after the page has loaded, so not even a
+    forced reload asks for them again: a browser that kept the previous
+    build's by heuristic freshness went on showing its map panel (without
+    „U źródła”) for days. Every file is ``no-cache``, so it asks each time.
+    Each visit is one page load in a tab of its own in the same browser (one
+    cache); the first tab closes before its server stops.
+    """
+    now = time.time()
+    previous = interface_copy(tmp_path / "previous", "previous", now - MONTH_S)
+    upgraded = interface_copy(tmp_path / "upgraded", "upgraded", now)
+    paths = local_paths(tmp_path)
+    ConfigStore(paths.config_file).save(AppSettings(offline=True))
+    context = engine_tab.page.context
+
+    with serving(paths, web_dir=previous) as (server, _):
+        open_map_view(engine_tab.page, Served(server, paths))
+        expect(engine_tab.page.locator("html")).to_have_attribute(
+            "data-build", "previous"
+        )
+        engine_tab.assert_clean()
+        engine_tab.page.close()
+        port = server.port
+    with serving(paths, port=port, web_dir=upgraded) as (server, _):
+        again = Tab(context.new_page())
+        again.watch()
+        open_map_view(again.page, Served(server, paths))
+
+        expect(again.page.locator("html")).to_have_attribute("data-build", "upgraded")
+        again.assert_clean()

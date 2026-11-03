@@ -1,0 +1,797 @@
+/**
+ * The „Okno planu” of a download (docs/SPEC.md 6.1 „Plan przed akcją”, 6.5 h,
+ * UC-15; plan 2026-10-25 A11; ADR-043, ADR-044): what a run of the producer's
+ * commands would do in a configured store, and then the run.
+ *
+ * The variant's lines in the chosen format (`commands`; nothing is chosen
+ * when the variant has no default format), or one pasted line, are read into
+ * calls (`POST /commands/parse`, a few at a time however many there are: a
+ * variant has a line per sheet of the area when its grid holds sheets
+ * without data; `requestEach` of api.js), and one `check` job plans them all
+ * (`POST /jobs` with every call read, then `GET /jobs/{job}/plan` once it
+ * ends): nothing is written. A line refused before the job (a line not read,
+ * an option the producer refuses: the refusal names its `details.call`) is
+ * left out of it and named with its problem (a problem of several lines
+ * once, with their number), and so is a line whose check failed
+ * (`result.calls` of the job). The window shows the plans together: the
+ * positions by status, what a run downloads and its size („co najmniej …”
+ * when the producer tells only some sizes, „rozmiar nieznany” when it tells
+ * none, never 0), the store with the producer's directory, each position with
+ * the ones the producer would refuse to write, and each command line to copy.
+ * With an area chosen, its name and how the command uses it are facts of the
+ * plan; a bounding box warns that the producer may select beyond the polygon.
+ * Pinning stays opt-in, but starts at the area's writable project when possible.
+ * „Pobierz” starts one `download` of all the lines (`plan_job`: each line
+ * fetches what was shown) and hands it to the downloads of the shell
+ * (downloads.js), which follow it to its files, its failed units and the
+ * lines it failed or skipped; above 5 GB or 500 positions it asks to be
+ * confirmed first (SPEC 10.3). A session that may not write the stores
+ * (`store_write`) sees the plan with the action disabled and the reason.
+ * „Dodaj do projektu” (A-ADR-049 decision 9) asks the download to pin, once
+ * it succeeded, what it fetched and the plan's positions the store holds
+ * into a set of a project the session may change (`pin` of `POST /jobs`):
+ * „Nowy zestaw” (its name starts as the window's title), written closed or,
+ * with „Zostaw w budowie”, left open (`open`), or „Zestaw w budowie”, one of
+ * the project's open sets (`add`); with nothing to download it only pins.
+ * It is disabled with its reason without `store_write`, offline, without a
+ * project to change or before a plan; a refusal of the project or the set
+ * shows at its field.
+ *
+ * The shell opens the window (`openPlan` of downloads.js), so it outlives the
+ * view. Planning and the confirmation are modal; once something started the
+ * window is not, and the map and the other views stay usable: „Zamknij” and
+ * `Esc` hide it, while it runs and after, without cancelling anything, and
+ * the list under the top bar's „Pobieranie” shows it again until its
+ * download is removed from the list. A download stops only by its „Anuluj
+ * pobieranie”.
+ */
+
+import { getJobPlan, getProject, parseCommand, requestEach, startJob, watchJob } from "../api.js";
+import { useApp } from "../context.js";
+import { CancelDownload, downloadActive, DownloadStatus, useDownloads } from "../downloads.js";
+import { bytes, count, int, plural } from "../format.js";
+import { useResource } from "../hooks.js";
+import { actions } from "../labels/actions.js";
+import { t } from "../labels/index.js";
+import { projects as P } from "../labels/projects.js";
+import { pins } from "../labels/pins.js";
+import {
+  CopyButton,
+  html,
+  Icon,
+  loadStylesheet,
+  ProblemView,
+  Seg,
+  Spinner,
+  Tech,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "../ui.js";
+import { Badge, FINAL_STATES, loadCardStyles, SUMMARY_STATES } from "./cards.js";
+import { FieldNote, MAX_GROUP_NAME, pinRefusalField, useWritableProjects } from "./pin-dialog.js";
+
+await loadCardStyles();
+await loadStylesheet(new URL("./plan.css", import.meta.url));
+
+const L = actions.plan;
+const PL = pins.plan;
+/** A run above either asks to be confirmed (SPEC 10.3). */
+const LARGE_BYTES = 5e9;
+const LARGE_POSITIONS = 500;
+/** Statuses of a plan's positions, in the server's order (`PLAN_STATUSES`). */
+const STATUSES = ["current", "newer", "missing", "unverifiable", "check_failed"];
+const LEVELS = { current: "ok", newer: "info", missing: "info", unverifiable: "plain", check_failed: "bad" };
+
+/**
+ * The plan window of one variant of a report's row, or of a pasted line.
+ *
+ * @param {object} props
+ * @param {number} props.windowKey - The shell's key of the window (`openPlan`).
+ * @param {boolean} props.visible - Shown, or hidden by „Zamknij” or another window.
+ * @param {string} props.producer
+ * @param {{id: string, name: string}} props.store - Where the run writes.
+ * @param {string} props.title - What is downloaded, e.g. „NMT · 2023 · PL-2000”.
+ * @param {import("../types.js").AvailabilityVariant|null} [props.variant] - Its
+ *   lines by format; none with `line`.
+ * @param {string|null} [props.line] - One pasted line of the producer (no format
+ *   to choose).
+ * @param {{id: string, name: string, way: "geometry"|"bbox"|null,
+ *   replaced: string[], projects: Array<{project: string, name: string}>}|null}
+ *   [props.area] - Area used by the plan.
+ * @param {() => void} props.onClose - Close the window; once something
+ *   started it only hides and what it started goes on.
+ */
+export function DownloadPlan({
+  windowKey,
+  visible,
+  producer,
+  store,
+  title,
+  variant = null,
+  line = null,
+  area = null,
+  onClose,
+}) {
+  const { session, settings } = useApp();
+  const projects = useWritableProjects();
+  // „Nowy zestaw” (`group`, left open with `open`) or „Zestaw w budowie” (`set`).
+  const [pin, setPin] = useState(() => ({
+    on: false,
+    project: null,
+    mode: "new",
+    group: groupName(title),
+    open: false,
+    set: null,
+  }));
+  const [pinRefusal, setPinRefusal] = useState(null);
+  const downloads = useDownloads();
+  const titleId = useId();
+  const dialog = useRef(null);
+  // The last state of each run, also once removed from the list of downloads.
+  const seen = useRef(new Map());
+  const [format, setFormat] = useState(variant?.default_format ?? null);
+  const lines = line !== null ? [line] : format === null ? null : (variant.commands[format] ?? []);
+  const check = usePlans(producer, store.id, lines);
+  const items = check.items;
+  const [confirmed, setConfirmed] = useState(false);
+  const [runs, setRuns] = useState(null);
+  const sum = planSum(check.info);
+  const planned = check.ended;
+  const large = sum.todo > LARGE_POSITIONS || sum.known > LARGE_BYTES;
+  const allowed = Boolean(session?.store_write);
+  const writable = projects.data ?? [];
+  let pinWhy = null;
+  if (!allowed) pinWhy = PL.no_write;
+  else if (settings?.offline) pinWhy = PL.offline;
+  else if (projects.data && !writable.length) pinWhy = PL.no_project;
+  else if (!planned || !sum.plans.length) pinWhy = PL.no_plan;
+  const pinning = pin.on && pinWhy === null && writable.length > 0;
+  const areaProject = area?.projects.find((item) =>
+    writable.some((entry) => entry.project === item.project));
+  const pinProject = pin.project ?? areaProject?.project ?? writable[0]?.project ?? null;
+  // The chosen project's sets in the making, read once pinning is chosen.
+  const target = useResource(
+    (signal) =>
+      pinning && pinProject ? getProject(pinProject, { signal }) : Promise.resolve(null),
+    [pinning ? pinProject : null],
+  );
+  const sets =
+    target.data && target.data.project === pinProject
+      ? target.data.groups.filter((group) => group.state === "open")
+      : null;
+  const adding = pin.mode === "add" && Boolean(sets?.length);
+  const pinSet = adding ? (sets.find((item) => item.name === pin.set) ?? sets[0]).name : null;
+  const pinGroup = pin.group.trim();
+  let pinTarget = null;
+  if (pinning && pinProject && adding) {
+    pinTarget = { project: pinProject, group: pinSet, add: true };
+  } else if (pinning && pinProject && pinGroup) {
+    pinTarget = { project: pinProject, group: pinGroup, ...(pin.open ? { open: true } : {}) };
+  }
+  const followed = (run) => {
+    if (!run.job) return null;
+    const item = downloads.entries.find((entry) => entry.id === run.job.id) ?? seen.current.get(run.job.id) ?? null;
+    if (item) seen.current.set(run.job.id, item);
+    return item;
+  };
+  const settled = runs !== null && runs.every((run) => run.problem || (run.job && isOver(followed(run))));
+  const started = runs !== null;
+  // Closed, a window the list refers to comes back from there (`PlanWindows`).
+  const handed = downloads.entries.some((entry) => entry.window === windowKey);
+  const ready =
+    planned &&
+    (sum.todo > 0 || pinning) &&
+    allowed &&
+    (!large || confirmed) &&
+    !started &&
+    (!pinning || pinTarget !== null);
+  // Modal while planning; not once something started, so the page stays usable.
+  useEffect(() => {
+    const element = dialog.current;
+    if (!visible) {
+      if (element.open) element.close();
+      return;
+    }
+    const modal = !started;
+    if (element.open && element.matches(":modal") === modal) return;
+    if (element.open) element.close();
+    if (modal) element.showModal();
+    else element.show();
+  }, [visible, started]);
+  useEffect(() => {
+    const element = dialog.current;
+    return () => {
+      if (element.open) element.close();
+    };
+  }, []);
+  const choose = (value) => {
+    if (started) return;
+    setFormat(value);
+    setConfirmed(false);
+  };
+  const record = (index, patch) =>
+    setRuns((current) => current.map((run, place) => (place === index ? { ...run, ...patch } : run)));
+  const download = async () => {
+    setRuns([{ key: "download", kind: "download", job: null, problem: null }]);
+    const body = {
+      kind: "download",
+      producer,
+      store: store.id,
+      calls: check.calls,
+      plan_job: check.job.id,
+      ...(pinTarget ? { pin: pinTarget } : {}),
+    };
+    try {
+      const job = await startJob(body);
+      downloads.track(job, { title, window: windowKey });
+      record(0, { job });
+    } catch (error) {
+      if (!error.problem) throw error;
+      const field = pinTarget ? pinRefusalField(error) : null;
+      if (field) {
+        // The project or the set refused before a job: corrected and asked again,
+        // the project's sets read again (one may have been closed meanwhile).
+        setRuns(null);
+        setPinRefusal({ problem: error.problem, field: field === "group" ? "group" : "project" });
+        target.reload();
+        return;
+      }
+      record(0, { problem: error.problem });
+    }
+  };
+  const changePin = (patch) => {
+    setPin((now) => ({ ...now, ...patch }));
+    setPinRefusal(null);
+  };
+  const submit = (event) => {
+    event.preventDefault();
+    if (ready) download();
+  };
+  let reason = null;
+  if (planned && sum.plans.length) {
+    if (!sum.todo && !pinning) reason = L.nothing;
+    else if (!allowed) reason = L.no_write;
+  }
+  // Pinning only, with nothing to download, counts the plan's positions.
+  const pinOnly = pinning && !sum.todo;
+  const counted = pinOnly ? sum.positions : sum.todo;
+  const label = !planned
+    ? L.submit_unplanned
+    : t(pinOnly ? PL.submit_pin_only : pinning ? PL.submit : L.submit, {
+        count: int(counted),
+        positions: accusative(counted),
+      });
+  return html`<dialog class="plan-window" ref=${dialog} aria-labelledby=${titleId}
+    onCancel=${(event) => {
+      event.preventDefault();
+      onClose();
+    }}
+    onKeyDown=${(event) => {
+      if (event.key !== "Escape") return;
+      // Esc closes this window only, not a card under it (shell.js); a window
+      // that is not modal gets no `cancel` of its own.
+      event.stopPropagation();
+      if (started) onClose();
+    }}>
+    <form class="plan-body" onSubmit=${submit}>
+      <h2 class="plan-title" id=${titleId}>${started ? L.title_started : L.title} <span class="plan-what">${title}</span></h2>
+      <dl class="kv plan-facts">
+        ${variant
+          ? html`<dt>${L.format}</dt>
+              <dd>
+                <${Seg} small label=${L.format} value=${format} onChange=${choose}
+                  options=${variant.formats.map((value) => ({
+                    value,
+                    label: value,
+                    disabled: started || !variant.commands[value]?.length,
+                    title: variant.commands[value]?.length ? null : L.format_no_lines,
+                  }))} />
+              </dd>`
+          : null}
+        <dt>${L.store}</dt>
+        <dd><${Tech} value=${[["store", store.id]]}>${store.name}</${Tech}></dd>
+        ${area
+          ? html`<dt>${L.area_fact}</dt>
+              <dd>${area.name}
+                ${area.way
+                  ? html` · ${area.way === "geometry" ? L.area_geometry : L.area_bbox}`
+                  : null}
+                ${area.projects.length
+                  ? html`<span class="muted">
+                      · ${t(P.area_choice.of, {
+                        name: area.projects.map((item) => item.name).join(", "),
+                      })}</span>`
+                  : null}
+              </dd>`
+          : null}
+        ${sum.root
+          ? html`<dt>${L.root}</dt>
+              <dd class="plan-root"><code class="path">${sum.root}</code><${CopyButton} text=${sum.root} label=${L.copy_root} /></dd>`
+          : null}
+      </dl>
+      ${area?.way === "bbox"
+        ? html`<p class="plan-line warn" role="note">
+            <${Icon} name="alert" size=${15} /><span>${L.area_bbox_warning}</span></p>`
+        : null}
+      ${area?.replaced.length
+        ? html`<p class="plan-line" role="note"><${Icon} name="info" size=${15} />
+            <span>${L.area_replaced}
+              ${area.replaced.map((option, index) => html`${index ? ", " : " "}
+                <code key=${option}>${option}</code>`)}</span></p>`
+        : null}
+      ${variant && format === null
+        ? html`<p class="plan-line warn" role="note"><${Icon} name="info" size=${15} /><span>${L.format_choose}</span></p>`
+        : null}
+      ${lines !== null && !planned
+        ? html`<p class="hint"><${Spinner} label=${t(L.checking, {
+            done: int(items.filter(settledLine).length + check.progress),
+            total: int(items.length),
+            commands: plural(items.length, L.commands),
+          })} /></p>`
+        : null}
+      ${lineRefusals(items).map(
+        (refusal) =>
+          html`<${LineRefusal} key=${refusal.key} refusal=${refusal} total=${items.length} />`,
+      )}
+      ${items.map((item) => html`<${LineFailure} key=${item.line} item=${item} />`)}
+      ${check.failure ? html`<${CheckFailure} failure=${check.failure} count=${check.calls.length} />` : null}
+      ${sum.plans.length ? html`<${PlanSummary} sum=${sum} />` : null}
+      ${large && planned && sum.todo > 0
+        ? html`<label class="check-field plan-confirm">
+            <input type="checkbox" checked=${confirmed} disabled=${started}
+              onChange=${(event) => setConfirmed(event.currentTarget.checked)} />
+            <span>${t(L.large, { positions: count(sum.todo, L.positions_accusative), size: sizeText(sum) })}</span>
+          </label>`
+        : null}
+      ${lines !== null && !started
+        ? html`<${PinOption} pin=${pin} why=${pinWhy} projects=${projects} project=${pinProject}
+            sets=${sets} set=${pinSet} refusal=${pinRefusal} onChange=${changePin} />`
+        : null}
+      ${reason && !started
+        ? html`<p class="plan-line warn plan-reason" role="note"><${Icon} name="alert" size=${15} /><span>${reason}</span></p>`
+        : null}
+      ${runs
+        ? html`<div class="plan-runs">${runs.map((run) =>
+            run.problem
+              ? html`<${ProblemView} key=${run.key} problem=${run.problem} compact />`
+              : html`<${RunStatus} key=${run.key} item=${followed(run)} />`,
+          )}</div>`
+        : null}
+      ${started && !settled ? html`<p class="hint plan-background">${L.background}</p>` : null}
+      <div class="plan-actions">
+        ${started
+          ? html`<button type="button" class="btn" autofocus title=${handed ? L.close_title : null}
+              onClick=${onClose}>${L.close}</button>`
+          : html`<button type="button" class="btn" onClick=${onClose}>${L.cancel}</button>
+              <button type="submit" class="btn primary" disabled=${!ready}>
+                <${Icon} name="check" size=${14} />${label}
+              </button>`}
+      </div>
+    </form>
+  </dialog>`;
+}
+
+/** „pozycję”, „pozycje”, „pozycji”: after „Pobierz” and „Przypnij”. */
+function accusative(n) {
+  return plural(n, L.positions_accusative);
+}
+
+/** The first name of a window's group: its title as a group may be named. */
+function groupName(title) {
+  return title.replaceAll("/", "-").replace(/\p{Cc}/gu, "").trim().slice(0, MAX_GROUP_NAME);
+}
+
+/**
+ * „Dodaj do projektu”: the project and the set the download pins into —
+ * „Nowy zestaw” by its name, written closed or left „w budowie” (`open`),
+ * or „Zestaw w budowie”, one of the project's open sets (`sets`, null while
+ * they are read; `set` the chosen one) — disabled with its reason (`why`);
+ * a refusal at its field.
+ */
+function PinOption({ pin, why, projects, project, sets, set, refusal, onChange }) {
+  const id = useId();
+  const items = projects.data ?? [];
+  const on = pin.on && why === null && items.length > 0;
+  const adding = pin.mode === "add" && Boolean(sets?.length);
+  const at = (field) => (refusal?.field === field ? refusal.problem : null);
+  const toggle = (event) => onChange({ on: event.currentTarget.checked });
+  return html`<fieldset class="plan-pin">
+    <label class="check-field">
+      <input type="checkbox" checked=${on} disabled=${why !== null || !projects.data}
+        aria-describedby=${`${id}-why`} onChange=${toggle} />
+      <span>${PL.option}</span>
+    </label>
+    <span class="field-hint" id=${`${id}-why`}>${why ?? PL.option_hint}</span>
+    ${projects.error ? html`<${ProblemView} problem=${projects.error.problem} compact />` : null}
+    ${on
+      ? html`<div class="plan-pin-fields">
+          <div class=${`field${at("project") ? " invalid" : ""}`}>
+            <label for=${`${id}-project`}>${PL.project}</label>
+            <select id=${`${id}-project`} value=${project ?? ""}
+              aria-invalid=${at("project") ? "true" : null} aria-describedby=${`${id}-project-note`}
+              onChange=${(event) => onChange({ project: event.currentTarget.value, set: null })}>
+              ${items.map(
+                (item) => html`<option key=${item.project} value=${item.project}>${item.name}</option>`,
+              )}
+            </select>
+            <${FieldNote} id=${`${id}-project-note`} problem=${at("project")} />
+          </div>
+          <fieldset class=${`field pin-group${at("group") ? " invalid" : ""}`}>
+            <legend>${PL.set}</legend>
+            <label class="check-field">
+              <input type="radio" name=${`${id}-mode`} checked=${!adding}
+                onChange=${() => onChange({ mode: "new" })} />${PL.group}</label>
+            ${adding
+              ? null
+              : html`<label class="visually-hidden" for=${`${id}-group`}>${PL.name}</label>
+                  <input id=${`${id}-group`} value=${pin.group} maxlength=${MAX_GROUP_NAME}
+                    autocomplete="off" aria-invalid=${at("group") ? "true" : null}
+                    aria-describedby=${`${id}-group-note`}
+                    onInput=${(event) => onChange({ group: event.currentTarget.value })} />
+                  <label class="check-field pin-keep">
+                    <input type="checkbox" checked=${pin.open}
+                      aria-describedby=${`${id}-keep-note`}
+                      onChange=${(event) => onChange({ open: event.currentTarget.checked })} />
+                    ${PL.keep_open}</label>
+                  <span class="field-hint pin-keep" id=${`${id}-keep-note`}>
+                    ${PL.keep_open_hint}</span>`}
+            <label class="check-field">
+              <input type="radio" name=${`${id}-mode`} checked=${adding} disabled=${!sets?.length}
+                onChange=${() => onChange({ mode: "add" })} />${PL.open_group}</label>
+            ${adding
+              ? html`<label class="visually-hidden" for=${`${id}-set`}>${PL.open_group}</label>
+                  <select id=${`${id}-set`} value=${set ?? ""}
+                    aria-invalid=${at("group") ? "true" : null}
+                    aria-describedby=${`${id}-group-note`}
+                    onChange=${(event) => onChange({ set: event.currentTarget.value })}>
+                    ${sets.map(
+                      (item) =>
+                        html`<option key=${item.name} value=${item.name}>${item.name}</option>`,
+                    )}
+                  </select>`
+              : null}
+            <${FieldNote} id=${`${id}-group-note`} problem=${at("group")}>
+              ${adding ? PL.open_group_hint : PL.group_hint}
+              ${sets && !sets.length ? ` ${PL.no_open_groups}` : ""}
+            </${FieldNote}>
+          </fieldset>
+        </div>`
+      : null}
+  </fieldset>`;
+}
+
+/** A run that ended, or can no longer be followed. */
+function isOver(item) {
+  return item !== null && !downloadActive(item);
+}
+
+/** What a window knows of its check before a format is chosen. */
+const NO_CHECK = Object.freeze({
+  items: [],
+  calls: [],
+  job: null,
+  progress: 0,
+  info: null,
+  failure: null,
+  ended: false,
+});
+
+/**
+ * Plan the lines in one `check` job (ADR-044): read each line into a call (a
+ * few requests at a time, `requestEach`), start the job with every call read,
+ * follow it to its end and read the plans it kept. A refusal of one call
+ * (`details.call`, e.g. an option the producer refuses) names that line and
+ * the job is asked again without it; a refusal of the whole request (offline
+ * mode) names every line. A line whose check failed gets the job's reason for
+ * it (`result.calls`); a job that planned none of several lines failed as a
+ * whole (`failure`). A line read is known as its call also when its check is
+ * refused.
+ *
+ * @param {string} producer
+ * @param {string} store
+ * @param {string[]|null} lines - None until a format is chosen.
+ * @returns {PlanCheck}
+ */
+function usePlans(producer, store, lines) {
+  const [check, setCheck] = useState(NO_CHECK);
+  const key = lines === null ? "" : JSON.stringify([producer, store, lines]);
+  useEffect(() => {
+    if (lines === null) {
+      setCheck(NO_CHECK);
+      return undefined;
+    }
+    let live = true;
+    const stops = [];
+    let items = lines.map((line) => ({ line, call: null, plan: null, problem: null, failure: null }));
+    const update = (index, patch) => {
+      items = items.map((item, place) => (place === index ? { ...item, ...patch } : item));
+    };
+    const show = (patch = {}) => {
+      if (live) setCheck((current) => ({ ...current, ...patch, items }));
+    };
+    setCheck({ ...NO_CHECK, items });
+    const plan = async () => {
+      // A line per sheet can be hundreds: a few requests at a time, none once closed.
+      const send = async (line) => (live ? readLine(producer, line) : null);
+      const read = await requestEach(lines, send);
+      if (!live) return;
+      read.forEach((answer, index) => update(index, answer));
+      // The places in `lines` of the job's calls, in the job's order.
+      let places = items.flatMap((item, index) => (item.call ? [index] : []));
+      const calls = () =>
+        places.map((index) => ({ command: items[index].call.command, options: items[index].call.options }));
+      let job = null;
+      while (job === null && places.length) {
+        try {
+          job = await startJob({ kind: "check", producer, store, calls: calls() });
+        } catch (error) {
+          if (!error.problem) throw error;
+          const refused = error.problem.details?.call;
+          if (Number.isInteger(refused) && refused >= 0 && refused < places.length) {
+            update(places[refused], { problem: error.problem });
+            places = places.filter((_, place) => place !== refused);
+          } else {
+            for (const index of places) update(index, { problem: error.problem });
+            places = [];
+          }
+        }
+        if (!live) return;
+        show();
+      }
+      if (job === null) {
+        show({ ended: true });
+        return;
+      }
+      show({ job, calls: calls() });
+      const fail = (failure) => {
+        if (places.length === 1) update(places[0], { failure });
+        show({ ended: true, failure: places.length === 1 ? null : failure });
+      };
+      const end = await finalState(job.id, stops, (data) => show({ progress: data.current }));
+      if (!live) return;
+      if (!SUMMARY_STATES.has(end.state)) {
+        fail(end.error ?? { code: end.state, detail: end.state });
+        return;
+      }
+      let info;
+      try {
+        info = await getJobPlan(job.id);
+      } catch (error) {
+        if (!error.problem) throw error;
+        if (live) fail({ code: error.problem.code, detail: error.problem.detail });
+        return;
+      }
+      if (!live) return;
+      (end.result?.calls ?? []).forEach((section, place) => {
+        if (section.status === "failed") update(places[place], { failure: section.error });
+      });
+      for (const kept of info.calls) update(places[kept.call], { plan: kept });
+      show({ ended: true, info });
+    };
+    plan();
+    return () => {
+      live = false;
+      for (const stop of stops) stop();
+    };
+  }, [key]);
+  return check;
+}
+
+/** A line read into a call, or the problem of reading it. */
+async function readLine(producer, line) {
+  try {
+    return { call: await parseCommand(producer, line) };
+  } catch (error) {
+    if (!error.problem) throw error;
+    return { problem: error.problem };
+  }
+}
+
+/**
+ * The check of a window's lines (`usePlans`).
+ *
+ * @typedef {object} PlanCheck
+ * @property {PlanLine[]} items - Each line on its way to a plan.
+ * @property {Array<{command: string, options: Object<string, *>}>} calls - The
+ *   calls of the `check` job, in its order: its download asks the same.
+ * @property {import("../types.js").JobDetail|null} job - The `check` job.
+ * @property {number} progress - Calls the job has planned so far.
+ * @property {import("../types.js").ActionPlanInfo|null} info - The plans it kept.
+ * @property {import("../types.js").JobFailure|null} failure - Why a job of
+ *   several lines planned none of them.
+ * @property {boolean} ended - Every line has its plan or is named with its problem.
+ */
+
+/**
+ * A line of the variant on its way to a plan.
+ *
+ * @typedef {object} PlanLine
+ * @property {string} line
+ * @property {import("../types.js").CommandCall|null} call
+ * @property {import("../types.js").CallPlan|null} plan - Its plan among the job's plans.
+ * @property {import("../types.js").Problem|null} problem - Refused before the job.
+ * @property {{code: string, detail: string}|null} failure - Its check failed.
+ */
+
+function settledLine(item) {
+  return Boolean(item.plan || item.problem || item.failure);
+}
+
+/** The final state event of a job (a broken stream counts as its failure). */
+function finalState(job, stops, onProgress) {
+  return new Promise((resolve) => {
+    stops.push(
+      watchJob(job, {
+        onProgress,
+        onState: (data) => {
+          if (FINAL_STATES.has(data.state)) resolve(data);
+        },
+        onError: (problem) => resolve({ state: "failed", error: { code: problem.code, detail: problem.detail } }),
+      }),
+    );
+  });
+}
+
+/** The sum of a window before its plans are read. */
+const NO_SUM = Object.freeze({
+  plans: [],
+  counts: {},
+  positions: 0,
+  todo: 0,
+  known: 0,
+  unknown: false,
+  complete: true,
+  root: null,
+  entries: [],
+});
+
+/**
+ * The plans of the lines together, as the job's totals say: counts, what a
+ * run downloads and its size; each position with the place of its call.
+ */
+function planSum(info) {
+  if (info === null) return NO_SUM;
+  return {
+    plans: info.calls,
+    counts: info.counts,
+    positions: info.positions,
+    todo: info.todo,
+    known: info.size_bytes ?? 0,
+    unknown: info.size_bytes === null,
+    complete: info.size_complete,
+    root: info.root,
+    entries: info.calls.flatMap((plan) => plan.entries.map((entry) => ({ ...entry, call: plan.call }))),
+  };
+}
+
+function sizeText(sum) {
+  if (sum.unknown) return L.size_unknown;
+  return t(sum.complete ? L.size : L.size_partial, { size: bytes(sum.known) });
+}
+
+function PlanSummary({ sum }) {
+  const named = STATUSES.filter((status) => sum.counts[status]).map(
+    (status) => `${L.status[status]} ${int(sum.counts[status])}`,
+  );
+  const conflicts = sum.entries.filter((entry) => entry.conflict);
+  const notices = sum.plans.flatMap((plan) => plan.notices);
+  return html`<div class="plan-summary">
+    <p class="plan-counts">
+      <b>${count(sum.positions, L.positions)}</b>${named.length ? `: ${named.join(", ")}` : null}
+    </p>
+    <p class="plan-todo">
+      <b>${t(L.todo, { count: int(sum.todo) })}</b>
+      ${sum.todo
+        ? html` · <${Tech} value=${[["size_bytes", sum.unknown ? "null" : String(sum.known)], ["size_complete", String(sum.complete)]]}>
+            <span class=${sum.complete ? "" : "warn-text"}>${sizeText(sum)}</span></${Tech}>`
+        : null}
+    </p>
+    ${sum.todo && !sum.complete && !sum.unknown ? html`<p class="hint plan-size-hint">${L.size_hint}</p>` : null}
+    ${conflicts.length
+      ? html`<div class="plan-line bad" role="note"><${Icon} name="alert" size=${15} />
+          <div>${t(L.conflicts, { count: int(conflicts.length), positions: plural(conflicts.length, L.positions) })}
+            <ul>${conflicts.map(
+              (entry) => html`<li key=${`${entry.call}/${entry.path}`}><span class="mono">${entry.path}</span>: <${Tech} value=${[["conflict", entry.conflict]]}>
+                ${L.conflict[entry.conflict] ?? entry.conflict}</${Tech}>${entry.error ? ` — ${entry.error}` : ""}</li>`,
+            )}</ul></div></div>`
+      : null}
+    ${sum.counts.check_failed
+      ? html`<p class="plan-line warn" role="note"><${Icon} name="alert" size=${15} />
+          <span>${t(L.not_checked, { count: int(sum.counts.check_failed) })}</span></p>`
+      : null}
+    <div class="table-wrap plan-entries" tabindex="0">
+      <table>
+        <caption class="visually-hidden">${L.entries}</caption>
+        <thead><tr>
+          <th scope="col">${L.columns.path}</th>
+          <th scope="col">${L.columns.status}</th>
+          <th scope="col">${L.columns.local}</th>
+          <th scope="col">${L.columns.source}</th>
+          <th scope="col" class="num">${L.columns.size}</th>
+        </tr></thead>
+        <tbody>${sum.entries.map(
+          (entry) => html`<tr key=${`${entry.call}/${entry.path}`}>
+            <td><${Tech} value=${[["unit", entry.unit]]}><span class="mono plan-path">${entry.path}</span></${Tech}>
+              ${entry.error ? html`<p class="row-problem"><${Icon} name="alert" size=${13} /><span>${entry.error}</span></p>` : null}</td>
+            <td><${Badge} level=${LEVELS[entry.status] ?? "plain"}>${L.status[entry.status] ?? entry.status}</${Badge}></td>
+            <td class="mono">${entry.local_label ?? html`<span class="faint">${L.no_label}</span>`}</td>
+            <td class="mono">${entry.available_label ?? html`<span class="faint">${L.unknown}</span>`}</td>
+            <td class="num tabular">${entry.size_bytes === null ? html`<span class="faint">${L.unknown}</span>` : bytes(entry.size_bytes)}</td>
+          </tr>`,
+        )}</tbody>
+      </table>
+    </div>
+    ${sum.plans.map(
+      (plan) => html`<div key=${plan.call} class="plan-command">
+        <span class="section-title">${L.line}</span>
+        <div class="cmd"><code class="path">${plan.line}</code><${CopyButton} text=${plan.line} label=${L.copy_line} /></div>
+      </div>`,
+    )}
+    ${notices.length
+      ? html`<div class="job-notices plan-notices">
+          <span class="section-title">${L.notices}</span>
+          <ul>${notices.map(
+            (notice, index) => html`<li key=${index} class=${notice.level}><${Tech} value=${notice.code}>${notice.message}</${Tech}></li>`,
+          )}</ul>
+        </div>`
+      : null}
+  </div>`;
+}
+
+/**
+ * The problems that refused lines before their check, each once with its
+ * lines counted: a busy server refuses every line with the same problem.
+ */
+function lineRefusals(items) {
+  const refusals = new Map();
+  for (const item of items) {
+    if (!item.problem) continue;
+    const key = JSON.stringify(item.problem);
+    const refusal = refusals.get(key) ?? { key, problem: item.problem, lines: 0 };
+    refusal.lines += 1;
+    refusals.set(key, refusal);
+  }
+  return [...refusals.values()];
+}
+
+/** A problem that refused lines before their check, and how many when several. */
+function LineRefusal({ refusal, total }) {
+  return html`<div class="plan-refusal">
+    <${ProblemView} problem=${refusal.problem} compact />
+    ${refusal.lines > 1
+      ? html`<p class="hint">${t(L.refused_lines, {
+          count: int(refusal.lines),
+          total: int(total),
+          commands: plural(total, L.commands),
+        })}</p>`
+      : null}
+  </div>`;
+}
+
+/** A line whose check failed. */
+function LineFailure({ item }) {
+  if (!item.failure) return null;
+  return html`<p class="plan-line bad" role="alert"><${Icon} name="alert" size=${15} />
+    <span><${Tech} value=${[["code", item.failure.code]]}>${t(L.failed_line, { line: item.line })}</${Tech}> ${item.failure.detail}</span></p>`;
+}
+
+/** The check of several lines that planned none of them: why (the first line's reason). */
+function CheckFailure({ failure, count: lines }) {
+  const text = t(L.failed_lines, { count: int(lines), commands: plural(lines, L.commands) });
+  return html`<p class="plan-line bad" role="alert"><${Icon} name="alert" size=${15} />
+    <span><${Tech} value=${[["code", failure.code]]}>${text}</${Tech}> ${failure.detail}</span></p>`;
+}
+
+/**
+ * The download started here: its state as the
+ * downloads of the shell follow it, with its explicit cancel while it runs.
+ */
+function RunStatus({ item }) {
+  if (!item) return html`<${Spinner} />`;
+  return html`<div class="plan-run">
+    <${DownloadStatus} item=${item} />
+    ${downloadActive(item) ? html`<div class="plan-run-actions"><${CancelDownload} item=${item} /></div>` : null}
+  </div>`;
+}

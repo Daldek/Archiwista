@@ -11,6 +11,7 @@ import re
 import sys
 import time
 from collections.abc import Callable
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
@@ -22,7 +23,9 @@ from archiwista.config import AppSettings, StoreConfig
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.jobs import scheduler
 from archiwista.sources.registry import load_registry
+from tests.e2e.test_map import create_project_area
 from tests.fixtures.browser import Served, Tab, session_headers
+from tests.fixtures.layer_store import make_variant_store
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.make_store import StoreManifest, make_store
 
@@ -32,6 +35,7 @@ Row = tuple[str, str | None]
 SECOND_SOURCE = Path(__file__).parents[1] / "fixtures" / "second_source"
 FIXTURE_MODULES = ("external_source_plugin", "external_producer")
 INDEX_TIMEOUT_S = 60.0
+FIVE_M = "nmt/pl_1992_5m_evrf2007"
 # Rows of the scrolled area with their file card links, by row index.
 RENDERED_ROWS = """
 () => [...document.querySelectorAll(".cat-rows [role=row][data-index]")].map((row) => [
@@ -39,6 +43,36 @@ RENDERED_ROWS = """
   row.querySelector("a.cat-name").getAttribute("href"),
 ])
 """
+# Text cut in the cells of the drawn rows: a cell or a box of it whose content
+# is wider or taller than it (an ellipsis, a clipped line).
+CLIPPED = """
+(grid) => [...grid.querySelectorAll(".cat-rows .cell, .cat-rows .cell > *")]
+  .filter((element) => getComputedStyle(element).display !== "inline")
+  .filter((element) => element.scrollWidth > element.clientWidth + 1
+    || element.scrollHeight > element.clientHeight + 1)
+  .map((element) => element.textContent.trim())
+"""
+# The top and bottom of each drawn row, in the rows' order.
+ROW_BOXES = """
+(grid) => [...grid.querySelectorAll(".cat-rows [role=row][data-index]")]
+  .sort((a, b) => a.dataset.index - b.dataset.index)
+  .map((row) => [row.getBoundingClientRect().top, row.getBoundingClientRect().bottom])
+"""
+# Rows wholly inside the scrolled area, below the header.
+IN_VIEW = """
+() => {
+  const bottom = document.querySelector(".cat-scroll").getBoundingClientRect().bottom;
+  const top = document.querySelector(".cat-head").getBoundingClientRect().bottom;
+  const drawn = document.querySelectorAll(".cat-rows [role=row][data-index]");
+  return [...drawn].filter((row) => {
+    const box = row.getBoundingClientRect();
+    return box.top >= top - 0.5 && box.bottom <= bottom + 0.5;
+  }).length;
+}
+"""
+# Width of a computer and of a narrow window (px).
+WIDTHS = (1400, 1024)
+LONG_PRODUCT = "Digital Terrain Model 1 m (ASC grid)"
 
 
 def start_store(
@@ -135,6 +169,46 @@ def grid(page: Page) -> Locator:
 def address(page: Page) -> dict[str, str]:
     """Return the parameters of the page's address."""
     return dict(parse_qsl(urlsplit(page.url).query))
+
+
+def test_project_area_filters_catalog_files(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """Choosing a project area filters the store's files by its saved geometry."""
+    # Arrange
+    served, store = start_store(serve, tmp_path, slots=24)
+    page = tab.page
+    open_catalog(page, served)
+    created = create_project_area(page, store.projects_dir)
+    page.reload()
+    select = page.get_by_role("combobox", name="Obszar projektu", exact=True)
+    expect(select).to_be_visible()
+    bbox = api(page, served.base, f"/areas/{created['area_id']}")["bbox"]
+    page.get_by_label("Prostokąt (bbox)").fill(",".join(map(str, bbox)))
+    page.get_by_label("Prostokąt (bbox)").press("Enter")
+    page.get_by_label("Układ prostokąta").fill("EPSG:4326")
+    page.get_by_label("Układ prostokąta").press("Enter")
+    assert address(page)["bbox_crs"] == "EPSG:4326"
+
+    # Act
+    select.select_option(created["project"])
+
+    # Assert
+    expect(page).to_have_url(re.compile(f"area_id={created['area_id']}"))
+    assert address(page)["area_id"] == created["area_id"]
+    assert "bbox" not in address(page)
+    assert "bbox_crs" not in address(page)
+    counts = api(
+        page, served.base, "/slots", {"area_id": created["area_id"], "limit": 1}
+    )
+    assert counts["groups"]["footprint"] > 0
+    expect(page.locator(".cat-area .area-card")).to_contain_text(
+        "Obszar projektu Kamiennik"
+    )
+    expect(grid(page)).to_have_attribute(
+        "aria-rowcount", str(sum(counts["groups"].values()) + 1)
+    )
+    tab.assert_clean()
 
 
 def test_filters_paging_and_url_state(serve: Serve, tab: Tab, tmp_path: Path) -> None:
@@ -307,6 +381,86 @@ def test_no_outline_in_catalog_not_on_map(
     tab.assert_clean()
 
 
+def test_variant_rows_filter_card_and_current_hint(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """One sheet in three variants: three rows, each named by its variant.
+
+    „Wariant” keeps one variant (``segment`` in the address), the file card
+    names it, and the hint says what „bieżąca” means.
+    """
+    served = serve_variants(serve, tmp_path)
+    page = tab.page
+    open_catalog(page, served, {"product": "nmt"})
+    variants = grid(page).locator(".cat-variant")
+    expect(variants).to_have_count(3)
+    every = sorted(variants.all_inner_texts())
+    hint = page.get_by_text(
+        "bieżąca = najnowsza w swoim wariancie (rozdzielczość, układ wysokości)"
+    )
+    expect(hint).to_be_visible()
+    field = page.get_by_label("Wariant", exact=True)
+    options = field.locator("option").all_inner_texts()
+
+    field.select_option(FIVE_M)
+    expect(page).to_have_url(re.compile("segment=nmt%2Fpl_1992_5m_evrf2007"))
+    expect(grid(page)).to_have_attribute("aria-rowcount", "2")
+    expect(variants).to_have_text(["5 m · EVRF2007"])
+    year = grid(page).locator(".c-year").last.inner_text()
+    page.locator("a.cat-name").first.click()
+    expect(page.locator(".fc-variant")).to_have_text("Wariant 5 m · EVRF2007")
+
+    assert every == ["1 m · EVRF2007", "1 m · Kronsztadt 86", "5 m · EVRF2007"]
+    assert options == [
+        "Wszystkie warianty",
+        "1 m · EVRF2007 · 1",
+        "1 m · Kronsztadt 86 · 1",
+        "5 m · EVRF2007 · 1",
+    ]
+    assert year == "2025"
+    tab.assert_clean()
+
+
+def test_file_rows_wrap_long_text(serve: Serve, tab: Tab, tmp_path: Path) -> None:
+    """A long product name with its variant wraps; nothing is cut, the row grows.
+
+    At the width of a computer and of a narrow window (resized in place).
+    """
+    served = serve_variants(serve, tmp_path)
+    page = tab.page
+    found = {}
+    for width in WIDTHS:
+        page.set_viewport_size({"width": width, "height": 800})
+        if width == WIDTHS[0]:
+            open_catalog(page, served, {"product": "nmt"})
+        expect(grid(page).locator(".cat-variant")).to_have_count(3)
+        product = grid(page).locator(".cat-rows .c-prod").first
+        expect(product).to_contain_text(LONG_PRODUCT)
+        page.wait_for_function(
+            "(width) => document.documentElement.clientWidth === width", arg=width
+        )
+        page.wait_for_timeout(100)
+        found[width] = (grid(page).evaluate(CLIPPED), grid(page).evaluate(ROW_BOXES))
+
+    for width, (clipped, boxes) in found.items():
+        assert clipped == [], width
+        assert len(boxes) == 3, width
+        assert all(top >= above - 0.5 for (_, above), (top, _) in pairwise(boxes))
+        assert min(bottom - top for top, bottom in boxes) > 44, width
+    tab.assert_clean()
+
+
+def serve_variants(serve: Serve, tmp_path: Path) -> Served:
+    """Serve the store of one sheet in three variants as ``zespol``."""
+    store = make_variant_store(tmp_path / "store")
+    config = StoreConfig(id="zespol", name="Zespół", kartograf=store.root, kind="local")
+    return serve(
+        AppSettings(
+            offline=True, stores=(config,), project_dirs=(store.manifest.projects_dir,)
+        )
+    )
+
+
 def test_ctrl_k_search(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     """``Ctrl+K`` in any view opens the search; an ID finds its file; Enter opens it."""
     served, _ = start_store(serve, tmp_path, slots=30)
@@ -359,6 +513,7 @@ def test_ctrl_k_search(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     at_end = page.evaluate(focused)
     page.keyboard.press("Home")
     at_start = page.evaluate(focused)
+    in_view = page.evaluate(IN_VIEW)
     page.keyboard.press("PageDown")
     one_page_down = int(page.evaluate(focused))
 
@@ -366,7 +521,10 @@ def test_ctrl_k_search(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     assert card["file"] == f"zespol/{target['slot']}"
     assert card["q"] == prefix
     assert (at_end, at_start) == (str(len(rows) + 1), "2")
-    assert one_page_down > 10
+    # A page down is the row a view's height below, less one (rows wrap, so
+    # their heights differ): row index in_view - 2 or in_view - 1.
+    assert in_view > 2
+    assert in_view <= one_page_down <= in_view + 1
     tab.assert_clean()
 
 
@@ -388,7 +546,7 @@ def test_second_adapter_entries_in_catalog(
 
     def roots(config: StoreConfig) -> dict[str, Path]:
         if config.id == "pomiary":
-            return {"external": config.kartograf}
+            return {"external": kartograf_roots(config)["kartograf"]}
         return kartograf_roots(config)
 
     monkeypatch.setattr(StoreConfig, "roots", roots)

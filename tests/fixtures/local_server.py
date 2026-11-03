@@ -1,15 +1,22 @@
-"""Run ``archiwista serve`` on a free port in a background thread."""
+"""Run ``archiwista serve`` in a background thread, on a free or a given port."""
 
 import io
+import os
 import queue
+import socket
+import stat
 import threading
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from functools import partial
 from pathlib import Path
+from unittest import mock
 
+import archiwista.server
+from archiwista.app import create_app
 from archiwista.config import AppPaths
-from archiwista.server import LocalServer, serve_main
+from archiwista.server import AppServer, serve_main
 from archiwista.sources import SourceAdapter, SourceState
 from archiwista.sources.registry import PluginRegistry, source_error
 
@@ -40,6 +47,28 @@ class NoSources:
         return self.state(producer)
 
 
+def server_nodelay(client: socket.socket) -> int:
+    """Return ``TCP_NODELAY`` of the server's end of ``client``'s connection.
+
+    The server of a test runs in this process, so its end is one of the
+    process's descriptors (listed in ``/dev/fd`` on Linux and macOS): the
+    socket whose peer is ``client``. ``client`` must have had an answer, so
+    that the server has taken the connection.
+    """
+    local, peer = client.getsockname(), client.getpeername()
+    for name in os.listdir("/dev/fd"):
+        descriptor = int(name)
+        try:
+            if not stat.S_ISSOCK(os.fstat(descriptor).st_mode):
+                continue
+            with socket.socket(fileno=os.dup(descriptor)) as end:
+                if end.getsockname() == peer and end.getpeername() == local:
+                    return end.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
+        except OSError:  # closed meanwhile, or a socket without a peer
+            continue
+    raise AssertionError(f"no socket of this process is connected to {local}")
+
+
 def local_paths(tmp_path: Path) -> AppPaths:
     """Place configuration and local data inside the test directory."""
     return AppPaths(
@@ -54,21 +83,25 @@ def serving(
     *,
     access_log: bool = False,
     registry: PluginRegistry | None = None,
-    on_ready: Callable[[LocalServer], object] | None = None,
-) -> Iterator[tuple[LocalServer, str]]:
-    """Run ``serve_main`` on a free port; yield the server and what it printed.
+    on_ready: Callable[[AppServer], object] | None = None,
+    port: int = 0,
+    web_dir: Path | None = None,
+) -> Iterator[tuple[AppServer, str]]:
+    """Run ``serve_main`` on ``port``; yield the server and what it printed.
 
     Without ``registry`` the server has no producers (``NoSources``);
     ``on_ready`` runs as ``archiwista serve`` runs it (e.g. opening the
-    browser). The server stops when the block ends and must then exit with
-    status 0.
+    browser). ``port`` ``0`` is a free one; the port of a stopped server
+    serves the same address again. ``web_dir`` replaces the package's
+    interface files (an upgrade of the interface). The server stops when the
+    block ends and must then exit with status 0.
     """
     out = io.StringIO()
     err = io.StringIO()
-    ready: queue.Queue[LocalServer] = queue.Queue()
+    ready: queue.Queue[AppServer] = queue.Queue()
     statuses: list[int] = []
 
-    def ready_now(server: LocalServer) -> None:
+    def ready_now(server: AppServer) -> None:
         if on_ready is not None:
             on_ready(server)
         ready.put(server)
@@ -80,26 +113,37 @@ def serving(
                 registry if registry is not None else NoSources(),
                 out,
                 err,
-                port=0,
+                port=port,
                 access_log=access_log,
                 on_ready=ready_now,
             )
         )
 
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + START_TIMEOUT_S
-    while True:
+    with ExitStack() as patches:
+        if web_dir is not None:
+            patches.enter_context(
+                mock.patch.object(
+                    archiwista.server,
+                    "create_app",
+                    partial(create_app, web_dir=web_dir),
+                )
+            )
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        deadline = time.monotonic() + START_TIMEOUT_S
+        while True:
+            try:
+                server = ready.get(timeout=0.05)
+                break
+            except queue.Empty:
+                if not thread.is_alive() or time.monotonic() > deadline:
+                    raise AssertionError(
+                        f"serve did not start: {err.getvalue()}"
+                    ) from None
         try:
-            server = ready.get(timeout=0.05)
-            break
-        except queue.Empty:
-            if not thread.is_alive() or time.monotonic() > deadline:
-                raise AssertionError(f"serve did not start: {err.getvalue()}") from None
-    try:
-        yield server, out.getvalue()
-    finally:
-        server.stop()
-        thread.join(timeout=START_TIMEOUT_S)
+            yield server, out.getvalue()
+        finally:
+            server.stop()
+            thread.join(timeout=START_TIMEOUT_S)
     assert not thread.is_alive()
     assert statuses == [0], err.getvalue()

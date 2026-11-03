@@ -14,7 +14,14 @@ from typing import Any
 import pytest
 
 from archiwista.api.previews import VERSION_CACHE_CONTROL
-from archiwista.messages import MESSAGES
+from archiwista.auth import LOCAL_OWNER
+from archiwista.config import ConfigStore
+from archiwista.index import IndexQueries
+from archiwista.messages import message
+from archiwista.previews import pool as pool_module
+from archiwista.previews.cache import INFO_NAME, cache_key
+from archiwista.previews.types import PreviewProbe
+from archiwista.refs import ObjectResolver, VersionRef
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE
 from tests.fixtures.preview_api import (
@@ -25,6 +32,7 @@ from tests.fixtures.preview_api import (
     preview_api,
     version_url,
 )
+from tests.fixtures.refused_start import refuse_starts
 
 # Headers of the synthetic JPEG sheets carry no geotransform (their outline
 # comes from the world file); rasterio says so while reading them.
@@ -84,6 +92,7 @@ def test_routes_answer_each_kind_of_file(served: PreviewApi) -> None:
     assert collection["type"] == "FeatureCollection" and collection["features"]
     assert {"number_matched", "truncated", "simplified"} <= set(collection)
     assert (archive_info["state"], archive_info["kind"]) == ("ready", "archive")
+    assert (info["format"], archive_info["format"]) == ("GeoTIFF", "ZIP")
     assert members.status_code == 200, members.text
     listing = members.json()
     assert listing["ref"] == archive_info["ref"]
@@ -92,35 +101,37 @@ def test_routes_answer_each_kind_of_file(served: PreviewApi) -> None:
 
 
 @pytest.mark.parametrize(
-    ("route", "field"),
+    ("route", "pointer"),
     [
-        ("preview.png?size=77", "query.size"),
-        ("preview.png?style=nieznany", "query.style"),
-        ("preview.png?bbox=1,2,3", "query.bbox"),
-        ("preview.png?bbox_crs=WGS84", "query.bbox_crs"),
-        ("tiles/23/0/0.png", "path.z"),
-        ("tiles/3/8/0.png", "path.x"),
-        ("tiles/3/0/8.png", "path.y"),
-        ("tiles/12/0/0.png?rescale=450,200", "query.rescale"),
-        ("features?zoom=14", "query.bbox"),
-        ("features?bbox=19,50,20,51&zoom=23", "query.zoom"),
+        ("preview.png?size=77", "/query/size"),
+        ("preview.png?style=nieznany", "/query/style"),
+        ("preview.png?bbox=1,2,3", "/query/bbox"),
+        ("preview.png?bbox_crs=WGS84", "/query/bbox_crs"),
+        ("tiles/23/0/0.png", "/path/z"),
+        ("tiles/3/8/0.png", "/path/x"),
+        ("tiles/3/0/8.png", "/path/y"),
+        ("tiles/12/0/0.png?rescale=450,200", "/query/rescale"),
+        ("features?zoom=14", "/query/bbox"),
+        ("features?bbox=19,50,20,51&zoom=23", "/query/zoom"),
     ],
 )
-def test_invalid_parameters_are_422(served: PreviewApi, route: str, field: str) -> None:
+def test_invalid_parameters_are_400(
+    served: PreviewApi, route: str, pointer: str
+) -> None:
     """Sizes, styles, frames, tile numbers, ranges and zooms are validated."""
     path = entry_of(served.store, "tif_sheet", "regular").path
 
     response = served.get(version_url(path, route))
 
-    assert_problem(response, 422, "validation_error")
-    assert field in [item["field"] for item in response.json()["errors"]]
+    assert_problem(response, 400, "validation_error")
+    assert pointer in [item["pointer"] for item in response.json()["errors"]]
 
 
-def test_invalid_ref_is_422(served: PreviewApi) -> None:
+def test_invalid_ref_is_400(served: PreviewApi) -> None:
     """A store id no store can have makes no reference (``invalid_ref``)."""
     response = served.get("/api/v1/stores/Zespol/versions/nmt/plik.asc/preview")
 
-    assert_problem(response, 422, "invalid_ref")
+    assert_problem(response, 400, "validation_error", "invalid_ref")
 
 
 def test_tiles_outside_zoom_range_or_extent_are_404(served: PreviewApi) -> None:
@@ -160,8 +171,8 @@ def test_tiles_not_ready_until_build_then_ready(tmp_path: Path) -> None:
         True,
         None,
     )
-    assert_problem(refused, 409, "preview_not_ready")
-    assert refused.json()["build_required"] is True
+    assert_problem(refused, 409, "conflict", "preview_not_ready")
+    assert refused.json()["details"]["build_required"] is True
     assert posted.status_code == 202, posted.text
     job = posted.json()
     assert job["kind"] == "preview" and job["params"]["refs"] == [before["ref"]]
@@ -171,6 +182,33 @@ def test_tiles_not_ready_until_build_then_ready(tmp_path: Path) -> None:
     assert (after["state"], after["job"]) == ("ready", None)
     assert shown.status_code == 200, shown.text
     assert decoded_png(shown.content).shape[1:] == (256, 256)
+
+
+def test_zip_of_one_xyz_previewed_as_xyz_after_build(tmp_path: Path) -> None:
+    """An ASCII-NMT ZIP of one XYZ grid: a raster ``XYZ (ZIP)`` with map tiles."""
+    with preview_api(tmp_path) as served:
+        # Arrange
+        path = entry_of(served.store, "zip_ascii_nmt").path
+        before = _info(served, path)
+
+        # Act
+        posted = served.post(version_url(path), {"force": False})
+        served.wait(posted.json()["id"])
+        after = _info(served, path)
+        thumbnail = served.get(f"{after['thumbnail_url']}?size=256")
+        tile = served.get(center_tile_url(after))
+
+    # Assert
+    assert (before["kind"], before["format"], before["state"]) == (
+        "raster",
+        "XYZ (ZIP)",
+        "needs_build",
+    )
+    assert (after["state"], after["default_style"]) == ("ready", "hillshade")
+    assert after["members_url"] is None
+    assert thumbnail.status_code == 200, thumbnail.text
+    assert tile.status_code == 200, tile.text
+    assert decoded_png(tile.content).shape[1:] == (256, 256)
 
 
 def test_etag_answers_304_without_rendering(served: PreviewApi) -> None:
@@ -219,16 +257,16 @@ def test_preview_unavailable_carries_reason(served: PreviewApi) -> None:
     )
     assert info["reason"] == {
         "code": "document_no_preview",
-        "message": MESSAGES["preview_reason_document_no_preview"],
-        "fix": MESSAGES["preview_fix_document_no_preview"],
+        "message": message("preview.reason_document_no_preview"),
+        "fix": message("preview.fix_document_no_preview"),
         "detail": None,
     }
-    assert_problem(thumbnail, 409, "preview_unavailable")
-    assert thumbnail.json()["reason"] == info["reason"]
+    assert_problem(thumbnail, 422, "unsupported", "preview_unavailable")
+    assert thumbnail.json()["details"]["preview_reason"] == info["reason"]
     assert (picture["state"], picture["tiles_url"]) == ("ready", None)
     assert picture["reason"]["code"] == "no_georeference"
-    assert_problem(tile, 409, "preview_unavailable")
-    assert tile.json()["reason"]["code"] == "no_georeference"
+    assert_problem(tile, 422, "unsupported", "preview_unavailable")
+    assert tile.json()["details"]["preview_reason"]["code"] == "no_georeference"
 
 
 @pytest.mark.parametrize("mount_point", [False, True], ids=["gone", "empty_mount"])
@@ -267,7 +305,60 @@ def test_disconnected_store_answers_from_cache_or_503(
     assert described == known
     assert unknown["state"] == "unavailable"
     assert unknown["reason"]["code"] == "store_unavailable"
-    assert_problem(refused, 503, "store_unavailable")
+    assert_problem(refused, 503, "store_unavailable", "store_unreadable")
+
+
+def test_render_process_that_cannot_start_is_503_not_remembered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No render process starts: ``503 renderer_not_started``, then the file shows."""
+    refused = refuse_starts(monkeypatch, pool_module)
+    with preview_api(tmp_path) as served:
+        # Arrange
+        path = entry_of(served.store, "tif_sheet", "regular").path
+
+        # Act
+        failed = served.get(version_url(path))
+        refused.on = False
+        after = _info(served, path)
+
+    # Assert
+    assert_problem(failed, 503, "missing_dependency", "renderer_not_started")
+    assert failed.json()["detail"] == message("preview.renderer_not_started")
+    assert failed.json()["hint"] == message("preview.renderer_not_started_hint")
+    assert (after["state"], after["reason"]) == ("ready", None)
+
+
+def test_build_request_reads_again_a_cached_unreadable_verdict(
+    tmp_path: Path,
+) -> None:
+    """``POST …/preview`` probes again a file the cache says cannot be read.
+
+    Such a verdict was once left by a render process that crashed; the
+    explicit request replaces it with the file's real description.
+    """
+    with preview_api(tmp_path) as served:
+        # Arrange
+        path = entry_of(served.store, "tif_sheet", "regular").path
+        known = _info(served, path)
+        with IndexQueries(served.api.paths.index_file) as queries:
+            settings = ConfigStore(served.api.paths.config_file).load()
+            source = ObjectResolver(queries, lambda: settings).locate(
+                VersionRef(STORE, path), principal=LOCAL_OWNER
+            )
+        verdict = PreviewProbe(kind=source.kind, reason="unreadable")
+        served.pool.cache.put(cache_key(source), INFO_NAME, verdict.to_bytes())
+        stale = _info(served, path)
+
+        # Act
+        retried = served.post(version_url(path), {"force": False})
+        after = _info(served, path)
+
+    # Assert
+    assert (stale["state"], stale["reason"]["code"]) == ("unavailable", "unreadable")
+    assert retried.status_code == 200, retried.text
+    assert retried.json() == after == known
+    assert known["state"] == "ready"
 
 
 def test_preview_routes_need_csrf(served: PreviewApi) -> None:
@@ -282,4 +373,4 @@ def test_preview_routes_need_csrf(served: PreviewApi) -> None:
     ]
 
     for response in answers:
-        assert_problem(response, 403, "csrf_rejected")
+        assert_problem(response, 403, "forbidden", "csrf_rejected")

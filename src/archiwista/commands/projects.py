@@ -1,0 +1,818 @@
+"""The project commands: ``archiwista project-init`` … ``-activity``, ``-delete``.
+
+Projects are Archiwista's own file ``archiwista-project.json`` (A-ADR-049).
+``project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id
+OBSZAR]`` writes a new project in a directory (``POST /projects``; a
+relative directory is taken from the current one), ``project-edit PROJEKT
+[--name NAZWA] [--description TEKST]`` changes its name or description
+(``PATCH /projects/{project}``), ``project-area PROJEKT (--area-id OBSZAR |
+--clear)`` its area (``PUT /projects/{project}/area``) and ``project-store
+PROJEKT PRODUCENT --store MAGAZYN`` the store of a producer's pins (``PUT
+/projects/{project}/stores/{producer}``), ``project-pin PROJEKT ZESTAW
+(--version MAGAZYN:WERSJA … | --query JSON) [--from ŹRÓDŁO] [--add | --open]``
+pins versions the store holds into a new group (written closed; with
+``--open`` left open, a set in the making) or, with ``--add``, an open one
+the project has (``POST /projects/{project}/groups``,
+``…/groups/{group}/pins``, printing ``PinOutcome``), ``project-draft PROJEKT
+ZESTAW`` writes an empty set in the making (``POST …/groups`` with
+``open``), ``project-unpin PROJEKT ZESTAW [--pin PRODUCENT:WERSJA …]``
+removes pins of an open group or the whole group (``POST
+…/groups/{group}/unpin``, ``DELETE …/groups/{group}``), ``project-uncall
+PROJEKT ZESTAW --call N`` removes a call of an open group (``DELETE
+…/groups/{group}/calls/{call}``), ``project-close PROJEKT ZESTAW`` closes an
+open group (``POST …/groups/{group}/close``) and ``project-reopen PROJEKT
+ZESTAW`` opens a closed one for editing (``POST …/groups/{group}/reopen``,
+A-ADR-049 erratum 6): the others print the project's card as the index
+holds it right after the change (``ProjectCard``).
+``project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`` writes an
+export ``eksport/NAZWA/`` (with ``--zip`` also ``eksport/NAZWA.zip``) from
+the pins (``POST /projects/{project}/exports``, ``ProjectExport``) and
+``project-exports PROJEKT`` lists them (``GET …/exports``,
+``ProjectExports``); ``project-activity PROJEKT [--limit N]
+[--cursor ID]`` pages what was done to the project and its jobs (``GET
+…/activity``, ``ProjectActivity``); ``project-delete PROJEKT --yes``
+removes a project from Archiwista, never its data (``DELETE
+/projects/{project}``; without ``--yes`` it is refused, nothing asks). They
+call ``archiwista.services.projects`` and ``archiwista.api.projects`` without
+HTTP, as the owner of the installation (``LOCAL_OWNER``, an administrator,
+who may change every project) through the ``Authorizer`` over the state
+database; ``--json`` prints the route's model, a refusal prints no model and
+ends standard error with its ``archiwista-error/1`` document. Nothing here
+uses the network or writes a store.
+"""
+
+import argparse
+import json
+import os
+import sqlite3
+from collections.abc import Callable
+from contextlib import ExitStack
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, TextIO
+
+from pydantic import BaseModel, ValidationError
+
+from archiwista.api.models import (
+    AreaChoice,
+    GroupRequest,
+    PinsRequest,
+    Preferences,
+    ProjectCard,
+    ProjectChange,
+    ProjectRequest,
+    StoreChoice,
+    UnpinRequest,
+)
+from archiwista.api.models_activity import ProjectActivity, ProjectActivityQuery
+from archiwista.api.models_exports import ExportRequest, ProjectExport, ProjectExports
+from archiwista.api.projects import (
+    activity_answer,
+    export_answer,
+    exports_answer,
+    pin_outcome,
+    project_card,
+)
+from archiwista.auth import LOCAL_OWNER
+from archiwista.auth.authorize import Authorizer
+from archiwista.commands import Commands, add_parser
+from archiwista.config import (
+    AppPaths,
+    AppSettings,
+    ConfigStore,
+    SettingsService,
+    SettingsValidationError,
+)
+from archiwista.error_document import (
+    Problem,
+    describe,
+    exception_problem,
+    refuse,
+    validation_problem,
+)
+from archiwista.errors import ArchiwistaError, InvalidChangeError, StateError
+from archiwista.index import IndexQueries, IndexUnsupportedError
+from archiwista.jobs import JobSupervisor
+from archiwista.messages import label, lookup, message, with_detail
+from archiwista.projects import SELECTION_SOURCES
+from archiwista.reader import pin_text, project_text
+from archiwista.services import pins as pin_service
+from archiwista.services import projects as project_service
+from archiwista.services.preferences import read_preferences
+from archiwista.sources.registry import PluginRegistry
+from archiwista.state import StateStore
+
+COMMANDS = frozenset(
+    {
+        "project-init",
+        "project-edit",
+        "project-area",
+        "project-store",
+        "project-export",
+        "project-exports",
+        "project-activity",
+        "project-delete",
+        "project-pin",
+        "project-draft",
+        "project-unpin",
+        "project-uncall",
+        "project-close",
+        "project-reopen",
+    }
+)
+
+# What an action prints: the route's model with ``--json`` (``None``: nothing),
+# else text for people.
+type _Output = tuple[BaseModel | None, str]
+
+
+@dataclass(frozen=True, slots=True)
+class _Place:
+    """What every action works with: the settings, the index and the decisions."""
+
+    registry: PluginRegistry
+    paths: AppPaths
+    service: SettingsService
+    settings: AppSettings
+    queries: IndexQueries
+    index: Path
+    decisions: Authorizer
+
+    def card(self, key: str) -> ProjectCard:
+        """Return a project's card as the local owner sees it now."""
+        return project_card(
+            self.queries,
+            self.settings,
+            self.preferences(),
+            key,
+            visible=self.decisions.visible_projects(LOCAL_OWNER),
+            writable=self.decisions.writable_projects(LOCAL_OWNER),
+        )
+
+    def preferences(self) -> Preferences:
+        """Return the local owner's preferences: ``personal`` of a copy path."""
+        return read_preferences(self.decisions.state, LOCAL_OWNER)
+
+
+type _Action = Callable[[argparse.Namespace, _Place], _Output]
+
+
+class _InvalidBody(Exception):
+    """Arguments the route's request model refuses (``400 validation_error``)."""
+
+    def __init__(self, problem: Problem) -> None:
+        super().__init__(problem.detail)
+        self.problem = problem
+
+
+def add_commands(commands: Commands) -> None:
+    """Add the project commands (``COMMANDS``).
+
+    Parameters
+    ----------
+    commands : argparse._SubParsersAction
+        Subcommands of the ``archiwista`` parser.
+    """
+    created = add_parser(commands, "project-init", "cli.project_init_help")
+    created.add_argument(
+        "directory",
+        metavar=message("metavar.directory"),
+        help=message("cli.project_directory_help"),
+    )
+    _texts(created)
+    _area_id(created)
+    edited = add_parser(commands, "project-edit", "cli.project_edit_help")
+    _project(edited)
+    _texts(edited)
+    area = add_parser(commands, "project-area", "cli.project_area_help")
+    _project(area)
+    chosen = area.add_mutually_exclusive_group(required=True)
+    _area_id(chosen)
+    chosen.add_argument(
+        "--clear", action="store_true", help=message("cli.project_clear_help")
+    )
+    store = add_parser(commands, "project-store", "cli.project_store_cmd_help")
+    _project(store)
+    store.add_argument(
+        "producer",
+        metavar=message("metavar.producer"),
+        help=message("cli.commands_producer_help"),
+    )
+    store.add_argument(
+        "--store",
+        required=True,
+        metavar=message("metavar.store"),
+        help=message("cli.project_store_help"),
+    )
+    exported = add_parser(commands, "project-export", "cli.project_export_help")
+    _project(exported)
+    exported.add_argument(
+        "name",
+        metavar=message("metavar.name"),
+        help=message("cli.project_export_name_help"),
+    )
+    exported.add_argument(
+        "--group",
+        action="append",
+        dest="groups",
+        metavar=message("metavar.group"),
+        help=message("cli.project_export_group_help"),
+    )
+    exported.add_argument(
+        "--zip",
+        action="store_true",
+        help=message("cli.project_export_zip_help"),
+    )
+    listed = add_parser(commands, "project-exports", "cli.project_exports_help")
+    _project(listed)
+    activity = add_parser(commands, "project-activity", "cli.project_activity_help")
+    _project(activity)
+    activity.add_argument(
+        "--limit", metavar=message("metavar.number"), help=message("log.limit_help")
+    )
+    activity.add_argument(
+        "--cursor",
+        metavar=message("metavar.cursor"),
+        help=message("cli.project_activity_cursor_help"),
+    )
+    deleted = add_parser(commands, "project-delete", "cli.project_delete_help")
+    _project(deleted)
+    deleted.add_argument(
+        "--yes", action="store_true", help=message("cli.project_delete_yes_help")
+    )
+
+    pin = add_parser(commands, "project-pin", "cli.project_pin_help")
+    _project(pin)
+    _group(pin)
+    chosen_versions = pin.add_mutually_exclusive_group(required=True)
+    chosen_versions.add_argument(
+        "--version",
+        action="append",
+        dest="versions",
+        metavar=f"{message('metavar.store')}:{message('metavar.version')}",
+        help=message("cli.project_version_help"),
+    )
+    chosen_versions.add_argument(
+        "--query",
+        metavar=message("metavar.query"),
+        help=message("cli.project_query_help"),
+    )
+    pin.add_argument(
+        "--from",
+        dest="source",
+        choices=SELECTION_SOURCES,
+        help=message("cli.project_from_help"),
+    )
+    added = pin.add_mutually_exclusive_group()
+    added.add_argument(
+        "--add", action="store_true", help=message("cli.project_add_help")
+    )
+    added.add_argument(
+        "--open", action="store_true", help=message("cli.project_open_help")
+    )
+    draft = add_parser(commands, "project-draft", "cli.project_draft_help")
+    _project(draft)
+    _group(draft)
+    unpinned = add_parser(commands, "project-unpin", "cli.project_unpin_help")
+    _project(unpinned)
+    _group(unpinned)
+    unpinned.add_argument(
+        "--pin",
+        action="append",
+        dest="pins",
+        metavar=f"{message('metavar.producer')}:{message('metavar.version')}",
+        help=message("cli.project_pin_opt_help"),
+    )
+    uncalled = add_parser(commands, "project-uncall", "cli.project_uncall_help")
+    _project(uncalled)
+    _group(uncalled)
+    uncalled.add_argument(
+        "--call",
+        required=True,
+        type=int,
+        metavar=message("metavar.number"),
+        help=message("cli.project_call_help"),
+    )
+    closed = add_parser(commands, "project-close", "cli.project_close_help")
+    _project(closed)
+    _group(closed)
+    reopened = add_parser(commands, "project-reopen", "cli.project_reopen_help")
+    _project(reopened)
+    _group(reopened)
+
+
+def main(
+    args: argparse.Namespace,
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    err: TextIO,
+) -> int:
+    """Run one of the project commands; return the exit status.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments (``command`` names the command).
+    paths : AppPaths
+        Configuration (the stores and project directories), local index and
+        state database.
+    registry : PluginRegistry
+        Producer plugins: the coordinate operations that read a project's
+        area into the index.
+    out, err : TextIO
+        The route's model (as JSON with ``--json``); a refusal's Polish
+        message and its ``archiwista-error/1`` document go to ``err``.
+
+    Returns
+    -------
+    int
+        ``0`` on success; a refusal returns the exit code of its registry code.
+    """
+    with ExitStack() as stack:
+        try:
+            service = SettingsService(ConfigStore(paths.config_file), registry)
+            place = _Place(
+                registry=registry,
+                paths=paths,
+                service=service,
+                settings=service.get(),
+                queries=stack.enter_context(IndexQueries(paths.index_file)),
+                index=paths.index_file,
+                decisions=Authorizer(StateStore(paths.state_file), service.get),
+            )
+        except _UNUSABLE as error:
+            detail = with_detail(message("cli.project_failed"), str(error))
+            return refuse(exception_problem(error, detail), err)
+        try:
+            model, text = _ACTIONS[args.command](args, place)
+        except _InvalidBody as error:
+            return refuse(error.problem, err)
+        except ArchiwistaError as error:
+            return refuse(describe(error), err)
+    if not args.json:
+        out.write(text + "\n")
+    elif model is not None:
+        out.write(model.model_dump_json() + "\n")
+    return 0
+
+
+def _init(args: argparse.Namespace, place: _Place) -> _Output:
+    """Create a project as ``POST /projects`` does; print its card."""
+    given = _given(args, "name", "description", "area_id")
+    body = _body(ProjectRequest, {"path": os.path.abspath(args.directory), **given})
+    key = project_service.create_project(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        path=body.path,
+        name=body.name,
+        description=body.description,
+        area_id=body.area_id,
+        actor=LOCAL_OWNER,
+    )
+    card = place.card(key)
+    done = message("cli.project_created", project=key, path=body.path)
+    return card, f"{done}\n{project_text(card)}"
+
+
+def _edit(args: argparse.Namespace, place: _Place) -> _Output:
+    """Change a project as ``PATCH /projects/{project}`` does; print the card."""
+    body = _body(ProjectChange, _given(args, "name", "description"))
+    key = project_service.update_project(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        args.project,
+        name=body.name,
+        description=body.description,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return _changed(place, key)
+
+
+def _area(args: argparse.Namespace, place: _Place) -> _Output:
+    """Set a project's area as ``PUT /projects/{project}/area``; print the card."""
+    body = _body(AreaChoice, {"area_id": None if args.clear else args.area_id})
+    key = project_service.set_area(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        args.project,
+        area_id=body.area_id,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return _changed(place, key)
+
+
+def _store(args: argparse.Namespace, place: _Place) -> _Output:
+    """Set a producer's store as ``PUT …/stores/{producer}``; print the card."""
+    body = _body(StoreChoice, {"store": args.store})
+    key = project_service.set_store(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        args.project,
+        producer=args.producer,
+        store=body.store,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return _changed(place, key)
+
+
+def _changed(place: _Place, key: str) -> _Output:
+    card = place.card(key)
+    done = message("cli.project_changed", project=key)
+    return card, f"{done}\n{project_text(card)}"
+
+
+def _export(args: argparse.Namespace, place: _Place) -> _Output:
+    """Write an export as ``POST /projects/{project}/exports`` does."""
+    body = _body(
+        ExportRequest,
+        {"name": args.name, "zip": args.zip, **_given(args, "groups")},
+    )
+    answer = export_answer(
+        place.settings,
+        place.queries,
+        place.registry,
+        place.decisions,
+        place.preferences(),
+        args.project,
+        body,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return answer, _export_text(args.project, answer)
+
+
+def _exports(args: argparse.Namespace, place: _Place) -> _Output:
+    """List the exports as ``GET /projects/{project}/exports`` does."""
+    answer = exports_answer(
+        place.settings,
+        place.queries,
+        place.preferences(),
+        args.project,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return answer, _exports_text(answer)
+
+
+def _export_text(project: str, answer: ProjectExport) -> str:
+    """Return what ``project-export`` prints for people."""
+    text: str = message(
+        "cli.project_exported",
+        name=answer.name,
+        project=project,
+        path=answer.path.local,
+        versions=answer.pins,
+        no_store=answer.skipped.no_store,
+        missing=answer.skipped.missing,
+    )
+    if answer.zip:
+        text += "\n" + message(
+            "cli.project_export_zip_line", path=f"{answer.path.local}.zip"
+        )
+    return text
+
+
+def _exports_text(answer: ProjectExports) -> str:
+    """Return what ``project-exports`` prints for people."""
+    if not answer.items:
+        return message("cli.no_project_exports")
+    lines = []
+    for item in answer.items:
+        lines.append(
+            message(
+                "cli.project_export_line",
+                name=item.name,
+                written_at=item.written_at.isoformat(timespec="seconds"),
+                folders=", ".join(
+                    dict.fromkeys(file.split("/")[0] for file in item.files)
+                ),
+            )
+        )
+        lines.append(message("cli.project_path_line", path=item.path.local))
+        if item.zip:
+            lines.append(
+                message("cli.project_export_zip_line", path=f"{item.path.local}.zip")
+            )
+        if item.changed_since:
+            lines.append(message("cli.project_export_changed"))
+    return "\n".join(lines)
+
+
+def _activity(args: argparse.Namespace, place: _Place) -> _Output:
+    """Page a project's activity as ``GET /projects/{project}/activity`` does."""
+    given = _given(args, "limit", "cursor")
+    try:
+        query = ProjectActivityQuery.model_validate(given)
+    except ValidationError as error:
+        located = ({**item, "loc": ("query", *item["loc"])} for item in error.errors())
+        raise _InvalidBody(validation_problem(located)) from None
+    answer = activity_answer(
+        place.decisions,
+        place.queries,
+        args.project,
+        query,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return answer, _activity_text(answer)
+
+
+def _activity_text(answer: ProjectActivity) -> str:
+    """Return what ``project-activity`` prints for people: a line per entry."""
+    lines = []
+    for item in answer.items:
+        actor = item.actor_name or item.actor
+        if item.actor_kind == "agent":
+            actor = message("log.agent_of", actor=actor)
+        elif item.actor_kind == "scheduler":
+            actor = message("log.scheduler")
+        lines.append(
+            message(
+                "cli.project_activity_line",
+                at=item.at.isoformat(timespec="seconds"),
+                actor=actor,
+                action=lookup(
+                    f"log.action_{item.action.replace('.', '_')}", item.action
+                ),
+                outcome=label("log.outcome", item.outcome),
+            )
+        )
+    if not lines:
+        lines.append(message("log.list_none"))
+    if answer.next_cursor is not None:
+        lines.append(message("log.list_next", cursor=answer.next_cursor))
+    return "\n".join(lines)
+
+
+def _delete(args: argparse.Namespace, place: _Place) -> _Output:
+    """Remove a project as ``DELETE /projects/{project}`` does; ``--yes`` required.
+
+    The route answers no body, so ``--json`` prints nothing; the text names
+    what stayed in the project's directory.
+    """
+    if not args.yes:
+        raise InvalidChangeError(
+            message("cli.project_delete_yes_required", project=args.project),
+            reason="confirmation_required",
+            details={"option": "--yes"},
+        )
+    with JobSupervisor(place.paths, place.service) as jobs:
+        kept = project_service.delete_project(
+            place.settings,
+            place.queries,
+            place.index,
+            place.decisions,
+            jobs,
+            args.project,
+            actor=LOCAL_OWNER,
+            visible=place.decisions.visible_projects(LOCAL_OWNER),
+        )
+    done = message("cli.project_deleted", project=args.project)
+    if kept:
+        return None, f"{done}\n{message('cli.project_kept', kept=', '.join(kept))}"
+    return None, f"{done}\n{message('cli.project_dir_removed')}"
+
+
+def _pin(args: argparse.Namespace, place: _Place) -> _Output:
+    """Pin versions as ``POST …/groups`` (``--add``: ``…/pins``); print the outcome."""
+    given: dict[str, Any] = {
+        "from": args.source or ("file" if args.versions else "catalog")
+    }
+    if args.versions:
+        given["versions"] = [
+            dict(zip(("store", "version"), _pair(value), strict=True))
+            for value in args.versions
+        ]
+    else:
+        given["query"] = _json(args.query)
+    body: PinsRequest | GroupRequest
+    if args.add:
+        body = _body(PinsRequest, given)
+    else:
+        body = _body(GroupRequest, {"name": args.group, "open": args.open, **given})
+    return _pin_outcome(args, place, body, new=not args.add)
+
+
+def _draft(args: argparse.Namespace, place: _Place) -> _Output:
+    """Write an empty set in the making as ``POST …/groups`` with ``open`` does."""
+    body = _body(GroupRequest, {"name": args.group, "open": True})
+    return _pin_outcome(args, place, body, new=True)
+
+
+def _pin_outcome(
+    args: argparse.Namespace,
+    place: _Place,
+    body: PinsRequest | GroupRequest,
+    *,
+    new: bool,
+) -> _Output:
+    """Pin as the routes of the groups do; return the outcome and its text."""
+    outcome = pin_outcome(
+        args.project,
+        body,
+        args.group,
+        principal=LOCAL_OWNER,
+        decisions=place.decisions,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+        registry=place.registry,
+        settings=place.settings,
+        preferences=place.preferences(),
+        queries=place.queries,
+        index=place.index,
+        new=new,
+    )
+    return outcome, f"{pin_text(outcome)}\n{project_text(outcome.project)}"
+
+
+def _unpin(args: argparse.Namespace, place: _Place) -> _Output:
+    """Remove pins as ``POST …/unpin`` (no ``--pin``: ``DELETE …/groups/{group}``)."""
+    pins = None
+    if args.pins:
+        listed = [
+            dict(zip(("producer", "version"), _pair(value), strict=True))
+            for value in args.pins
+        ]
+        body = _body(UnpinRequest, {"pins": listed})
+        pins = [(item.producer, item.version) for item in body.pins]
+    key = pin_service.unpin(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        args.project,
+        group=args.group,
+        pins=pins,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return _changed(place, key)
+
+
+def _uncall(args: argparse.Namespace, place: _Place) -> _Output:
+    """Remove a call of an open group as ``DELETE …/calls/{call}`` does."""
+    if args.call < 0:
+        raise InvalidChangeError(
+            message("cli.project_call_negative", call=args.call),
+            details={"option": "--call"},
+        )
+    key = pin_service.remove_call(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        args.project,
+        group=args.group,
+        call=args.call,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return _changed(place, key)
+
+
+def _close(args: argparse.Namespace, place: _Place) -> _Output:
+    """Close an open group as ``POST …/groups/{group}/close`` does."""
+    with JobSupervisor(place.paths, place.service) as jobs:
+        key = pin_service.close_set(
+            place.registry,
+            place.settings,
+            place.queries,
+            place.index,
+            place.decisions,
+            jobs,
+            args.project,
+            group=args.group,
+            actor=LOCAL_OWNER,
+            visible=place.decisions.visible_projects(LOCAL_OWNER),
+        )
+    return _changed(place, key)
+
+
+def _reopen(args: argparse.Namespace, place: _Place) -> _Output:
+    """Open a closed group for editing as ``POST …/groups/{group}/reopen`` does."""
+    key = pin_service.reopen_set(
+        place.registry,
+        place.settings,
+        place.queries,
+        place.index,
+        place.decisions,
+        args.project,
+        group=args.group,
+        actor=LOCAL_OWNER,
+        visible=place.decisions.visible_projects(LOCAL_OWNER),
+    )
+    return _changed(place, key)
+
+
+def _pair(value: str) -> tuple[str, str]:
+    """Split ``FIRST:REST`` at its first colon; no colon gives an empty rest."""
+    first, _, rest = value.partition(":")
+    return first, rest
+
+
+def _json(text: str) -> object:
+    """Return the JSON value of ``text``; text that is no JSON is passed on.
+
+    The route's model then refuses it as ``POST`` refuses such a body.
+    """
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
+_ACTIONS: dict[str, _Action] = {
+    "project-init": _init,
+    "project-edit": _edit,
+    "project-area": _area,
+    "project-store": _store,
+    "project-export": _export,
+    "project-exports": _exports,
+    "project-activity": _activity,
+    "project-delete": _delete,
+    "project-pin": _pin,
+    "project-draft": _draft,
+    "project-unpin": _unpin,
+    "project-uncall": _uncall,
+    "project-close": _close,
+    "project-reopen": _reopen,
+}
+
+# What keeps a command from opening the settings, the state or the index.
+_UNUSABLE = (
+    SettingsValidationError,
+    StateError,
+    IndexUnsupportedError,
+    OSError,
+    sqlite3.Error,
+)
+
+
+def _given(args: argparse.Namespace, *names: str) -> dict[str, Any]:
+    """Return the options among ``names`` the command line gave."""
+    return {
+        name: getattr(args, name) for name in names if getattr(args, name) is not None
+    }
+
+
+def _body[Body: BaseModel](model: type[Body], given: dict[str, Any]) -> Body:
+    """Return the route's request model of the arguments, or refuse them."""
+    try:
+        return model.model_validate(given)
+    except ValidationError as error:
+        located = ({**item, "loc": ("body", *item["loc"])} for item in error.errors())
+        raise _InvalidBody(validation_problem(located)) from None
+
+
+def _project(parser: argparse.ArgumentParser) -> None:
+    """Add the project, the first argument of a command on a project."""
+    parser.add_argument(
+        "project", metavar=message("metavar.project"), help=message("cli.project_help")
+    )
+
+
+def _group(parser: argparse.ArgumentParser) -> None:
+    """Add the group, the second argument of a command on a group."""
+    parser.add_argument(
+        "group",
+        metavar=message("metavar.group"),
+        help=message("cli.project_group_help"),
+    )
+
+
+def _texts(parser: argparse.ArgumentParser) -> None:
+    """Add ``--name`` and ``--description``."""
+    parser.add_argument(
+        "--name", metavar=message("metavar.name"), help=message("cli.project_name_help")
+    )
+    parser.add_argument(
+        "--description",
+        metavar=message("metavar.text"),
+        help=message("cli.project_description_help"),
+    )
+
+
+def _area_id(
+    parser: argparse.ArgumentParser | argparse._MutuallyExclusiveGroup,
+) -> None:
+    """Add ``--area-id``."""
+    parser.add_argument(
+        "--area-id",
+        metavar=message("metavar.area"),
+        help=message("cli.project_area_id_help"),
+    )

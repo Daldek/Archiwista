@@ -11,8 +11,8 @@ import pyogrio
 import pytest
 import rasterio
 import shapely
-from kartograf import open_project
 
+from archiwista.projects import read_project_file
 from tests.fixtures.own_data import (
     SNAPSHOT_FILE,
     SNAPSHOT_SCHEMA,
@@ -235,12 +235,13 @@ def test_snapshot_fixture_needs_content_for_sqlite(tmp_path: Path) -> None:
         )
 
 
-def test_project_inside_store_names_the_store_as_output(tmp_path: Path) -> None:
-    """The manifest lies in the producer directory it names as its store."""
+def test_project_inside_store_names_the_store_as_root(tmp_path: Path) -> None:
+    """The project file lies in the producer directory it names as its store."""
     store = tmp_path / "data"
     store.mkdir()
 
     directory = project_inside_store(store)
 
     assert directory.is_relative_to(store)
-    assert Path(open_project(directory).output_dir).resolve() == store.resolve()
+    (named,) = read_project_file(directory).stores
+    assert (directory / named.root).resolve() == store.resolve()

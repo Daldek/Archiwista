@@ -62,10 +62,25 @@ def worker_path(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def store_settings(
-    store: StoreManifest, *, kind: StoreKind = "local", **options: Any
+    store: StoreManifest,
+    *,
+    kind: StoreKind = "local",
+    imgw: Path | None = None,
+    kartograf: bool = True,
+    **options: Any,
 ) -> AppSettings:
-    """Return settings with the generated store as ``zespol``."""
-    config = StoreConfig(id=STORE, name="Zespół", kartograf=store.root, kind=kind)
+    """Return settings with the generated store as ``zespol``.
+
+    ``imgw`` adds an IMGW directory to the store; ``kartograf=False`` leaves the
+    generated store's directory out of it (a store of the IMGW directory only).
+    """
+    config = StoreConfig(
+        id=STORE,
+        name="Zespół",
+        kartograf=store.root if kartograf else None,
+        imgw=imgw,
+        kind=kind,
+    )
     return AppSettings(stores=(config,), project_dirs=(store.projects_dir,), **options)
 
 
@@ -151,6 +166,8 @@ def jobs_env(
     monkeypatch: pytest.MonkeyPatch,
     *,
     kind: StoreKind = "local",
+    imgw: Path | None = None,
+    kartograf: bool = True,
     **supervisor: Any,
 ) -> Iterator[JobsEnv]:
     """Yield a fresh store, empty index and started supervisor of test workers."""
@@ -159,7 +176,9 @@ def jobs_env(
     paths = AppPaths(
         config_file=tmp_path / "config" / "config.toml", data_dir=tmp_path / "data"
     )
-    ConfigStore(paths.config_file).save(store_settings(store, kind=kind))
+    ConfigStore(paths.config_file).save(
+        store_settings(store, kind=kind, imgw=imgw, kartograf=kartograf)
+    )
     registry = load_registry(cache_dir=paths.cache_dir)
     settings = SettingsService(ConfigStore(paths.config_file), registry)
     with (

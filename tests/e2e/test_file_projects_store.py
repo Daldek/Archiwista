@@ -2,8 +2,8 @@
 
 Every test serves a generated Kartograf store offline, waits for the
 scheduler's first full scan and checks what a person sees against what the
-producer wrote — Kartograf's own sidecars, segment names and manifest
-messages — and against the generator's manifest of the store.
+producer wrote — Kartograf's own sidecars and segment names — and against
+the generator's manifest of the store and its project files.
 """
 
 import time
@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import httpx
-from kartograf import ValidationError, describe_segment, open_project, read_sidecar
+from kartograf import describe_segment, read_sidecar
 from playwright.sync_api import Locator, Page, expect
 
 from archiwista.auth import LOCAL_OWNER
@@ -58,7 +58,7 @@ def settings_of(store: StoreManifest) -> AppSettings:
         name="Zespół",
         kartograf=store.root,
         kind="local",
-        path_aliases={f"{store.output_dir}/": ALIAS},
+        path_aliases={f"{store.base}/": ALIAS},
     )
     return AppSettings(
         offline=True, stores=(config,), project_dirs=(store.projects_dir,)
@@ -121,9 +121,9 @@ def query(page: Page) -> dict[str, str]:
 
 
 def archive_pin(store: StoreManifest) -> ExpectedPin:
-    """Return the pin of an older version: task ``archiwum`` of ``projekt-01``."""
-    tasks = store.project("projekt-01").tasks
-    return next(task for task in tasks if task.name == "archiwum").pins[0]
+    """Return the pin of an older version: group ``archiwum`` of ``projekt-01``."""
+    groups = store.project("projekt-01").groups
+    return next(group for group in groups if group.name == "archiwum").pins[0]
 
 
 def link_of(store: StoreManifest, slot: str) -> ExpectedEntry:
@@ -180,6 +180,7 @@ def test_human_labels_expose_raw_values(serve: Serve, tab: Tab, tmp_path: Path) 
     expect(raw(vertical, "EPSG:9651")).to_be_visible()
     expect(sha).to_contain_text(f"{str(current.sha256)[:12]}…")
     expect(raw(sha, str(current.sha256))).to_be_visible()
+    assert sidecar.license is not None
     expect(card.locator(".fc-license")).to_contain_text(sidecar.license["id"])
     expect(card.locator(".fc-attribution")).to_have_text(
         f"Atrybucja: {sidecar.license['attribution']}"
@@ -201,11 +202,11 @@ def test_pinned_old_version_visible(serve: Serve, tab: Tab, tmp_path: Path) -> N
     store, served, page = served_store(serve, tab, tmp_path)
     pin = archive_pin(store)
     pins = [
-        (project.name, task.name, task_pin)
+        (project.name, group.name, task_pin)
         for project in store.projects
         if project.valid
-        for task in project.tasks
-        for task_pin in task.pins
+        for group in project.groups
+        for task_pin in group.pins
         if task_pin.path == pin.path and task_pin.present
     ]
     assert not pin.current and len(pins) > 1
@@ -219,9 +220,9 @@ def test_pinned_old_version_visible(serve: Serve, tab: Tab, tmp_path: Path) -> N
         )
 
     page.goto(f"{served.base}/?view=projects&project=projekt-01")
-    task = page.locator(".pc-task").filter(has_text="archiwum")
-    expect(task).to_contain_text("starsza wersja")
-    task.get_by_role("link", name=pin.label).click()
+    group = page.locator(".pc-group").filter(has_text="archiwum")
+    expect(group).to_contain_text("starsza wersja")
+    group.get_by_role("link", name=pin.label).click()
     opened = page.get_by_role("dialog", name=PurePosixPath(pin.path).name)
 
     # The axis only: the version's copy button names its path, which holds the label.
@@ -245,7 +246,9 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
     )
     slot = archive_pin(store).path
     current = current_of(store, slot)
-    attribution = read_sidecar(store.root / current.path).license["attribution"]
+    licence = read_sidecar(store.root / current.path).license
+    assert licence is not None
+    attribution = licence["attribution"]
     alias = str(PureWindowsPath(ALIAS, "data", *PurePosixPath(slot).parts))
     copied: dict[str, str] = {}
 
@@ -279,28 +282,23 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
     tab.assert_clean()
 
 
-def test_manifest_error_visible(serve: Serve, tab: Tab, tmp_path: Path) -> None:
-    """An invalid manifest shows Kartograf's own message and how to fix it."""
+def test_invalid_project_file_visible(serve: Serve, tab: Tab, tmp_path: Path) -> None:
+    """A project file breaking a rule: listed with why; its card says how to fix it."""
     store, served, page = served_store(serve, tab, tmp_path)
-    broken = next(p for p in store.projects if p.case == "invalid_manifest")
-    try:
-        open_project(store.output_dir / broken.path)
-    except ValidationError as error:
-        message = str(error)
-    else:
-        raise AssertionError("the generated manifest is valid")
+    broken = next(p for p in store.projects if p.case == "invalid_project_file")
 
     page.goto(f"{served.base}/?view=projects")
     row = page.get_by_role("row").filter(has_text=broken.name)
-    expect(row).to_contain_text(f"Błędny manifest: {message}")
+    expect(row).to_contain_text("Błędny plik projektu: Archiwista nie używa żadnej")
     row.get_by_role("link", name=broken.name).click()
     panel = page.get_by_role("complementary", name="Projekt")
 
-    expect(row).to_contain_text("nie sprawdzono")
     expect(panel.get_by_role("heading", name=broken.name)).to_be_visible()
-    expect(panel.locator(".issue")).to_contain_text(message)
-    expect(panel.locator(".issue")).to_contain_text("Jak naprawić: Popraw manifest")
-    expect(panel).to_contain_text("Manifest nie ma zadań.")
+    issue = panel.locator(".issue")
+    expect(issue).to_contain_text("Niepoprawny plik projektu")
+    expect(issue).to_contain_text("/groups/0/name")
+    expect(issue).to_contain_text("Jak naprawić: Popraw archiwista-project.json")
+    expect(panel).to_contain_text("Archiwista nie czyta zestawów tego pliku projektu.")
     assert query(page) == {"view": "projects", "project": broken.name}
     tab.assert_clean()
 
@@ -387,7 +385,7 @@ def test_link_check_result_on_file_card(serve: Serve, tab: Tab, tmp_path: Path) 
 
 
 def test_store_scan_row_shows_actor(serve: Serve, tab: Tab, tmp_path: Path) -> None:
-    """The last scan names who started it: the scheduler's owner, then an account."""
+    """The last scan names who started it: the local owner, then an administrator."""
     _, served, page = served_store(serve, tab, tmp_path)
     page.goto(f"{served.base}/?view=store")
     row = value(page, "Ostatni skan")
@@ -395,7 +393,8 @@ def test_store_scan_row_shows_actor(serve: Serve, tab: Tab, tmp_path: Path) -> N
     expect(row).to_contain_text("Wykonawca: właściciel lokalny")
     expect(raw(reveal(row), "local")).to_be_visible()
     state = StateStore(served.paths.state_file)
-    state.add_user("olga", name="Olga Owczarek", actor=LOCAL_OWNER)
+    # Scanning a store is an administrator's (`store.scan`).
+    state.add_user("olga", name="Olga Owczarek", roles=["admin"], actor=LOCAL_OWNER)
     olga = principal_for(state, "olga")
     assert olga is not None
     token = issue_one_time_token(served.paths.index_file, "startup", minted_by=olga)

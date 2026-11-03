@@ -43,6 +43,7 @@ from tests.fixtures.make_store import CZ_ORTO, StoreManifest
 from tests.fixtures.own_data import make_own_folder
 from tests.fixtures.preview_api import PreviewApi, decoded_png, serve_previews
 from tests.fixtures.store_files import Bounds
+from tests.fixtures.store_marker import mark_store
 
 STORE = "cz"
 # An SM5-sized raster: 2.5 km east and 2 km south of its top-left corner.
@@ -259,6 +260,7 @@ def test_cz_outline_vertex_within_2_m(tmp_path: Path) -> None:
     x, y = POINT_3722.epsg5514
     lon, lat = POINT_3722.etrs89
     root = tmp_path / "store" / "data"
+    mark_store(root)
     bounds = (x, y - HEIGHT_M, x + WIDTH_M, y)
     version = _write_raster(root, bounds, store_files.geotiff(bounds, 5514, 3722))
     paths, registry, scanned = _scan(tmp_path, root)
@@ -329,6 +331,7 @@ def test_cz_preview_tile_within_2_m(tmp_path: Path) -> None:
     x, y = POINT_3722.epsg5514
     lon, lat = POINT_3722.etrs89
     root = tmp_path / "store" / "data"
+    mark_store(root)
     raster = _write_raster(root, *_marked_geotiff(x, y))
     sheet = _write_sm5_sheet(root, x, y)
     paths, _, scanned = _scan(tmp_path, root)

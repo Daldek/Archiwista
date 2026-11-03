@@ -1,19 +1,23 @@
 """Store summary: usage without link inflation, cleanup report, problems."""
 
+from dataclasses import replace
 from pathlib import Path
 
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import StoreConfig
-from archiwista.index import IndexQueries, IndexWriter, ManifestStamp, ProductUsage
+from archiwista.index import IndexQueries, IndexWriter, ProductUsage
+from archiwista.messages import language
 from archiwista.services import store_summary
-from archiwista.sources import ProjectInfo, ProjectPin
+from archiwista.sources import SourceSegment
 from tests.fixtures.index_data import (
     NMT,
     ORTO,
     PRODUCER,
     ROOT,
     STORE,
+    indexed_project,
     link,
+    pin,
     problem,
     sha,
     slot_path,
@@ -93,12 +97,8 @@ def test_store_summary_reports_unused_versions_with_reclaimable_size(
             link(PHOTO, photo),
         ],
     )
-    pin = ProjectPin(ROOT, Path(version_path(SHEET_A, "2016-06-01_1", sha(3))))
-    writer.write_project(
-        ProjectInfo(PRODUCER, ROOT, Path("/projekty/Raba"), "Raba", pins=(pin,)),
-        store=STORE,
-        stamp=ManifestStamp(1, 1),
-    )
+    kept = pin(version_path(SHEET_A, "2016-06-01_1", sha(3)), sha(3))
+    indexed_project(writer, Path("/projekty/Raba"), "Raba", store=STORE, pins=[kept])
 
     # Act
     report = store_summary(queries, CONFIG, visible=ALL_PROJECTS).unused
@@ -137,16 +137,12 @@ def test_store_summary_problems_carry_fix_instructions(
         STORE, PRODUCER, path=SHEET_A, code="link_mismatch", segment=NMT, slot=SHEET_A
     )
     absent = version_path(SHEET_A, "2010-01-01_1", sha(9))
-    writer.write_project(
-        ProjectInfo(
-            PRODUCER,
-            ROOT,
-            Path("/projekty/Raba"),
-            "Raba",
-            pins=(ProjectPin(ROOT, Path(absent), sha(9), "teren"),),
-        ),
+    indexed_project(
+        writer,
+        Path("/projekty/Raba"),
+        "Raba",
         store=STORE,
-        stamp=ManifestStamp(1, 1),
+        pins=[pin(absent, sha(9))],
     )
 
     # Act
@@ -164,5 +160,96 @@ def test_store_summary_problems_carry_fix_instructions(
     assert by_code["link_mismatch"].origin == "check"
     assert gone.relative_path.as_posix() in by_code["orphan_sidecar"].message
     assert by_code["missing_pin"].project == "raba"
-    assert "project download teren" in by_code["missing_pin"].instruction
+    assert by_code["missing_pin"].group == "teren"
+    assert 'project "Raba" keeps the pin' in by_code["missing_pin"].instruction
     assert all(p.path and p.path in p.message and p.instruction for p in problems)
+
+
+def test_store_summary_names_the_producer_each_problem_belongs_to(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """With a directory of each producer, an instruction names the producer at fault."""
+    # Arrange
+    writer, queries = index
+    stray = f"{NMT}/stray"
+    write_pass(writer, [problem(stray, "unknown_segment", segment=NMT, slot=None)])
+    folder = "archives/stray"
+    writer.write_segments(
+        STORE, "imgw", [SourceSegment(folder, None, None, None, folder, False)]
+    )
+    writer.begin_pass(STORE, "imgw", segment=None, slots=None, full=False)
+    other = replace(
+        problem(f"{folder}/x", "unknown_segment", segment=folder, slot=None),
+        producer="imgw",
+    )
+    writer.write_entries([other])
+    writer.finish_pass()
+    absent = version_path(SHEET_A, "2010-01-01_1", sha(9))
+    indexed_project(
+        writer,
+        Path("/projekty/Wisla"),
+        "Wisła",
+        store=STORE,
+        producer="imgw",
+        pins=[pin(absent, sha(9), producer="imgw")],
+        group="pomiary",
+    )
+    config = StoreConfig(
+        id=STORE,
+        name="Zespół",
+        kartograf=Path(ROOT),
+        imgw=Path("/mnt/nas/imgw"),
+        kind="share",
+    )
+
+    # Act
+    problems = store_summary(queries, config, visible=ALL_PROJECTS).problems
+
+    # Assert
+    by_path = {p.path: p for p in problems}
+    assert "kartograf" in by_path[stray].message
+    assert "imgw" in by_path[other.relative_path.as_posix()].message
+    assert "kartograf" not in by_path[other.relative_path.as_posix()].message
+    assert "with the imgw command" in by_path[absent].instruction
+
+
+def test_store_summary_words_a_version_without_a_sidecar_for_its_producer(
+    index: tuple[IndexWriter, IndexQueries],
+) -> None:
+    """In IMGWTools it is a download in progress; its other codes keep their texts."""
+    # Arrange
+    writer, queries = index
+    leftover = slot_path(NMT, "M-34-1-C")
+    write_pass(
+        writer, [problem(leftover, "missing_sidecar", segment=NMT, slot=leftover)]
+    )
+    folder = "pl.imgw.hydro_daily"
+    writer.write_segments(
+        STORE, "imgw", [SourceSegment(folder, None, "PL", folder, "Dane", True)]
+    )
+    writer.begin_pass(STORE, "imgw")
+    writer.write_entries(
+        [
+            replace(
+                problem(f"archives/{code}", code, segment=folder, slot=None),
+                producer="imgw",
+            )
+            for code in ("missing_sidecar", "unknown_schema", "invalid_json")
+        ]
+    )
+    writer.finish_pass()
+
+    # Act
+    with language("en"):
+        problems = store_summary(queries, CONFIG, visible=ALL_PROJECTS).problems
+
+    # Assert
+    by_path = {p.path: p for p in problems}
+    kartograf = by_path[leftover]
+    assert "delete the leftover" in kartograf.instruction
+    imgw = by_path["archives/missing_sidecar"]
+    assert "download in progress" in imgw.message
+    assert "temporary" in imgw.instruction and "delete" not in imgw.instruction
+    schema = by_path["archives/unknown_schema"]
+    assert "schema" in schema.message and "newer version" in schema.instruction
+    assert "Store problem (invalid_json)" in by_path["archives/invalid_json"].message

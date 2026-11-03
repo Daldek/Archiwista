@@ -1,0 +1,41 @@
+/* The comparison of stations (views/station-compare.js): panels stacked over one time
+   axis; the plots themselves are the chart's (station.css, `sch-*`). */
+.scmp { max-width: 1200px; display: grid; gap: 10px; align-content: start; }
+.scmp-head { display: grid; gap: 2px; }
+.scmp-head .view-title { margin: 0; font-size: 17px; }
+.scmp-lead { margin: 0; font-size: 12.5px; }
+.scmp-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+.scmp-add { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.scmp-add-label { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 500; }
+.scmp-add input {
+  height: 28px; width: 220px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 8px;
+  background: #fff; font: inherit; font-size: 12.5px; color: var(--text);
+}
+.scmp-add input:disabled { background: var(--panel-2); color: var(--text-3); }
+.scmp-full { font-size: 12px; }
+.scmp-found {
+  position: absolute; top: 32px; left: 0; z-index: 3; display: grid; gap: 2px; min-width: 320px;
+  margin: 0; padding: 4px; list-style: none; background: var(--panel); border: 1px solid var(--line-2);
+  border-radius: 8px; box-shadow: var(--shadow);
+}
+.scmp-found li { font-size: 12.5px; }
+.scmp-found li.faint { padding: 4px 8px; }
+.scmp-found button { display: flex; gap: 8px; width: 100%; justify-content: flex-start; text-align: left; }
+.scmp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.scmp-chip {
+  display: inline-flex; align-items: center; gap: 2px; max-width: 260px; padding: 0 2px 0 10px;
+  border: 1px solid var(--line-2); border-radius: 999px; background: var(--panel); font-size: 12.5px;
+}
+.scmp-range { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 26px; font-size: 12.5px; }
+.scmp-frame { position: relative; min-height: 220px; min-width: 0; }
+.scmp-figure { margin: 0; position: relative; display: grid; gap: 6px; }
+.scmp-figure.busy .sch-svg { opacity: 0.55; }
+.scmp-panels { display: grid; gap: 2px; }
+.scmp-panel.missing { display: flex; align-items: center; min-height: 48px; padding: 0 0 0 56px; border-bottom: 1px dashed var(--line-2); }
+.scmp-missing { margin: 0; font-size: 12.5px; }
+.scmp-table-wrap { overflow-x: auto; }
+.scmp-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.scmp-table th, .scmp-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.scmp-table thead th { color: var(--text-3); font-weight: 500; white-space: nowrap; }
+.scmp-table tbody th { font-weight: 500; }
+.scmp-name { font-weight: 600; }

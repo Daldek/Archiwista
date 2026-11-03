@@ -1,8 +1,9 @@
 """Synthetic Kartograf store for Archiwista tests (plan v0.1 step 4, v0.2 step 2).
 
-``make_store(output_dir, slots=..., seed=...)`` writes under ``output_dir``:
+``make_store(base, slots=..., seed=...)`` writes under ``base``:
 
-- ``data/`` - a Kartograf store (the ``--output`` directory, ARCH 3.2-3.3)
+- ``data/`` - a Kartograf store (its root, ARCH 3.2-3.3), marked first with
+  ``kartograf-store.json`` by Kartograf's ``init_store`` (``store_marker``),
   with every product family Archiwista reads: 64 x 64 rasters (ASC sheets,
   GeoTIFF sheets and cutouts, a JPEG with world files), small GeoPackages,
   ZIP packages, a point cloud, collections by TERYT, KU and country and an
@@ -17,9 +18,9 @@
   GeoPackage; a standard-path file with a 0.7.x sidecar without ``sha256``
   (``no_sha256``) and one NMT sheet in two formats, ASC and ASCII-NMT
   (``two_formats``);
-- ``projects/`` - ``kartograf-project.json`` manifests with tasks and pins
-  (also of an older version, a missing version and another store) and one
-  invalid manifest;
+- ``projects/`` - ``archiwista-project.json`` files (A-ADR-049) with plan and
+  local groups pinning versions (also an older version, a missing version and
+  another store) and one invalid file;
 - ``other-data/`` - an empty directory named by one project as its store.
 
 Every footprint lies where its data would: the files of the Czech segments
@@ -28,19 +29,20 @@ from the 1:100 000 sheets inside Poland, bboxes and header extents are drawn
 again until they lie inside the outline, and TERYT units are real powiat
 codes.
 
-Slot paths and project manifests come from Kartograf's public API where it
-exists (``FileStorage``, ``init_project``, ``add_project_task``). The 0.8.0
-API has no offline writer of versions, sidecars, links or pins, so those are
-written here following ARCH 3.2-3.5, the way Kartograf's own reader tests do.
+Slot paths come from Kartograf's public API where it exists
+(``FileStorage``); project files from Archiwista's own writer
+(``archiwista.projects.change_project_file``). The 0.8.0 API has no offline
+writer of versions, sidecars or links, so those are written here following
+ARCH 3.2-3.4, the way Kartograf's own reader tests do.
 Only the deliberately broken cases are hand-crafted beyond that: missing and
 unreadable sidecars, an unknown segment, ``kampanie/``, a stale
 ``.incoming``, 0.8.0-dev dataset keys and segments, a sidecar written before
-ADR-031, a link sidecar naming another version than the link and an invalid
-manifest.
+ADR-031, a link sidecar naming another version than the link and a project
+file that breaks a rule.
 
-The generator verifies its own output with Kartograf's readers before it
-returns: ``iter_store`` must give exactly the expected entries (problems
-included) and ``open_project`` must accept every valid manifest and reject
+The generator verifies its own output before it returns: Kartograf's
+``iter_store`` must give exactly the expected entries (problems included)
+and ``read_project_file`` must accept every valid project file and reject
 the invalid one. A mismatch raises ``StoreFixtureError``.
 
 Run ``python -m tests.fixtures.make_store --slots 50000 --seed 1
@@ -59,7 +61,7 @@ import sys
 import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -70,22 +72,33 @@ from kartograf import (
     FileStorage,
     SheetParser,
     StoreEntry,
-    ValidationError,
-    add_project_task,
     describe_segment,
-    init_project,
     iter_store,
-    open_project,
     transform_bbox,
 )
 
+from archiwista.errors import ProjectFileError
+from archiwista.projects import (
+    PROJECT_FILE,
+    LocalOrigin,
+    OriginKind,
+    Pin,
+    PinGroup,
+    PlanOrigin,
+    ProjectDocument,
+    Selection,
+    StoreRoot,
+    change_project_file,
+    read_project_file,
+)
+from archiwista.sources import CommandCall
 from tests.fixtures import store_files
 from tests.fixtures.store_files import Bounds
+from tests.fixtures.store_marker import mark_store
 
 STORE_DIR = "data"
 PROJECTS_DIR = "projects"
 OTHER_STORE_DIR = "other-data"
-MANIFEST_NAME = "kartograf-project.json"
 
 EntryKind = Literal["version", "link", "full_sheet", "problem"]
 ProblemCode = Literal[
@@ -134,7 +147,9 @@ Case = Literal[
     "no_sha256",
     "two_formats",
 ]
-ProjectCase = Literal["regular", "missing_version", "other_store", "invalid_manifest"]
+ProjectCase = Literal[
+    "regular", "missing_version", "other_store", "invalid_project_file"
+]
 Row = tuple[str, str, str, str, str | None, str | None, str | None, str | None]
 """``(kind, segment, hierarchy, path, version_path, label, sha8, problem)``."""
 
@@ -176,9 +191,9 @@ LEGACY_KARTOGRAF = "0.7.4"
 # Regular slots of the base catalogue (every family once, see base_catalogue).
 MIN_SLOTS = 17
 # Project directories with a special case (missing version, other store,
-# invalid manifest); the rest are regular.
+# invalid project file); the rest are regular.
 MIN_PROJECTS = 4
-PIN_TIME = "2026-09-01T12:00:00+00:00"
+PIN_TIME = datetime(2026, 9, 1, 12, 0, tzinfo=UTC)
 STALE_MTIME = 1_577_836_800.0  # 2020-01-01: always older than 24 h
 
 # Every footprint lies inside one of these coarse country outlines (WGS84
@@ -296,7 +311,7 @@ class ExpectedEntry:
 
 @dataclass(frozen=True)
 class ExpectedPin:
-    """A pinned file of a project task (``files[]`` of the manifest)."""
+    """A pinned version of a project group."""
 
     path: str
     version: str
@@ -311,33 +326,34 @@ class ExpectedPin:
 
 
 @dataclass(frozen=True)
-class ExpectedTask:
-    """A task of a project manifest."""
+class ExpectedGroup:
+    """A group of a project file."""
 
     name: str
-    command: str
+    origin: OriginKind
     pins: tuple[ExpectedPin, ...] = ()
 
 
 @dataclass(frozen=True)
 class ExpectedProject:
-    """A project directory with ``kartograf-project.json``."""
+    """A project directory with ``archiwista-project.json``."""
 
     name: str
     path: str
-    """Relative to ``output_dir`` with ``/``."""
+    """Relative to ``base`` with ``/``."""
     store: str
-    """Directory (relative to ``output_dir``) the manifest names as store."""
+    """Directory (relative to ``base``) the file names as Kartograf's store."""
     case: ProjectCase
     valid: bool
-    tasks: tuple[ExpectedTask, ...] = ()
+    groups: tuple[ExpectedGroup, ...] = ()
 
 
 @dataclass(frozen=True)
 class StoreManifest:
     """What the generated store must look like to Kartograf's readers."""
 
-    output_dir: Path
+    base: Path
+    """The directory that holds ``data/``, ``projects/`` and ``other-data/``."""
     seed: int
     slots: int
     """Regular slots requested (base catalogue + bulk)."""
@@ -346,13 +362,13 @@ class StoreManifest:
 
     @property
     def root(self) -> Path:
-        """The Kartograf store (``--output`` directory)."""
-        return self.output_dir / STORE_DIR
+        """The Kartograf store root (``root`` of its read API): ``data/``."""
+        return self.base / STORE_DIR
 
     @property
     def projects_dir(self) -> Path:
         """Directory holding every project directory."""
-        return self.output_dir / PROJECTS_DIR
+        return self.base / PROJECTS_DIR
 
     @property
     def rows(self) -> frozenset[Row]:
@@ -396,15 +412,15 @@ def entry_row(entry: StoreEntry, root: Path) -> Row:
 
 
 def make_store(
-    output_dir: Path, *, slots: int, seed: int, projects: int = MIN_PROJECTS
+    base: Path, *, slots: int, seed: int, projects: int = MIN_PROJECTS
 ) -> StoreManifest:
     """Write the synthetic store and projects and verify them with Kartograf.
 
     Parameters
     ----------
-    output_dir : Path
-        Missing or empty directory; receives ``data/``, ``projects/`` and
-        ``other-data/``.
+    base : Path
+        Missing or empty directory; receives ``data/`` (the store root),
+        ``projects/`` and ``other-data/``.
     slots : int
         Regular slots (standard-path links) of the store, at least
         ``MIN_SLOTS``: the base catalogue with every family, then a bulk mix
@@ -423,7 +439,7 @@ def make_store(
     Raises
     ------
     ValueError
-        Too few slots or projects, or a non-empty ``output_dir``.
+        Too few slots or projects, or a non-empty ``base``.
     StoreFixtureError
         Kartograf's readers disagree with the written store.
     """
@@ -431,10 +447,10 @@ def make_store(
         raise ValueError(f"slots must be at least {MIN_SLOTS}, got {slots}")
     if projects < MIN_PROJECTS:
         raise ValueError(f"projects must be at least {MIN_PROJECTS}, got {projects}")
-    output_dir = output_dir.absolute()
-    if output_dir.exists() and any(output_dir.iterdir()):
-        raise ValueError(f"output directory is not empty: {output_dir}")
-    writer = _StoreWriter(output_dir, seed)
+    base = base.absolute()
+    if base.exists() and any(base.iterdir()):
+        raise ValueError(f"base directory is not empty: {base}")
+    writer = _StoreWriter(base, seed)
     writer.base_catalogue()
     # Edge cases first: the bulk may use up a unit pool they need.
     writer.edge_cases()
@@ -443,7 +459,7 @@ def make_store(
     # Last: the v0.1 part of a seed's store stays as it was.
     writer.file_families()
     manifest = StoreManifest(
-        output_dir=output_dir,
+        base=base,
         seed=seed,
         slots=slots,
         entries=tuple(writer.entries),
@@ -460,7 +476,7 @@ def verify_store(manifest: StoreManifest) -> None:
     ------
     StoreFixtureError
         ``iter_store`` yields other entries or other sidecar values than
-        expected, or ``open_project`` disagrees with a project.
+        expected, or ``read_project_file`` disagrees with a project.
     """
     root = manifest.root
     expected = {entry.row: entry for entry in manifest.entries}
@@ -480,12 +496,12 @@ def verify_store(manifest: StoreManifest) -> None:
         problems.extend(_sidecar_differences(wanted, found))
     problems.extend(f"missing: {row}" for row in expected.keys() - seen)
     for project in manifest.projects:
-        problems.extend(_project_differences(manifest.output_dir, project))
+        problems.extend(_project_differences(manifest.base, project))
     if problems:
         shown = "\n".join(problems[:20])
         more = f"\n... and {len(problems) - 20} more" if len(problems) > 20 else ""
         raise StoreFixtureError(
-            f"Kartograf reads the fixture differently:\n{shown}{more}"
+            f"The fixture reads differently than expected:\n{shown}{more}"
         )
 
 
@@ -502,26 +518,26 @@ def _sidecar_differences(wanted: ExpectedEntry, found: StoreEntry) -> list[str]:
     return []
 
 
-def _project_differences(output_dir: Path, project: ExpectedProject) -> list[str]:
-    directory = output_dir / project.path
+def _project_differences(base: Path, project: ExpectedProject) -> list[str]:
+    directory = base / project.path
     try:
-        opened = open_project(directory)
-    except ValidationError as exc:
+        opened = read_project_file(directory)
+    except ProjectFileError as exc:
         if project.valid:
             return [f"project {project.name} rejected: {exc}"]
         return []
     if not project.valid:
         return [f"invalid project {project.name} accepted"]
-    tasks = tuple(
-        (task.name, task.command, tuple(pin.version for pin in task.files))
-        for task in opened.tasks
+    groups = tuple(
+        (group.name, group.origin.kind, tuple(pin.version for pin in group.pins))
+        for group in opened.groups
     )
     wanted = tuple(
-        (task.name, task.command, tuple(pin.version for pin in task.pins))
-        for task in project.tasks
+        (group.name, group.origin, tuple(pin.version for pin in group.pins))
+        for group in project.groups
     )
-    if tasks != wanted:
-        return [f"project {project.name}: expected {wanted}, read {tasks}"]
+    if groups != wanted:
+        return [f"project {project.name}: expected {wanted}, read {groups}"]
     return []
 
 
@@ -578,10 +594,11 @@ class _Written:
 class _StoreWriter:
     """Writes the store and collects the expected entries."""
 
-    def __init__(self, output_dir: Path, seed: int) -> None:
-        self.output_dir = output_dir
-        self.root = output_dir / STORE_DIR
+    def __init__(self, base: Path, seed: int) -> None:
+        self.base = base
+        self.root = base / STORE_DIR
         self.root.mkdir(parents=True, exist_ok=True)
+        mark_store(self.root)
         self.rng = random.Random(seed)
         self.entries: list[ExpectedEntry] = []
         self.written: dict[str, list[_Written]] = {}
@@ -1849,10 +1866,11 @@ class _StoreWriter:
     def projects(self, count: int) -> tuple[ExpectedProject, ...]:
         """Write ``count`` project directories.
 
-        Three special cases, then regular projects pinning current and
-        (every second one) older versions.
+        Three special cases, then regular projects with a plan group pinning
+        a current version and (every second one) a local group pinning an
+        older one.
         """
-        base = self.output_dir / PROJECTS_DIR
+        base = self.base / PROJECTS_DIR
         sheets = [
             written
             for written in self.written[NMT]
@@ -1869,25 +1887,27 @@ class _StoreWriter:
         ]
         for number in range(1, count - 2):
             current = sheets[(number - 1) % len(sheets)]
-            tasks = [self._pinned_task("teren", current, current.current)]
+            groups = [self._pinned_group("teren", current, current.current)]
             if number % 2 == 1:
                 old = older[(number // 2) % len(older)]
-                tasks.append(self._pinned_task("archiwum", old, 0))
+                groups.append(self._pinned_group("archiwum", old, 0, origin="local"))
             if number == 1:
-                tasks.append(self._pinned_task("pokrycie", gpkg, gpkg.current))
-                tasks.append(ExpectedTask("plan", "elevation download"))
+                groups.append(self._pinned_group("pokrycie", gpkg, gpkg.current))
+                groups.append(ExpectedGroup("plan", "plan"))
             result.append(
-                self._project(base, f"projekt-{number:02d}", tasks, unpinned=sheets)
+                self._project(base, f"projekt-{number:02d}", groups, unpinned=sheets)
             )
         return tuple(result)
 
-    def _pinned_task(self, name: str, written: _Written, index: int) -> ExpectedTask:
+    def _pinned_group(
+        self,
+        name: str,
+        written: _Written,
+        index: int,
+        *,
+        origin: OriginKind = "plan",
+    ) -> ExpectedGroup:
         version = written.versions[index]
-        command = (
-            "landcover download"
-            if written.slot.segment == BDOT_GPKG
-            else "elevation download"
-        )
         pin = ExpectedPin(
             path=self._rel(written.slot.link),
             version=cast(str, version.version_path),
@@ -1898,79 +1918,92 @@ class _StoreWriter:
             current=index == written.current,
             present=True,
         )
-        return ExpectedTask(name, command, (pin,))
+        return ExpectedGroup(name, origin, (pin,))
 
-    def _options(self, task: ExpectedTask, fallback: str) -> dict[str, object]:
-        if task.command == "landcover download":
-            return {"product": "bdot10k", "teryt": task.pins[0].unit}
-        sheet = task.pins[0].unit if task.pins else fallback
-        return {
-            "product": "nmt",
-            "sheet": sheet,
-            "resolution": "1m",
-            "vertical_crs": "EVRF2007",
-        }
+    def _call(self, group: ExpectedGroup, fallback: str) -> CommandCall:
+        """Return the call of a plan group: what downloads its pinned version."""
+        unit = group.pins[0].unit if group.pins else fallback
+        if group.pins and group.pins[0].path.startswith(BDOT_GPKG):
+            return CommandCall(
+                "kartograf", "landcover download", {"product": "bdot10k", "teryt": unit}
+            )
+        return CommandCall(
+            "kartograf",
+            "elevation download",
+            {
+                "product": "nmt",
+                "sheet": unit,
+                "resolution": "1m",
+                "vertical_crs": "EVRF2007",
+            },
+        )
 
     def _project(
         self,
         base: Path,
         name: str,
-        tasks: Sequence[ExpectedTask],
+        groups: Sequence[ExpectedGroup],
         *,
         unpinned: Sequence[_Written],
         store: Path | None = None,
         case: ProjectCase = "regular",
     ) -> ExpectedProject:
-        """Write a manifest with ``init_project``/``add_project_task``.
+        """Write ``archiwista-project.json`` as Archiwista does.
 
-        The pins go into ``files[]`` by hand (ARCH 3.5): Kartograf 0.8.0
-        has no offline pin writer.
+        The store's root is written relative to the project directory; a plan
+        group's call is the one that downloads its version.
         """
         directory = base / name
+        directory.mkdir(parents=True)
         store_dir = store or self.root
-        init_project(directory, output_dir=os.path.relpath(store_dir))
-        for task in tasks:
-            add_project_task(
-                directory,
-                name=task.name,
-                command=task.command,
-                options=self._options(task, unpinned[-1].slot.unit),
-            )
-        manifest = directory / MANIFEST_NAME
-        doc = json.loads(manifest.read_text(encoding="utf-8"))
-        pins = {task.name: task.pins for task in tasks}
-        for task_doc in doc["tasks"]:
-            files = pins[task_doc["name"]]
-            if files:
-                task_doc["pinned_at"] = PIN_TIME
-                task_doc["kartograf_version"] = kartograf.__version__
-                task_doc["files"] = [
-                    {
-                        "role": "output",
-                        "unit": pin.unit,
-                        "path": pin.path,
-                        "version": pin.version,
-                        "label": pin.label,
-                        "sha256": pin.sha256,
-                        "size_bytes": pin.size_bytes,
-                    }
-                    for pin in files
-                ]
-        _write_json(manifest, doc)
+        fallback = unpinned[-1].slot.unit
+        change_project_file(
+            directory,
+            create=ProjectDocument(
+                name=name,
+                description=f"Projekt {name}",
+                created_at=PIN_TIME,
+                created_by="local",
+                stores=(StoreRoot("kartograf", os.path.relpath(store_dir, directory)),),
+                groups=tuple(
+                    PinGroup(
+                        name=group.name,
+                        origin=PlanOrigin("kartograf", (self._call(group, fallback),))
+                        if group.origin == "plan"
+                        else LocalOrigin((Selection("file", None),)),
+                        pins=tuple(
+                            Pin(
+                                producer="kartograf",
+                                version=pin.version,
+                                sha256=pin.sha256,
+                                content_sha256=None,
+                                size_bytes=pin.size_bytes,
+                                unit=pin.unit,
+                                label=pin.label,
+                                pinned_at=PIN_TIME,
+                                pinned_by="local",
+                            )
+                            for pin in group.pins
+                        ),
+                    )
+                    for group in groups
+                ),
+            ),
+        )
         return ExpectedProject(
             name=name,
-            path=directory.relative_to(self.output_dir).as_posix(),
-            store=store_dir.relative_to(self.output_dir).as_posix(),
+            path=directory.relative_to(self.base).as_posix(),
+            store=store_dir.relative_to(self.base).as_posix(),
             case=case,
             valid=True,
-            tasks=tuple(tasks),
+            groups=tuple(groups),
         )
 
     def _missing_version_project(
         self, base: Path, written: _Written
     ) -> ExpectedProject:
         """Pin a version no longer in the store (removed by hand)."""
-        pinned = self._pinned_task("teren", written, written.current).pins[0]
+        pinned = self._pinned_group("teren", written, written.current).pins[0]
         missing_sha = hashlib.sha256(b"removed version").hexdigest()
         slot_versions = self._rel(written.slot.versions)
         pin = ExpectedPin(
@@ -1986,41 +2019,40 @@ class _StoreWriter:
             current=False,
             present=False,
         )
-        task = ExpectedTask("teren", "elevation download", (pin,))
+        group = ExpectedGroup("teren", "plan", (pin,))
         return self._project(
-            base, "brak-wersji", [task], unpinned=[written], case="missing_version"
+            base, "brak-wersji", [group], unpinned=[written], case="missing_version"
         )
 
     def _other_store_project(self, base: Path) -> ExpectedProject:
         """Write a project of a store Archiwista is not configured with."""
-        other = self.output_dir / OTHER_STORE_DIR
+        other = self.base / OTHER_STORE_DIR
         other.mkdir()
-        task = ExpectedTask("teren", "elevation download")
         sheet = self.written[NMT][0]
         return self._project(
             base,
             "inny-magazyn",
-            [task],
+            [ExpectedGroup("teren", "plan")],
             unpinned=[sheet],
             store=other,
             case="other_store",
         )
 
     def _invalid_project(self, base: Path, written: _Written) -> ExpectedProject:
-        """Write a manifest ``open_project`` rejects (an unknown command)."""
-        task = self._pinned_task("teren", written, written.current)
-        project = self._project(base, "zepsuty", [task], unpinned=[written])
-        manifest = base / "zepsuty" / MANIFEST_NAME
-        doc = json.loads(manifest.read_text(encoding="utf-8"))
-        doc["tasks"][0]["command"] = "elevation fly"
-        _write_json(manifest, doc)
+        """Write a project file breaking a rule (a group name with ``/``)."""
+        group = self._pinned_group("teren", written, written.current)
+        project = self._project(base, "zepsuty", [group], unpinned=[written])
+        path = base / "zepsuty" / PROJECT_FILE
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc["groups"][0]["name"] = "teren/stary"
+        _write_json(path, doc)
         return ExpectedProject(
             name=project.name,
             path=project.path,
             store=project.store,
-            case="invalid_manifest",
+            case="invalid_project_file",
             valid=False,
-            tasks=project.tasks,
+            groups=project.groups,
         )
 
 
@@ -2037,7 +2069,8 @@ def _inside(bbox: BBox) -> bool:
 @functools.cache
 def _extent(crs: str) -> tuple[int, int, int, int]:
     """Whole-metre envelope in ``crs`` of the outline of its country."""
-    envelope = transform_bbox(BBox(*_OUTLINES[crs].bounds, "EPSG:4326"), crs)
+    min_x, min_y, max_x, max_y = _OUTLINES[crs].bounds
+    envelope = transform_bbox(BBox(min_x, min_y, max_x, max_y, "EPSG:4326"), crs)
     return (
         math.floor(envelope.min_x),
         math.floor(envelope.min_y),
@@ -2209,7 +2242,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "repository and outside /tmp."
         ),
     )
-    parser.add_argument("output_dir", type=Path, help="missing or empty directory")
+    parser.add_argument("base", type=Path, help="missing or empty directory")
     parser.add_argument(
         "--slots", type=int, default=50_000, help="regular slots (default: 50000)"
     )
@@ -2218,18 +2251,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--projects", type=int, default=30, help="project directories (default: 30)"
     )
     args = parser.parse_args(argv)
-    output_dir = cast(Path, args.output_dir).absolute()
-    if output_dir.resolve().is_relative_to(_repository_root()):
-        parser.error(f"refusing to write test data into the repository: {output_dir}")
+    base = cast(Path, args.base).absolute()
+    if base.resolve().is_relative_to(_repository_root()):
+        parser.error(f"refusing to write test data into the repository: {base}")
     started = time.perf_counter()
     try:
         manifest = make_store(
-            output_dir, slots=args.slots, seed=args.seed, projects=args.projects
+            base, slots=args.slots, seed=args.seed, projects=args.projects
         )
     except ValueError as exc:
         parser.error(str(exc))
     elapsed_s = time.perf_counter() - started
-    stats = store_stats(manifest.output_dir)
+    stats = store_stats(manifest.base)
     print(f"store: {manifest.root}")
     print(f"projects: {manifest.projects_dir} ({len(manifest.projects)})")
     print(f"slots: {len(manifest.by_kind('link'))} ({manifest.slots} regular)")

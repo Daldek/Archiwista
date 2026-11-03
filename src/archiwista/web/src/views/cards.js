@@ -1,0 +1,655 @@
+/**
+ * Pieces shared by the file card, the Projects view and the Store view:
+ * problems with their fixes, a background job started here and followed
+ * through its event stream (SSE), with the summaries of its result that the
+ * plan window and the downloads of the top bar show too, links opening the
+ * file card over the current view, labelled copy buttons, „Pobierz plik”,
+ * the stale-answer note and the human names of pin states and coordinate
+ * systems (docs/SPEC.md 6.1 „Przejrzystość”).
+ */
+
+import { watchJob } from "../api.js";
+import { useApp } from "../context.js";
+import { bytes, count, int, plural, stamp } from "../format.js";
+import { cards as L } from "../labels/cards.js";
+import { T, t } from "../labels/index.js";
+import { pins } from "../labels/pins.js";
+import { Link, useRoute } from "../router.js";
+import {
+  CopyButton,
+  html,
+  Icon,
+  loadStylesheet,
+  ProblemView,
+  Tech,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "../ui.js";
+
+/** States after which a job changes no more. */
+export const FINAL_STATES = new Set([
+  "succeeded",
+  "partial",
+  "failed",
+  "interrupted",
+  "cancelled",
+]);
+/** States of a job that ended with its summary (`result`), as on the server. */
+export const SUMMARY_STATES = new Set(["succeeded", "partial"]);
+const SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 1 });
+const SHORT_SECONDS = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 2 });
+const COPIED_MS = 1500;
+/** The badge of each status of a download's file. */
+const DOWNLOAD_FILE_LEVELS = { new: "ok", unchanged: "plain", relabeled: "info" };
+
+/**
+ * Load the stylesheet of the three views once; their modules await it, so
+ * nothing renders unstyled.
+ *
+ * @returns {Promise<HTMLLinkElement>}
+ */
+export function loadCardStyles() {
+  return loadStylesheet(new URL("./cards.css", import.meta.url));
+}
+
+/**
+ * The human name of a coordinate system, e.g. `PL-1992` for `EPSG:2180`.
+ *
+ * @param {string} code - EPSG code as in the index.
+ * @returns {string}
+ */
+export function crsName(code) {
+  return L.crs[code] ?? t(L.crs_unknown, { code });
+}
+
+/**
+ * A coordinate system for people with its EPSG code one click away.
+ *
+ * @param {{code: string|null}} props
+ */
+export function Crs({ code }) {
+  if (!code) return T.common.empty;
+  return html`<${Tech} value=${code}>${crsName(code)}</${Tech}>`;
+}
+
+/**
+ * The state of a pin for people.
+ *
+ * @param {import("../types.js").PinState} state
+ * @returns {string}
+ */
+export function pinStateName(state) {
+  return L.pin_state[state] ?? state;
+}
+
+/**
+ * Who started a job, for people: `local` is the local owner.
+ *
+ * @param {string} actor - `Principal.id` of the job.
+ * @returns {string}
+ */
+export function actorName(actor) {
+  return T.common.actor[actor] ?? actor;
+}
+
+/**
+ * A store's name from the shell's state, else its id.
+ *
+ * @param {import("../types.js").Health|undefined} health
+ * @param {string} store
+ * @returns {string}
+ */
+export function storeName(health, store) {
+  return health?.stores.find((item) => item.store === store)?.name ?? store;
+}
+
+/**
+ * A badge: a short state with a severity colour, never colour alone.
+ *
+ * @param {{level?: "ok"|"warn"|"bad"|"info"|"plain", title?: string, children: *}} props
+ */
+export function Badge({ level = "plain", title, children }) {
+  return html`<span class=${`state-badge ${level}`} title=${title}>${children}</span>`;
+}
+
+/**
+ * A link opening the file card over the current view (`file`, and
+ * `file_version` for one version), keeping the view's own parameters.
+ *
+ * @param {{store: string, slot: string, version?: string|null, children: *}} props
+ *   Other props go to the `<a>` element.
+ */
+export function FileLink({ store, slot, version = null, children, ...rest }) {
+  const route = useRoute();
+  const params = { ...route.params, file: `${store}/${slot}`, file_version: version };
+  return html`<${Link} view=${route.view} params=${params} ...${rest}>${children}</${Link}>`;
+}
+
+/**
+ * A button copying a text, with its visible name (`Kopiuj atrybucję`) and a
+ * short confirmation for people and screen readers.
+ *
+ * @param {{text: string, label: string, primary?: boolean}} props
+ */
+export function CopyAction({ text, label, primary }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef(null);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = () =>
+    navigator.clipboard?.writeText(text).then(
+      () => {
+        setCopied(true);
+        clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopied(false), COPIED_MS);
+      },
+      () => setCopied(false),
+    );
+  return html`<span class="copy-action">
+    <button type="button" class=${primary ? "btn sm primary" : "btn sm"} onClick=${copy}>
+      <${Icon} name=${copied ? "check" : "copy"} size=${13} />${label}
+    </button>
+    <span class="copy-state" role="status">${copied ? T.common.actions.copied : ""}</span>
+  </span>`;
+}
+
+/**
+ * The path a „Kopiuj ścieżkę…” gives (SPEC 10.2): the person's own
+ * (`CopyPath.personal`, through the path aliases of „Moje ścieżki”) when one
+ * of their aliases holds it, else the server's. `server` is the server's
+ * path to show beside the person's, `null` when the server's comes first.
+ *
+ * @param {import("../types.js").CopyPath} paths
+ * @returns {{first: string, server: string|null}}
+ */
+export function pathToCopy(paths) {
+  return paths.personal ? { first: paths.personal, server: paths.local } : { first: paths.local, server: null };
+}
+
+/**
+ * „Na serwerze: /mnt/nas/…” with its copy button: the server's path of a
+ * file whose person's path comes first (`pathToCopy`); nothing without one.
+ *
+ * @param {{path: string|null, className?: string}} props - `className`: the
+ *   row's class in the view (`path-other` by default).
+ */
+export function ServerPath({ path, className = "path-other" }) {
+  if (!path) return null;
+  return html`<span class=${className}>
+    <span class="faint">${L.paths.server}:</span> <code class="path">${path}</code>
+    <${CopyButton} text=${path} label=${path} />
+  </span>`;
+}
+
+/**
+ * „Pobierz plik”: a link that downloads a file of the index (api.js
+ * `fileAddress`; ADR-047 decision 5), or the same action disabled with the
+ * reason the file cannot be fetched now.
+ *
+ * @param {{address: string, reason?: "store_unavailable"|"version_missing"|
+ *   "file_missing"|"snapshot_invalid"|null, member?: string|null}} props
+ *   `member`: one file of a set, named by its name instead of „Pobierz plik”.
+ */
+export function DownloadLink({ address, reason = null, member = null }) {
+  const id = useId();
+  const label = member ?? L.download.action;
+  const title = member === null ? L.download.title : t(L.download.member_title, { name: member });
+  if (reason !== null) {
+    const why = L.download.why[reason];
+    return html`<button type="button" class="btn sm" disabled title=${why} aria-describedby=${id}>
+        <${Icon} name="download" size=${13} />${label}
+      </button>
+      <span class="visually-hidden" id=${id}>${why}</span>`;
+  }
+  return html`<a class="btn sm" href=${address} download title=${title}>
+    <${Icon} name="download" size=${13} />${label}</a>`;
+}
+
+/**
+ * A note that an answer comes from the index of an unavailable store.
+ *
+ * @param {{stores: import("../types.js").StaleStore[]}} props
+ */
+export function StaleNote({ stores }) {
+  const { health } = useApp();
+  if (!stores?.length) return null;
+  return html`<div class="stale-note" role="note">
+    ${stores.map(
+      (item) => html`<p key=${item.store}>
+        <${Icon} name="alert" size=${14} />
+        ${item.indexed_at
+          ? t(L.stale, { store: storeName(health, item.store), indexed_at: stamp(item.indexed_at) })
+          : t(L.stale_never, { store: storeName(health, item.store) })}
+      </p>`,
+    )}
+  </div>`;
+}
+
+/**
+ * Problems with what is wrong, how to fix it, the technical values and links
+ * to the file card or the project concerned.
+ *
+ * @param {{issues: import("../types.js").Issue[], store?: string|null,
+ *   currentSlot?: string, currentProject?: string, empty?: boolean}} props -
+ *   `store` makes slots links to their file cards; no link leads to
+ *   `currentSlot` or `currentProject`, where the list already is; `empty`
+ *   shows „Brak problemów” for an empty list.
+ */
+export function IssueList({ issues, store, currentSlot, currentProject, empty = true }) {
+  if (!issues.length) return empty ? html`<p class="faint">${L.issues.none}</p>` : null;
+  return html`<ul class="issues">
+    ${issues.map(
+      (issue, index) => html`<li key=${`${issue.code}:${issue.path}:${index}`} class="issue">
+        <p class="issue-message"><${Icon} name="alert" size=${14} /><span>${issue.message}</span></p>
+        <p class="issue-fix"><b>${L.issues.fix}</b>${" "}${issue.instruction}</p>
+        <div class="issue-meta">
+          <${Tech} value=${issueValues(issue)}>
+            <span class="faint">${issueFound(issue)}</span>
+          </${Tech}>
+          ${store && issue.slot && issue.slot !== currentSlot
+            ? html`<${FileLink} store=${store} slot=${issue.slot} class="btn ghost sm">
+                <${Icon} name="file" size=${13} />${L.issues.open_file}</${FileLink}>`
+            : null}
+          ${issue.project && issue.project !== currentProject
+            ? html`<${Link} view="projects" params=${{ project: issue.project }} class="btn ghost sm">
+                <${Icon} name="folder" size=${13} />${t(L.issues.open_project, { project: issue.project })}
+                ${issue.group ? html`<span class="faint">${t(L.issues.group, { group: issue.group })}</span>` : null}
+              </${Link}>`
+            : null}
+        </div>
+      </li>`,
+    )}
+  </ul>`;
+}
+
+function issueFound(issue) {
+  const origin = issue.origin ? L.issues.origin[issue.origin] : null;
+  if (!origin) return L.issues.details;
+  return t(L.issues.found, { origin, at: stamp(issue.first_seen_at) });
+}
+
+function issueValues(issue) {
+  const values = [["code", issue.code]];
+  for (const name of ["path", "segment", "slot", "project", "group", "origin", "first_seen_at"]) {
+    if (issue[name]) values.push([name, issue[name]]);
+  }
+  return values;
+}
+
+/**
+ * The live state of a followed job.
+ *
+ * @typedef {object} JobEvents
+ * @property {string} id
+ * @property {string} state - The last state event.
+ * @property {Object<string, *>|null} progress - The last progress event.
+ * @property {Array<{level: string, code: string, message: string}>} notices
+ * @property {Object<string, *>|null} result - Summary of a job that succeeded or
+ *   ended `partial`.
+ * @property {import("../types.js").JobFailure|null} error - Why it ended otherwise.
+ * @property {import("../types.js").Problem|null} stream - The stream broke off.
+ */
+
+/**
+ * Start a background job and follow its events (SSE, `watchJob`).
+ *
+ * `run(start, kind)` calls `start()`, an `api.js` POST answering
+ * `JobDetail`; a `409 conflict` naming the running job (`details.job`) follows that job
+ * instead, and any problem stays in `problem`. `follow(id, kind)` follows a
+ * job started elsewhere (e.g. the scheduler's scan from `/health`).
+ *
+ * @param {{onEnd?: (state: {state: string, result?: Object<string, *>,
+ *   error?: import("../types.js").JobFailure}) => void}} [options] - Called
+ *   once with the final state event.
+ * @returns {{id: string|null, kind: string|null, events: JobEvents|null,
+ *   problem: import("../types.js").Problem|null, starting: boolean,
+ *   running: boolean,
+ *   run: (start: () => Promise<import("../types.js").JobDetail>, kind: string)
+ *   => Promise<void>, follow: (id: string, kind: string) => void}}
+ */
+export function useJob({ onEnd } = {}) {
+  const [followed, setFollowed] = useState({ id: null, kind: null });
+  const [events, setEvents] = useState(null);
+  const [problem, setProblem] = useState(null);
+  const [starting, setStarting] = useState(false);
+  const ended = useRef(onEnd);
+  ended.current = onEnd;
+  const id = followed.id;
+
+  useEffect(() => {
+    if (id === null) return undefined;
+    setEvents({ id, state: "queued", progress: null, notices: [], result: null, error: null, stream: null });
+    const update = (patch) =>
+      setEvents((current) => (current?.id === id ? { ...current, ...patch(current) } : current));
+    return watchJob(id, {
+      onProgress: (data) => update(() => ({ progress: data })),
+      onNotice: (data) => update((current) => ({ notices: [...current.notices, data] })),
+      onState: (data) => {
+        update(() => ({ state: data.state, result: data.result ?? null, error: data.error ?? null }));
+        if (FINAL_STATES.has(data.state)) ended.current?.(data);
+      },
+      onError: (stream) => update(() => ({ stream })),
+    });
+  }, [id]);
+
+  const follow = useCallback(
+    (jobId, kind) =>
+      setFollowed((current) => (current.id === jobId ? current : { id: jobId, kind })),
+    [],
+  );
+  const run = useCallback(async (start, kind) => {
+    setStarting(true);
+    setProblem(null);
+    try {
+      const job = await start();
+      follow(job.id, job.kind ?? kind);
+    } catch (error) {
+      if (!error.problem) throw error;
+      setProblem(error.problem);
+      const running = error.problem.details?.job;
+      if (running) follow(running.id, running.kind);
+    } finally {
+      setStarting(false);
+    }
+  }, []);
+  const running = events !== null && !FINAL_STATES.has(events.state);
+  return { id, kind: followed.kind, events, problem, starting, running, run, follow };
+}
+
+/**
+ * A followed job for people: kind and state, progress, the job's Polish
+ * notices, its summary or why it failed; a problem of starting it first.
+ *
+ * @param {{job: ReturnType<typeof useJob>, summary?: (events: JobEvents) => *}}
+ *   props - `summary` renders the result of a job that succeeded or ended
+ *   `partial` (default: the scan and footprints summaries).
+ */
+export function JobStatus({ job, summary = defaultSummary }) {
+  const { events, problem } = job;
+  if (!events && !problem) return null;
+  return html`<div class="job-status">
+    ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
+    ${events ? html`<${JobEventsView} events=${events} summary=${summary} kind=${job.kind} />` : null}
+  </div>`;
+}
+
+function JobEventsView({ events, summary, kind }) {
+  const final = FINAL_STATES.has(events.state);
+  const name = T.common.job_kind[kind] ?? kind;
+  const title = t(L.job.title, {
+    kind: capitalize(name ?? T.common.job_kind.scan),
+    state: T.common.job_state[events.state] ?? events.state,
+  });
+  const progress = events.progress;
+  const known = progress && progress.total > 0;
+  const failure = events.error;
+  const reason = failure?.details?.reason;
+  const technical = failure ? [[T.common.technical.code, failure.code]] : [];
+  if (reason) technical.push([T.common.technical.reason, reason]);
+  return html`<div class=${`job ${events.state}`} aria-live="polite">
+    <div class="job-head">
+      ${final
+        ? html`<${Icon} name=${events.state === "succeeded" ? "check" : "alert"} size=${15} />`
+        : html`<span class="spinner" aria-hidden="true"></span>`}
+      <${Tech} value=${[["job", events.id], ["state", events.state]]}><b>${title}</b></${Tech}>
+    </div>
+    ${!final
+      ? html`<div class="job-progress">
+          ${known
+            ? html`<progress key="known" max=${progress.total} value=${progress.current} aria-label=${title}></progress>`
+            : html`<progress key="unknown" aria-label=${title}></progress>`}
+          ${progress ? html`<span class="tabular">${progressText(progress)}</span>` : null}
+        </div>`
+      : null}
+    ${events.notices.length
+      ? html`<div class="job-notices">
+          <span class="section-title">${L.job.notices}</span>
+          <ul>${events.notices.map(
+            (notice, index) => html`<li key=${index} class=${notice.level}>
+              <${Tech} value=${notice.code}>${notice.message}</${Tech}></li>`,
+          )}</ul>
+        </div>`
+      : null}
+    ${SUMMARY_STATES.has(events.state) ? summary(events) : null}
+    ${events.error
+      ? html`<p class="job-error">
+          <${Tech} value=${technical}>${t(L.job.failed, {
+            state: T.common.job_state[events.state] ?? events.state,
+            detail: events.error.detail,
+          })}</${Tech}>
+        </p>`
+      : null}
+    ${failure?.hint && !failure.detail.includes(failure.hint)
+      ? html`<p class="job-hint">${failure.hint}</p>`
+      : null}
+    ${events.stream && !final ? html`<${ProblemView} problem=${events.stream} compact />` : null}
+  </div>`;
+}
+
+function progressText(progress) {
+  if ("segment" in progress || "entries" in progress) {
+    return t(L.job.scan_progress, {
+      current: int(progress.current),
+      total: int(progress.total),
+      segments: plural(progress.total, T.common.units.segments),
+      entries: int(progress.entries ?? 0),
+      entries_word: plural(progress.entries ?? 0, L.job.entries),
+    });
+  }
+  if ("written" in progress) {
+    return t(L.job.footprints_progress, {
+      current: int(progress.current),
+      total: int(progress.total),
+      written: int(progress.written),
+      failed: int(progress.failed ?? 0),
+    });
+  }
+  if ("phase" in progress) {
+    return t(L.job.snapshot_progress, {
+      current: int(progress.current),
+      total: int(progress.total),
+      phase: L.job.phases[progress.phase] ?? progress.phase,
+    });
+  }
+  if ("files" in progress && "read" in progress) {
+    return t(L.job.own_scan_progress, {
+      current: int(progress.current),
+      total: int(progress.total),
+      folders: plural(progress.total, L.job.folders),
+      files: int(progress.files),
+      read: int(progress.read),
+    });
+  }
+  if ("unit" in progress && "status" in progress) {
+    const text = t(L.job.download_progress, {
+      current: int(progress.current),
+      total: int(progress.total),
+      status: L.job.unit_status[progress.status] ?? progress.status,
+    });
+    // A download of a row's several lines (ADR-044) says which line it runs.
+    const line = progress.calls > 1
+      ? `${t(L.job.call_progress, { call: int(progress.call + 1), calls: int(progress.calls) })} · `
+      : "";
+    return progress.unit ? `${line}${text} · ${progress.unit}` : `${line}${text}`;
+  }
+  return t(L.job.progress, { current: int(progress.current), total: int(progress.total) });
+}
+
+function defaultSummary(events) {
+  const result = events.result;
+  if (!result) return null;
+  if ("versions_written" in result) {
+    return html`<p class="job-summary">${t(L.job.scan_done, {
+      seconds: seconds(result.seconds ?? 0),
+      entries: int(result.entries),
+      versions: int(result.versions_written),
+      links: int(result.links_changed),
+      missing: int(result.missing),
+      removed: int(result.removed),
+      issues: int(result.issues_added),
+    })}</p>`;
+  }
+  if ("written" in result) {
+    return html`<p class="job-summary">${t(L.job.footprints_done, {
+      seconds: seconds(result.seconds ?? 0),
+      written: int(result.written),
+      total: int(result.total),
+      failed: int(result.failed),
+    })}</p>`;
+  }
+  if ("unreadable" in result && "projects" in result) {
+    return html`<p class="job-summary">${t(L.job.own_scan_done, {
+      seconds: seconds(result.seconds ?? 0),
+      files: int(result.files),
+      new: int(result.new),
+      changed: int(result.changed),
+      missing: int(result.missing),
+      unreadable: int(result.unreadable),
+      snapshots: int(result.snapshots),
+      problems: int(result.problems),
+    })}</p>`;
+  }
+  return null;
+}
+
+/**
+ * The summary of a download (`download`): its files by status, each with its
+ * size, its failed units and the lines of a row it failed or skipped
+ * (`result.calls`, ADR-044), as `archiwista jobs show` says them; with `pin`
+ * whether it pinned into its project's group (A-ADR-049 decision 9).
+ *
+ * @param {JobEvents} events
+ */
+export function downloadSummary(events) {
+  const result = events.result;
+  if (!result) return null;
+  const statuses = L.job.download_file_status;
+  const counts = Object.entries(statuses).map(([status, word]) => `${word} ${int(result.counts[status] ?? 0)}`);
+  const files = Object.values(result.counts).reduce((total, value) => total + value, 0);
+  const failed = result.items.filter((item) => item.status === "failed");
+  const calls = result.calls ?? [];
+  const named = calls
+    .map((call, place) => ({ ...call, place }))
+    .filter((call) => call.status === "failed" || call.status === "skipped");
+  return html`<div class="job-download">
+    <p class="job-summary">${t(L.job.download_files, { files: int(files), counts: counts.join(", "), failed: int(result.failed) })}</p>
+    <${TakenList} taken=${result.taken ?? []} />
+    ${result.pin ? html`<${PinResult} pin=${result.pin} />` : null}
+    ${result.files.length
+      ? html`<ul class="job-files" aria-label=${L.job.download_files_title}>${result.files.map(
+          (file) => html`<li key=${`${file.call}/${file.path}`}>
+            <${Tech} value=${[["version_path", file.version_path ?? "–"], ["sha256", file.sha256]]}><span class="mono">${file.path}</span></${Tech}>
+            <${Badge} level=${DOWNLOAD_FILE_LEVELS[file.status] ?? "plain"}>${statuses[file.status] ?? file.status}</${Badge}>
+            <span class="faint tabular">${bytes(file.size_bytes)}</span>
+          </li>`,
+        )}</ul>`
+      : null}
+    ${failed.length
+      ? html`<div class="job-failed">
+          <span class="section-title">${L.job.download_failed}</span>
+          <ul>${failed.map(
+            (item) => html`<li key=${`${item.call}/${item.id}`}><${Tech} value=${[["code", item.code ?? "–"], ["reason", item.reason ?? "–"]]}>
+              <span class="mono">${item.id}</span></${Tech}>${item.message ? ` ${item.message}` : ""}</li>`,
+          )}</ul>
+        </div>`
+      : null}
+    ${named.length
+      ? html`<div class="job-failed">
+          <span class="section-title">${L.job.download_calls}</span>
+          <ul aria-label=${L.job.download_calls}>${named.map(
+            (call) => html`<${CallOutcome} key=${call.place} call=${call} count=${calls.length} />`,
+          )}</ul>
+        </div>`
+      : null}
+  </div>`;
+}
+
+/**
+ * The pin of a download: the set written with its pins — a new one, „w
+ * budowie” when left open, or the set in the making it added to (`add`) —
+ * and the plan's positions the store did not hold, or why nothing was
+ * pinned.
+ *
+ * @param {{pin: Object<string, *>}} props - `result.pin` of the download.
+ */
+function PinResult({ pin }) {
+  const R = pins.result;
+  const names = { project: pin.project, group: pin.group };
+  const link = html`<${Link} view="projects" params=${{ project: pin.project }}>
+    ${R.open_project}</${Link}>`;
+  if (!pin.written) {
+    const text = pin.error
+      ? html`<${Tech} value=${[["code", pin.error.code], ["reason", pin.error.reason ?? "–"]]}>
+          ${t(R.error, names)}</${Tech}> ${pin.error.detail}`
+      : t(R.job_partial, names);
+    return html`<p class="job-pin bad-text" role="note">${text}</p>`;
+  }
+  const missing = pin.not_pinned ?? [];
+  const values = { ...names, count: count(pin.pins, pins.versions) };
+  const notes = [];
+  if (pin.already) notes.push(t(R.already, { count: count(pin.already, pins.versions) }));
+  if (!pin.add && pin.state === "open") notes.push(R.left_open);
+  return html`<div class="job-pin">
+    <p>${t(pin.add ? R.added : R.written, values)} ${notes.join(" ")} ${link}</p>
+    ${missing.length
+      ? html`<p class="faint">${t(R.not_pinned, { count: int(missing.length) })}:
+          <span class="mono">${missing.map((item) => item.path).join(", ")}</span></p>`
+      : null}
+  </div>`;
+}
+
+/**
+ * The positions of a download that other active downloads of the store
+ * fetch (`result.taken`, ADR-047), one line per such job with its person:
+ * „2 pozycje pobiera marek (zadanie 3f9c1a7e)”; nothing without any.
+ *
+ * @param {{taken: Array<{path: string, unit: string|null, job: string, actor: string}>}} props
+ */
+export function TakenList({ taken }) {
+  if (!taken.length) return null;
+  const jobs = new Map();
+  for (const item of taken) {
+    const holder = jobs.get(item.job) ?? { job: item.job, actor: item.actor, count: 0 };
+    holder.count += 1;
+    jobs.set(item.job, holder);
+  }
+  return html`<ul class="job-taken" aria-label=${L.job.download_taken_title}>${[...jobs.values()].map(
+    (holder) => html`<li key=${holder.job}>
+      <${Tech} value=${[["job", holder.job], ["actor", holder.actor]]}>${t(L.job.download_taken, {
+        count: int(holder.count),
+        positions: plural(holder.count, L.job.positions),
+        actor: actorName(holder.actor),
+        job: holder.job,
+      })}</${Tech}>
+    </li>`,
+  )}</ul>`;
+}
+
+/** A line of a download of a row that failed or was skipped, and why. */
+function CallOutcome({ call, count }) {
+  const why = call.status === "failed" ? "failed" : call.reason;
+  const values = { place: int(call.place + 1), count: int(count) };
+  const text = t(L.job.download_call[why] ?? L.job.download_call.failed, values);
+  const technical = [["status", call.status], ["reason", call.error?.reason ?? call.reason ?? "–"]];
+  if (call.error) technical.unshift(["code", call.error.code]);
+  const detail = call.error ? ` ${call.error.detail}` : "";
+  return html`<li>
+    <${Tech} value=${technical}>${text}</${Tech}> <span class="mono">${call.line}</span>${detail}
+  </li>`;
+}
+
+/**
+ * Seconds for people: `0,04` below a second, `12,3` above.
+ *
+ * @param {number} value
+ * @returns {string}
+ */
+export function seconds(value) {
+  return (value < 1 ? SHORT_SECONDS : SECONDS).format(value);
+}
+
+function capitalize(text) {
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
+}

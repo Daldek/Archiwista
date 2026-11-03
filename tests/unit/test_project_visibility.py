@@ -13,23 +13,17 @@ import pytest
 from archiwista.auth import ProjectVisibility, access_key
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings, StoreConfig
-from archiwista.index import (
-    IndexQueries,
-    IndexWriter,
-    ManifestStamp,
-    MapQuery,
-    SlotQuery,
-)
+from archiwista.index import IndexQueries, IndexWriter, MapQuery, SlotQuery
 from archiwista.services import project_detail, store_summary
-from archiwista.sources import ProjectInfo, ProjectPin
 from archiwista.state import StateStore, Visibility
 from tests.fixtures.index_data import (
     NMT,
-    PRODUCER,
     ROOT,
     STORE,
     box,
+    indexed_project,
     link,
+    pin,
     sha,
     slot_path,
     version,
@@ -65,12 +59,8 @@ def _index_with_raba(writer: IndexWriter) -> str:
             for entry in (current, older)
         },
     )
-    pins = (
-        ProjectPin(ROOT, older.relative_path, sha(2), "teren"),
-        ProjectPin(ROOT, Path(GONE), sha(9), "teren"),
-    )
-    project = ProjectInfo(PRODUCER, ROOT, PROJECT_DIR, "Raba", pins=pins)
-    writer.write_project(project, store=STORE, stamp=ManifestStamp(1, 1))
+    pins = (pin(older.relative_path, sha(2)), pin(GONE, sha(9)))
+    indexed_project(writer, PROJECT_DIR, "Raba", store=STORE, pins=pins)
     return older.relative_path.as_posix()
 
 

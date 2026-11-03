@@ -1,81 +1,134 @@
-# API Archiwisty dla agentów i skryptów
+# Archiwista API for agents and scripts
 
-Przewodnik dla agentów AI (np. Claude Code) i skryptów, które korzystają
-z Archiwisty bez przeglądarki. Opisuje wydanie 0.2.0: odczyt katalogu,
-podglądy, warstwy, porównanie, dane własne i migawki projektu, obszary
-oraz zadania. Agent używa API HTTP `/api/v1` albo poleceń
-`archiwista … --json` — bez narzędzi czatu ani MCP.
+For AI agents (for example Claude Code) and scripts using Archiwista without
+a browser: version 0.3 "Actions" is built, not released; v0.4 "Team" is under
+work on `feature/v0.4-team` (also not released). It covers reading the catalog,
+previews, layers, comparison, own data and project snapshots, areas, producer
+commands, plans and downloads, projects and jobs. Team mode adds sign-in, agent
+sessions, per-person permissions and preferences, a shared queue, file downloads
+and the action log. The agent uses `/api/v1` or `archiwista … --json`; there is
+no chat tool and no MCP server. The v0.4 live LAN scenario remains unverified
+(`reports/v0.4-lan-runbook.md`).
 
-Do v1.0 API może się zmieniać. Pełny schemat z przykładami jest zawsze pod
-`/api/v1/openapi.json` (wymaga sesji), a dokumentacja interaktywna pod
-`/api/docs` (korzysta z sesji otwartej karty Archiwisty). Nazwy pól, parametrów i kodów są po angielsku, teksty dla
-ludzi (`detail`, `title`, `message`) — po polsku.
+Until v1.0 the API may change. The full schema with examples is at
+`/api/v1/openapi.json` (requires a session). `/api/docs` is available in local
+mode only; team mode disables it. Field names,
+parameter names and codes are English; texts for people (`title`, `detail`,
+`hint`, `message`) are English, and Polish for the request header
+`Accept-Language: pl` (section 7), except the few that are stored in Polish.
 
-## 1. Dwie drogi: CLI albo HTTP
+## 1. Two ways: the CLI or HTTP
 
-| Potrzeba | CLI (`--json`) | HTTP (`/api/v1`) |
+| Need | CLI (`--json`) | HTTP (`/api/v1`) |
 |---|---|---|
-| stan serwera, źródeł, indeksu i magazynów | `archiwista status` | `GET /health` |
-| wtyczki producentów | `archiwista sources` | `GET /sources` |
-| wyszukiwanie i filtry katalogu | `archiwista search [ZAPYTANIE] [opcje]` | `GET /slots` |
-| karta pliku (slotu) | `archiwista entry MAGAZYN SLOT` | `GET /stores/{store}/slots/{slot}` |
-| karta jednej wersji | `archiwista version MAGAZYN WERSJA` | `GET /stores/{store}/versions/{version}` |
-| projekty | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
-| karta projektu | `archiwista project PROJEKT` | `GET /projects/{project}` |
-| token sesji dla agenta | `archiwista token --json` | `POST /session/tokens` |
-| obszar i stan lokalny produktu | — (obszar zakłada HTTP; jego wiersze: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
-| skan magazynu, zadania, SSE | — (tylko HTTP) | `POST /stores/{store}/scan`, `/jobs` |
-| podgląd i budowa, opcjonalny obraz PNG | `archiwista preview REF [--build] [--output PLIK.png]` | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png` |
-| porównanie metadanych dwóch obiektów | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
-| lata/kampanie i miniatura warstwy | `archiwista layers --store ID --product PRODUKT --area-id ID [--thumbnail KLUCZ --output PLIK.png]` | `GET /local-layers`, `GET /local-layers/thumbnail.png` |
-| pliki projektu i karta pliku | `archiwista files PROJEKT`, `archiwista file PROJEKT PLIK` | `GET /projects/{project}/files`, `GET …/files/{file_id}` |
-| plan i wykonanie migawki | `archiwista snapshot PROJEKT PLIK --plan`, `archiwista snapshot PROJEKT PLIK [--note TEKST]` | `GET …/files/{file_id}/snapshot-plan`, `POST …/files/{file_id}/snapshots` |
-| skan folderu danych własnych | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
+| state of the server, sources, index and stores | `archiwista status` | `GET /health` |
+| producer plugins | `archiwista sources` | `GET /sources` |
+| catalog search and filters | `archiwista search [QUERY] [options]` | `GET /slots` |
+| card of a file (slot) | `archiwista entry MAGAZYN SLOT` | `GET /stores/{store}/slots/{slot}` |
+| card of one version | `archiwista version MAGAZYN WERSJA` | `GET /stores/{store}/versions/{version}` |
+| projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
+| card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
+| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
+| a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
+| a project's exports from its pins: copies in category folders with `README.txt` in `eksport/NAZWA/`, optionally a ZIP (A-ADR-049), their list and the ZIP | `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports`, `GET /projects/{project}/exports/{name}/zip` |
+| a project's activity from the action log: its changes and its jobs, newest first, without the client address (A-ADR-049) | `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
+| remove a project from Archiwista, never data: its file, area files and exports go, `dane/` and every other file stay (A-ADR-049 erratum 2) | `archiwista project-delete PROJEKT --yes` | `DELETE /projects/{project}` |
+| pin versions the store holds into a project's set (offline, from the index): a new set (closed at once, or left in the making with `--open`), a set in the making (`--add`) or an empty set in the making; remove pins, a call or a set; close a set in the making with the digest of its pins and open a closed one again (A-ADR-049, erratum 6) | `archiwista project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … \| --query JSON) [--from ŹRÓDŁO] [--add \| --open]`, `project-draft PROJEKT ZESTAW`, `project-unpin PROJEKT ZESTAW [--pin PRODUCENT:WERSJA …]`, `project-uncall PROJEKT ZESTAW --call N`, `project-close PROJEKT ZESTAW`, `project-reopen PROJEKT ZESTAW` | `POST /projects/{project}/groups`, `POST /projects/{project}/groups/{group}/pins`, `POST /projects/{project}/groups/{group}/unpin`, `DELETE /projects/{project}/groups/{group}`, `DELETE /projects/{project}/groups/{group}/calls/{call}`, `POST /projects/{project}/groups/{group}/close`, `POST /projects/{project}/groups/{group}/reopen` |
+| jobs over a project's groups (A-ADR-049): the pinned files hashed in the store (offline), the pins compared with the source, one group pinned anew to the source's newer versions, the missing pins downloaded again; in the foreground, exit 0, 10, 11 or 130 | `archiwista project-verify PROJEKT [ZESTAW …]`, `project-check PROJEKT [ZESTAW …]`, `project-repin PROJEKT ZESTAW`, `project-restore PROJEKT [ZESTAW …]` | `POST /projects/{project}/jobs` |
+| session token for an agent (for an account: `--user`, required in team mode, v0.4) | `archiwista token [--user ID] --json` | `POST /session/tokens` |
+| team mode (v0.4): how a session starts, signing in (with a password or through the company's reverse proxy), changing one's password, a person's sessions, ending all of an account's sessions | `archiwista users end-sessions ID` (the last only) | `GET /session/methods`, `POST /session/login`, `POST /session/proxy`, `PUT /session/password`, `GET /sessions`, `DELETE /sessions/{label}`, `DELETE /users/{user_id}/sessions` |
+| area and local state of a product | — (HTTP creates an area; its rows: `search --area-id`) | `POST /areas`, `GET /local-coverage` |
+| store scan, SSE | — (HTTP only; an administrator's from v0.4) | `POST /stores/{store}/scan`, `GET /jobs/{job}/events` |
+| background jobs: the list, one job, cancel, retry, the end of its log (v0.3) | `archiwista jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs retry ZADANIE` (the new job in the foreground, printed as it ended), `jobs log ZADANIE` | `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel`, `POST /jobs/{job}/retry`, `GET /jobs/{job}/log` |
+| preview and build, optional PNG | `archiwista preview REF [--build] [--output FILE.png]` | `GET`/`POST /stores/{store}/versions/{version}/preview`, `GET …/preview.png` |
+| the first look at current versions prepared ahead in the preview cache (pane thumbnail, map tiles at the smallest zoom), optionally of a store, product, segment, project (with its own data) or area (v0.3) | `archiwista preview-warm [--store MAGAZYN] [--product PRODUKT] [--segment SEGMENT] [--project PROJEKT] [--area-id OBSZAR]` (the job in the foreground, printed as it ended) | `POST /previews/warm` |
+| comparison of the metadata of two objects | `archiwista compare REF REF` | `GET /compare?a=REF&b=REF` |
+| years/campaigns and thumbnail of a layer | `archiwista layers --store ID --product PRODUKT --area-id ID [--thumbnail KLUCZ --output FILE.png]` | `GET /local-layers`, `GET /local-layers/thumbnail.png` |
+| files of a project and the card of a file | `archiwista files PROJEKT`, `archiwista file PROJEKT PLIK` | `GET /projects/{project}/files`, `GET …/files/{file_id}` |
+| plan and making of a snapshot | `archiwista snapshot PROJEKT PLIK --plan`, `archiwista snapshot PROJEKT PLIK [--note TEKST]` | `GET …/files/{file_id}/snapshot-plan`, `POST …/files/{file_id}/snapshots` |
+| scan of the own-data folder | `archiwista own-scan [--project PROJEKT]` | `POST /projects/{project}/scan` |
+| producers' commands: the catalog, a pasted line read into a call, a call checked without the network, the line of a call (v0.3), the call that selects a stored version again, a call given an area of Archiwista, e.g. a project's (A-ADR-049) | `archiwista commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE --options JSON [--store MAGAZYN]`, `commands format PRODUCENT POLECENIE --options JSON [--run JSON]`, `commands area PRODUCENT POLECENIE [--options JSON] --area-id OBSZAR`, `version-command MAGAZYN WERSJA` | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format`, `/commands/area`, `GET /stores/{store}/versions/{version}/command` |
+| what the source has for an area and a product: the last report kept with its rows (labels, ranked variants, store badges), a check at the source (v0.3) | `archiwista availability show OBSZAR --product PRODUKT [--producer ID] [--store ID] [--horizontal …] [--resolution …] [--vertical-crs …]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` and the same options | `GET /availability`, `POST /availability` |
+| a job of a producer's calls on a configured store (all the lines of a row in one job, ADR-044), kind `check` (the plan of a run of each call without its effects) or `download` (the run of each call, with the plans of a `check` job of the same calls if named; it writes the store; optionally pinning what it leaves into a new set of a project, closed or left in the making, or adding it to a set in the making), and the plans a `check` job kept (v0.3) | `archiwista jobs start check PRODUCENT --store MAGAZYN --call JSON [--call JSON …]`, `jobs start download PRODUCENT --store MAGAZYN --call JSON [--call JSON …] [--plan ZADANIE] [--pin PROJEKT --pin-group ZESTAW [--pin-add \| --pin-open]]` (each `--call` a `{"command": "…", "options": {…}}`; the job in the foreground, printed as it ended), `jobs plan ZADANIE` | `POST /jobs`, `GET /jobs/{job}/plan` |
+| a file itself: a version's, an own file's or one file of its set, a snapshot's (v0.4) | — (HTTP only) | `GET /stores/{store}/versions/{version}/file`, `GET /projects/{project}/files/{file_id}/file`, `GET …/files/{file_id}/snapshots/{label}/file` (each also `HEAD`, a set's file by `?member=`) |
+| the action log: a page newest first, an export of every entry the filters select (v0.4, administrators) | `archiwista log list [filters] [--limit N] [--cursor ID]`, `log export [filters] [--format jsonl\|csv] [--output FILE]` (section 10) | `GET /log`, `GET /log/export` |
 
-CLI czyta lokalny indeks bez działającego serwera i wywołuje te same usługi
-co trasy HTTP, jako właściciel lokalnej instalacji (`LOCAL_OWNER`, role
-`admin` i `store_writer`). Z `--json`:
+The CLI reads the local index without a running server and calls the same
+services as the HTTP routes, as the owner of the local installation
+(`LOCAL_OWNER`, roles `admin` and `store_writer`). With `--json`:
 
-- na stdout trafia wyłącznie JSON o schemacie odpowiedzi trasy — ten sam,
-  co z HTTP, łącznie z polami `stale` i `stale_stores`;
-- przy błędzie na stdout trafia problem RFC 9457 trasy (sekcja 6), a kod
-  wyjścia to `1`;
-- tekst po polsku (diagnostyka, opis błędu) trafia zawsze na stderr;
-- kod `2` oznacza niepoprawne użycie polecenia (np. brak argumentu).
+- standard output carries nothing but JSON of the route's response schema, the
+  same as over HTTP, including the fields `stale` and `stale_stores`; its texts
+  are English, as over HTTP without `Accept-Language`;
+- an error prints nothing on standard output. The last line of standard error
+  is the error document `archiwista-error/1` as compact JSON (section 7), and
+  the exit status is the registry's exit code of its `code`: `2` invalid input
+  (also a wrong use of the command line, for example a missing argument), `3`
+  not found, `4` conflict, `6` missing dependency, `8` store unavailable, `9`
+  file system error, `12` forbidden, `13` calculation error, `14` no data, `15`
+  not supported; `1` is a defect of Archiwista;
+- a job that does not succeed prints its `JobDetail` on standard output and
+  exits `11` (it failed) or `130` (it was cancelled or interrupted, also by
+  Ctrl+C); `archiwista reindex` of several stores exits `10` when only some
+  were scanned; `archiwista doctor` exits `10` or `11` when checks fail. These
+  are outcomes, not errors: no error document follows them;
+- text for people (diagnostics, the description of an error) always goes to
+  standard error, in Polish, and the log, in English, goes there too; none of it
+  goes to standard output. Every command takes `--verbose` (debug) or `--quiet`
+  (errors only),
+  before or after its name, and without them the variable `ARCHIWISTA_LOG_LEVEL`
+  (`debug`, `info`, `warning`, `error`) sets the level; the default is `warning`.
 
-Bez `--json` polecenia wypisują krótki tekst po polsku dla ludzi; agent
-powinien zawsze podawać `--json`.
+Without `--json` the commands print a short Polish text for people; an agent
+should always pass `--json`.
 
-CLI nie pobiera danych i nie zmienia magazynu. Polecenia `users`,
-`groups`, `share` i `state` (administracja uprawnieniami) opisuje
-`archiwista --help`.
+The CLI downloads data and writes a store only through a job: a `download` (`jobs
+start download`) or `jobs retry` of one. The commands `users`,
+`groups`, `share` and `state` (permission administration) are described by
+`archiwista --help`. For a team server (v0.4) `archiwista users password ID
+[--temporary] [--stdin]` sets an account's password at the server's terminal
+(typed twice without echo, or one line of standard input; never an argument,
+which other accounts of the computer could read), `users disable ID` and `users
+enable ID` switch an account off and on, `users end-sessions ID` ends every
+session of the account, also on a running server, and an administrator's session
+gives a person a temporary password with `POST /users/{user_id}/password`: the
+answer `{"password": "…", "expires_at": "…"}` (72 hours, `Cache-Control:
+no-store`) is the only place the password appears. Setting a password ends the
+account's sessions; no answer and no log holds a password or its hash (`GET
+/users` shows `password`: `none`, `set`, `temporary` or `expired`, and
+`password_expires_at`).
 
-## 2. Sesja HTTP agenta
+## 2. The HTTP session of an agent
 
-Serwer słucha tylko na `127.0.0.1` (domyślnie port `8090`, ustawienie
-`port`). Każde żądanie `/api/*` poza wymianą tokenu wymaga sesji.
+The server listens on `127.0.0.1` only (port `8090` by default, the setting
+`port`; a team server: below). Every request `/api/*` except the token exchange
+(and on a team server `GET /session/methods` and `POST /session/login`) needs a
+session.
 
-1. Właściciel uruchamia serwer: `archiwista serve --no-browser`.
-2. Agent bierze jednorazowy token: `archiwista token --json` →
+1. The owner starts the server: `archiwista serve --no-browser`.
+2. The agent takes a one-time token: `archiwista token --json` →
    `{"token": "…", "url": "http://127.0.0.1:8090/#token=…", "label": "…", "expires_at": "…"}`.
-   Token jest ważny 5 minut i tylko raz; indeks przechowuje wyłącznie jego
-   skrót. Port w `url` pochodzi z ustawień (`--port N` go zmienia), a `label`
-   to etykieta sesji, którą token otworzy.
-3. Agent wymienia token na sesję: `POST /api/v1/session` z treścią
-   `{"token": "…"}`. Odpowiedź `200` ustawia ciasteczko `archiwista_session`
-   (`HttpOnly`) i zwraca `{"actor": "local", "kind": "agent", "roles":
-   ["admin", "store_writer"], "label": "…", "csrf_token": "…", "expires_at":
-   "…"}` — `csrf_token` tylko tutaj, `roles` to role wykonawcy (agent ma role
-   tego, kto wystawił token).
-4. **Każde** żądanie `/api` — także `GET` — niesie ciasteczko sesji
-   i nagłówek `X-Archiwista-CSRF` równy `csrf_token`; bez nagłówka albo
-   z innym tokenem odpowiedź to `403 csrf_rejected`.
+   The token is valid for 5 minutes and once; the index keeps only its hash.
+   The port in `url` comes from the settings (`--port N` changes it), and
+   `label` is the label of the session the token opens.
+3. The agent exchanges the token for a session: `POST /api/v1/session` with the
+   body `{"token": "…"}`. The answer `200` sets the cookie `archiwista_session`
+   (`HttpOnly`) and returns `{"actor": "local", "kind": "agent", "roles":
+   ["admin", "store_writer"], "store_write": true, "label": "…", "csrf_token":
+   "…", "expires_at": "…"}`: `csrf_token` appears only here, `roles` are the
+   roles of the actor (an agent has the roles of the person who issued the
+   token), and `store_write` says whether the session may write the stores (a
+   `download`: the role `store_writer` or the setting `store_write_for_all`).
+4. **Every** request to `/api`, `GET` too, carries the session cookie and the
+   header `X-Archiwista-CSRF` equal to `csrf_token`; without the header or with
+   another token the answer is `403 forbidden` (`details.reason`
+   `csrf_rejected`).
 
-Przykład z `curl` i cookie-jar (`jq` albo inny parser JSON):
+An example with `curl` and a cookie jar (`jq` or another JSON parser):
 
 ```sh
 BASE=http://127.0.0.1:8090/api/v1
-JAR="$(mktemp)"            # plik tylko dla bieżącego użytkownika
+JAR="$(mktemp)"            # a file for the current user only
 TOKEN="$(archiwista token --json | jq -r .token)"
 CSRF="$(curl -sf -c "$JAR" -b "$JAR" -H 'Content-Type: application/json' \
   -d "{\"token\": \"$TOKEN\"}" "$BASE/session" | jq -r .csrf_token)"
@@ -83,66 +136,157 @@ H="X-Archiwista-CSRF: $CSRF"
 
 curl -sf -b "$JAR" -H "$H" "$BASE/health"
 curl -sf -b "$JAR" -H "$H" -X POST "$BASE/stores/zespol/scan"
-curl -sf -b "$JAR" -H "$H" -X DELETE "$BASE/session"   # koniec pracy
+curl -sf -b "$JAR" -H "$H" -X DELETE "$BASE/session"   # end of work
 ```
 
-Zasady sesji:
+Rules of the session:
 
-- **Bez nagłówka `Origin`.** `curl`, `httpx` i `requests` go nie wysyłają;
-  obcy `Origin` albo `Sec-Fetch-Site: cross-site`/`same-site` dostaje
-  `403 csrf_rejected`. Nagłówek `Host` musi być `127.0.0.1:<port>` albo
-  `localhost:<port>` (inaczej `400 invalid_host`).
-- Token podaje się wyłącznie w treści `POST /session` — nigdy w adresie
-  (`?token=` jest odrzucany).
-- Sesja agenta działa w imieniu osoby, która wydała token (`actor` w
-  zadaniach to jej identyfikator, `actor_kind` = `agent`, `session` =
-  etykieta sesji), z jej **bieżącymi** rolami i widocznością projektów
-  (czytanymi przy każdym żądaniu).
-- Sesje żyją w pamięci serwera: wygasają po 24 h bezczynności, sesja agenta
-  najpóźniej 12 h po starcie, a restart serwera kończy wszystkie
-  (`401 session_required` → nowy token). Właściciel kończy wszystkie sesje
-  agentów poleceniem `archiwista token --revoke-all` — od razu, także na
-  działającym serwerze — i unieważnia tym niewykorzystane tokeny agentów.
-  Wyłączenie albo usunięcie konta kończy jego sesje, a odebrana rola
-  przestaje działać przy następnym żądaniu.
-- `GET /session` zwraca stan sesji (bez `csrf_token`) z rolami czytanymi
-  przy tym żądaniu; `DELETE /session` kończy sesję. Agent nie wystawia
-  tokenów kolejnych sesji (`POST /session/tokens` → `403 permission_denied`)
-  — nowy token daje właściciel (`archiwista token`).
-- Treść żądania: najwyżej 1 MiB (wymiana tokenu: 4 KiB; pliki obszarów:
-  50 MB), inaczej `413 request_too_large`.
+- **No `Origin` header.** `curl`, `httpx` and `requests` do not send it; a
+  foreign `Origin` or `Sec-Fetch-Site: cross-site`/`same-site` gets `403
+  forbidden` (`csrf_rejected`). The header `Host` must be `127.0.0.1:<port>` or
+  `localhost:<port>`, otherwise `403 forbidden` (`invalid_host`). A team server
+  (v0.4) answers only its `origin` over HTTPS (`Host` its host, the cookie
+  `__Host-archiwista_session`); plain HTTP gets `403 tls_required`, and behind a
+  reverse proxy a direct request gets `403 proxy_required`.
+- The token goes only in the body of `POST /session`, never in the address
+  (`?token=` is rejected).
+- The session of an agent acts for the person who issued the token (`actor` in
+  jobs is that person's id, `actor_kind` is `agent`, `session` is the label of
+  the session), with their **current** roles and project visibility (read at
+  every request).
+- Sessions live in the memory of the server: they expire after 24 h of
+  inactivity (on a team server after 8 h, and 7 days after their start at the
+  latest), an agent session 12 h after its start at the latest, and a restart
+  of the server ends all of them (`401 unauthorized`, `session_required` → a new
+  token). The owner ends all agent sessions with `archiwista token
+  --revoke-all`, at once, also on a running server, which also revokes unused
+  agent tokens. Disabling or deleting an account ends its sessions, and a
+  revoked role stops working at the next request.
+- `GET /session` returns the state of the session (without `csrf_token`) with
+  the roles and `store_write` read at this request; `DELETE /session` ends it.
+  An agent does not issue tokens for further sessions (`POST /session/tokens`
+  → `403 forbidden`, `permission_denied`): the owner gives a new token
+  (`archiwista token`).
+- The body of a request is at most 1 MiB (token exchange: 4 KiB; sign-in: 16
+  KiB; area files: 50 MB), otherwise `400 validation_error`
+  (`request_too_large`).
 
-**Sekrety.** Tokenu, ciasteczek, `csrf_token` ani pliku cookie-jar nie
-zapisuj w promptach, notatkach, dziennikach, historii powłoki ani
-w repozytorium. Trzymaj je w zmiennych środowiska procesu albo w pliku
-tymczasowym z prawami tylko dla siebie i usuń po pracy. W dziennikach
-serwera token z adresu jest maskowany (`token=***`).
+**Secrets.** Do not write the token, the cookies, `csrf_token` or the cookie
+jar file into prompts, notes, logs, shell history or the repository. Keep them
+in process environment variables or in a temporary file readable by you only,
+and delete it after the work. The server's logs mask the token of an address
+(`token=***`).
 
-## 3. Wyszukiwanie i filtry (`GET /slots`, `archiwista search`)
+### On a team server (v0.4)
 
-Każdy parametr `/slots` ma w `archiwista search` opcję o tej samej nazwie
-(podkreślenie → myślnik); `q` jest argumentem pozycyjnym `ZAPYTANIE`.
-Wartości sprawdza ten sam model co trasa, więc błędy są identyczne.
+A team server (USAGE "Team server") answers only at its `origin` over HTTPS;
+`curl` checks its certificate (`--cacert` for the company's authority). `GET
+/session/methods`, without a session, answers `{"mode": "team", "password":
+true, "proxy": false}` (`"local"` and `false` on one person's computer; `proxy`
+is `true` when the request came through a trusted reverse proxy that names a
+person).
 
-| Parametr | Opcja CLI | Znaczenie |
+**An agent** acts for an account, with that account's current roles, through a
+one-time token exchanged as in steps 3 and 4: from a person's session (`POST
+/session/tokens`) or from the server's terminal with `archiwista token --user ID
+--json`. There is no local owner on a team server, so `--user` is required
+(exit 2, `user_required`); a disabled account is refused (exit 2,
+`user_disabled`), an unknown one is `not_found` (exit 3), and `--revoke-all`
+takes no `--user` (`user_with_revoke_all`). `url` is an address of `origin`, and
+the cookie is `__Host-archiwista_session`.
+
+**A person's script** signs in with the account and its password: `POST
+/session/login` with `{"account": "…", "password": "…"}`. The account is trimmed
+and lower-cased, and the password is compared after Unicode NFKC. The answer is
+the same as the token exchange's, with `method` `password` and the
+`csrf_token`; a session cookie the request carried ends.
+
+```sh
+BASE=https://archiwista.firma.local/api/v1
+JAR="$(mktemp)"
+read -rs PASSWORD          # typed without echo; never an argument or a file
+CSRF="$(jq -Rn '{account: "anna.nowak", password: input}' <<<"$PASSWORD" |
+  curl -sf -c "$JAR" -b "$JAR" -H 'Content-Type: application/json' \
+    --data-binary @- "$BASE/session/login" | jq -r .csrf_token)"
+unset PASSWORD
+curl -sf -b "$JAR" -H "X-Archiwista-CSRF: $CSRF" "$BASE/session"
+```
+
+- `401 unauthorized`, `login_failed`: one answer for an unknown account, a wrong
+  password, a disabled account and an account without a password.
+  `password_expired`: a correct temporary password past its 72 hours; an
+  administrator gives a new one.
+- After five failures of one account (from any address) or of one address (for
+  any account), each attempt waits 1 s, then 2 s, 4 s… up to 15 minutes: `429
+  rate_limited`, `login_blocked`, with `Retry-After` and `details.retry_after_s`.
+  No password is checked during the wait, so retrying earlier gains nothing; a
+  success clears both counts. Attempts sent at once pass no more than one after
+  another: one that could not start if those under way all failed is `429
+  login_blocked` with `Retry-After: 1`.
+- `password_change_required: true` (a temporary password): until `PUT
+  /session/password` with `{"current_password": "…", "new_password": "…"}` the
+  session may only call `GET /session`, `GET /session/methods`, that route and
+  `DELETE /session`; anything else is `403 forbidden`,
+  `password_change_required`.
+- `PUT /session/password` answers a new session (a new cookie and a new
+  `csrf_token`) and ends every other session of the account and of its agents.
+  It refuses a new password that breaks a rule (`400 password_policy`), a wrong
+  current one (`403 wrong_password`, which counts as a failed sign-in), an
+  agent's session (`403 permission_denied`) and a session of the reverse proxy
+  (`409 proxy_session`).
+- `GET /sessions` lists the live sessions of the person and of their agents,
+  oldest first (`label`, `kind` `browser` or `agent`, `method`, `client`,
+  `user_agent`, `created_at`, `last_seen_at`, `expires_at`, `current`); `DELETE
+  /sessions/{label}` ends one (another person's label is `404`). An
+  administrator lists another account's with `?user=ID` and ends any session;
+  `DELETE /users/{user_id}/sessions` and `archiwista users end-sessions ID` end
+  every session of the account, also the tokens it issued and nobody exchanged
+  yet.
+- On a local server `POST /session/login`, `POST /session/proxy` and `PUT
+  /session/password` are `409 conflict`, `local_mode`.
+
+**Behind the company's reverse proxy** (`proxy_user_header`), a request that came
+through it signs in as the person it names with `POST /session/proxy` (no body,
+no password, no wait): the same answer with `method` `proxy`. Every later request
+of that session must come through the proxy naming the same person, else the
+session ends (`401 session_required`). A name that is no enabled account is `401
+login_failed` (with `proxy_autocreate` a missing account is created without roles),
+and so is a request that did not come through a trusted proxy.
+
+**Sharing a project.** `GET /directory` (any session) lists the enabled
+accounts and the groups, each with its `id` and `name`, to choose from for
+`PUT /projects/{project}/access`; `GET /users` and `GET /groups` stay an
+administrator's. A person or their agent creates projects and owns them,
+gives one a data folder inside its directory, and scans the folders of the
+projects they see within their limits (section 9); scans of a store, unit
+outlines and link checks are an administrator's (`403 permission_denied`).
+
+## 3. Search and filters (`GET /slots`, `archiwista search`)
+
+Every parameter of `/slots` has an option of the same name in `archiwista
+search` (underscore → hyphen); `q` is the positional argument `QUERY`. The
+same model checks the values, so the errors are identical.
+
+| Parameter | CLI option | Meaning |
 |---|---|---|
-| `q` | `ZAPYTANIE` | tekst; pasować musi każde słowo: godło, TERYT, KU, nazwa pliku, segment i produkt, etykieta wersji, numer zgłoszenia pracy, kampania, edycja (prefiks słowa, bez polskich znaków); słowo z 8–64 cyfr szesnastkowych pasuje też do początku SHA-256 |
-| `store` | `--store` | identyfikator magazynu (`/stores`); nieznany → `422` |
-| `product` | `--product` | produkt (`/products`), np. `nmt` |
-| `country` | `--country` | kod kraju, np. `PL` |
-| `years` | `--years` | rok danych (nie rok pobrania): `2023`, `2020-2023`, `2020-`, `-2023` |
-| `unit` | `--unit` | dokładny kod jednostki: godło, TERYT, KU |
-| `location` | `--location` | `any` (domyślnie), `with` (obrys albo cały kraj), `none` (bez położenia) |
-| `versions` | `--versions` | `current` (domyślnie), `all`, `full_sheet`, `pinned`, `noncurrent_unpinned` |
+| `q` | `QUERY` | text; every word must match: sheet code, TERYT, KU, file name, segment and product, version label, job request number, campaign, edition (word prefix, no Polish diacritics); a word of 8–64 hexadecimal digits also matches the start of a SHA-256 |
+| `store` | `--store` | store id (`/stores`); an unknown one → `400` |
+| `product` | `--product` | product (`/products`), for example `nmt` |
+| `segment` | `--segment` | store segment, the product's variant (`segments[].segment.path` of `/products`, e.g. `nmt/pl_1992_1m_evrf2007`); each segment keeps its own current version, so `current` lists one row per variant of a sheet |
+| `country` | `--country` | country code, for example `PL` |
+| `years` | `--years` | year of the data (not of the download): `2023`, `2020-2023`, `2020-`, `-2023` |
+| `unit` | `--unit` | exact unit code: sheet code, TERYT, KU |
+| `location` | `--location` | `any` (default), `with` (outline or the whole country), `none` (no location) |
+| `versions` | `--versions` | `current` (default), `all`, `full_sheet`, `pinned`, `noncurrent_unpinned` |
 | `status` | `--status` | `ok`, `missing`, `no_sidecar`, `unreadable`, `unrecognized` |
-| `area_id` | `--area-id` | obszar zapisany przez `POST /areas` (nie razem z `bbox`) |
-| `bbox` | `--bbox` | prostokąt `min_x,min_y,max_x,max_y` w układzie `bbox_crs` |
-| `bbox_crs` | `--bbox-crs` | układ `bbox`, domyślnie `EPSG:4326`; inny przelicza przypięta operacja producenta |
-| `limit` | `--limit` | wierszy na stronie: 1–200, domyślnie 50 |
-| `project` | `--project` | wersje przypięte w widocznym projekcie; niewidoczny projekt → `404` |
-| `cursor` | `--cursor` | `next_cursor` poprzedniej strony tego samego zapytania |
+| `area_id` | `--area-id` | an area kept by `POST /areas` (not together with `bbox`) |
+| `bbox` | `--bbox` | rectangle `min_x,min_y,max_x,max_y` in the CRS `bbox_crs` |
+| `bbox_crs` | `--bbox-crs` | CRS of `bbox`, `EPSG:4326` by default; another one is converted by the producer's pinned operation |
+| `limit` | `--limit` | rows per page: 1–200, 50 by default |
+| `project` | `--project` | versions pinned in a visible project; an invisible project → `404` |
+| `cursor` | `--cursor` | `next_cursor` of the previous page of the same query |
 
-Wartości zaczynające się od minusa podawaj z `=`:
+Give values that start with a minus with `=`:
 `archiwista search --bbox=-10,40,0,45 --json`.
 
 ```sh
@@ -152,7 +296,7 @@ curl -sf -b "$JAR" -H "$H" "$BASE/slots?product=nmt&years=2020-2023&versions=all
 curl -sf -b "$JAR" -H "$H" "$BASE/slots?bbox=19.9,50.0,20.0,50.05&location=with"
 ```
 
-Odpowiedź (`CatalogPage`, skrót):
+The answer (`CatalogPage`, abridged):
 
 ```json
 {
@@ -179,17 +323,17 @@ Odpowiedź (`CatalogPage`, skrót):
 }
 ```
 
-`groups` liczy grupy położenia w **całym** wyniku (wszystkie strony),
-niezależnie od wybranego `location`. Wiersze bez położenia nie mają obrysu
-i nie trafiają na mapę (`GET /map/footprints`), ale są w katalogu.
+`groups` counts the location groups in the **whole** result (all pages),
+whatever `location` is chosen. Rows without a location have no outline and do
+not appear on the map (`GET /map/footprints`), but they are in the catalog.
 
-## 4. Stronicowanie
+## 4. Paging
 
-Kursor jest nieprzezroczysty i związany z zapytaniem: kolejne strony pobiera
-się z **tymi samymi** filtrami i `cursor=<next_cursor>`, aż `next_cursor`
-będzie `null`. Kursor innego zapytania, `limit` spoza 1–200 albo nieznany
-parametr dają `422 validation_error`. Strony dowolnej wielkości zawierają
-łącznie te same wiersze w tym samym porządku (nazwa pliku, slot, magazyn).
+The cursor is opaque and bound to its query: fetch the next pages with the
+**same** filters and `cursor=<next_cursor>` until `next_cursor` is `null`. The
+cursor of another query, a `limit` outside 1–200 or an unknown parameter give
+`400 validation_error`. Pages of any size together hold the same rows in the
+same order (file name, slot, store).
 
 ```sh
 cursor=""
@@ -201,58 +345,350 @@ while :; do
 done
 ```
 
-To samo przez HTTP: `"$BASE/slots?versions=all&limit=200&cursor=$cursor"`
-(kursor jest bezpieczny w adresie URL).
+The same over HTTP: `"$BASE/slots?versions=all&limit=200&cursor=$cursor"` (the
+cursor is safe in a URL).
 
-## 5. Karty, stan i świeżość
+## 5. Cards, state and freshness
 
-- `archiwista entry MAGAZYN SLOT` / `GET /stores/{store}/slots/{slot}` —
-  karta pliku (`SlotCard`): wszystkie wersje, `current` i `full_sheet`,
-  przypięcia widocznych projektów (`pinned_by`), problemy z instrukcją
-  naprawy i `paths` (`local` — ścieżka na tym komputerze, `aliases` —
-  ta sama ścieżka pod innymi literami dysków).
+- `archiwista entry MAGAZYN SLOT` / `GET /stores/{store}/slots/{slot}`: the card
+  of a file (`SlotCard`): all versions, `current` and `full_sheet`, the pins of
+  visible projects (`pinned_by`), problems with a repair instruction and
+  `paths` (`local` is the path on this computer, `aliases` the same path under
+  other drive letters, `personal` the path through the session's own path
+  aliases, `null` without one).
 - `archiwista version MAGAZYN WERSJA` /
-  `GET /stores/{store}/versions/{version}` — wszystkie wartości wersji
-  z indeksu, obrys w WGS84 i surowy sidecar; sam sidecar:
+  `GET /stores/{store}/versions/{version}`: all values of the version from the
+  index, the outline in WGS84 and the raw sidecar; the sidecar alone:
   `GET …/versions/{version}/sidecar`.
-- `GET /requests/{parent_request}` — pliki jednego zgłoszenia producenta
-  (np. obie strony granicy PL/CZ).
-- `archiwista projects` / `GET /projects` i `archiwista project PROJEKT` /
-  `GET /projects/{project}` — projekty widoczne dla wykonawcy; ukryty
-  projekt odpowiada jak nieistniejący (`404`). `GET
-  /projects/{project}/status` pyta producenta o stan teraz (bez sieci).
-- `archiwista status` / `GET /health` — wersje, źródła, indeks i każdy
-  magazyn: `status` (`unknown` — jeszcze nie skanowany, `available`,
-  `unavailable`), liczniki, `last_scan` z wykonawcą, `running_job`
-  z postępem, `stale`.
+- `archiwista version-command MAGAZYN WERSJA` /
+  `GET /stores/{store}/versions/{version}/command` (A-ADR-049 D-10): the
+  producer's call that selects the stored version again (`VersionCommand`:
+  `producer`, `command`, `options` without the store root, and `line`, the
+  producer's command line with the store's directory; `null` for a producer
+  without commands), rebuilt by the producer from the version's metadata,
+  offline. Where the metadata does not rebuild it the answer is `422
+  unsupported` with `details.reason` `command_not_rebuildable` and the
+  producer's text (for example a derived file); a producer that gives no calls
+  of versions is `422 unsupported` (`no_commands`). The index keeps the answer
+  for the installed producer version, so a second request does not ask it.
+- `GET /requests/{parent_request}`: the files of one producer request (for
+  example both sides of the PL/CZ border).
+- Projects are Archiwista's own `archiwista-project.json` (A-ADR-049); the
+  producers' manifests are not read. Pinning and the sets' states
+  (`project-pin`, `project-draft`, `project-unpin`, `project-uncall`,
+  `project-close`, `project-reopen`), the jobs over a project's groups (`POST
+  /projects/{project}/jobs`, `project-verify`, `project-check`,
+  `project-repin`, `project-restore`; section 9), the exports and the activity
+  (`project-activity`) are below; the project card of the web interface uses
+  the same routes, and a pin's `command` (`not_rebuildable` with
+  `command_refusal`) tells beforehand which pins a check, a restore or a re-pin
+  cannot reach (D5).
+- `archiwista projects` / `GET /projects` and `archiwista project PROJEKT` /
+  `GET /projects/{project}`: the projects visible to the actor; a hidden project
+  answers like a missing one (`404`). A project is its directory, which holds
+  `archiwista-project.json` (schema `archiwista-project/1`); a directory with
+  only a producer's manifest is no project. An item has `name`, `description`,
+  `state` (`ok`, `invalid`: the file breaks a rule, `unsupported_schema`: a
+  newer format) with its `problem` code, `stores` (each producer's `root` as the
+  file writes it and the configured `store` it matches, `null`: none),
+  `area` (`path`, `sha256`, `state` `ok`/`missing`/`changed`/`invalid`, and the
+  `area_id` of the index it was read into) or `null`, the counts `groups`,
+  `open_groups` (sets in the making), `pins` and `missing_pins`, `scanned_at`,
+  and whether the actor may change it now (`project_write`: its owner or an
+  administrator; read at each request). The card adds `path`, `created_at`,
+  `created_by`, `groups` (each `name`; `state`, `open` for a set in the making
+  or `closed`; `closed_at`, `closed_by` and `pins_sha256` of a set Archiwista
+  closed, else `null`; `digest_state`, `ok`, `mismatch` (the recorded digest is
+  not that of the pins: the file was changed outside Archiwista) or `null`
+  without a recorded digest; `origin` `{kind, producer, calls, selections}`,
+  `kind` `plan` while the set holds calls, else `local`, `producer` and `calls`
+  `null` for `local`, `selections` the requests that pinned by hand, for both;
+  and its `pins`, each with `producer`, `store`, `version`, `sha256`,
+  `content_sha256`, `size_bytes`, `unit`, `label`, `pinned_at`, `pinned_by`,
+  `calls` (the places in `origin.calls` of the calls whose runs pinned it, `[]`
+  for a pin added by hand, `null` for a pin written before the sets' states or
+  of a local set), `state`, `slot`, `is_current`, and `command`: `rebuildable`,
+  `not_rebuildable` with the producer's text in `command_refusal`, or
+  `unknown` until the producer is asked, see `version-command`) and `problems`
+  (`invalid_project_file`,
+  `unsupported_project_schema`, `unknown_store`, `area_missing`,
+  `area_changed`, `area_invalid`, `missing_pin`, `pin_sha256_mismatch`).
+  `--store` / `?store=` lists the projects with a store of that id.
+- `archiwista project-init KATALOG [--name NAZWA] [--description TEKST]
+  [--area-id OBSZAR]` / `POST /projects` (`{"path", "name"?, "description"?,
+  "area_id"?}`): Archiwista writes the project file (the directory made when
+  missing; the area, when given, into its `obszary/`); the answer is `201` with
+  `Location` and the card as the index holds it at once. The project names no
+  store until its first pin. It lies in a project directory of the settings or
+  at most four levels below one, outside hidden directories and stores (`400
+  project_not_discoverable`; elsewhere `403 path_outside_root`; a configured
+  project directory that is missing: `400 project_dir_missing`); an unknown area
+  is `404`; a directory that holds the file is `409 project_exists`. Where no
+  project was, any person or their agent creates one (v0.4) and the account
+  owns it, at the visibility of the setting `default_project_visibility`
+  (`project.create` in the action log); the computer's owner (`project-init`,
+  local mode) leaves it without an owner. A directory with an access entry is
+  changed by its owner or an administrator only (`403 permission_denied`).
+- `archiwista project-edit PROJEKT [--name NAZWA] [--description TEKST]` /
+  `PATCH /projects/{project}` (`{"name"?, "description"?}`, one at least;
+  `project.update`), `archiwista project-area PROJEKT (--area-id OBSZAR |
+  --clear)` / `PUT /projects/{project}/area` (`{"area_id": "…" | null}`; the
+  area file of a cleared area stays on the disk; `project.area`) and
+  `archiwista project-store PROJEKT PRODUCENT --store MAGAZYN` / `PUT
+  /projects/{project}/stores/{producer}` (`{"store"}`: a configured store, `404`
+  else, with a directory of the producer, `400 store_without_producer` else;
+  written relative to the project directory when the store has path aliases;
+  `project.store`) answer the card. They need the project's owner or an
+  administrator (`404` for a hidden project, `403 permission_denied` for one
+  seen but not owned). Every change of the file takes the project's lock
+  `.archiwista-project.lock` and waits 5 s for another change (`409
+  project_locked`, `details.lock` and `details.owner`); an invalid file or one
+  of a newer format is not changed (`409 invalid_project_file`,
+  `unsupported_project_schema`), and a directory that cannot be written is
+  `500 io_error` (`project_file_write_failed`).
+- `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]` / `POST
+  /projects/{project}/exports` (`{"name", "groups"?, "zip"?}`; `name` of 1 to 64
+  letters, digits, `.`, `_` and `-`, not starting with `.`, else `400
+  validation_error`; an unknown group is `404`; `zip` false by default): writes
+  `eksport/<name>/` in the project directory, a flat set of input data for another
+  tool: one folder per category (`NMT`, `NMPT`, `LAZ`, `ORTO`, `BDOT`, `HSG`,
+  `CORINE`, `SOILGRIDS`, `WARSTWICE`…, `IMGW`; the producer's adapter names it, else
+  the upper-cased product id) holding each pinned version of the chosen groups once,
+  copied (never hard-linked) under its original name, with the companion files the
+  store holds beside it (`.prj`, `.tfw`, `.aux.xml`, the parts of a Shapefile; never
+  a `*.meta.json`); two files of one name in a folder both get the version's label
+  before the extension (`M-33-44-A-d-2-2_2025-06-13.asc`; equal labels add the
+  SHA-256 prefix). `README.txt` (Polish, UTF-8, LF) describes every file (folder and
+  name, product, year, label, coordinate and height systems when known, size,
+  SHA-256, the groups that pin it) and ends with "Źródła danych", each attribution
+  once. With `zip` the folder's content is also `eksport/<name>.zip`. An export of
+  that name is replaced whole, written in a hidden sibling directory and swapped in;
+  without `zip` its old ZIP is removed. The answer `201 ProjectExport` has `name`,
+  `path` (the export directory as a copy path), `files` (every file written,
+  relative and `/`-separated, the category folders' files by name and `README.txt`
+  last), `pins` (the versions copied), `skipped` (`no_store`: pins whose store
+  matches no configured one; `missing`: pins whose version is not present in the
+  index or on the disk), `zip` and `written_at`. It needs `project.write` like a
+  change (`403 permission_denied`, `404` for a hidden project; `409
+  invalid_project_file`, `unsupported_project_schema`; `500 io_error`, the old
+  export kept) and is logged as `project.export` (`details`: `name`, `pins`); the
+  project file is not written. `archiwista project-exports PROJEKT` / `GET
+  /projects/{project}/exports` (whoever sees the project) answers `ProjectExports
+  {items}`: each export of `eksport/` (a directory with `README.txt`) with `name`,
+  `path`, `files`, `zip`, `written_at` (of its `README.txt`) and `changed_since` (the
+  project file changed after it: write it again). `GET
+  /projects/{project}/exports/{name}/zip` (whoever sees the project) sends
+  `eksport/<name>.zip` as an attachment (`application/zip`, `Cache-Control:
+  private, no-store`), `404 not_found` when
+  the export has none; like a file download, a link of the interface
+  (`Sec-Fetch-Site: same-origin`, or `none` for an address typed in) passes
+  with the session cookie alone, without `X-Archiwista-CSRF`.
+- `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` / `GET
+  /projects/{project}/activity` (`?limit=` 1 to 100, by default 20; `?cursor=`
+  the `next_cursor` of the page before; another parameter is `400
+  validation_error`): what was done to the project and its jobs, from the action
+  log, newest first (A-ADR-049 decision 14). The entries `project.*` about the
+  project (`project.create`, `project.update`, `project.area`, `project.store`,
+  `project.access`, `project.data_dir`, `project.pin`, `project.unpin`,
+  `project.set_close`, `project.set_open`, `project.export`,
+  `project.delete`) and `job.start`, `job.retry` and `job.cancel` of a job whose
+  `details.project` is the project (a project job, a download that pins into it,
+  a warm-up of its previews), with the outcome `ok` or `failed`; a refusal and
+  another project's entries never. The answer `ProjectActivity {items,
+  next_cursor}`: each item `id`, `at`, `actor`, `actor_name` (the account's name;
+  `null` for `local` and a removed account), `actor_kind`, `action`, `outcome`
+  and `details`, without the client address and the session (`GET /log` keeps
+  them for administrators). For whoever sees the project (`404` for a hidden
+  one).
+- `archiwista project-delete PROJEKT --yes` / `DELETE /projects/{project}`
+  (`204`, no body; the command prints what stayed, nothing with `--json`)
+  removes the project from Archiwista, never data (A-ADR-049 erratum 2). Under
+  the project's lock only what Archiwista wrote in the directory goes:
+  `archiwista-project.json`, the area files of `obszary/` (`<area id>.geojson`;
+  the folder when nothing else is left in it) and `eksport/`. The own data
+  (`dane/`, its snapshots `.wersje/`) and every other file stay; the directory
+  goes only when it is then empty. The project's access entry and its rows of
+  the index go; no store is touched, so its pinned versions stay there,
+  unused. Needs `project.write` (`403 permission_denied`; `404` for a hidden
+  project). Refused: a job of the project that waits or runs (`409 conflict`,
+  that job in `details.job`), a project file Archiwista cannot read (`409
+  invalid_project_file`, `unsupported_project_schema`), a lock another change
+  holds (`409 project_locked`) and an entry that cannot be removed (`500
+  io_error`). Without `--yes` the command removes nothing: `validation_error`,
+  reason `confirmation_required`, `details.option` `--yes` (nothing asks
+  interactively). Logged as `project.delete` (target the project's access key;
+  `before` its access entry; `details`: `name`, `path`, `kept`, the entries
+  left in the directory); the project's earlier entries stay in the log.
+- Sets (A-ADR-049 erratum 6). A set (`groups[]` of the card) is `open`, a set
+  in the making whose content changes, or `closed`, frozen: a closed set takes
+  no pin, unpin, removed call or re-pin (`409 conflict`, `set_closed`) until it
+  is opened again. A set without `state` in the file (written before) is
+  closed. An open set has one producer, fixed by its first call or pin; another
+  producer's versions or calls are `409 conflict`, `set_producer`. A set
+  holding calls has the origin `plan`, any other `local`; a pin of a `plan` set
+  names in `calls` the calls whose runs pinned it, `[]` when it was added by
+  hand. Every change of a set needs `project.write` (`403 permission_denied`;
+  `404` for a hidden project) and is written under the project file's lock
+  (`409 project_locked`; a file Archiwista cannot read `409
+  invalid_project_file`, `unsupported_project_schema`).
+- `archiwista project-pin PROJEKT ZESTAW (--version MAGAZYN:WERSJA … | --query
+  JSON) [--from local_state|catalog|file] [--add | --open]` / `POST
+  /projects/{project}/groups` (`{"name", "from", "versions"?: [{"store",
+  "version"}], "query"?: {…the filters of GET /slots}, "open"?: false}`,
+  exactly one of `versions` and `query`; `from` `file` names `versions`,
+  `catalog` a `query`, `local_state` either: its filters, or the year layer the
+  map shows) pins versions the store holds into a new set, written closed at
+  once (`closed_at`, `closed_by`, `pins_sha256`), or with `--open` / `"open":
+  true` left open; a new set whose every version was skipped is open too.
+  With `"open": true` `versions` and `query` may both be left out: an empty set
+  in the making, which `archiwista project-draft PROJEKT ZESTAW` makes. With
+  `--add` / `POST /projects/{project}/groups/{group}/pins` (the same without
+  `name` and `open`, `200`) the versions go into a set in the making of either
+  origin: the request is recorded in its `origin.selections`, and a pin of a
+  `plan` set gets `"calls": []`. The versions come from the index alone (no
+  network, no producer): named ones, older too, or the versions of the query's
+  rows on every page (`current` by default). The answer (`201`) is
+  `PinOutcome`: `project` (the card), `group`, `pinned`, `already` (pinned
+  before, or named twice), `skipped` (`[{store, version, reason}]`, `missing`
+  or `no_sha256`) and `state` (the set's, `open` or `closed`, after the
+  request). The first pin of a producer names the project's store of that
+  producer. Refused before anything is written: more than 10,000 versions
+  (`400 too_many_pins`, `details.count`), a name breaking the rule (`400
+  invalid_group_name`), a taken name (`409 group_exists`, compared
+  case-folded), no such set (`404`, `group_not_found`), a closed set (`409
+  set_closed`), versions of another producer than the open set's, or of
+  several producers for a new open set (`409 set_producer`), a version of
+  another store than the project's (`409 other_store`, `details.store`) and a
+  project store matching no configured one (`409 unknown_store`). Logged as
+  `project.pin` (`group`, `from`, `pins`, `already`, `skipped`, and for a new
+  set `open`, whether it was left open; `pins: 0` for an empty one).
+- `archiwista project-unpin PROJEKT ZESTAW --pin PRODUCENT:WERSJA …` / `POST
+  /projects/{project}/groups/{group}/unpin` (`{"pins": [{"producer",
+  "version"}]}`) removes pins of an open set (`409 set_closed` for a closed
+  one), and without `--pin` / `DELETE /projects/{project}/groups/{group}` the
+  whole set, open or closed; both answer the card and leave the versions in
+  the store. Logged as `project.unpin` (`group`, the `pins` removed and
+  `group_removed`).
+- `archiwista project-uncall PROJEKT ZESTAW --call N` / `DELETE
+  /projects/{project}/groups/{group}/calls/{call}` (no body; `call` the 0-based
+  place in `origin.calls`, which is `files[].call` of the download's summary
+  when the set was new) removes a call of an open set: `N` leaves every pin's
+  `calls` and the higher places shift down by one; a pin whose `calls` becomes
+  empty that way goes, and a hand pin (`[]`) or a pin of another call too
+  stays. With the last call gone the set's origin is `local` again (its
+  selections kept, the pins' `calls` gone). It answers the card. Refused: a
+  closed set (`409 set_closed`), no such set (`404`, `group_not_found`), no
+  such call (`404 not_found`, `call_not_found`) and a set holding a pin without
+  `calls`, written before the sets' states (`409 conflict`,
+  `pins_without_calls`: a re-pin, `project-repin`, writes them). Logged as
+  `project.unpin` (`group`, `call`, the `pins` removed).
+- `archiwista project-close PROJEKT ZESTAW` / `POST
+  /projects/{project}/groups/{group}/close` (no body) closes a set in the
+  making and answers the card. Refused, in this order: no such set (`404`,
+  `group_not_found`); a closed set (`409 set_closed`); a job that writes into
+  it waits or runs, a `download` whose `params.pin` names the project and the
+  set or a `project_repin` of the set (`409 set_job_active`, `details.job`
+  `{id, kind, state}`); a set without pins (`409 set_empty`); a pin whose state
+  at the index's last scan is not `ok` (`409 set_pins_not_ok`, `details.counts`
+  `{"missing": a, "sha256_mismatch": b, "unknown": c}` and `details.pins`, the
+  first 100 `{producer, version, state}`: run `project-verify` or a rescan
+  first). It writes `state: "closed"`, `closed_at` (now), `closed_by` (the
+  actor's id, `local` for the local owner) and `pins_sha256`, and logs
+  `project.set_close` (`group`, `pins`, `pins_sha256`). `pins_sha256` is the
+  lowercase hexadecimal SHA-256 of the UTF-8 bytes of the lines
+  `<producer>\t<version>\t<sha256>\n`, one per pin, sorted by producer, then
+  version, by code point (`archiwista.projects.document.pins_digest`); only
+  the pins' identity counts, not `calls`, `pinned_at`, labels or the origin. A
+  reader checks a closed set with it, for example:
 
-Slot i wersję adresuje się ścieżką względną z wyników (`slot`,
-`version.path`, `current`), nigdy ścieżką systemu plików. Odczytu z dysku
-i parsowania sidecarów nie trzeba: API zwraca wszystko z indeksu.
+  ```sh
+  archiwista project raba --json | jq -r '.groups[] | select(.name == "2024")
+    | .pins[] | [.producer, .version, .sha256] | @tsv' | LC_ALL=C sort | sha256sum
+  ```
 
-**Świeżość.** Każda odpowiedź z indeksu ma `stale` i `stale_stores`. Gdy
-magazyn jest niedostępny (np. odłączony udział SMB), listy i karty dalej
-odpowiadają `200` według indeksu z chwili `indexed_at`, a `stale` jest
-`true` — agent powinien to zgłosić użytkownikowi, a nie traktować wyniku
-jako aktualnego stanu dysku.
+- `archiwista project-reopen PROJEKT ZESTAW` / `POST
+  /projects/{project}/groups/{group}/reopen` (no body) opens a closed set
+  again, an older one without `state` too, and answers the card: it writes
+  `state: "open"` and removes `closed_at`, `closed_by` and `pins_sha256`, and
+  logs `project.set_open` (`group`, and the `closed_at`, `closed_by` and
+  `pins_sha256` of the closing it ends). An open set is `409 set_open`, no
+  such set `404` (`group_not_found`). A reader that takes only closed sets
+  (Hydrograf) refuses the set until it is closed again.
+- `archiwista jobs start download … [--plan ZADANIE] --pin PROJEKT --pin-group
+  ZESTAW [--pin-add | --pin-open]` / `POST /jobs` with `"pin": {"project",
+  "group"}` (a `download` only; section 9) pins what the download leaves into a
+  new set of the plan window, written closed (A-ADR-049 decision 9); with
+  `"open": true` (`--pin-open`) the new set is left in the making, and with
+  `"add": true` (`--pin-add`) the job's calls and pins are appended to the set
+  in the making `group` (erratum 6); `add` and `open` together are `400
+  validation_error`. The request needs `project.write` of the project besides
+  `store_writer`, and is refused before a job exists: an unknown or hidden
+  project `404`, `403 permission_denied`, `400 invalid_group_name`, `409
+  other_store` and `409 unknown_store`; for a new set `409 group_exists`; with
+  `add` no such set (`404`, `group_not_found`), a closed set (`409
+  set_closed`), another producer than the set's (`409 set_producer`) and more
+  than 1,000 calls in the set and the job together (`400 too_many_calls`,
+  `details.count`, `details.limit`). The job's `params.pin` keeps `add` or
+  `open` when true. When the job succeeds (no failed unit, nothing `taken`),
+  its worker writes under the project's lock after the rescan: a new set of
+  origin `plan` with the job's producer and calls, or the job's calls appended
+  to the open set's `origin.calls` (checked open again), a pin for every file
+  of `files[]` and, for each call with a kept plan, for every other position
+  the current version the index holds at its path, each pin's `calls` naming
+  its call (offset by the calls the set held); a version the set pins already
+  gains the call and keeps `pinned_at` and `pinned_by`. `result.pin` says what
+  became of it: `{project, group, ["add": true | "open": true], written: true,
+  pins, already, state, not_pinned: [{path, reason: "not_in_store"}]}` (`pins`
+  the new pins, `already` the versions the set pinned already, `state` the
+  set's after the write); `{project, group, [mode], written: false, reason:
+  "job_partial"}` for a job that did not succeed (nothing is written; a retry
+  pins again); `{project, group, [mode], written: false, error: {code, reason,
+  detail}}` when the write failed (a name taken meanwhile, the lock held, the
+  set closed or removed meanwhile: `set_closed`), which ends the job `partial`
+  with its files in the store ("Otwórz do edycji", `project-reopen`, then `jobs
+  retry`). The job belongs to the project (`GET /jobs?project=`), and its
+  `job.start` entry of the log has `project` and `group`.
+- `archiwista status` / `GET /health`: versions, sources, the index and every
+  store: `status` (`unknown` not scanned yet, `available`, `unavailable`),
+  counters, `last_scan` with the actor, `running_job` with its progress,
+  `stale`.
+- `GET /preferences` / `PUT /preferences` (v0.4, any session): the session's
+  own preferences, an agent's being its account's and the computer owner's in
+  local mode: `year_types` (`hydro`, `meteo`), `basemap` (a configured name,
+  `""` for none, `null` for the first) and `path_aliases` (at most 20
+  `{"server": "/mnt/nas/", "personal": "Y:\\"}`, the server prefix absolute,
+  each at most 400 characters). `PUT` replaces them all (an omitted field
+  takes its default) and answers them; a basemap that is not configured is
+  `400 unknown_basemap`. An alias only changes `personal` of the copy paths:
+  every route still takes paths on the server.
 
-**Tryb offline.** Ustawienie `offline` (`GET /settings`) wyłącza wszystko,
-co wymaga sieci; odczyt indeksu, karty i skany lokalne działają dalej,
-a zadanie obrysów jednostek dostaje `409 offline_mode`.
+Address a slot and a version by the relative path from the results (`slot`,
+`version.path`, `current`), never by a file system path. There is no need to
+read the disk or parse sidecars: the API returns everything from the index.
 
-**Obszar i stan lokalny.** `POST /areas` zapisuje obszar: GeoJSON
-`Polygon` albo `MultiPolygon` w WGS84 jako `application/json`
-(`{"geometry": {…}, "name": "…"}`) albo plik GeoJSON, GeoPackage lub ZIP
-z jednym Shapefile jako surową treść (np. `Content-Type:
-application/octet-stream`; `?name=` i — dla pliku z kilkoma warstwami —
-`?layer=`). Odpowiedź `201` ma `id` (ta sama geometria zawsze dostaje to
-samo), pole w km² (`area_km2`, `area_crs`) i kraje. `id` jest parametrem
-`area_id` w `/slots` (`archiwista search --area-id`) i w
-`GET /local-coverage?area_id=…&product=…&store=…` — ile obszaru pokrywają
-bieżące wersje produktu w magazynie: `results` z krajem, `percent`
-(zaokrąglony w dół) i `label` („lokalnie 83% obszaru”). Przed policzeniem
-serwer czyta sloty obszaru z magazynu (najwyżej 500, do 10 s); w przeciwnym
-razie odpowiada z indeksu i podaje powód w `stale_reason`.
+**Freshness.** Every answer from the index has `stale` and `stale_stores`. When
+a store is unavailable (for example a disconnected SMB share), lists and cards
+still answer `200` from the index as of `indexed_at`, and `stale` is `true`: an
+agent should tell the user so, not treat the result as the current state of the
+disk.
+
+**Offline mode.** The setting `offline` (`GET /settings`) turns off everything
+that needs the network; reading the index, cards and local scans still work,
+and a job of unit outlines gets `409 conflict` (`offline_mode`).
+
+**Area and local state.** `POST /areas` keeps an area: a GeoJSON `Polygon` or
+`MultiPolygon` in WGS84 as `application/json` (`{"geometry": {…}, "name":
+"…"}`), or a GeoJSON, GeoPackage or ZIP with one Shapefile as the raw body (for
+example `Content-Type: application/octet-stream`; `?name=` and, for a file with
+several layers, `?layer=`). The answer `201` has an `id` (the same geometry
+always gets the same one), the area in km² (`area_km2`, `area_crs`) and the
+countries. The `id` is the parameter `area_id` of `/slots` (`archiwista search
+--area-id`) and of `GET /local-coverage?area_id=…&product=…&store=…`: how much of
+the area the current versions of the product in the store cover: `results` with
+the country, `percent` (rounded down) and `label` ("lokalnie 83% obszaru").
+Before counting, the server reads the area's slots from the store (at most 500,
+up to 10 s); otherwise it answers from the index and gives the reason in
+`stale_reason`.
 
 ```sh
 AREA="$(curl -sf -b "$JAR" -H "$H" -H 'Content-Type: application/json' \
@@ -263,61 +699,191 @@ curl -sf -b "$JAR" -H "$H" "$BASE/local-coverage?area_id=$AREA&product=nmt&store
 archiwista search --area-id="$AREA" --product=nmt --json
 ```
 
-## 6. Podglądy, warstwy, porównanie i dane własne (v0.2)
+**Stations and the coverage of their series** (the IMGWTools source, plans I6 and I8).
+`GET /stations` pages the stations of the station catalogs of IMGW-PIB and ČHMÚ along
+rivers (`sort=river`, the default: by the hydrographic code, so a tributary follows
+its river, then the provider's order on the river, then the name) or by name
+(`sort=name`). `q` finds a station whose name or river contains the text (case
+ignored; no character is a wildcard) or whose code begins with it; a cursor belongs
+to its `q` and `sort`. Filters: `store`, `provider`, `kind`, `active`, `river_code` with
+`river_scope` (`exact`, or `tributaries`: every code that begins with it),
+`dataset` (a dataset key such as `pl.imgw.hydro_daily`), `variable`, `coverage`
+(`Q:continuous`, `H:gaps`; states of one variable are alternatives) and
+`min_complete_years` (`Q:30`), all three repeatable and the last two needing
+`dataset`, `years` (`1951-2025`, the range R of the labels), `year_type`,
+`location` (`any`, `with`, `none`), `limit` and `cursor`; an area is `area_id` or
+`bbox` with `bbox_crs`, and it takes the stations on its boundary too, those closer
+to it than their location uncertainty (`location.on_boundary`; `boundary=false`
+leaves them out). Each item has its `location` and `series[]`: per dataset the
+series version, the station's `file` with its `sha256`, the `license`, the
+`attribution` to quote with the data, and `coverage` with an entry per variable
+(`state`, the `label` in the request's language and the structure behind it); a
+station has no single label. `counts` counts the whole result: `located`,
+`boundary`, `unlocated` (no position: after the attribute and coverage filters,
+never placed in an area; list them with `location=none`) and `hidden` (stations a
+coverage filter hid). `GET /stations/{code}` is a station's card, `GET
+/stations/{code}/coverage` its variables year by year (`variable` repeatable; each
+year's `cell` is `full`, `fraction`, `none` or `unknown`, and an unknown year is
+never a gap) and `GET /map/stations?bbox=…` the located stations of a view, with
+each variable's state and label when `dataset` is given, or a grid above `limit`. A
+code that several stations share answers `400` with `details.reason`
+`ambiguous_station` and the stations in `details.stations`: ask again with `store`
+and `provider`. Without IMGWTools every station route answers `503
+missing_dependency` (`source_unavailable`) with the fix in `hint`. `GET
+/stations/datasets` names the datasets with station series (`archiwista stations
+datasets`): each one's key, the producer's name of its segment, provider, family,
+unit, the year type of its labels, R by default (`years`), the label of its current
+series version and its `variables` (the distinct keys of its stations' series); use a
+key as `dataset` and a variable as `variable` of the other routes. `meteo_kind`
+(repeatable: `synoptic`, `climate`, `precipitation`) keeps the meteo stations of
+those kinds, the counts too. Without `year_type` the routes and `archiwista stations`
+number the years as `year_types` of `GET /preferences` says for the data's family
+(hydro hydrological and meteo calendar by default; a list of both families, without
+`dataset`, `kind` or `meteo_kind`, as hydro); a given `year_type` wins and changes
+nothing, and half-year characteristics stay hydrological. `PUT /preferences` with
+`{"year_types": {"hydro": …, "meteo": …}}` changes the choice of the session's
+person only (`archiwista stations` reads the computer owner's).
+`GET /stations/timeline` (`archiwista stations timeline`) is the Timeline
+of a page: the filters, order and cursor of `GET /stations` with `dataset`
+required, each item a station with its `series` exactly as `GET
+/stations/{code}/coverage` gives it for the same `variable`, `years` and
+`year_type`; `variable` keeps the stations with a value of each variable and only
+their rows. Read a long list page by page; the years of a page come from the
+index in one read. `GET /stations/{code}/series` (`archiwista stations series`) is
+the chart of one or two variables (`variable`, once or twice) of a station's
+current series, for display only: `dataset` names the series (by default the one
+with every variable), `from` and `to` the range (by default the variables' known
+span, every day their labels count) and `max_points` (≤ 2,000) the most points a
+variable gets: up to that many units each point is a unit's value, beyond it the
+least, mean and greatest value of `interval` units (`null` without a value, never
+interpolated). `gaps` are the gaps each variable's label counts in `year_type`
+(the card's, by default the remembered one; named in the answer) cut at the
+range's ends: over the default range their units are the label's known units
+without a value and its longest gap is one of them. `markers` are the accumulated
+sums and the extremes IMGW published with their dates.
+`version` must be the current one in the index (`409` otherwise; read the card
+again); half-year characteristics are not drawn as a line (`400`, reason
+`half_year_chart`). `GET /stations/compare` (`archiwista stations compare`) is one
+variable of 2 to 5 stations' series of one `dataset` over one range: `station`
+repeated, each `<store>/<provider>/<code>` in the order of the panels; `from` and
+`to` by default the variable's known spans at the stations together. Every
+station's `chart` is its own chart (`GET /stations/{code}/series`) over that range,
+with the one `interval` of the answer, and its `coverage` the variable's label and
+facts as on its card in `year_type`; a station without the series or the variable
+keeps its place with `null` for both. No station with the variable is `400`
+(reason `unknown_variable`), none with a series of the dataset `404`.
 
-`ref` bierz z odpowiedzi karty wersji, pliku własnego albo migawki:
-`version:<store>:<ścieżka-wersji>`, `file:<project>:<ścieżka-pliku>`
-lub `snapshot:<project>:<etykieta>:<ścieżka-pliku>`. Nie twórz
-odwołań z bezwzględnych ścieżek systemu plików. Resolver przed dostępem
-do pamięci podglądów sprawdza widoczność projektu. Projekt niewidoczny
-daje `404`, brak prawa do migawki — `403`.
+```sh
+curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"
+curl -sf -b "$JAR" -H "$H" \
+  "$BASE/stations?area_id=$AREA&dataset=pl.imgw.hydro_daily&coverage=Q:continuous&min_complete_years=Q:30"
+curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW-PIB"
+curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310/coverage?variable=Q&years=1981-1983"
+curl -sf -b "$JAR" -H "$H" \
+  "$BASE/stations/timeline?dataset=pl.imgw.hydro_daily&river_code=2138&river_scope=tributaries"
+archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
+  --coverage=Q:continuous --min-complete-years=Q:30 --json
+archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
+archiwista stations datasets --json
+archiwista stations timeline --dataset=pl.imgw.hydro_daily --variable=Q --json
+archiwista stations series 149190310 --variable=Q --from=1981-01-01 --to=1983-12-31 --json
+archiwista stations compare --station=zespol/IMGW-PIB/149190310 \
+  --station=zespol/IMGW-PIB/149200090 --dataset=pl.imgw.hydro_daily --variable=Q --json
+```
 
-`GET /stores/{store}/versions/{version}/preview` zwraca `PreviewInfo`:
-`state` (`ready`, `needs_build`, `building`, `unavailable`), `kind`,
-`reason` (`code`, polskie `message`, `fix`), `styles`, `default_style`
-oraz adresy `thumbnail_url`, `tiles_url`, `features_url`, `members_url`.
-Przy `needs_build` wywołaj `POST …/preview`: `202` zwraca zadanie, `200`
-oznacza gotowy podgląd. Obraz pobierz przez `GET …/preview.png?size=512`
-(`--style` w CLI, parametr `style` w HTTP). Kafle `…/tiles/{z}/{x}/{y}.png`,
-wektory `…/features?bbox=…&zoom=…` i spis ZIP `…/members` mają tę samą
-ochronę sesji i nagłówka CSRF, **również dla obrazów**. Żądania odłączonego
-magazynu mogą korzystać z pamięci, a przy jej braku podają powód.
+## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3), file download (v0.4)
+
+Take a `ref` from the answer of the card of a version, of an own file or of a
+snapshot: `version:<store>:<version-path>`, `file:<project>:<file-path>` or
+`snapshot:<project>:<label>:<file-path>`. Do not build references from absolute
+file system paths. Before it touches the preview cache the resolver checks the
+visibility of the project. An invisible project gives `404`, a missing right to
+a snapshot `403`.
+
+`GET /stores/{store}/versions/{version}/preview` returns `PreviewInfo`: `state`
+(`ready`, `needs_build`, `building`, `unavailable`), `kind`, `format` (e.g.
+`GeoTIFF`; a ZIP holding exactly one raster is previewed as that raster:
+`kind` `raster`, `format` `XYZ (ZIP)`), `reason` (`code`,
+a `message` and a `fix` in the language of the request), `styles`,
+`default_style` and the addresses
+`thumbnail_url`, `tiles_url`, `features_url`, `members_url`. For `needs_build`
+call `POST …/preview`: `202` returns a job, `200` means the preview is ready.
+`POST …/preview` also asks again: a file whose `reason` is `unreadable` or
+`unsupported_format` (kept in the preview cache), or whose probe failed
+(`timeout`, `memory_limit`) in the last 10 minutes, is read anew first, and a
+`200` answer is its new `PreviewInfo`. A render process that crashed answers
+`unreadable` with its signal or exit status in `detail`; that is not kept, so a
+later request reads the file again.
+Fetch the image with `GET …/preview.png?size=512` (`--style` in the CLI, the
+parameter `style` over HTTP). The tiles `…/tiles/{z}/{x}/{y}.png`, the vectors
+`…/features?bbox=…&zoom=…` and the ZIP listing `…/members` have the same
+session and CSRF header protection, **images too**. Requests for a disconnected
+store may use the cache and give the reason when it has nothing.
 
 ```sh
 archiwista search --project=projekt-01 --json
-# REF pochodzi z pola ref karty wersji lub pliku zwróconej przez API.
+# REF comes from the field ref of a version card or a file card returned by the API.
 archiwista preview "$REF" --build --json
-archiwista preview "$REF" --output=<katalog-danych>/podglad.png
+archiwista preview "$REF" --output=<data-dir>/podglad.png
 ```
 
-`GET /local-layers?store=demo&product=nmt&area_id=$AREA&group=year`
-zwraca lata (albo `group=campaign`), ich klucze, pokrycie i adresy
-miniatur/kafli. Bez `area_id` daje liczniki, nie obrazy. Użyj adresu
-`thumbnail_url` z odpowiedzi, nie zgaduj klucza i wersji obrazu:
+`POST /previews/warm` (v0.3, ADR-041) prepares the first look at current
+versions ahead: the pane's thumbnail (`size=512`, the default style) and the
+map's tiles at the file's smallest zoom go into the preview cache, so the first
+request for them does not read a slow store. The optional body narrows it:
+`{"store": "…", "product": "…", "segment": "…", "project": "…", "area_id":
+"…"}`; no body is every store's current versions. `project` adds the working
+files of that project's own data, and makes the job the project's: only those
+who see the project see it (another session gets `404`, as for an unknown
+project). The job (`preview_warm`) runs at the lowest priority, never evicts a
+preview used in the last week, and ends `partial` with `stopped: cache_full`
+and the number `skipped` when the cache has no more room; `needs_build` counts
+the files whose map waits for a local COG (it builds none). `archiwista
+preview-warm --json` runs the same in the foreground:
+
+```sh
+archiwista preview-warm --store=zespol --product=nmt --json
+```
+
+`GET /local-layers?store=demo&product=nmt&area_id=$AREA&group=year` returns the
+years (or `group=campaign`), their keys, the coverage and the addresses of
+thumbnails and tiles. Without `area_id` it gives counters, not images. Use the
+address `thumbnail_url` of the answer; do not guess the key and the version of
+the image:
 
 ```sh
 archiwista layers --store=demo --product=nmt --area-id="$AREA" --json
 LAYER="$(archiwista layers --store=demo --product=nmt \
   --area-id="$AREA" --json | jq -r '.layers[0].key')"
 archiwista layers --store=demo --product=nmt --area-id="$AREA" \
-  --thumbnail="$LAYER" --output=<katalog-danych>/rok.png
+  --thumbnail="$LAYER" --output=<data-dir>/rok.png
 curl -sf -b "$JAR" -H "$H" "$BASE/local-layers?store=demo&product=nmt&area_id=$AREA&group=year"
 archiwista compare "$REF_A" "$REF_B" --json
 curl -sf -b "$JAR" -H "$H" -G --data-urlencode "a=$REF_A" \
   --data-urlencode "b=$REF_B" "$BASE/compare"
 ```
 
-Folder projektu (domyślnie `<katalog projektu>/dane/`, inny ustawia
-administrator przez `PUT /projects/{project}/data-dir`) jest indeksowany
-osobno od magazynu: `GET /projects/{project}/files?q=…&state=changed`
-z `limit`/`cursor`, `GET …/files/{file_id}` i `GET …/files/{file_id}/layers`
-(plik roboczy oraz migawki w Wachlarzu). Obrazy, kafle, obiekty i spis
-archiwum mają odpowiedniki tras wersji pod `…/files/{file_id}/preview`,
-`…/files/{file_id}/snapshots/{label}/preview` itd. Plik zmieniony od
-ostatniego skanu trzeba przeskanować ponownie, zamiast używać starego
-podglądu. Plan migawki sprawdza wykonalność i rozmiar bez jej tworzenia;
-`POST …/snapshots` wymaga `project.write` (właściciel projektu lub admin),
-zwraca zadanie `snapshot`; identyczna treść daje wynik `unchanged`.
+The folder of a project (by default `<project directory>/dane/`; its owner or
+an administrator sets another one with `PUT /projects/{project}/data-dir`, an
+owner who is no administrator only inside the project's directory: `400
+validation_error` with the problem `own_data_dir_outside_project`; it is saved
+as its real path, and a folder inside the project's directory that a symbolic
+link later leads out of is not read, problem `own_folder_invalid`) is
+indexed apart from the store: `GET /projects/{project}/files?q=…&state=changed`
+with `limit`/`cursor`, `GET …/files/{file_id}` and `GET …/files/{file_id}/layers`
+(the working file and its snapshots in the fan). Images, tiles, features and the
+listing of an archive have counterparts of the version routes under
+`…/files/{file_id}/preview`, `…/files/{file_id}/snapshots/{label}/preview` and
+so on. A file changed since the last scan has to be scanned again instead of
+using the old preview. A working file or a snapshot of a data folder that
+breaks the rules of its scan now (a symbolic link out of the project put in
+its place, a folder in a store) is `409 own_folder_invalid` on every preview
+route, even for a thumbnail the cache holds, its card has `preview: null` and
+its layers are `unavailable`; the `preview` and `preview_warm` jobs fail such
+a file with the code `own_folder_invalid`. The snapshot plan checks
+feasibility and size without making it; `POST …/snapshots` needs
+`project.write` (the project owner or an admin) and returns a `snapshot` job;
+identical content gives the result `unchanged`.
 
 ```sh
 archiwista files projekt-01 --state=changed --json
@@ -331,128 +897,427 @@ curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
   -d '{"note":"przed zmianą"}' "$BASE/projects/projekt-01/files/$FILE_ID/snapshots"
 ```
 
-`GET /jobs?project=projekt-01` filtruje zadania projektu. Lista, szczegóły
-`/jobs/{job}` i SSE `/jobs/{job}/events` nie ujawniają zadań z danymi
-niewidocznego projektu (`404` przy bezpośrednim adresie); zwykły skan
-magazynu jest wspólny. SSE wysyła `progress`, `notice` i `state`, a klient
-wznawia po `Last-Event-ID`.
+`GET /jobs?project=projekt-01` filters the jobs of a project. The details
+`/jobs/{job}`, the SSE `/jobs/{job}/events` and the log do not reveal jobs with
+data of an invisible project (`404` for a direct address); the list holds every
+job of the queue, such a job with `hidden: true` and nothing but its kind,
+store, who, state, times and progress counts (v0.4, ADR-047). An ordinary store
+scan is shared. The SSE sends `progress`, `notice` and `state`, and a client
+resumes after `Last-Event-ID`.
 
-## 7. Błędy
+**The producers' commands (v0.3, ADR-034).** `GET /commands` lists the commands
+of every producer whose plugin offers them (Kartograf's catalog; `?producer=`
+keeps one producer): each with its options (JSON type, whether required, the
+allowed values and their meanings, the default, bounds, the `group` of mutually
+exclusive options and the `path_role` of a file path), what a run does
+(`read_only`, `writes`, `network`, `check`, `store`) and complete example lines;
+the summary and the description follow `Accept-Language`. `POST /commands/parse`
+reads a pasted line into a call (`command`, `options`, and `run`: the store root
+and the flags the line gives beside the options), `POST /commands/validate`
+checks a call without the network and `POST /commands/format` writes the
+producer's canonical line of a call, which parses back into the same call. A
+command that works on a store is checked with the directory of a configured
+store (`store`), never with the producer's default root, and an option that is a
+file path is refused (`403`, `path_outside_root`), except an input naming an
+area's GeoJSON Archiwista wrote (`<data-dir>/areas/<area id>.geojson`), which
+the command lines of an availability report name (A-ADR-035 erratum 2); the
+same rule holds for the calls of `POST /jobs`. The producer's own refusal is
+`400 validation_error` with its text and hint and the option in
+`details.option`. Nothing here downloads or writes a store; `POST /commands/area`
+writes only Archiwista's GeoJSON of an area.
 
-Każdy błąd HTTP to `application/problem+json` (RFC 9457), np. dla
-`GET /slots?limit=201`:
+**A call over an area of Archiwista (A-ADR-049 erratum 5).** `POST
+/commands/area` with `{"producer", "command", "options", "area_id"}` gives a call
+an area of `/areas` (drawn, uploaded, or a project's: `area.area_id` of `GET
+/projects/{project}`) in place of the area it names, for a pasted line run on a
+project's area. The options that choose an area go (a sheet, a box, a geometry
+file, a TERYT code…, with the box's CRS and the file's layer) and the area takes
+their place as the command's geometry file: Archiwista's GeoJSON of the area,
+`<data-dir>/areas/<area id>.geojson`, written then and accepted by `validate`
+and the jobs, so the producer selects by the polygon (`way` `geometry`). A
+command without a geometry option would get the box that encloses the area
+(`way` `bbox`, with its CRS: the producer may select data outside the area). A
+country the command needs and the call does not give is the area's (`auto` for
+an area of PL and CZ). The answer `CommandAreaItem` is the call, its `line`
+without a store root (ready for `POST /commands/parse` and a plan), the `area`,
+`way` and the `replaced` options; nothing is checked against a store (`POST
+/commands/validate` does). An unknown area is `404 not_found`, a command outside
+the catalog `400` (`unknown_command`), a command that takes no area `422
+unsupported` (`no_area_option`), as is a producer without commands
+(`no_commands`) or one that takes no area of Archiwista (`no_area_commands`;
+IMGWTools until its actions). `archiwista commands area` prints the same model
+with `--json`, otherwise the line and, below it, the replaced options.
+
+```sh
+archiwista commands list --producer=kartograf --json
+archiwista commands parse kartograf "kartograf sheet parse --sheet N-34-130-D-d-2-4" --json
+archiwista commands validate kartograf "elevation download" --store=demo --json \
+  --options='{"product": "nmt", "sheet": "N-34-130-D-d-2-4", "resolution": "1m", "vertical_crs": "EVRF2007"}'
+archiwista commands area kartograf "landcover download" --options='{"product": "bdot10k"}' \
+  --area-id="$(archiwista project kamiennik --json | jq -r .area.area_id)" --json
+curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
+  -d '{"producer": "kartograf", "line": "kartograf sheet parse --sheet N-34-130-D-d-2-4"}' \
+  "$BASE/commands/parse"
+```
+
+**The availability at the source (v0.3, ADR-035).** `POST /availability` with
+`{"area_id": "…", "product": "nmt"}` (`producer` is `kartograf` by default; the
+products a producer checks are listed in the `422` that refuses another one) asks
+what the source has for a kept area. The producer gets the area as
+Archiwista's GeoJSON of it in WGS84 (RFC 7946), the polygon as it is
+(`<data-dir>/areas/<area id>.geojson`, kept as long as the area), so the
+command lines of the report name that file (`--country pl --geometry …`) and a
+plan or download selects the sheets the polygon meets, not those of its
+envelope; a download pinned into a project names the project's
+`obszary/<area id>.geojson` (its area file, else a copy) in its group's calls,
+relative to the project directory. A report the index keeps that is younger
+than seven days answers at once: `200` with `AvailabilityInfo`, the area,
+`checked_at` (when the source was asked), `job_id` and `report` (the producer's
+report: the parts of the area by country with their land, the combinations of a
+year, a variant and a format with their full, partial and missing sheets, the
+sheet records and campaigns a download takes and `full_m2`, the parts that
+failed, the producer's notices, `ok`). Otherwise, or with `"force": true`, the
+answer is `202` with the `availability` job (`Location`); a request that asks
+what an active check asks gets that job. When the job succeeded, `GET
+/availability?area_id=…&product=…` returns its report; it reads only the index,
+never the network, and answers `404` without a report. In offline mode a check
+that needs the source is `409 conflict` (`offline_mode`) and nothing is
+recorded. `archiwista availability check` runs the job in the foreground and
+prints the `AvailabilityInfo` it kept (`--json`); a check that does not succeed
+prints its `JobDetail` and exits `11` or `130`.
+
+Every `AvailabilityInfo` also reads the report for a person (SPEC 6.3, 6.4):
+`rows`, one per year of each country in the report's order, each with the
+`label` of its best variant (`complete`, `complete · 2 campaigns`,
+`partial · 58% · 1 partial sheet`, `no data`; Polish with `Accept-Language: pl`),
+the same as structure in `coverage` (`kind`, `campaigns`, `full_share`,
+`percent` rounded down and at most 99 when partial, `below_one`,
+`partial_sheets`, `missing_sheets`), `other_variants` and `variants`, best
+first (complete, larger full share, fewer campaigns, finer resolution, the
+report's order; the formats of one set are one variant with its
+`default_format`, ASC then TIFF, and its size). `store` (a configured store,
+else `404`) gives every variant its store badge `local` (`state` `all`, `some`
+or `none`, `units` of `of`, `label` `downloaded 5/12`); `horizontal`,
+`resolution` and `vertical_crs` fix those dimensions, and a year without such
+a variant is `no_data`. The command takes them as `--store`, `--horizontal`,
+`--resolution` and `--vertical-crs`, and its text prints a line per year.
+
+```sh
+curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
+  -d "{\"area_id\": \"$AREA\", \"product\": \"nmt\"}" "$BASE/availability"
+archiwista availability check "$AREA" --product=nmt --json
+archiwista availability show "$AREA" --product=nmt --store=zespol --json
+```
+
+**File download (v0.4, ADR-047).** `GET /stores/{store}/versions/{version}/file`,
+`GET /projects/{project}/files/{file_id}/file` and `GET
+…/files/{file_id}/snapshots/{label}/file` send the file itself: only a version
+the index knows, or an own file or a snapshot of a project the session sees
+(else `404`), resolved inside its root (a symbolic link out of it is `403
+path_outside_root`). One file of a set (a Shapefile, a MapInfo TAB, or a
+snapshot of one) is `?member=<name>`, a name from `members` of the file card or
+of the snapshot (another name is `404`); without it the main file. An own file
+and a snapshot come only from a data folder that its scan's rules let be read
+now: a folder that leads out of the project's directory (a symbolic link put
+in its place, say) or lies in a store is `409 own_folder_invalid`, one that is
+gone `404 missing_file`, and a data folder other than the one the last scan
+read `409 own_file_changed`. A working file changed since its scan is `409
+own_file_changed`; one its last scan could not read and a snapshot that is not
+valid are `409 file_unreadable`; a file gone from the disk is `404
+missing_file`. The answer is an attachment
+(`Content-Disposition: attachment` with the file's name, `filename*` for a name
+that is not ASCII), the media type of its format or extension (else
+`application/octet-stream`), `Cache-Control: private, no-store` and
+`X-Content-Type-Options: nosniff`; nothing is shown inline, a PDF neither.
+`Range` answers `206` with `Content-Range` (`curl -C -` resumes), and `HEAD`
+answers the headers only (`Content-Length`). A person, with their agents,
+streams at most two files at once: a third is `429 rate_limited`, reason
+`too_many_downloads`, with `Retry-After: 10`. A `GET` whose answer holds the
+file's first byte (no `Range`, a range from byte 0 however written, or an
+`If-Range` that no longer matches) is logged (`file.download` with
+`size_bytes`). A download stops about a second after its session ends (a
+sign-out, its expiry, the person, an administrator or a password change ending
+it, a revocation of agent sessions) or its account is disabled or removed: the
+connection closes before the file's end; `Range` resumes it in a new session.
+These routes need `X-Archiwista-CSRF` as every other; only a link of the
+interface (`Sec-Fetch-Site: same-origin`, or `none` for an address typed in)
+passes with the session cookie alone.
+
+```sh
+# VERSION_PATH is version.path of a row of /slots; FILE_ID is file_id of the file list.
+curl -sf -b "$JAR" -H "$H" --output-dir <data-dir> -OJ \
+  "$BASE/projects/projekt-01/files/$FILE_ID/file?member=dzialki.dbf"
+curl -sf -b "$JAR" -H "$H" -C - -o <data-dir>/N-34-130-D-d-2-4.asc \
+  "$BASE/stores/zespol/versions/$VERSION_PATH/file"
+```
+
+## 7. Errors
+
+Every HTTP error is `application/problem+json` (RFC 9457) with a code of the
+shared Nogat error registry (ERR §2). For `GET /slots?limit=201`:
 
 ```json
 {
-  "type": "/api/v1/problems/validation-error",
-  "title": "Niepoprawne dane żądania",
-  "status": 422,
-  "detail": "Niepoprawne dane żądania: query.limit.",
+  "type": "https://github.com/Daldek/Nogat/blob/main/standards/ERROR_REGISTRY.md#validation_error",
+  "title": "Invalid input",
+  "status": 400,
+  "detail": "Invalid request data: query.limit.",
+  "instance": "/api/v1/slots",
   "code": "validation_error",
-  "errors": [{"field": "query.limit", "type": "less_than_equal",
+  "details": {"reason": "invalid_request"},
+  "errors": [{"pointer": "/query/limit", "type": "less_than_equal",
               "message": "Input should be less than or equal to 200"}]
 }
 ```
 
-Decyzje opieraj na `status` i `code` — nigdy na tekście `detail`.
+Members: `type` is the page of the registry and the anchor of the code; `title`
+is the title of the code; `status` is the HTTP status of the code; `detail` and
+`hint` (one line telling how to fix it, when a fix is known) say what happened
+and what to do; `instance` is the path of the request; `details` holds the
+project's own cause in `reason` and the context (below); `errors[]` lists
+invalid values with a JSON Pointer.
 
-| Status | `code` | Kiedy i co zrobić |
+The texts follow the request header `Accept-Language`: `title`, `detail`,
+`hint`, the texts inside `details` (the `message` and `fix` of
+`preview_reason`, the `message` of `problems[]`) and the `message` of the
+`errors[]` that Archiwista's own validators make are English, and Polish when
+Polish has the highest quality in the header; any other language, a malformed
+header and no header give English (the `message` that pydantic makes itself
+is English always). Every JSON answer under `/api/v1`, a problem and an event
+stream have `Content-Language` (`en` or `pl`) and `Vary: Accept-Language`;
+images, `/api/v1/openapi.json` (English always) and the files of the interface
+have neither. What is written when it happens, and not when it is read, stays
+Polish whatever the request says: the `detail` of a store that is not
+`available`, and the `message` of the `notice` events of a job (section 9).
+
+Base decisions on `status`, `code` and `details.reason`, never on the text of
+`detail`.
+
+| Status | `code` | `details.reason` and what to do |
 |---|---|---|
-| 400 | `invalid_host` | nagłówek `Host` inny niż `127.0.0.1:<port>`/`localhost:<port>` |
-| 401 | `session_required` | brak, wygasła albo nieznana sesja; zły, użyty lub przeterminowany token → nowy token |
-| 403 | `csrf_rejected` | brak/zły `X-Archiwista-CSRF` w dowolnym żądaniu `/api` albo obcy `Origin` |
-| 403 | `permission_denied` | wykonawca nie ma uprawnienia (np. zmiana ustawień bez roli `admin`) |
-| 403 | `path_outside_root` | ścieżka wychodzi poza magazyn |
-| 404 | `not_found` | nieznany zasób albo projekt niewidoczny dla wykonawcy |
-| 405 | `method_not_allowed` | inna metoda; dozwolone w nagłówku `Allow` |
-| 409 | `conflict` | trwa już zadanie zapisujące indeks tego magazynu (pole `job`) — śledź je zamiast ponawiać |
-| 409 | `offline_mode` | operacja wymaga sieci, a włączony jest tryb offline |
-| 409 | `snapshot_blocked`, `own_file_changed` | plan blokuje migawkę albo plik zmienił się od skanu: odśwież folder i odczytaj plan |
-| 413 | `request_too_large` | treść żądania ponad limit (4 KiB wymiana tokenu, 1 MiB pozostałe) |
-| 413 | `area_too_large` | plik obszaru ponad 50 MB albo archiwum ponad 200 MB po rozpakowaniu |
-| 422 | `validation_error` | niepoprawne parametry lub treść: `errors` (`field`, `type`, `message`) albo `problems` (ustawienia) |
-| 422 | `area_unreadable`, `area_too_complex` | pliku obszaru nie da się odczytać (przy kilku warstwach pole `layers` — wybierz `?layer=`) albo obszar ma ponad 100 000 wierzchołków |
-| 422 | `kartograf_error`, `imgwtools_error`, `producer_error` | producent odrzucił wywołanie; pole `kartograf`/`imgwtools` ma `exception` i niezmieniony `message` |
-| 500 | `internal_error` | błąd Archiwisty — szczegóły w dzienniku serwera |
-| 503 | `source_unavailable` | brak wtyczki producenta; pole `source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), naprawa na końcu `detail` |
-| 503 | `source_incompatible` | wtyczka w niewspieranej wersji lub schemacie; jak wyżej |
-| 503 | `store_unavailable` | magazynu nie da się odczytać, a indeks nie ma odpowiedzi |
-| 503 | `preview_busy` | pula renderowania jest pełna; zaczekaj według `Retry-After` |
+| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `project_not_discoverable`, `project_dir_missing`: a new project where a scan would not find it, or below a configured project directory that is missing; `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); `password_policy`: a new password breaks a rule, `details.rule` `too_short` (under 12 characters after NFKC), `too_long` (over 1,024), `account_name` (the account's id or name), `common` (a common password) or `same_as_current` (`PUT /session/password`: the current password, ignoring case); `password_mismatch` (`users password` only): the two typed passwords differ; no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
+| 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token; on a team server also a token of the computer's owner (a startup token, or one `archiwista token` issued without `--user`), since a team has no local owner → a token of an account (`archiwista token --user ID`); `login_failed` (team mode): the account and password do not sign in, one answer for every cause, or the reverse proxy names no enabled account (`POST /session/proxy`); `password_expired`: a correct temporary password past its end, an administrator gives a new one |
+| 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>` (team mode: other than the host of `origin`); `tls_required`: team mode, a request not over HTTPS; `proxy_required`: team mode behind a reverse proxy, a request that did not come through it; `password_change_required`: the session's temporary password must be changed first (`PUT /session/password`); `wrong_password`: the current password given to `PUT /session/password` is wrong; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
+| 404 | `not_found` | an unknown resource, or a project invisible to the actor; `missing_file`: the file of a download (`…/file`) is gone from the disk, the next scan updates the index |
+| 405 | `method_not_allowed` | another method; the allowed ones are in the header `Allow` |
+| 409 | `conflict` | no reason: a job that writes this store's index runs already (`details.job`: `id`, `kind`, `state`), follow it instead of retrying; `offline_mode`: the operation needs the network and offline mode is on; `snapshot_blocked` (`details.blocked_by`) or `own_file_changed`: the plan blocks the snapshot or the file changed since its scan, refresh the folder and read the plan; `preview_not_ready`: the preview needs its build first (`details.build_required`, or `details.job`/`details.building` while it builds); `file_unreadable`: a download (`…/file`) of a working file its last scan could not read, of a snapshot that is not valid, or from a data folder that cannot be read; `own_folder_invalid`: a download or a preview (its description, images, tiles, features, members or build) of an own file or a snapshot whose data folder breaks the rules of its scan now (it leads out of the project's directory, lies in a store), an administrator or the project's owner fixes the folder; `last_admin` (team mode): the change would leave no administrator who can sign in (enabled, with a password that has not expired or through the proxy), give the role `admin` to another such account first; `local_mode`: signing in and changing a password exist in team mode only; `proxy_session`: a session of the reverse proxy changes no password |
+| 409 | `conflict` | a change of a project file (section 5): `project_exists` (a new project where the file is), `project_locked` (another change holds `.archiwista-project.lock`: `details.lock`, `details.owner`, `details.owner_ended`; wait and try again, remove the directory only when no program changes the project), `invalid_project_file` or `unsupported_project_schema` (the file breaks a rule or is of a newer format: nothing is changed) |
+| 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks); `no_area_option`: the command takes no area (`POST /commands/area`); `no_area_commands`: the producer takes no area of Archiwista in a command |
+| 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
+| 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; `scan_running`: the person's scan of a data folder waits or runs; `scan_too_soon`: the project's folder was asked to be scanned less than a minute ago; `too_many_downloads`: the person streams two file downloads (`…/file`) already; wait for `Retry-After` (also `details.retry_after_s`) |
+| 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
+| 500 | `io_error` | `project_file_write_failed`: the project file, its directory or its area file cannot be written (permissions, a full disk); the hint names the directory |
+| 500 | `internal_error` | a defect of Archiwista: details in the server's log |
+| 503 | `missing_dependency` | `source_unavailable`: the producer plugin is missing; `source_incompatible`: it has an unsupported version or schema; `details.source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), the fix is in `hint` and at the end of `detail`; `renderer_not_started`: a preview route could not start a render process on the server (the cause is in the server's log; nothing is remembered about the file, ask again once it is fixed) |
+| 503 | `store_unavailable` | `store_unreadable`: the store cannot be read and the index has no answer |
 
-CLI z `--json` wypisuje dokładnie te same problemy (z tym samym `status`
-w treści) i kończy się kodem `1`.
+The command line gives the same information as the error document
+`archiwista-error/1` on the last line of standard error (nothing goes to
+standard output), for example for `archiwista search --limit=201 --json`:
 
-## 8. Zalecany przebieg pracy agenta
+```json
+{"schema":"archiwista-error/1","code":"validation_error","title":"Invalid input","message":"Invalid request data: query.limit.","details":{"reason":"invalid_request","errors":[{"pointer":"/query/limit","type":"less_than_equal","message":"Input should be less than or equal to 200"}]},"exit_code":2}
+```
 
-1. **Rozpoznanie:** `archiwista status --json` (albo `GET /health`) —
-   czy są magazyny, czy są `available`, czy wtyczka producenta jest
-   `available`, czy trwa skan (`running_job`).
-2. **Szukanie:** `search` z możliwie wąskimi filtrami (`--product`,
-   `--unit`, `--years`, `--bbox`), `--limit=200` i pętla po `next_cursor`;
-   nie pobieraj całego katalogu, jeśli wystarczy filtr.
-3. **Szczegóły:** karta pliku (`entry`) dla wybranych slotów; `version`
-   tylko gdy potrzebne są wszystkie metadane albo sidecar.
-4. **Ocena świeżości:** sprawdź `stale`; przy `true` podaj użytkownikowi
-   `indexed_at` z `stale_stores` zamiast twierdzić, że plik jest na dysku.
-5. **Odświeżenie (tylko na prośbę):** `POST /stores/{store}/scan` z CSRF
-   → `202` z zadaniem; postęp przez SSE albo `GET /health`
-   (`running_job`). Przy `409 conflict` poczekaj na trwające zadanie
-   zamiast ponawiać.
-6. **Błędy:** `503 source_unavailable`/`source_incompatible` przekaż
-   użytkownikowi razem z naprawą z `detail` — nie ponawiaj w pętli;
-   `401` → nowy token od użytkownika (`archiwista token`).
-7. **Ścieżki:** do pracy z plikiem użyj `paths.local` z karty; nie składaj
-   ścieżek samodzielnie.
+`exit_code` is the registry's exit code of `code` (`null` for the codes that
+exist only in REST: `unauthorized`, `method_not_allowed`, `rate_limited`; the
+command then exits `1`); `message` and `hint` are English, as the document is
+machine output, and the line before it, for a person, says the same in Polish;
+`command` is the `<group> <verb>` of the command when it has that shape. The
+schema is `schemas/nogat/error-1.schema.json`.
 
-## 9. Zadania w tle i SSE
+## 8. Recommended workflow of an agent
 
-Długie operacje zwracają `202 Accepted` z zadaniem (`JobDetail`) i nagłówkiem
-`Location: /api/v1/jobs/{id}`. Wszystkie wymagają `X-Archiwista-CSRF`.
+1. **Orientation:** `archiwista status --json` (or `GET /health`): are there
+   stores, are they `available`, is the producer plugin `available`, does a
+   scan run (`running_job`).
+2. **Search:** `search` with the narrowest possible filters (`--product`,
+   `--unit`, `--years`, `--bbox`), `--limit=200` and a loop over `next_cursor`;
+   do not fetch the whole catalog when a filter is enough.
+3. **Details:** the card of a file (`entry`) for the chosen slots; `version`
+   only when all metadata or the sidecar are needed.
+4. **Freshness:** check `stale`; when it is `true`, give the user `indexed_at`
+   from `stale_stores` instead of claiming that the file is on the disk.
+5. **Refresh (on request only):** `POST /stores/{store}/scan` with CSRF → `202`
+   with a job (an administrator's from v0.4: `403 permission_denied`
+   otherwise); follow the progress over SSE or `GET /health` (`running_job`).
+   On `409 conflict` wait for the running job instead of retrying.
+6. **Errors:** pass `503 missing_dependency` (`source_unavailable` or
+   `source_incompatible`) to the user with the fix from `hint`, and do not
+   retry in a loop; `401` → a new token from the user (`archiwista token`; on a
+   team server `archiwista token --user ID` or the person's `POST
+   /session/tokens`); `429 login_blocked`, `scan_running` or `scan_too_soon`
+   → wait for `Retry-After`.
+7. **Paths:** to work with a file use `paths.local` from the card; do not build
+   paths yourself.
 
-| Żądanie | Treść | Uwagi |
+## 9. Background jobs and SSE
+
+Long operations return `202 Accepted` with a job (`JobDetail`) and the header
+`Location: /api/v1/jobs/{id}`. All need `X-Archiwista-CSRF`.
+
+| Request | Body | Notes |
 |---|---|---|
-| `POST /stores/{store}/scan` | opcjonalnie `{"mode": "incremental"}` (domyślnie) albo `"full"`, opcjonalnie `"segment"` | skan magazynu do indeksu |
-| `POST /stores/{store}/footprints` | brak | obrysy jednostek (TERYT, KU) z sieci; offline → `409 offline_mode` |
-| `POST /stores/{store}/link-check` | `{"slot": "…"}` | potwierdzenie celu dowiązania slotu; nieznany slot → `404` |
-| `POST /projects/{project}/scan` | brak | skan folderu projektu, możliwy dla widzących projekt |
-| `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` albo brak | migawka, wymaga `project.write` |
-| `POST …/preview` | brak | budowa podglądu pliku lub wersji (odpowiedź `200` albo zadanie `202`) |
+| `POST /stores/{store}/scan` | optionally `{"mode": "incremental"}` (default) or `"full"`, optionally `"segment"` | scan of a store into the index, an administrator's (v0.4, `store.scan`); a `segment` is scanned by the data source that owns it, and a source that reads only its whole directory (IMGWTools: a segment is a dataset) ends the job as `unsupported` |
+| `POST /stores/{store}/footprints` | none | unit outlines (TERYT, KU) from the network, an administrator's (v0.4); offline → `409 conflict` (`offline_mode`) |
+| `POST /stores/{store}/link-check` | `{"slot": "…"}` | confirmation of the target of a slot's link, an administrator's (v0.4); an unknown slot → `404` |
+| `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project; a waiting scan of the folder is joined; otherwise (v0.4) a person, with their agents, has one such scan waiting or running (`429 rate_limited`, `scan_running`) and a folder is asked for once a minute (`scan_too_soon`), with `Retry-After`; the computer's owner is not limited |
+| `POST /projects/{project}/files/{file_id}/snapshots` | `{"note":"…"}` or none | a snapshot, needs `project.write` |
+| `POST …/preview` | none | build of the preview of a file or a version (answer `200` or a job `202`) |
+| `POST /previews/warm` | none, or any of `{"store": "…", "product": "…", "segment": "…", "project": "…", "area_id": "…"}` | the first look at current versions prepared in the preview cache (v0.3, ADR-041): the job `preview_warm` has no `store`, its `params` are the filters (and `since`, set only by the scheduler's warm-up after a scan); any session may ask; a store that is not configured, a project the session does not see and an unknown area → `404` before a job; a request of the filters of a waiting warm-up returns that job |
+| `POST /availability` | `{"area_id": "…", "product": "…"}`, optionally `"producer"`, `"force"`, and `"store"`, `"horizontal"`, `"resolution"`, `"vertical_crs"` for the rows of a `200` | what the source has for a kept area (v0.3): a report younger than seven days answers `200` without a job (unless `force`), else the `availability` job `202`; offline → `409 conflict` (`offline_mode`); a store that is not configured → `404` before a job |
+| `POST /jobs` | `{"kind": "check", "producer": "…", "store": "…", "calls": [{"command": "…", "options": {…}}, …]}` (1 to 1000 calls, in their order; one for one line); for a run `"kind": "download"`, optionally `"plan_job": "…"` (a `check` job of the same store, producer and calls in the same order) and `"pin": {"project": "…", "group": "…"}` (a new set of the project, written closed, that the run's files and its plans' other positions are pinned into when it succeeds; with `"open": true` the new set is left in the making, with `"add": true` the job's calls and pins go into the set in the making `group`, not both; section 5 at `jobs start download … --pin`) | a job of calls of commands of the producer's catalog that work on a store and have a check (v0.3): all the lines of a report's row, or of a pasted list, in one job (ADR-044). `check` plans a run of each call in the store's directory of the producer without its effects, one after the other, and keeps a plan of each; a call the producer refuses, or none of whose positions could be checked, keeps none and the job ends `partial` (it fails only when no call was planned, with the first call's error); `download` runs the calls there (with `plan_job` each call only its plan's positions to download, one whose source changed since a failed item, `stale_plan`; a call without a kept plan or with nothing to download is skipped), the next call running after one that failed; both over the network. `result.calls` says what became of each call (`status`, `line`, `error`; a download's `reason` of a skipped one), `files[]` and `items[]` of a download carry the `call`; with `pin`, `result.pin` says what was pinned. Refused before a job exists: a download by a session without `store_writer` (and without the setting `store_write_for_all`) `403` (`permission_denied`; an agent has the roles of the person who issued its token), a store that is not configured `404`, a command outside the catalog `400` (`unknown_command`), a store without a directory of the producer `400` (`store_without_producer`), a command on no store or without a check `422` (`no_store`, `no_check`), an option that is a file path `403` (`path_outside_root`), the producer's refusal of the options `400` (its text, `details.option`), each refusal of one call naming its place in `calls` (`details.call`, from 0), a `plan_job` the session does not see or that kept no plan `404`, one of another store, producer or calls `409` (`plan_mismatch`, `details.job`), `plan_job` or `pin` with `check` `400`, a `pin` the project refuses (`404`, `403`, `400 invalid_group_name`, `409 group_exists`, `other_store`, `unknown_store`; with `add` `404 group_not_found`, `409 set_closed`, `409 set_producer`, `400 too_many_calls`; `add` with `open` `400 validation_error`), a missing plugin `503`, offline `409` (`offline_mode`); the job keeps the options as the producer read them. A download that shares a call (store, producer, command, options) with an active download starts with the warning notice `overlapping_job` |
+| `POST /projects/{project}/jobs` | `{"kind": "verify"}`, `"check"`, `"restore"` (optionally `"groups": ["…"]`, every group when left out) or `{"kind": "repin", "groups": ["…"]}` (exactly one) | a job over a project's groups (A-ADR-049 decision 11; the kinds `project_verify`, `project_check`, `project_repin`, `project_restore`, with no `store` and the `params` `project` and `groups`): who sees the project starts a verification or a check; a re-pin and a restore need `project.write` and `store.write` (`403`). Refused before a job: a group the project does not have (`404`), a re-pin of not exactly one group (`400`), a group whose producer offers no commands (`422 unsupported`, `no_commands`), a re-pin of a local group with a pin whose call cannot be rebuilt (`422 unsupported`, `command_not_rebuildable`), a re-pin of a closed set (`409 conflict`, `set_closed`; erratum 6), a project store matching no configured one (`409 conflict`, `unknown_store`), a second job of the project (`409 conflict`, `details.job`), offline mode for all but `verify` (`409`, `offline_mode`) |
 
-Nieznany magazyn daje `404 not_found`, zła treść `422 validation_error`.
-Gdy dla magazynu trwa już zadanie zapisujące indeks (skan albo obrysy),
-odpowiedź to `409 conflict` z polem `job` (`id`, `kind`, `state`) —
-śledź to zadanie zamiast zakładać nowe.
+An unknown store gives `404 not_found`, a wrong body `400 validation_error`.
+When a job that writes the store's index (a scan or outlines) runs already, the
+answer is `409 conflict` with `details.job` (`id`, `kind`, `state`): follow that
+job instead of creating another.
 
-Zadanie (`GET /jobs/{id}`) ma pola `id`, `kind` (`scan`, `footprints`,
-`link_check`, `preview`, `own_scan`, `snapshot`), `state` (`queued`,
-`running`, `succeeded`, `failed`, `interrupted`, `cancelled`), `actor`,
-`actor_kind`, `session`, `store`, `params`, `created_at`, `started_at`,
-`finished_at`, `progress`, `result` i `error`. Lista:
-`GET /jobs?kind=&store=&state=&project=` z `limit` (1–200) i `cursor`,
-najnowsze najpierw. Zadania z danymi projektu mają kontrolę jego widoczności
-także w pojedynczej karcie i w strumieniu SSE.
+A job (`GET /jobs/{id}`) has the fields `id`, `kind` (`scan`, `footprints`,
+`link_check`, `preview`, `own_scan`, `snapshot`, `availability`, `check`, `download`,
+`preview_warm`, `project_verify`, `project_check`, `project_repin`, `project_restore`), `state` (`queued`, `running`,
+`succeeded`, `partial` (part of its units failed: `result` names them), `failed`, `interrupted`, `cancelled`), `actor`, `actor_kind`,
+`session`, `store`, `params`, `created_at`, `started_at`, `finished_at`,
+`progress`, `result`, `error` and `hidden` (v0.4: a job only of projects the
+session does not see, listed with empty `params`, `null` `session`, `result` and
+`error`, and `progress` with `current` and `total` only). The list: `GET
+/jobs?kind=&store=&state=&project=` with `limit` (1–200) and `cursor`, newest
+first. Jobs with project data check the visibility of the project in a single
+card and in the SSE stream too.
 
-Zdarzenia płyną jako SSE z `GET /jobs/{id}/events` (`text/event-stream`).
-Każda ramka ma `id: <numer kolejny>`, `event: progress|notice|state`
-i `data: <JSON>`:
+**The shared queue (v0.4, ADR-047).** A `download` with `plan_job` claims the
+positions to download of its plans when it starts; a position another active
+download of the store claimed first is left to that job: `result.taken` lists it
+(`path`, `unit`, `job`, `actor`), a notice `taken_by_job` names each such job and
+its person, a call all of whose positions are taken is skipped (`reason`
+`taken`), and the job ends `partial`, so `POST /jobs/{id}/retry` fetches what
+the other job failed. A `download` without `plan_job` of a call (store, producer,
+command, options) that a running download runs stays `queued` with a notice
+`waiting_for_job` naming that job, and runs when it ends, finding the files in
+the store. A person (with their agents; the scheduler is no person) runs at most
+`network_jobs_per_person` network jobs at once (`GET`/`PUT /settings`, 2 by
+default); further ones stay `queued`, none is refused, and a free place goes to
+the oldest waiting job of the person with the fewest running ones.
 
-- `progress` — `current`, `total`; skan dodaje `segment` i `entries`,
-  obrysy `written` i `failed`;
-- `notice` — `level`, `code`, `message`;
-- `state` — `state`; ostatnie niesie `result` (sukces) albo `error`.
+The plans of a `check` job that succeeded or ended `partial` are `GET
+/jobs/{id}/plan` (`ActionPlanInfo`, from the index, no network): the store, the
+producer, the root, `checked_at` (of the oldest plan), `ok` (every call planned
+and every position checked), the totals of all the plans (`counts` of each
+status, `positions`, `todo`, `size_bytes` (`null` when the producer tells no
+size, never 0) with `size_complete`), and `calls`, the plan of each call planned
+in the order of the job's calls: `call` (its place, from 0), `command`,
+`options`, the producer's command line of its run (`line`, with the store's
+root), `schema`, `checked_at`, `ok`, `counts`, `todo`, `size_bytes`,
+`size_complete`, `notices` and `entries`: `path` below the store root, `unit`,
+`status` (`current`, `newer`, `missing`, `unverifiable`, `check_failed`),
+`local_label`, `available_label`, `size_bytes`, `error`, `conflict`. A call
+whose check failed has no plan; the job's `result.calls` says why. A job the
+session does not see, one that is no `check`, one still running and one that
+failed are `404`.
 
-Strumień kończy się po stanie końcowym; dla zakończonego zadania bez
-nowych zdarzeń odpowiedź to `204`. Po 15 s ciszy serwer wysyła komentarz
-`: keepalive`, a zadanie w kolejce może czekać dłużej, więc klient nie
-powinien mieć limitu czasu odczytu (np. `httpx` z `timeout=None`). Po
-zerwaniu połączenia wznów z nagłówkiem `Last-Event-ID` równym ostatniemu
-odebranemu `id`.
+**The jobs of a project (A-ADR-049 decisions 11 and 12).** Each works on the
+store the project names for each producer of a group; a job that runs calls
+needs that store readable (`store_unavailable` fails the job). Their `result`:
 
-Strumień, jak każde żądanie `/api`, wymaga nagłówka `X-Archiwista-CSRF`.
-Przeglądarkowy `EventSource` nie wysyła własnych nagłówków, więc się tu nie
-nadaje: strumień czyta się zwykłym klientem HTTP z odczytem treści na
-bieżąco — `curl -N`, `httpx.stream(…)`, w przeglądarce `fetch`
-i `response.body` (tak czyta go interfejs Archiwisty).
+- `project_verify` (no network, changes nothing; succeeds with `ok` false when
+  it found a problem): `project`, `groups`, `ok`, `counts` and `pins` (`group`,
+  `producer`, `version`, `status`, `found`): `ok`, `corrupt` (other bytes),
+  `missing`, `content_match` (missing, but another present version of its slot
+  holds its `content_sha256`: `found` names it) or `no_store` (its store is not
+  configured);
+- `project_check` (network; writes only the producer's metadata cache):
+  `project`, `groups`, `ok`, `counts`, `pins` (`group`, `producer`, `version`,
+  `unit`, `path` (its slot), `status`, `pinned_label`, `available_label`,
+  `detail`), `added` (positions of a plan group's calls without a pin: `group`,
+  `unit`, `path`, `available_label`) and `calls`. A pin is compared by its slot
+  and SHA-256, never by a count: `current`, `newer` (the source has a newer
+  version, or the store's current version of the slot is another one),
+  `missing`, `removed` (the call no longer selects the slot), `unverifiable`,
+  `check_failed` or `not_checkable` (a local pin whose call the producer cannot
+  rebuild, its text in `detail`: D5). It ends `partial` when some pins could not
+  be asked and fails (`source_unavailable`, `check_failed`) when none could;
+- `project_repin` (network; one group): runs the group's calls (a local group:
+  its pins' calls, `command_for_version`; a set of calls and hand pins: its
+  calls for the run pins and each hand pin's own call) in the producer's update
+  mode, each call's options, `year` too, as the file writes them;
+  `project`, `group`, `status` (`replaced`, `unchanged`), `written`, `calls`,
+  `files`, `pins` (`kept`, `new`, `dropped`) and `rescanned`. Only when every
+  call and unit succeeded are the pins replaced in the file under its lock (a
+  pin whose version and SHA-256 did not change keeps `pinned_at` and
+  `pinned_by`; a run pin gets its `calls`, so an older set gains them; an open
+  set stays open); anything less, or a set closed while the job ran, changes no
+  pin and ends `partial` (`written` false), the downloaded versions staying in
+  the store;
+- `project_restore` (network; never writes the file): runs, for the groups with
+  pins missing from the store, their calls in the producer's default mode;
+  `project`, `groups`, `ok`, `counts`, `pins` (the missing ones: `group`,
+  `producer`, `version`, `status`, `reason`, `detail`, and `found` of a content
+  match), `calls`, `rescanned`: `restored` (its SHA-256 returned),
+  `content_match` (its `content_sha256` returned with other bytes, never
+  re-pinned silently), `not_restored` (`reason` `other_content` or
+  `not_returned`) or `not_restorable` (no call: D5). It ends `partial` when some
+  missing pins were not restored and fails (`run_failed`) when none was.
+
+After a run the slots of its files are read again into the index. A retry asks
+the permissions of the kind again.
+
+A job is controlled by (v0.3; ADR-038):
+
+- `POST /jobs/{id}/cancel` (no body): a job that waits ends `cancelled` at once,
+  without a worker; a running one is interrupted and ends `cancelled` once its
+  worker has stopped, within 30 s. The answer is `202` with the job as it is
+  then (often still `running`): follow its events to the end. A job another
+  process runs (`archiwista jobs start` at a terminal, or a server's job
+  cancelled with `archiwista jobs cancel`) is stopped by that process within a
+  second. Only whoever started the job (`actor`; an agent acts as the person
+  who issued its token) or an administrator may: `403 permission_denied`; a
+  job that has ended is `409 conflict`, reason `job_finished`.
+- `POST /jobs/{id}/retry` (no body): a job that ended `partial`, `failed`,
+  `interrupted` or `cancelled` starts again as a new job of the session with its
+  kind, store and `params` (`202`, `Location` of the new job; the old job stays
+  as it ended). A download fetches only what the store still lacks. One that
+  succeeded is `409`, reason `job_succeeded`; one that waits or runs
+  `job_active`; a download needs `store_writer` again (`403`) and, with `pin`,
+  `project.write` of the project and what its `pin` needs again (a new set's
+  name still free, `409 group_exists`; with `add` the set still in the making,
+  `409 set_closed`), a snapshot the project's owner; the new job is refused as
+  any job of its kind (`409` for a store whose index another job writes, offline
+  mode).
+- `GET /jobs/{id}/log`: the end of the job's log, its worker's standard error in
+  English (`JobLog`: `job`, `size_bytes` of the whole log, `truncated` when only
+  its last MiB is given, `text`). A job that never started a worker, or whose
+  log went with the old logs (90 days, 1 GB), is `404`; a `preview` job that
+  also builds files of projects the session does not see is `403`.
+
+A job the session does not see is `404` for all three.
+
+Events flow as SSE from `GET /jobs/{id}/events` (`text/event-stream`). Every
+frame has `id: <sequence number>`, `event: progress|notice|state` and
+`data: <JSON>`:
+
+- `progress`: `current`, `total`; a scan adds `segment` and `entries`, outlines
+  `written` and `failed`;
+- `notice`: `level`, `code`, `message` (Polish, as written when the job ran);
+- `state`: `state`; the last one carries `result` (success; its texts are
+  Polish) or `error` (in the language of the request, below).
+
+The stream ends after the final state; for a finished job without new events
+the answer is `204`. It also ends about a second after its session ends (a
+sign-out, its expiry, the person, an administrator or a password change ending
+it, a revocation of agent sessions) or its account is disabled or removed, and
+once the session no longer sees the job (v0.4). After 15 s of silence the
+server sends the comment `: keepalive`, and a queued job may wait longer, so
+the client should have no read timeout (for example `httpx` with
+`timeout=None`). After a broken connection resume with the header
+`Last-Event-ID` equal to the last received `id`, in a new session after one
+that ended.
+
+The stream, like every `/api` request, needs the header `X-Archiwista-CSRF`.
+The browser's `EventSource` sends no headers of its own, so it does not fit
+here: read the stream with an ordinary HTTP client that reads the body as it
+arrives: `curl -N`, `httpx.stream(…)`, and `fetch` with `response.body` in the
+browser (as the Archiwista interface does).
 
 ```sh
 JOB="$(curl -sf -b "$JAR" -H "$H" -X POST \
@@ -461,20 +1326,106 @@ curl -sfN -b "$JAR" -H "$H" "$BASE/jobs/$JOB/events"
 curl -sf -b "$JAR" -H "$H" "$BASE/jobs/$JOB" | jq '{state, error}'
 ```
 
-Kody błędów zadania (`error.code`): `store_unavailable`,
-`source_unavailable`, `source_incompatible`, `kartograf_error`,
-`offline_mode`, `not_found`, `unsupported`, `internal_error`,
-`worker_crashed`, `interrupted`, `cancelled`. CLI nie ma poleceń zadań:
-`archiwista reindex [--store MAGAZYN]` wykonuje pełny skan na pierwszym
-planie (dla właściciela przy terminalu, nie dla agenta przy działającym
-serwerze — oba trafiają do tej samej kolejki i dostają `409` przy
-konflikcie).
+The `error` of a job that did not succeed (`failed`, `interrupted`, `cancelled`) is
+described as a problem is (section 7): `code` is a code of the error registry,
+`detail` says what happened and `hint` tells how to fix it when a fix is known
+(both in the language of the request, also in the final `state` event: the job
+keeps the key and the values of each text and renders them when it is read), and
+`details` holds the job's own cause as `reason` and the context, whose texts are
+Polish, as is the `message` of a `notice` and as is the `detail` of a job
+recorded before the texts followed the request. Base decisions on `code` and
+`details.reason`, never on the text of `detail`:
 
-## 10. Ograniczenia v0.2
+| `code` | `details.reason` | What it means |
+|---|---|---|
+| `store_unavailable` | `store_unreadable` | the store cannot be read now (an unmounted share); the index stays as it was, try again later |
+| `store_unavailable` | `no_marker`, `unsupported_marker`, `foreign_store`, `not_a_store` | the producer refuses the directory (Kartograf: no `kartograf-store.json` beside a layout, a marker of another schema or not JSON, the root of an IMGW store, the parent of a store); `hint` gives the command, for `no_marker` `kartograf store init --root <path>`, which marks the store once; the index stays as it was |
+| `missing_dependency` | `source_unavailable`, `source_incompatible` | the producer plugin is missing or has an unsupported version: `details.source` and `hint` give the fix |
+| `missing_dependency` | `own_reader_failed` | the process that reads own data did not start (for example without the GDAL bindings) |
+| `missing_dependency` | `renderer_not_started` | a `preview` or `preview_warm` job could not start a build or render process on the server (the cause is in the server's log); nothing is kept about the files, try again once it is fixed |
+| `conflict` | `offline_mode` | the job needs the network and offline mode is on |
+| `conflict` | `snapshot_blocked` | the plan refuses the snapshot: `details.blocked_by` is `folder_invalid`, `read_only_folder`, `insufficient_space` or `file_missing` |
+| `conflict` | `inconsistent_copy`, `target_exists` | a snapshot: the file kept changing while it was copied, or another process published the label first; nothing was published, try again |
+| the code of the first failure, e.g. `data_error` | `run_failed` | no unit of a run succeeded |
+| `data_error` | `checksum_mismatch`, `integrity_failed` | a snapshot copy differs from its source or fails the SQLite integrity check; nothing was published |
+| `data_error` | `kartograf_error` (`<package>_error`) | the producer rejected the call: `details.kartograf` has `exception` and the unchanged `message` |
+| `forbidden` | `path_outside_root` | a path leaves the store or the project folder |
+| `not_found` | none | the store, slot, project or file is unknown |
+| `unsupported` | none | the producer cannot do it (a link check without link support; a scan of one segment of a directory the producer reads whole, as IMGWTools does) |
+| `cancelled` | none | cancelled by the person, or the store was removed |
+| `cancelled` | `interrupted` | the server stopped or the worker was interrupted; safe to try again |
+| `internal_error` | `worker_crashed` | the worker ended without a result: `detail` names the signal or exit status and the job log |
+| `internal_error` | `protocol_error` | the worker could not read its job |
+| `internal_error` | none | a defect of Archiwista: details are in the job log |
 
-- Tylko tryb lokalny: jedna osoba na `127.0.0.1`, bez logowania; konta
-  i grupy służą widoczności projektów (A-ADR-029).
-- Bez pobierania danych, sprawdzania dostępności u źródła i działań
-  producenta zmieniających manifest projektu (plan v0.3).
-- Bez danych IMGW w Archiwiście, czatu i MCP; agent zewnętrzny używa API
-  opisanego wyżej.
+Jobs recorded by 0.2.0 are read with these codes too (their old job code is the
+reason). The CLI's job commands are `archiwista jobs start`, `jobs retry`
+and `preview-warm` (a job in the foreground; they print the
+job's `JobDetail` as it ended and exit `0`, `10` for `partial`, `11` or `130`),
+and `jobs list`, `jobs show`, `jobs cancel`, `jobs plan` and `jobs log`, which
+exit `0`; `jobs cancel` also stops a
+job a running server supervises. `archiwista reindex [--store MAGAZYN]` runs a
+full scan in the foreground (for the owner at a terminal, not for an agent next
+to a running server: both go to the same queue and get a conflict, exit `4`,
+when they meet).
+
+## 10. The action log (v0.4, administrators)
+
+The log says who did what, when and from where (A-ADR-047, SPEC 10.2): changes of
+accounts, groups, sharing and settings, the jobs people start, cancel or retry, file
+downloads, refusals (`403`), the pruning of old entries and the exports of the log
+itself (on a team server also sign-ins and sessions). Only an administrator reads it
+(`log.read`); anyone else gets `403 permission_denied`, which is logged too. The CLI
+acts as the owner of the installation, who is one.
+
+`request.refused` (`denied`) records `invalid_host`, `csrf_rejected`,
+`tls_required`, `proxy_required`, `session_required` when a cookie was supplied,
+`password_change_required` and `path_outside_root`. Its target is the reason;
+details hold `reason` and `route`. Before routing, `route` is only the method
+and `/api/*` (or `/`); after routing it is the route template. Raw paths, query
+strings, headers, passwords and tokens are never copied into these entries.
+Token and proxy refusals use `session.login_failed` (`failed`) with `method`
+and `reason`. Each refusal is logged at most once per actor/client, action and
+reason per minute (permission refusals keep their existing per-action rule).
+The in-memory limiter keeps at most 4,096 live keys; at capacity new keys are
+not logged until a key expires, while requests remain refused. It resets on
+server restart. This is a sampled audit, not a count of all failed requests.
+
+- **Filters** of `GET /log`, `GET /log/export` and both commands (`--actor` …):
+  `actor` (an account id, `local`, or `-` before a sign-in), `action` (a name such
+  as `job.start`, or a group by its prefix ending with a dot: `session.`),
+  `outcome` (`ok`, `denied`, `failed`), `target`, `since` (inclusive) and `until`
+  (exclusive), ISO 8601 with a zone; a time without a zone is `400`.
+- **A page** (`ActionPage`, newest first): `items` (`ActionEntryModel`: `id`, `at`
+  in UTC, `actor`, `actor_kind`, `session`, `client`, `action`, `target`,
+  `outcome`, `before`, `after`, `details`), `total` (the entries of all pages of
+  the filters) and `next_cursor`, paged as in section 4 (`limit` 1–200, 50 by
+  default). Reading is not logged.
+- **An export** is logged first (`log.export` with its `filters`, `format` and
+  `count`) and holds every entry older than that one, newest first, as an
+  attachment: JSON Lines (`format=jsonl`, the default; `application/jsonl`, an
+  `ActionEntryModel` per line) or CSV (`format=csv`; UTF-8 with a BOM, CRLF, a
+  header of the field names, the objects as JSON text, null as an empty cell). A
+  CSV cell that starts with `=`, `+`, `-`, `@`, a tab, CR or LF begins with `'`, so
+  a spreadsheet shows it as text: drop that `'` to read the value. `archiwista log
+  export` writes the same bytes to standard output, or replaces `--output FILE`
+  (mode `0600`).
+
+```sh
+curl -sf -b "$JAR" -H "$H" "$BASE/log?action=permission.&since=2026-10-01T00:00:00%2B02:00"
+archiwista log list --actor marek.lis --json
+archiwista log export --format csv --since 2026-10-01T00:00:00+02:00 --output dziennik.csv
+```
+
+## 11. Limits of v0.3
+
+- Local mode only: one person on `127.0.0.1`, no login; accounts and groups
+  serve the visibility of projects (A-ADR-029).
+- Actions run the commands of Kartograf's catalog; IMGWTools has no actions yet
+  (v0.5). An area is a drawn, sheet or file area as in v0.1, not the name of an
+  administrative unit (plan A15, Kartograf KB-7).
+- The files of an IMGWTools store are indexed (archives, series, station
+  catalogs), and its stations and the coverage of their series are read through
+  `/stations` and `archiwista stations` (section 5); the stations in the
+  interface, the chart data, the comparison of stations and the archive badge
+  are v0.5. No chat and no MCP; an external agent uses the API described above.

@@ -1,0 +1,611 @@
+"""Producer-neutral source adapter interfaces: reads, and commands as data.
+
+A plugin is an entry point of the ``archiwista.sources`` group naming a
+factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
+``SourceAdapter``. Segments (and the description of segments), the current
+version of a slot, station catalogs, the series indexes of stations, the
+values of a station's series, their parts, coordinate operations, link
+confirmation, sheet grids, the default store root, the producer's commands
+with the availability at the source, a command over an area of Archiwista,
+the command of a stored version and the folder of a version in a project's
+export are optional capabilities: a producer without them still satisfies
+``SourceAdapter``.
+"""
+
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from datetime import date
+from pathlib import Path
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from archiwista.sources.types import (
+    ActionPlan,
+    ActionProgress,
+    ActionResult,
+    AreaCommand,
+    AvailabilityNotice,
+    AvailabilityReport,
+    CommandCall,
+    CommandInfo,
+    DefaultRoot,
+    EntryMeta,
+    Extreme,
+    Footprint,
+    GeoJSONGeometry,
+    ScanScope,
+    SeriesListing,
+    SeriesValues,
+    SheetGrid,
+    SourceContext,
+    SourceEntry,
+    SourcePartition,
+    SourceSegment,
+    SourceState,
+    Station,
+)
+
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
+
+type FloatArray = NDArray[np.float64]
+
+
+@runtime_checkable
+class SourceAdapter(Protocol):
+    """Expose producer store reads without revealing producer-specific APIs."""
+
+    producer: str
+    package: str
+    supported_versions: str
+    schemas: tuple[str, ...]
+
+    def probe(self, root: Path) -> SourceState:
+        """Report the producer and store contract state for a root."""
+        ...
+
+    def iter_entries(
+        self, root: Path, *, scope: ScanScope | None = None
+    ) -> Iterator[SourceEntry]:
+        """Yield versions, links, full sheets, and problems for a scan."""
+        ...
+
+    def read_meta(self, entry: SourceEntry) -> EntryMeta:
+        """Read metadata for one entry using only the producer's API."""
+        ...
+
+    def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
+        """Return a WGS84 geometry or an explicit missing-location reason.
+
+        Without ``network`` no request leaves the process; unit outlines
+        then come only from the adapter's local cache.
+        """
+        ...
+
+
+type SourceFactory = Callable[[SourceContext], SourceAdapter]
+
+
+@runtime_checkable
+class SheetGridAdapter(Protocol):
+    """Optional capability for producers with named geographic sheets."""
+
+    def sheet_grid(
+        self, area: tuple[float, float, float, float], system: str, scale: str
+    ) -> SheetGrid:
+        """Find sheets or report that sheet grids are unsupported."""
+        ...
+
+
+@runtime_checkable
+class SegmentDescriptionAdapter(Protocol):
+    """Optional capability: the producer describes the segments its entries carry.
+
+    For a producer whose entries name a segment (a dataset, a product) but
+    that cannot read one segment on its own: the scan describes each segment
+    it met, and a job that asks for one segment of it is refused
+    (``unsupported``). A ``SegmentedAdapter`` has it too.
+    """
+
+    def describe_segment(self, segment: str) -> SourceSegment:
+        """Describe a segment: product, country, and a human-readable name."""
+        ...
+
+
+@runtime_checkable
+class SegmentedAdapter(SegmentDescriptionAdapter, Protocol):
+    """Optional capability: a store split into independently scanned segments."""
+
+    def segments(self, root: Path) -> tuple[str, ...]:
+        """List the segments; their scans together equal one unscoped scan."""
+        ...
+
+
+@runtime_checkable
+class CurrentVersionAdapter(Protocol):
+    """Optional capability: the producer names the current version of a slot.
+
+    For a producer without links, whose slots carry its own key
+    (``SourceEntry.slot_key``): which version of a slot is the current one is
+    the producer's decision, taken by reading the slot's versions. The scan
+    asks for the slots it touched, once at the end of a pass.
+    """
+
+    def current_version(self, root: Path, slot_key: str) -> Path | None:
+        """Return the current version of a slot, relative to the store.
+
+        ``None`` when the slot has no current version: it has no version, or
+        one of its versions is broken (an older one is never chosen in its
+        place).
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read the store.
+        ProducerError
+            The producer rejected the store or the key.
+        """
+        ...
+
+
+@runtime_checkable
+class StationCatalogAdapter(Protocol):
+    """Optional capability: the producer keeps station catalogs in its store.
+
+    A station catalog is a slot with the producer's key (``SourceEntry.slot_key``)
+    whose versions each list the stations of one provider. The index keeps the
+    stations of the current version of each catalog and reads a catalog again
+    only when its current version changed.
+    """
+
+    def station_catalog(self, slot_key: str) -> str | None:
+        """Return the provider whose station catalog a slot is; ``None``: no catalog."""
+        ...
+
+    def read_stations(self, root: Path, version: Path) -> tuple[Station, ...]:
+        """Read every station of a catalog version (relative to the store).
+
+        Stations without a location are included, with the reason.
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read the version.
+        ProducerError
+            The producer refused the version: it is broken or unlike its
+            sidecar.
+        """
+        ...
+
+
+@runtime_checkable
+class SeriesIndexAdapter(Protocol):
+    """Optional capability: the producer keeps series of stations with their index.
+
+    A dataset's series is a slot with the producer's key whose versions each
+    hold the series of every station of the dataset and an index of their
+    coverage (IMGW-8). The index keeps the coverage of the current version of
+    each dataset's series and reads it again only when that version changed;
+    the series files themselves are never read for it.
+    """
+
+    def series_dataset(self, slot_key: str) -> str | None:
+        """Return the dataset whose series a slot is; ``None``: no series."""
+        ...
+
+    def read_series_index(self, root: Path, version: Path) -> SeriesListing:
+        """Read the index of a series version (relative to the store).
+
+        Raises
+        ------
+        SourceUnavailableError
+            The system cannot read the version.
+        ProducerError
+            The producer refused the version: it is broken or unlike its
+            sidecar.
+        """
+        ...
+
+
+@runtime_checkable
+class SeriesValuesAdapter(Protocol):
+    """Optional capability: the values of a station's series (SPEC 6.7; IMGW-10).
+
+    A version of a dataset's series (``SeriesIndexAdapter``) holds a file per
+    station; this reads one station's values from it for display (a chart),
+    never for the index. The half-year characteristics of a dataset, whose
+    extremes the producer publishes with their dates, are a dataset of their
+    own, named by the producer's registry.
+    """
+
+    def read_values(
+        self,
+        root: Path,
+        version: Path,
+        *,
+        station: str,
+        variables: Sequence[str],
+        start: date | None = None,
+        end: date | None = None,
+    ) -> Iterator[SeriesValues]:
+        """Yield a station's values of a series version (relative to the store).
+
+        One item per unit of the station's file, in its order, from ``start``
+        to ``end`` (both included, a unit by its first day; ``None``: no
+        bound); ``variables`` are variables of the dataset, at least one.
+
+        Raises
+        ------
+        NotFoundError
+            The station has no series in the version.
+        SourceUnavailableError
+            The system cannot read the version or the station's file.
+        ProducerError
+            The producer refused the version (broken, unlike its sidecar, or
+            no series), a variable or the range.
+        """
+        ...
+
+    def characteristics_dataset(self, dataset: str) -> str | None:
+        """Return the dataset of the half-year characteristics of a dataset.
+
+        The one other dataset of the same provider and family whose unit is
+        the half-year in the producer's registry, never derived from the key's
+        text (SPEC 4.2.1); ``None`` when there is none or the producer does not
+        know ``dataset``. No disk access.
+        """
+        ...
+
+    def extremes_of(self, dataset: str, variable: str) -> Mapping[Extreme, str]:
+        """Return the characteristics that hold a variable's extremes.
+
+        For a variable of ``dataset`` (``Q``), the variables of its
+        characteristics dataset whose values are its least and its greatest
+        value of each half-year period, by statistic: ``{"min": "Q_min",
+        "max": "Q_max"}``. Empty when there is no characteristics dataset or
+        it holds no extreme of the variable. No disk access.
+        """
+        ...
+
+
+@runtime_checkable
+class PartitionedAdapter(Protocol):
+    """Optional capability: a segment read in disjoint parts, in parallel."""
+
+    def partitions(
+        self, root: Path, segment: str, known_versions: Mapping[str, tuple[str, ...]]
+    ) -> tuple[SourcePartition, ...]:
+        """Split a segment into parts whose scans together equal its scan.
+
+        ``known_versions`` (as in ``ScanScope``) weighs the parts; a segment
+        that is gone has none.
+        """
+        ...
+
+
+class CoordinateTransformer(Protocol):
+    """A pinned coordinate operation, safe to share between threads."""
+
+    @property
+    def description(self) -> str:
+        """Name of the operation, e.g. for the provenance of a result."""
+        ...
+
+    @property
+    def accuracy_m(self) -> float:
+        """Declared accuracy of the operation in metres."""
+        ...
+
+    def transform(
+        self, xs: FloatArray, ys: FloatArray
+    ) -> tuple[FloatArray, FloatArray]:
+        """Transform coordinates given and returned in x (east), y (north) order."""
+        ...
+
+    def gdal_operation(self) -> str:
+        """Return the same operation as a PROJ pipeline for GDAL.
+
+        Passed as ``COORDINATE_OPERATION`` (e.g. to
+        ``rasterio.warp.reproject``), it makes GDAL move pixels with exactly
+        this operation instead of one GDAL would choose itself. GDAL hands
+        coordinates over in the authoritative axis order of both CRSs, so
+        the pipeline swaps the axes of a northing-first CRS.
+        """
+        ...
+
+
+@runtime_checkable
+class GeoAdapter(Protocol):
+    """Optional capability: the producer's coordinate operations and countries."""
+
+    def transformer(self, src_crs: str, dst_crs: str) -> CoordinateTransformer:
+        """Return the producer's pinned operation between two CRSs."""
+        ...
+
+    def countries(
+        self, bbox_wgs84: tuple[float, float, float, float]
+    ) -> tuple[str, ...]:
+        """Return codes of the producer's countries intersecting a WGS84 box."""
+        ...
+
+
+@runtime_checkable
+class LinkCheckAdapter(Protocol):
+    """Optional capability: confirm on demand which version a link holds."""
+
+    def confirm_link(self, entry: SourceEntry) -> Path | None:
+        """Return the confirmed version path relative to the store, or ``None``."""
+        ...
+
+
+@runtime_checkable
+class DefaultRootAdapter(Protocol):
+    """Optional capability: the directory the producer uses when no store is named."""
+
+    def default_root(self) -> DefaultRoot:
+        """Return the producer's default store root and where it comes from.
+
+        A report only: Archiwista names the store in every call, so it never
+        uses this directory itself. The producer may read the whole directory
+        to size it, so ask for an answer a person waits for, never on a poll.
+        """
+        ...
+
+
+@runtime_checkable
+class ActionAdapter(Protocol):
+    """Optional capability: the producer's commands as data (SPEC 12.2 KB-1 to KB-5).
+
+    The catalog, the reading of a command line, the check of a call and the
+    command line of a call: what the forms, the plan window and an agent need
+    before anything runs (plan of 2026-10-25, A1). None of them uses the
+    network or writes. A call the producer refuses raises ``ProducerError`` with
+    the producer's registry code, its text and hint, and the names it gives
+    (``details.option``, ``details.options``, ``details.allowed``). The
+    availability at the source (A2) and the plan of a run (A4) ask the network
+    and write only the producer's metadata cache, which the adapter keeps in its
+    ``cache_dir``; the run itself (A5) writes the store through the producer.
+    ``narrow`` leaves out of a plan the positions another job fetches (ADR-047).
+    """
+
+    def commands(self) -> tuple[CommandInfo, ...]:
+        """Return the producer's catalog in its order, texts in the call's language."""
+        ...
+
+    def parse(self, line: str) -> CommandCall:
+        """Read a command line as the producer's own command line reads it."""
+        ...
+
+    def validate(
+        self, command: str, options: Mapping[str, object], *, root: Path | None
+    ) -> Mapping[str, object]:
+        """Check a call without network and without writing.
+
+        ``root`` is the store root of a command that works on a store
+        (``CommandInfo.store``): the configured store's, given to the producer
+        in the call; such a command with ``None`` is a program error
+        (``ValueError``) and never reaches the producer, whose default root
+        would stand in. A command on no store ignores it. Returns the options
+        as the producer reads them.
+        """
+        ...
+
+    def format(self, call: CommandCall) -> str:
+        """Return the producer's command line of a call; ``parse`` reads it back."""
+        ...
+
+    def availability_products(self) -> tuple[str, ...]:
+        """Return the products whose availability at the source it reports."""
+        ...
+
+    def availability(
+        self,
+        product: str,
+        *,
+        area_file: Path,
+        countries: tuple[str, ...],
+        force: bool = False,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> AvailabilityReport:
+        """Ask the source what it has for an area: years, variants, sheets.
+
+        Uses the network (SPEC 6.3). ``area_file`` is the area as a file
+        Archiwista keeps for as long as the area (A-ADR-035 erratum 2): a
+        GeoJSON (RFC 7946, WGS84) of one feature with the area's polygon as
+        it is; ``countries`` are those the area meets (``AreaRecord``). The
+        adapter gives its producer that file, so the command lines of the
+        report may name it. The producer's
+        metadata cache stands for its answers of the last days; ``force`` asks
+        the source again. ``on_notice`` receives each notice when it is said.
+
+        Raises
+        ------
+        ProducerError
+            The producer refused the request (an unknown product, an area
+            outside its countries) or the source failed.
+        """
+        ...
+
+    def check(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionPlan:
+        """Plan a run of a command on a store without its effects (SPEC 12.2 KB-5).
+
+        The producer compares what the store at ``root`` holds with what the
+        source has now: nothing is downloaded or written but the producer's
+        metadata cache. ``root`` is the configured store's root, never the
+        producer's default one; ``on_notice`` receives each notice when it is
+        said. A position the source could not tell about is ``check_failed``,
+        the others are planned all the same.
+
+        Raises
+        ------
+        ProducerError
+            The producer refused the call (an unknown command, an invalid
+            option, a store it cannot write) or the whole check failed.
+        UnsupportedError
+            The command has no plan of a store (reason ``no_plan``).
+        """
+        ...
+
+    def run(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        plan: ActionPlan | None = None,
+        upgrade: bool = False,
+        on_progress: Callable[[ActionProgress], None] | None = None,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionResult:
+        """Run a command in the store at ``root`` (SPEC 12.2 KB-5).
+
+        The producer writes the store: it publishes each version whole, so an
+        interrupt (``KeyboardInterrupt``, which the run lets through) leaves no
+        part of a version. ``root`` is the configured store's root, never the
+        producer's default one, and the run writes no plain file. ``plan``, a
+        plan ``check`` made of the same call, runs that plan: only its positions
+        to download, and a position whose source changed since the plan fails
+        as ``conflict`` with the reason ``stale_plan``. Without a plan the
+        versions the store holds are kept, and ``upgrade`` downloads the
+        source's newer versions instead (the producer's update mode without a
+        plan, A-ADR-049 D-10). ``on_progress`` and ``on_notice`` receive each
+        event when it happens. A unit that fails is an item of the result, not
+        an error.
+
+        Raises
+        ------
+        ProducerError
+            The producer refused the call (an unknown command, an invalid
+            option or plan, a store it cannot write) or failed as a whole.
+        UnsupportedError
+            ``upgrade`` was asked of a producer without that mode (reason
+            ``no_upgrade``).
+        BrokenContractError
+            The producer reported a file outside the store, or a plain one
+            (``written``, ``replaced``).
+        """
+        ...
+
+    def scope(self, path: str) -> ScanScope:
+        """Return what a scan reads to see the file at ``path`` again.
+
+        ``path`` is a file's standard path below the store root (``/``-
+        separated): the ``path`` of an ``ActionFile`` or a ``PlanEntry``.
+        The scope names its segment and its one unit (``ScanScope.units``),
+        so a scan of it reads that file's slot and nothing else.
+
+        Raises
+        ------
+        ValueError
+            ``path`` is not the place of a file of the producer's store.
+        """
+        ...
+
+    def narrow(self, plan: ActionPlan, paths: Collection[str]) -> ActionPlan:
+        """Return the plan without the positions to download outside ``paths``.
+
+        The positions to download (``ActionPlan.todo``) at ``paths`` stay, the
+        others go from ``entries`` and from the producer's own plan
+        (``document``), so a ``run`` of the narrowed plan never fetches them;
+        the positions a run does not download stay as they are. No network
+        and no write (ADR-047: the positions another active download of the
+        store claimed).
+
+        Raises
+        ------
+        ValueError
+            ``plan`` is no plan of this producer's ``check``.
+        """
+        ...
+
+
+@runtime_checkable
+class VersionCommandAdapter(Protocol):
+    """Optional capability: the command of a stored version (A-ADR-049 D-10).
+
+    Offline and read-only, from the version's metadata in the store: the call
+    that selects the version again, so a project job can check, restore and
+    re-pin a pin with the producer's own commands.
+    """
+
+    def command_for_version(self, version: str, *, root: Path) -> CommandCall:
+        """Return the call that selects the stored version ``version`` again.
+
+        ``version`` is the version's path relative to ``root``, the configured
+        store's producer directory (``/``-separated); the call is the one
+        ``ActionAdapter.parse`` would read from its command line.
+
+        Raises
+        ------
+        UnsupportedError
+            The version's metadata do not rebuild its call (reason
+            ``command_not_rebuildable``, the producer's text unchanged).
+        ProducerError
+            The producer refused otherwise: no such version or sidecar, an
+            invalid sidecar, a path that is no version.
+        """
+        ...
+
+
+@runtime_checkable
+class AreaCommandAdapter(Protocol):
+    """Optional capability: a command of the catalog over an area of Archiwista.
+
+    Offline, no disk access: the producer's names of the options that choose
+    an area stay in its adapter (A-ADR-049 erratum 5). A person picks an
+    area, e.g. a project's, for a command they paste, and the call gets that
+    area in place of the one it named.
+    """
+
+    def with_area(
+        self,
+        call: CommandCall,
+        *,
+        area_file: Path,
+        geometry: GeoJSONGeometry,
+        countries: tuple[str, ...],
+    ) -> AreaCommand:
+        """Return ``call`` with the area in place of the area options it names.
+
+        ``area_file`` is the area's GeoJSON Archiwista keeps (RFC 7946, WGS84,
+        one feature, as ``ActionAdapter.availability`` receives it), passed as
+        the command's geometry file option when it has one; otherwise the box
+        that encloses ``geometry`` (the area's WGS84 polygon) goes as the
+        command's box (``AreaCommand.way`` ``bbox``). ``countries`` are those
+        the area meets (``AreaRecord``), for a country the command needs with
+        an area and the call does not give. The other options stay as given.
+
+        Raises
+        ------
+        UnsupportedError
+            The command takes no area (reason ``no_area_option``).
+        ProducerError
+            The producer does not know the command, or the box of the area
+            cannot be measured.
+        """
+        ...
+
+
+@runtime_checkable
+class ExportFolderAdapter(Protocol):
+    """Optional capability: the category folder of a version in an export.
+
+    A project's export (A-ADR-049 decision 13) puts each version's file into
+    a folder named for people after its category (``NMT``, ``BDOT``,
+    ``ORTO``…); without the capability, or without an answer, the folder is
+    the upper-cased product id, else the producer's id.
+    """
+
+    def export_folder(self, product: str | None, dataset_key: str | None) -> str | None:
+        """Return the folder of a version of ``product`` and ``dataset_key``.
+
+        Plain upper case, no path separators; ``None`` leaves the default.
+        Offline, no disk access.
+        """
+        ...

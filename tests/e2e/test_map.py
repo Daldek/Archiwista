@@ -5,7 +5,8 @@ the sheet grid, a geometry file), the local state of an area after the
 store changed, more than 5000 outlines shown as their grid, the counter of
 files without outline leading to the catalog, an online basemap from a tile
 server on another origin within the CSP, offline mode without a single
-external request, keyboard and ARIA, and the layout at 1440 and 390 px.
+external request, keyboard and ARIA, the layout at 1440 and 390 px, and in
+Chromium and Firefox the panel scrolled by the wheel to its last step.
 """
 
 import json
@@ -18,7 +19,7 @@ from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
 import pytest
-from playwright.sync_api import FloatRect, Locator, Page, expect
+from playwright.sync_api import FloatRect, Locator, Page, ViewportSize, expect
 
 from archiwista.config import AppSettings, BasemapConfig, StoreConfig
 from tests.fixtures.browser import Served, Tab
@@ -55,7 +56,26 @@ API_GET = """async (path) => {
   const answer = await fetch(`/api/v1${path}`, { headers });
   return { status: answer.status, body: await answer.json() };
 }"""
+API_POST = """async ([path, body]) => {
+  const headers = {
+    "X-Archiwista-CSRF": sessionStorage.getItem("archiwista_csrf"),
+    "Content-Type": "application/json",
+  };
+  const answer = await fetch(`/api/v1${path}`, {
+    method: "POST", headers, body: JSON.stringify(body),
+  });
+  return { status: answer.status, body: await answer.json() };
+}"""
 LOADED = re.compile("w widoku|Brak obrysów")
+# Installed before any page script: the canvas has no WebGL2 context to give.
+NO_WEBGL2 = """
+const getContext = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function (kind, ...options) {
+  return kind === "webgl2" ? null : getContext.call(this, kind, ...options);
+};
+"""
+# A laptop's window: the panel's steps reach below its fold.
+SMALL: ViewportSize = {"width": 1280, "height": 600}
 
 
 def zespol(root: Path) -> StoreConfig:
@@ -77,15 +97,20 @@ def api_get(page: Page, path: str) -> Any:
     return answer["body"]
 
 
-def open_map(tab: Tab, served: Served, query: str = "") -> Page:
-    """Start a session, wait for the first scan and open the map view."""
-    page = tab.page
-    page.goto(served.token_url())
+def wait_indexed(page: Page) -> None:
+    """Wait for the first scan of the stores; the page has a session."""
     expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
     deadline = time.monotonic() + INDEX_TIMEOUT_S
     while not page.evaluate(HEALTH):
         assert time.monotonic() < deadline, "the store was not indexed in time"
         page.wait_for_timeout(250)
+
+
+def open_map(tab: Tab, served: Served, query: str = "") -> Page:
+    """Start a session, wait for the first scan and open the map view."""
+    page = tab.page
+    page.goto(served.token_url())
+    wait_indexed(page)
     page.goto(f"{served.base}/?view=map{query}")
     expect(counter(page)).to_have_text(LOADED, timeout=30_000)
     return page
@@ -151,6 +176,66 @@ def area_of(page: Page) -> dict[str, Any]:
     """Return the area of the address as the API keeps it."""
     area: dict[str, Any] = api_get(page, f"/areas/{query_of(page)['area_id']}")
     return area
+
+
+def create_project_area(
+    page: Page,
+    projects_dir: Path,
+    *,
+    name: str = "Kamiennik",
+    geometry: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Write a usable area into a new project, using a store footprint by default."""
+    if geometry is None:
+        footprints = api_get(page, f"/map/footprints?bbox={WORLD}&limit=5000")
+        geometry = footprints["items"][0]["geometry"]
+    saved = page.evaluate(API_POST, ["/areas", {"geometry": geometry, "name": name}])
+    assert saved["status"] == 201, saved
+    created = page.evaluate(
+        API_POST,
+        [
+            "/projects",
+            {
+                "path": str(projects_dir / "kamiennik"),
+                "name": name,
+                "area_id": saved["body"]["id"],
+            },
+        ],
+    )
+    assert created["status"] == 201, created
+    return {"area_id": saved["body"]["id"], "project": created["body"]["project"]}
+
+
+def test_project_area_is_chosen_on_map_with_its_local_state(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """A project's saved area can be picked at step 1 and used at steps 3 and 4."""
+    # Arrange
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    served = serve(offline_settings(store))
+    page = open_map(tab, served)
+    created = create_project_area(page, store.projects_dir)
+    page.goto(f"{served.base}/?view=map")
+
+    # Act
+    select = page.get_by_role("combobox", name="Obszar projektu", exact=True)
+    select.select_option(created["project"])
+
+    # Assert
+    expect(page).to_have_url(re.compile(f"area_id={created['area_id']}"))
+    card = page.locator(".step-anchor .area-card")
+    expect(card).to_contain_text("Obszar projektu Kamiennik")
+    expect(page.get_by_role("region", name="Stan lokalny")).to_contain_text(
+        "Pliki w obszarze:"
+    )
+    expect(
+        page.get_by_role("link", name="Pokaż pliki obszaru w Katalogu")
+    ).to_be_visible()
+    expect(select).to_have_value(created["project"])
+    expect(page.get_by_role("combobox", name="Obszar polecenia")).to_have_value(
+        "current"
+    )
+    tab.assert_clean()
 
 
 def test_draw_rectangle_and_polygon_areas(
@@ -517,6 +602,24 @@ def test_map_keyboard_and_aria(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     tab.assert_clean()
 
 
+def test_a_browser_without_webgl2_is_told_why_the_map_is_missing(
+    serve: Serve, tab: Tab
+) -> None:
+    """Without WebGL2 the map says it cannot be drawn here, and why."""
+    served = serve(AppSettings(offline=True))
+    page = tab.page
+    page.add_init_script(NO_WEBGL2)
+    fragment = urlsplit(served.token_url()).fragment
+
+    page.goto(f"{served.base}/?view=map#{fragment}")
+
+    expect(page.get_by_role("alert")).to_have_text(
+        re.compile(r"^Mapa nie działa w tej przeglądarce: \S")
+    )
+    expect(page.get_by_role("complementary", name="Wybór")).to_be_visible()
+    tab.assert_clean()
+
+
 def test_map_layout_at_1440_and_390(serve: Serve, tab: Tab, tmp_path: Path) -> None:
     """At 1440 px the panel stands beside the map; at 390 px it is a bottom sheet."""
     store = make_store(tmp_path / "store", slots=24, seed=7)
@@ -548,3 +651,52 @@ def test_map_layout_at_1440_and_390(serve: Serve, tab: Tab, tmp_path: Path) -> N
     assert sheet is not None and sheet["width"] == 390
     assert (wide_overflow, page.evaluate(overflow)) == (0, 0)
     tab.assert_clean()
+
+
+def test_wheel_over_the_panel_brings_its_last_step_into_view(
+    serve: Serve, engine_tab: Tab, tmp_path: Path
+) -> None:
+    """At 1280×600 the panel scrolls itself under the wheel, inside the window.
+
+    The map opens in one page load: Firefox fails the stylesheets of a page
+    left while they load, an uncaught rejection of the shell. Headless Firefox
+    has no WebGL2, so there the map only says it cannot be drawn; the panel
+    beside it is the same. The panel is measured once the shell's index
+    banner is gone: the shell polls the health every 2 s during a scan, so its
+    scan line can stand above the panel after ``wait_indexed`` and leave later,
+    which moves the panel up.
+    """
+    store = make_store(tmp_path / "store", slots=24, seed=7)
+    sheet = nmt_sheets(store)[0].unit
+    assert sheet is not None
+    served = serve(offline_settings(store))
+    page = engine_tab.page
+    page.set_viewport_size(SMALL)
+    fragment = urlsplit(served.token_url()).fragment
+    page.goto(f"{served.base}/?view=map&product=nmt#{fragment}")
+    wait_indexed(page)
+    expect(page.get_by_role("region", name="Stan indeksu")).to_have_count(0)
+    panel = page.get_by_role("complementary", name="Wybór")
+    panel.get_by_label("Godło arkusza").fill(sheet)
+    panel.get_by_role("button", name="Wybierz", exact=True).click()
+    expect(panel.get_by_text("lokalnie 100% obszaru")).to_be_visible()
+    source = panel.get_by_role("heading", name="U źródła")
+    expect(source).not_to_be_in_viewport()
+    box = panel.bounding_box()
+    assert box is not None
+
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    for _ in range(40):
+        page.mouse.wheel(0, 100)
+        page.wait_for_timeout(25)
+        if source.evaluate(
+            "(heading) => { const rect = heading.getBoundingClientRect();"
+            " return rect.top >= 0 && rect.bottom <= innerHeight; }"
+        ):
+            break
+
+    # The panel's content moved, not the panel: the page did not scroll.
+    expect(source).to_be_in_viewport()
+    assert panel.bounding_box() == box
+    assert box["y"] + box["height"] <= SMALL["height"]
+    engine_tab.assert_clean()
