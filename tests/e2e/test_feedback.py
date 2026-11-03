@@ -121,7 +121,7 @@ def test_a_report_is_shown_as_text_whatever_it_holds(serve: Serve, tab: Tab) -> 
     details = page.locator(".feedback-details")
 
     assert status == 201
-    expect(details.locator(".feedback-message")).to_have_text(HOSTILE["message"])
+    expect(details.locator(".feedback-message")).to_have_text(str(HOSTILE["message"]))
     expect(details.get_by_text(str(HOSTILE["contact"]))).to_be_visible()
     expect(details.get_by_text('"<i>x</i>"')).to_be_visible()
     expect(details.get_by_text("Brak dziennika zdarzeń.")).to_be_visible()
