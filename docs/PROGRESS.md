@@ -48,6 +48,13 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 | `Approved:` lines of the executed plans v0.1 and v0.2 (DEV-17.4) | approval is the author's statement |
 | Tags, releases, replacing the producers' commit pins by tags, PyPI name `nogat-archiwista` (phases 5 and 6) | need the producers' tags and the author's approval |
 
+On 2026-11-04 `feature/feedback` (from `feature/obserwator`; Nogat plan
+`2026-11-03-feedback-in-archiwista-and-hydrolog`, decisions D1, D2, D4–D6) adds
+Hydrograf's "Zgłoś uwagę": the top bar's window with its diagnostics, `POST /feedback`,
+the administrators' `/admin/feedback` routes and view "Zgłoszenia", and the state
+database's schema version 5 (table `feedback`). Its targeted unit, integration and e2e
+tests pass; the full gate has not run on it yet.
+
 ## Next
 
 1. The author: sign in again on :8090 (the rebuild dropped the sessions). Optionally
