@@ -11,20 +11,21 @@ requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Piotr de Bever", email = "git@debever.pl" }]
 dependencies = [
-    # Commit of the Kartograf branch `feature/archiwista-projects` (REL-5.3): the
+    # Commit of the Kartograf branch `develop` (REL-5.3): the
     # store root `root`, the marker `kartograf-store.json`, the default root
     # (`store_root()`), `kartograf.testing` (ADR-054), `find_sheet_outlines`
     # (PL-2000 zones of powiats, Kartograf ADR-055), the refresh TTL of the
     # metadata cache with the index answers shared by the availability report and
     # the plans (Kartograf ADR-056), `store_state()`, Kartograf without
     # projects, with `command_for_file` (KB-6, Kartograf ADR-057; A-ADR-049),
-    # and `--geometry` selecting by the features' shape, GeoJSON accepted
-    # (Kartograf ADR-058; A-ADR-035 erratum 2) (Archiwista's requests) have no
-    # release yet; the commit is on GitHub.
+    # `--geometry` selecting by the features' shape, GeoJSON accepted
+    # (Kartograf ADR-058; A-ADR-035 erratum 2) (Archiwista's requests), and the
+    # marker `obserwator-store.json` of another tool's store (Nogat ECO-057) have
+    # no release yet; the commit is on GitHub.
     # The release pull request replaces the commit with the tag (REL-2.1) and
     # narrows `SUPPORTED_VERSIONS` to `>=0.8.0` (REL-5.6). The versions the
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`.
-    "kartograf @ git+https://github.com/Daldek/Kartograf@eab8612d5666cafa43d1e2c4f0a034583310b66e",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@9deaa314c88f89ea2d9308481e0c0b04751fc792",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.

@@ -1116,6 +1116,10 @@ command-line interface may change.
   `"producer": "imgw"` to `"obserwator"` in a project file a development build wrote (a
   closed set's `pins_sha256` then no longer matches its pins). The local index is
   rebuilt (schema 18) when it is opened and filled by the next full scan.
+- Kartograf is re-pinned to `9deaa314`, the head of its `develop` (`pyproject.toml`,
+  `uv.lock`; the supported range is unchanged): it knows the store of Obserwator by the
+  marker `obserwator-store.json`, so a Kartograf directory that holds it, or a directory
+  with that marker alone, is `foreign_store` (Nogat ECO-057).
 - Kartograf is re-pinned to `eab8612d` (`pyproject.toml`, `uv.lock`; the supported range is
   unchanged): `--geometry` selects the sheets each feature's geometry meets, not its
   envelope's, and reads GeoJSON (Kartograf ADR-058; A-ADR-035 erratum 2).
