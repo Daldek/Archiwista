@@ -30,15 +30,15 @@ def test_pins_sort_by_producer_then_version_by_code_point() -> None:
     # Arrange
     pins = [
         ("kartograf", "b.tif", "1" * 64),
-        ("imgw", "z.csv", "2" * 64),
+        ("obserwator", "A.csv", "2" * 64),
         ("kartograf", "B.tif", "3" * 64),
         ("kartograf", "a.tif", "4" * 64),
     ]
     lines = [
-        "imgw\tz.csv\t" + "2" * 64,
         "kartograf\tB.tif\t" + "3" * 64,
         "kartograf\ta.tif\t" + "4" * 64,
         "kartograf\tb.tif\t" + "1" * 64,
+        "obserwator\tA.csv\t" + "2" * 64,
     ]
     expected = hashlib.sha256(
         "".join(f"{line}\n" for line in lines).encode()

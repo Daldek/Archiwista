@@ -122,7 +122,7 @@ class SourceState:
     says what is wrong, ``reason`` is the machine code of the cause
     (``no_marker``, ``unsupported_marker``, ``foreign_store`` or
     ``not_a_store``) and ``hint`` one line that tells how to fix it, the
-    command where one exists (e.g. ``imgw store init --root <path>``,
+    command where one exists (e.g. ``obserwator store init --root <path>``,
     DEV-19.13); ``detail`` and ``hint`` are catalog messages, and the three
     stay ``None`` for a state that has nothing to add.
     """
@@ -153,10 +153,10 @@ class DefaultRoot:
     source : {"default", "env", "dotenv", "file"}
         Where the producer's settings found it: its own default (``<data_dir>``
         and the producer's name), an environment variable, the same variable in
-        a ``.env`` file (IMGWTools) or the settings file.
+        a ``.env`` file (Obserwator) or the settings file.
     name : str or None
-        The variable (``KARTOGRAF_ROOT``, ``IMGW_ROOT``) or the table
-        (``[kartograf]``, ``[imgw]``) that gave it; ``None`` for the default.
+        The variable (``KARTOGRAF_ROOT``, ``OBSERWATOR_ROOT``) or the table
+        (``[kartograf]``, ``[obserwator]``) that gave it; ``None`` for the default.
     exists : bool
         Whether ``path`` is a directory.
     marked : bool
@@ -209,7 +209,7 @@ class EntryMeta:
     ``provider``, ``written_by`` and ``producer_version`` are the fields of
     the sidecar core every Nogat tool writes (DEV-19.16): the organisation
     that publishes the data (``IMGW-PIB``, ``CHMI``), the package that wrote
-    the file (the sidecar's ``producer``, e.g. ``kartograf``, ``imgwtools``;
+    the file (the sidecar's ``producer``, e.g. ``kartograf``, ``obserwator``;
     not the Archiwista producer id in ``producer``) and its version. A
     producer that does not know one leaves it ``None``.
 
@@ -276,7 +276,7 @@ class SourceObservation:
 
 @dataclass(frozen=True, slots=True)
 class Station:
-    """A station of a producer's station catalog (SPEC 4.8.1; IMGWTools IMGW-9).
+    """A station of a producer's station catalog (SPEC 4.8.1; Obserwator IMGW-9).
 
     A station is ``provider`` and ``code``: the codes of two providers never
     meet (IMGW-PIB has nine digits, ČHMÚ WIGOS identifiers), and a code is

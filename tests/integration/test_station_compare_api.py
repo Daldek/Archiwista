@@ -2,7 +2,7 @@
 
 ``GET /stations/compare`` reads one variable of 2 to 5 stations' current
 series of one dataset through the producer over the index of a scanned copy
-of ``complete_pl_cz`` (``imgwtools.testing``: ``complete`` and the ČHMÚ
+of ``complete_pl_cz`` (``obserwator.testing``: ``complete`` and the ČHMÚ
 gauges): one range for all, by default the variable's known spans together
 (ADR-045 erratum 1), one interval, each station's chart its own over that
 range and its facts those of its card; a station without the series or the
@@ -87,21 +87,21 @@ class Served:
 
 @pytest.fixture(scope="module")
 def served(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+    obserwator_store: Stores, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[Served]:
     """Serve the index of a copy of ``complete_pl_cz`` after a full scan."""
     base = tmp_path_factory.mktemp("station-compare")
     root = base / "store"
-    shutil.copytree(imgw_store("complete_pl_cz"), root)
+    shutil.copytree(obserwator_store("complete_pl_cz"), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: config.roots()})
-        scan_store(registry.adapter("imgw"), writer, settings, STORE, mode="full")
+        scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
         yield Served(api.session(LOCAL_OWNER), paths)
 

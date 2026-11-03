@@ -1,8 +1,8 @@
-"""Contract of the values of IMGWTools series behind ``SeriesValuesAdapter``.
+"""Contract of the values of Obserwator series behind ``SeriesValuesAdapter``.
 
-The IMGW adapter reads a station's values of a series version with
-``imgwtools.read_series``: what it gives must be what the producer itself reads
-in its offline fixture stores (``imgwtools.testing``), a missing unit as
+The Obserwator adapter reads a station's values of a series version with
+``obserwator.read_series``: what it gives must be what the producer itself reads
+in its offline fixture stores (``obserwator.testing``), a missing unit as
 ``None``, an accumulated sum flagged; a station outside the series is not
 found and a version the producer refuses is its error. The dataset of the
 half-year characteristics and their extremes come from the producer's
@@ -15,11 +15,11 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
-from imgwtools import get_dataset, read_series, read_series_index
+from obserwator import get_dataset, read_series, read_series_index
 
-from archiwista.adapter.imgw import load
-from archiwista.adapter.imgw.adapter import ImgwAdapter
 from archiwista.adapter.kartograf import load as load_kartograf
+from archiwista.adapter.obserwator import load
+from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
 from archiwista.errors import NotFoundError, ProducerError
 from archiwista.sources import SeriesValuesAdapter, SourceContext
 
@@ -30,14 +30,14 @@ RABA = "149190310"
 
 
 @pytest.fixture
-def adapter(tmp_path: Path) -> ImgwAdapter:
+def adapter(tmp_path: Path) -> ObserwatorAdapter:
     """Create the adapter with its entry-point factory."""
-    created = load(SourceContext(cache_dir=tmp_path / "cache" / "imgw"))
-    assert isinstance(created, ImgwAdapter)
+    created = load(SourceContext(cache_dir=tmp_path / "cache" / "obserwator"))
+    assert isinstance(created, ObserwatorAdapter)
     return created
 
 
-def _version(adapter: ImgwAdapter, root: Path, dataset: str) -> Path:
+def _version(adapter: ObserwatorAdapter, root: Path, dataset: str) -> Path:
     """Return the current version of a dataset's series, relative to the store."""
     version = adapter.current_version(root, f"series:{dataset}")
     assert version is not None
@@ -48,8 +48,8 @@ def _days(start: date, end: date) -> set[date]:
     return {start + timedelta(days=n) for n in range((end - start).days + 1)}
 
 
-def test_only_the_imgw_adapter_reads_series_values(
-    adapter: ImgwAdapter, tmp_path: Path
+def test_only_the_obserwator_adapter_reads_series_values(
+    adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """The capability is optional: Kartograf keeps no series of stations."""
     kartograf = load_kartograf(SourceContext(cache_dir=tmp_path / "cache" / "k"))
@@ -59,10 +59,10 @@ def test_only_the_imgw_adapter_reads_series_values(
 
 
 def test_the_values_of_a_station_are_those_the_producer_reads(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """H of the Raba gauge: the producer's units and values; ``None`` without one."""
-    root = imgw_store("complete")
+    root = obserwator_store("complete")
     version = _version(adapter, root, DAILY)
     produced = list(read_series(root / version, station=RABA, variables=["H"]))
     gaps = read_series_index(root / version).stations[RABA].variables["H"].gaps
@@ -89,10 +89,10 @@ def test_the_values_of_a_station_are_those_the_producer_reads(
 
 
 def test_the_range_and_the_variables_select_the_units_and_values(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """Both bounds included; only the variables asked for, in every unit."""
-    root = imgw_store("complete")
+    root = obserwator_store("complete")
     version = _version(adapter, root, DAILY)
 
     values = list(
@@ -123,10 +123,10 @@ def test_the_range_and_the_variables_select_the_units_and_values(
 
 
 def test_an_accumulated_sum_is_flagged_and_keeps_its_value(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """Precipitation: the producer's ``accumulated`` units, no other unit."""
-    root = imgw_store("complete")
+    root = obserwator_store("complete")
     version = _version(adapter, root, "pl.imgw.meteo_precip_daily")
     station = next(iter(read_series_index(root / version).stations))
     produced = list(read_series(root / version, station=station, variables=["P"]))
@@ -143,10 +143,10 @@ def test_an_accumulated_sum_is_flagged_and_keeps_its_value(
 
 
 def test_a_station_outside_the_series_is_not_found(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A code of the catalog without a series in the version."""
-    root = imgw_store("complete")
+    root = obserwator_store("complete")
     version = _version(adapter, root, DAILY)
 
     with pytest.raises(NotFoundError):
@@ -154,11 +154,11 @@ def test_a_station_outside_the_series_is_not_found(
 
 
 def test_a_refused_version_or_variable_is_the_producers_error(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A Parquet file unlike the index, a catalog, a variable of no dataset."""
     root = tmp_path / "store"
-    shutil.copytree(imgw_store("complete"), root)
+    shutil.copytree(obserwator_store("complete"), root)
     version = _version(adapter, root, DAILY)
     catalog = adapter.current_version(root, "catalog:pl.imgw.stations")
     assert catalog is not None
@@ -173,11 +173,11 @@ def test_a_refused_version_or_variable_is_the_producers_error(
     parquet.write_bytes(bytes(data))
     with pytest.raises(ProducerError) as raised:
         list(adapter.read_values(root, version, station=RABA, variables=["H"]))
-    assert raised.value.package == "imgwtools"
+    assert raised.value.package == "obserwator"
 
 
 def test_the_characteristics_dataset_comes_from_the_registry(
-    adapter: ImgwAdapter,
+    adapter: ObserwatorAdapter,
 ) -> None:
     """Same provider and family, unit ``half_year``; none for a meteo dataset."""
     semiannual = get_dataset("pl.imgw.hydro_semiannual")
@@ -200,7 +200,7 @@ def test_the_characteristics_dataset_comes_from_the_registry(
 
 
 def test_the_extremes_of_a_variable_are_its_characteristics_in_its_unit(
-    adapter: ImgwAdapter,
+    adapter: ObserwatorAdapter,
 ) -> None:
     """``Q`` of daily hydro data: ``Q_min`` and ``Q_max``; nothing elsewhere."""
     held = get_dataset("pl.imgw.hydro_semiannual").variables

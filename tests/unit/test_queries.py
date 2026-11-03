@@ -461,12 +461,15 @@ def test_queries_segment_producers_name_the_owners_of_a_segment(index: Index) ->
     # Arrange
     writer, queries = index
     dataset = "pl.imgw.hydro_daily"
-    roots = {"kartograf": "/mnt/nas/kartograf/data", "imgw": "/mnt/nas/imgw"}
+    roots = {
+        "kartograf": "/mnt/nas/kartograf/data",
+        "obserwator": "/mnt/nas/obserwator",
+    }
     writer.sync_stores({STORE: roots, "inny": roots})
     named = SourceSegment(dataset, "hydro", "PL", dataset, "Dane hydrologiczne", True)
     writer.write_segments(STORE, "kartograf", [SEGMENTS[NMT], named])
-    writer.write_segments(STORE, "imgw", [named])
-    writer.write_segments("inny", "imgw", [named])
+    writer.write_segments(STORE, "obserwator", [named])
+    writer.write_segments("inny", "obserwator", [named])
 
     # Act
     owners = {
@@ -484,10 +487,10 @@ def test_queries_segment_producers_name_the_owners_of_a_segment(index: Index) ->
     # Assert
     assert owners == {
         (STORE, NMT): ("kartograf",),
-        (STORE, dataset): ("imgw", "kartograf"),
+        (STORE, dataset): ("kartograf", "obserwator"),
         (STORE, ORTO): (),
         ("inny", NMT): (),
-        ("inny", dataset): ("imgw",),
+        ("inny", dataset): ("obserwator",),
         ("nieznany", NMT): (),
     }
 

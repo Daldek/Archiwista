@@ -1,7 +1,7 @@
-"""Stations of the IMGWTools station catalogs in the local index (plan I4).
+"""Stations of the Obserwator station catalogs in the local index (plan I4).
 
 Every test scans a copy of a fixture store of the producer's own builder
-(``imgwtools.testing``) through the real adapter, offline. The index holds the
+(``obserwator.testing``) through the real adapter, offline. The index holds the
 stations of the current version of each provider's catalog: every station of
 it, those without a location with the catalog's reason, a point for the
 others, and a new current version replaces them.
@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-from imgwtools import current_version, read_catalog
+from obserwator import current_version, read_catalog
 
 from archiwista.config import AppSettings, StoreConfig
 from archiwista.errors import ProducerError, SourceUnavailableError
@@ -110,19 +110,21 @@ class _Env:
 
 
 @pytest.fixture
-def open_env(imgw_store: Stores, tmp_path: Path) -> Iterator[Callable[[str], _Env]]:
+def open_env(
+    obserwator_store: Stores, tmp_path: Path
+) -> Iterator[Callable[[str], _Env]]:
     """Return ``open(variant)``: a private copy of a fixture store with its index."""
     writers: list[IndexWriter] = []
 
     def open_(variant: str) -> _Env:
         root = tmp_path / f"store-{variant}"
-        shutil.copytree(imgw_store(variant), root)
+        shutil.copytree(obserwator_store(variant), root)
         index = tmp_path / f"index-{variant}.sqlite"
         writer = IndexWriter(index)
         writers.append(writer)
-        config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+        config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
         writer.sync_stores({STORE: config.roots()})
-        adapter = load_registry(cache_dir=tmp_path / "cache").adapter("imgw")
+        adapter = load_registry(cache_dir=tmp_path / "cache").adapter("obserwator")
         return _Env(root, index, adapter, writer, AppSettings(stores=(config,)), [])
 
     yield open_
@@ -151,7 +153,7 @@ def _publish(
     """Write a newer version of a catalog with edited stations, as a download does.
 
     The version directory is ``<label>_<sha8>`` with the edited GeoJSON and its
-    sidecar (SHA-256, size, label, a later download), so IMGWTools takes it as
+    sidecar (SHA-256, size, label, a later download), so Obserwator takes it as
     the current version. Returns its file relative to the store.
     """
     directory = root / slot
@@ -330,7 +332,7 @@ def test_a_catalog_the_producer_refuses_is_said_and_holds_no_stations(
 
     def refusing(root: Path, version: Path) -> tuple[Station, ...]:
         if version.as_posix() == refused:
-            raise ProducerError("imgwtools", "IMGWDataError", "catalog broken")
+            raise ProducerError("obserwator", "ObserwatorDataError", "catalog broken")
         return original(root, version)
 
     monkeypatch.setattr(catalogs, "read_stations", refusing)
@@ -383,7 +385,7 @@ def test_two_providers_never_collide_on_a_code(open_env: Callable[[str], _Env]) 
     # Act
     written = env.writer.replace_stations(
         STORE,
-        "imgw",
+        "obserwator",
         "CHMI",
         slot="stations/versions/chmi_stations",
         version="stations/versions/chmi_stations/x_00000000/stations.geojson",

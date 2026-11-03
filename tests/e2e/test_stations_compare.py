@@ -123,11 +123,11 @@ def dotted(day: str) -> str:
 
 
 def test_two_rows_of_the_list_give_two_panels_on_one_time_axis(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Raba Górna and Stacja Bez Q chosen in the list: one range, the same ticks."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
     query = urlencode(
         {"station": [RABA, BEZ_Q], "dataset": DAILY, "variable": "H"}, doseq=True
@@ -165,11 +165,11 @@ def test_two_rows_of_the_list_give_two_panels_on_one_time_axis(
 
 
 def test_a_selection_in_one_panel_zooms_every_panel_and_writes_the_range(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Two ČHMÚ gauges two decades apart: a drag in one panel, ``Home`` in the other."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
     page.goto(compare_address(served, [SPINDLER, ZAPADLA], CZ_DAILY))
     plots = page.locator(".scmp-panel .sch-plot")
@@ -208,11 +208,11 @@ def test_a_selection_in_one_panel_zooms_every_panel_and_writes_the_range(
 
 
 def test_the_facts_are_those_of_the_cards(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Years, label, longest gap, full years, location; "brak danych" without data."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
     cards = [card_facts(page, station) for station in (RABA, BEZ_Q)]
 
@@ -236,11 +236,11 @@ def test_the_facts_are_those_of_the_cards(
 
 
 def test_five_stations_at_most_neither_a_sixth_row_nor_an_added_one(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """``P`` on six rows chooses five; the sixth button and "Dodaj stację" disabled."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
     found = [
         api(page, f"/stations?kind=hydro&location={group}&limit=200")["items"]
@@ -284,11 +284,11 @@ def test_five_stations_at_most_neither_a_sixth_row_nor_an_added_one(
 
 
 def test_compare_with_of_the_card_keeps_its_range_and_adds_a_found_station(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Raba Górna's zoomed chart, "Porównaj z…", "Dodaj stację" finds Stacja Bez Q."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
     zoom = {"from": "2023-12-01", "to": "2024-02-29"}
     page.goto(address(served, view="catalog", product="hydro", station=RABA, **zoom))

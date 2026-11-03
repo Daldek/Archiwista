@@ -1,11 +1,11 @@
 """The datasets with station series and the type of a meteo station (plan I8.1).
 
 ``GET /stations/datasets`` names the datasets of the series slots of a scanned
-copy of ``complete`` and ``complete_pl_cz`` (``imgwtools.testing``): the
+copy of ``complete`` and ``complete_pl_cz`` (``obserwator.testing``): the
 producer's name of each segment, its family, unit, default year type and R,
 the label of its current series version and the variables of its stations'
-series, which are those ``imgwtools.summarize_series`` gives. ``archiwista
-stations datasets`` prints the same, both answer ``503`` without IMGWTools,
+series, which are those ``obserwator.summarize_series`` gives. ``archiwista
+stations datasets`` prints the same, both answer ``503`` without Obserwator,
 and the repeatable ``meteo_kind`` keeps the stations of the type chips of the
 map, with the counts.
 """
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-import imgwtools
+import obserwator
 import pytest
 
 from archiwista.auth import LOCAL_OWNER
@@ -58,18 +58,18 @@ class Served:
         return response.json()
 
 
-def _serve(imgw_store: Stores, base: Path, variant: str) -> Iterator[Served]:
+def _serve(obserwator_store: Stores, base: Path, variant: str) -> Iterator[Served]:
     root = base / "store"
-    shutil.copytree(imgw_store(variant), root)
+    shutil.copytree(obserwator_store(variant), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: config.roots()})
-        scan_store(registry.adapter("imgw"), writer, settings, STORE, mode="full")
+        scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
         yield Served(api.session(LOCAL_OWNER), paths, root)
 
@@ -77,21 +77,21 @@ def _serve(imgw_store: Stores, base: Path, variant: str) -> Iterator[Served]:
 @pytest.fixture(scope="module", params=["complete", "complete_pl_cz"])
 def served(
     request: pytest.FixtureRequest,
-    imgw_store: Stores,
+    obserwator_store: Stores,
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Iterator[Served]:
     """Serve the index of a copy of each fixture variant after a full scan."""
     base = tmp_path_factory.mktemp(f"datasets-{request.param}")
-    yield from _serve(imgw_store, base, request.param)
+    yield from _serve(obserwator_store, base, request.param)
 
 
 @pytest.fixture(scope="module")
 def mixed(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+    obserwator_store: Stores, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[Served]:
     """Serve the index of ``complete_pl_cz``: stations of both providers."""
     yield from _serve(
-        imgw_store, tmp_path_factory.mktemp("meteo-kinds"), "complete_pl_cz"
+        obserwator_store, tmp_path_factory.mktemp("meteo-kinds"), "complete_pl_cz"
     )
 
 
@@ -99,21 +99,21 @@ def _series_datasets(root: Path) -> list[str]:
     """Return the datasets whose series slot has a current version, by key."""
     return sorted(
         item.key
-        for item in imgwtools.datasets()
+        for item in obserwator.datasets()
         if item.in_store
         and item.time_unit in SERIES_UNITS
-        and imgwtools.current_version(root, slot=f"series:{item.key}") is not None
+        and obserwator.current_version(root, slot=f"series:{item.key}") is not None
     )
 
 
 def _variables(root: Path, dataset: str) -> set[tuple[str, str]]:
-    """Return a dataset's variable keys with their units, as IMGWTools reads them."""
+    """Return a dataset's variable keys with their units, as Obserwator reads them."""
     return {
         (
             row.variable if row.period is None else f"{row.variable}@{row.period}",
             row.unit,
         )
-        for row in imgwtools.summarize_series(root=root, dataset=dataset)
+        for row in obserwator.summarize_series(root=root, dataset=dataset)
     }
 
 
@@ -129,8 +129,10 @@ def test_datasets_are_those_of_the_series_slots_with_their_variables(
     assert [item["dataset"] for item in items] == _series_datasets(served.root)
     assert body["stale"] is False
     for item in items:
-        descriptor = imgwtools.get_dataset(item["dataset"])
-        entry = imgwtools.current_version(served.root, slot=f"series:{item['dataset']}")
+        descriptor = obserwator.get_dataset(item["dataset"])
+        entry = obserwator.current_version(
+            served.root, slot=f"series:{item['dataset']}"
+        )
         assert entry is not None and entry.version is not None
         assert item["store"] == STORE
         assert item["provider"] == descriptor.provider
@@ -205,12 +207,12 @@ def test_the_datasets_answer_503_while_the_source_is_not_available(
     capsys: pytest.CaptureFixture[str],
     missing: str,
 ) -> None:
-    """Without IMGWTools neither the route nor the command line names a dataset."""
+    """Without Obserwator neither the route nor the command line names a dataset."""
     # Arrange
     paths = local_paths(tmp_path)
     registry: PluginRegistry = NoSources()
     if missing == "package":
-        hide_packages(monkeypatch, "imgwtools")
+        hide_packages(monkeypatch, "obserwator")
         registry = load_registry(cache_dir=paths.cache_dir)
 
     # Act

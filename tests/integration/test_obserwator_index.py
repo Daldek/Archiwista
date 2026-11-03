@@ -1,8 +1,8 @@
-"""Archives, series and catalogs of an IMGWTools store in the local index (plan I3).
+"""Archives, series and catalogs of an Obserwator store in the local index (plan I3).
 
 Every test scans a fixture store of the producer's own builder
-(``imgwtools.testing``) through the real adapter, offline, and asks the index
-with ``IndexQueries``: what it holds must be what ``imgwtools.iter_store``
+(``obserwator.testing``) through the real adapter, offline, and asks the index
+with ``IndexQueries``: what it holds must be what ``obserwator.iter_store``
 yields, with the datasets named from the producer's registry.
 """
 
@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pytest
-from imgwtools import StoreEntry, current_version, iter_store
+from obserwator import StoreEntry, current_version, iter_store
 
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import AppSettings, StoreConfig
@@ -31,7 +31,7 @@ from archiwista.index.scanner import ScanMode, ScanSummary, scan_store
 from archiwista.sources import CurrentVersionAdapter, SourceAdapter
 from archiwista.sources.registry import load_registry
 from archiwista.state import StateStore
-from tests.fixtures.imgw_edits import META_SUFFIX, add_version, drop_sidecar
+from tests.fixtures.obserwator_edits import META_SUFFIX, add_version, drop_sidecar
 from tests.fixtures.permissions import add_people
 from tests.fixtures.read_only_mount import set_read_only, tree
 
@@ -45,7 +45,7 @@ type Stores = Callable[[str], Path]
 
 @dataclass
 class _Env:
-    """A store of IMGWTools with an index that knows it."""
+    """A store of Obserwator with an index that knows it."""
 
     root: Path
     index: Path
@@ -103,26 +103,28 @@ class _Env:
 
 
 @pytest.fixture
-def open_env(imgw_store: Stores, tmp_path: Path) -> Iterator[Callable[[str], _Env]]:
+def open_env(
+    obserwator_store: Stores, tmp_path: Path
+) -> Iterator[Callable[[str], _Env]]:
     """Return ``open(variant)``: a private copy of a fixture store with its index."""
     writers: list[IndexWriter] = []
     readers: list[IndexQueries] = []
 
     def open_(variant: str) -> _Env:
         root = tmp_path / f"store-{variant}"
-        shutil.copytree(imgw_store(variant), root)
+        shutil.copytree(obserwator_store(variant), root)
         index = tmp_path / f"index-{variant}.sqlite"
         writer = IndexWriter(index)
         writers.append(writer)
         reader = IndexQueries(index)
         readers.append(reader)
-        config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+        config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
         writer.sync_stores({STORE: config.roots()})
         registry = load_registry(cache_dir=tmp_path / "cache")
         return _Env(
             root,
             index,
-            registry.adapter("imgw"),
+            registry.adapter("obserwator"),
             writer,
             reader,
             AppSettings(stores=(config,)),
@@ -216,7 +218,7 @@ def test_a_segment_is_a_dataset_named_by_the_registry_with_its_country(
 def test_the_store_view_groups_the_datasets_of_both_providers_by_their_family(
     open_env: Callable[[str], _Env],
 ) -> None:
-    """IMGWTools has no products: a family groups the datasets, none is unrecognised."""
+    """Obserwator has no products: a family groups the datasets, none unrecognised."""
     # Arrange
     env = open_env("complete_pl_cz")
 
@@ -395,7 +397,7 @@ def _slot_keys(root: Path) -> set[str]:
 def test_the_current_version_of_each_slot_is_the_one_the_producer_names(
     open_env: Callable[[str], _Env], variant: str
 ) -> None:
-    """No link says which version is current: IMGWTools does, and the index agrees."""
+    """No link says which version is current: Obserwator does, and the index agrees."""
     # Arrange
     env = open_env(variant)
     keys = _slot_keys(env.root)

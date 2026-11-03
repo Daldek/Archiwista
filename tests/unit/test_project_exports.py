@@ -478,7 +478,7 @@ def test_exports_is_export_name_keeps_the_rule(name: str, valid: bool) -> None:
         ("../etc", "kartograf", "ETC"),
         ("a/b c", "kartograf", "A_B_C"),
         (None, "kartograf", "KARTOGRAF"),
-        ("..", "imgw", "IMGW"),
+        ("..", "obserwator", "OBSERWATOR"),
     ],
 )
 def test_exports_folder_name_is_one_plain_upper_case_name(

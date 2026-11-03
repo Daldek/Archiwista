@@ -84,7 +84,7 @@ const MARK_LEVEL = {
 
 /**
  * @typedef {{key: string, text: string}} Reason - `key`: the reason with
- *   its producer (`no_commands:imgw`), one entry of the card's list.
+ *   its producer (`no_commands:obserwator`), one entry of the card's list.
  */
 
 /**

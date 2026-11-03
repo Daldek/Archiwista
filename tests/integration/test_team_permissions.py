@@ -711,7 +711,7 @@ def scene(
     paths = local_paths(tmp_path)
     shutil.copytree(site.paths.config_file.parent, paths.config_file.parent)
     shutil.copytree(site.paths.data_dir, paths.data_dir)
-    place = TeamPlace(paths, site.projects, tmp_path / "imgw")
+    place = TeamPlace(paths, site.projects, tmp_path / "obserwator")
     with team_api(place) as served:
         state = served.state
         state.update_user(OTHER, roles=["store_writer"], actor=LOCAL_OWNER)

@@ -323,7 +323,7 @@ def run_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
     settings (SPEC 5.8); the store's other directories are scanned. A
     ``segment`` is scanned by the producers that own it in the index (or by
     those that scan by segment, for a name it does not know); a producer that
-    reads only its whole directory (IMGWTools) refuses the job as
+    reads only its whole directory (Obserwator) refuses the job as
     ``unsupported`` before anything is scanned.
     """
     config = _store(spec)
@@ -1414,7 +1414,7 @@ def _segment_scanners(
     ------
     UnsupportedError
         A producer asked to scan ``segment`` reads only its whole directory
-        (IMGWTools: a segment is a label there).
+        (Obserwator: a segment is a label there).
     """
     if owners:
         asked = {name: found for name, found in adapters.items() if name in owners}

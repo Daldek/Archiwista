@@ -229,7 +229,7 @@
  * @property {string} [blocked_by] - Why a snapshot cannot be made now.
  * @property {string[]} [layers] - The layers of an area file to choose from.
  * @property {{exception: string, message: string}} [kartograf] - The producer's own
- *   error (`imgwtools` and other producers likewise).
+ *   error (`obserwator` and other producers likewise).
  */
 
 // Index state (9a: /health, /sources, /stores) -------------------------------
@@ -1613,9 +1613,9 @@
  * @property {string} name
  * @property {string|null} [kartograf] - Kartograf's store root: the directory that holds
  *   `kartograf-store.json` and the product directories (usually called `data`); null when
- *   the store has only `imgw`.
- * @property {string|null} [imgw] - IMGWTools' store root, the directory with
- *   `imgw-store.json`; null when the store has only `kartograf`. One of the two is
+ *   the store has only `obserwator`.
+ * @property {string|null} [obserwator] - Obserwator's store root, the directory with
+ *   `obserwator-store.json`; null when the store has only `kartograf`. One of the two is
  *   required.
  * @property {StoreKind|null} [kind] - `local` or `share`; detected from the file system
  *   when omitted.
@@ -1820,7 +1820,7 @@
  * @typedef {object} ScanRequest
  * @property {"incremental"|"full"} [mode] - Default `incremental`.
  * @property {string} [segment] - Only this segment (Kartograf: `<product>/<variant>`);
- *   a data source that reads only its whole directory (IMGWTools) fails the job as
+ *   a data source that reads only its whole directory (Obserwator) fails the job as
  *   `unsupported`.
  */
 

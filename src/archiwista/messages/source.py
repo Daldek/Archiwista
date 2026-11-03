@@ -35,51 +35,51 @@ MESSAGES = {
         "the directory has the layout of a Kartograf store but no {marker}",
         "katalog ma układ magazynu Kartografa, ale nie ma pliku {marker}",
     ),
-    "imgw_no_marker": Text(
+    "obserwator_no_marker": Text(
         (
-            "the directory has the layout of an IMGWTools store but no imgw-store.json"
-            " marker — mark the store with: {hint}"
+            "the directory has the layout of an Obserwator store but no"
+            " obserwator-store.json marker — mark the store with: {hint}"
         ),
         (
-            "w katalogu jest układ magazynu IMGWTools, ale brak znacznika"
-            " imgw-store.json — zaznacz magazyn poleceniem: {hint}"
-        ),
-    ),
-    "imgw_unsupported_marker": Text(
-        (
-            "the imgw-store.json marker is not supported: schema {found}, this version"
-            " of Archiwista reads {expected}"
-        ),
-        (
-            "znacznik imgw-store.json nie jest obsługiwany: schemat {found}, ta wersja"
-            " Archiwisty czyta {expected}"
+            "w katalogu jest układ magazynu Obserwatora, ale brak znacznika"
+            " obserwator-store.json — zaznacz magazyn poleceniem: {hint}"
         ),
     ),
-    "imgw_foreign_store": Text(
+    "obserwator_unsupported_marker": Text(
+        (
+            "the obserwator-store.json marker is not supported: schema {found}, this"
+            " version of Archiwista reads {expected}"
+        ),
+        (
+            "znacznik obserwator-store.json nie jest obsługiwany: schemat {found}, ta"
+            " wersja Archiwisty czyta {expected}"
+        ),
+    ),
+    "obserwator_foreign_store": Text(
         (
             "the directory holds the marker {marker}: it is the store of another"
-            " producer, not of IMGWTools"
+            " producer, not of Obserwator"
         ),
         (
             "w katalogu jest znacznik {marker}: to magazyn innego producenta, nie"
-            " IMGWTools"
+            " Obserwatora"
         ),
     ),
-    "imgw_not_store": Text(
+    "obserwator_not_store": Text(
         (
-            "this is not the root of an IMGWTools store — point to the directory that"
-            " holds imgw-store.json"
+            "this is not the root of an Obserwator store — point to the directory that"
+            " holds obserwator-store.json"
         ),
         (
-            "to nie jest katalog główny magazynu IMGWTools — wskaż katalog z plikiem"
-            " imgw-store.json"
+            "to nie jest katalog główny magazynu Obserwatora — wskaż katalog z plikiem"
+            " obserwator-store.json"
         ),
     ),
-    "imgw_catalog": Text(
+    "obserwator_catalog": Text(
         "Station catalog of {provider}",
         "Katalog stacji {provider}",
     ),
-    "imgw_series_unit": Text(
+    "obserwator_series_unit": Text(
         (
             "The series of {dataset} are kept by the unit {unit}, which Archiwista"
             " cannot measure (day, month or half-year)."
@@ -89,7 +89,7 @@ MESSAGES = {
             " zmierzyć (dzień, miesiąc albo półrocze)."
         ),
     ),
-    "imgw_series_station": Text(
+    "obserwator_series_station": Text(
         "The station {station} has no series in the version {version}.",
         "Stacja {station} nie ma szeregu w wersji {version}.",
     ),

@@ -265,13 +265,20 @@ def test_one_request_pins_two_producers_of_a_store_each_at_its_own_root(
 ) -> None:
     """The store ``zespol`` holds both producers; each ``stores[]`` names its own."""
     # Arrange
-    kartograf, imgw = tmp_path / "nas" / "kartograf", tmp_path / "nas" / "imgw"
+    kartograf, obserwator = (
+        tmp_path / "nas" / "kartograf",
+        tmp_path / "nas" / "obserwator",
+    )
     projects = tmp_path / "nas" / "projekty"
-    for directory in (kartograf, imgw, projects):
+    for directory in (kartograf, obserwator, projects):
         directory.mkdir(parents=True)
     paths = local_paths(tmp_path)
     store = StoreConfig(
-        id=STORE, name="Zespół", kartograf=kartograf, imgw=imgw, kind="local"
+        id=STORE,
+        name="Zespół",
+        kartograf=kartograf,
+        obserwator=obserwator,
+        kind="local",
     )
     ConfigStore(paths.config_file).save(
         AppSettings(stores=(store,), project_dirs=(projects,))
@@ -280,15 +287,17 @@ def test_one_request_pins_two_producers_of_a_store_each_at_its_own_root(
     station = version(slot_path(hydro, "150160180", ".csv"), "2024-12-31_1", 9)
     assert station.meta is not None
     station = replace(
-        station, producer="imgw", meta=replace(station.meta, producer="imgw")
+        station,
+        producer="obserwator",
+        meta=replace(station.meta, producer="obserwator"),
     )
     segment = SourceSegment(hydro, "hydro", "PL", "pl.imgw.daily", "Dobowe", True)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: store.roots()})
         write_pass(writer, [A_CURRENT])
-        writer.write_segments(STORE, "imgw", [segment])
-        writer.begin_pass(STORE, "imgw", segment=None, slots=None, full=False)
+        writer.write_segments(STORE, "obserwator", [segment])
+        writer.begin_pass(STORE, "obserwator", segment=None, slots=None, full=False)
         writer.write_entries([station])
         writer.finish_pass()
     versions = [
@@ -315,7 +324,7 @@ def test_one_request_pins_two_producers_of_a_store_each_at_its_own_root(
     written = json.loads((projects / "r" / PROJECT_FILE).read_text(encoding="utf-8"))
     assert written["stores"] == [
         {"producer": PRODUCER, "root": str(kartograf)},
-        {"producer": "imgw", "root": str(imgw)},
+        {"producer": "obserwator", "root": str(obserwator)},
     ]
 
 

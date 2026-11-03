@@ -85,14 +85,14 @@ class Doors:
 
 @pytest.fixture(scope="module")
 def served(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+    obserwator_store: Stores, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[tuple[AppPaths, Caller]]:
     """Serve the index of a copy of ``complete_pl_cz`` after a full scan."""
     base = tmp_path_factory.mktemp("stations-cli")
     root = base / "store"
-    shutil.copytree(imgw_store("complete_pl_cz"), root)
+    shutil.copytree(obserwator_store("complete_pl_cz"), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
@@ -100,7 +100,7 @@ def served(
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: config.roots()})
         writer.write_area(AREA)
-        scan_store(registry.adapter("imgw"), writer, settings, STORE, mode="full")
+        scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
         yield paths, api.session(LOCAL_OWNER)
 
@@ -279,7 +279,7 @@ def test_stations_cli_refuses_as_the_route_does(
     assert document["exit_code"] == exit_code
 
 
-def test_stations_cli_without_imgwtools_is_a_missing_dependency(
+def test_stations_cli_without_obserwator_is_a_missing_dependency(
     doors: Doors, tmp_path: Path
 ) -> None:
     """The stations are not shown without their source, as the routes answer 503."""

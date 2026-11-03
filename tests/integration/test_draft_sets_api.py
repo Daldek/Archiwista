@@ -79,7 +79,9 @@ def _station() -> SourceEntry:
     station = version(slot_path(HYDRO, "150160180", ".csv"), "2024-12-31_1", 9)
     assert station.meta is not None
     return replace(
-        station, producer="imgw", meta=replace(station.meta, producer="imgw")
+        station,
+        producer="obserwator",
+        meta=replace(station.meta, producer="obserwator"),
     )
 
 
@@ -106,13 +108,20 @@ class Place:
 @pytest.fixture
 def place(tmp_path: Path) -> Iterator[Place]:
     """Serve the index above; Olga owns the public project ``raba``."""
-    kartograf, imgw = tmp_path / "nas" / "kartograf", tmp_path / "nas" / "imgw"
+    kartograf, obserwator = (
+        tmp_path / "nas" / "kartograf",
+        tmp_path / "nas" / "obserwator",
+    )
     projects = tmp_path / "nas" / "projekty"
-    for directory in (kartograf, imgw, projects):
+    for directory in (kartograf, obserwator, projects):
         directory.mkdir(parents=True)
     paths = local_paths(tmp_path)
     store = StoreConfig(
-        id=STORE, name="Zespół", kartograf=kartograf, imgw=imgw, kind="local"
+        id=STORE,
+        name="Zespół",
+        kartograf=kartograf,
+        obserwator=obserwator,
+        kind="local",
     )
     ConfigStore(paths.config_file).save(
         AppSettings(stores=(store,), project_dirs=(projects,), store_write_for_all=True)
@@ -131,8 +140,8 @@ def place(tmp_path: Path) -> Iterator[Place]:
                 link(SHEET_B, B_CURRENT),
             ],
         )
-        writer.write_segments(STORE, "imgw", [segment])
-        writer.begin_pass(STORE, "imgw", segment=None, slots=None, full=False)
+        writer.write_segments(STORE, "obserwator", [segment])
+        writer.begin_pass(STORE, "obserwator", segment=None, slots=None, full=False)
         writer.write_entries([STATION])
         writer.finish_pass()
     registry = load_registry(cache_dir=paths.cache_dir)
@@ -431,7 +440,7 @@ def test_an_open_set_holds_the_data_of_one_producer(place: Place) -> None:
         "reason": "set_producer",
         "group": "NMT",
         "producers": [PRODUCER],
-        "producer": "imgw",
+        "producer": "obserwator",
     }
     assert (place.directory / PROJECT_FILE).read_bytes() == before
 

@@ -11,7 +11,7 @@ MESSAGES = {
         "Unreadable file sidecar: {path}",
         "Nieczytelny sidecar pliku: {path}",
     ),
-    "imgw_missing_sidecar": Text(
+    "obserwator_missing_sidecar": Text(
         (
             "Version directory without a sidecar, a download in progress or an"
             " interrupted one (it is not a version): {path}"

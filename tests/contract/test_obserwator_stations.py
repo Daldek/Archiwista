@@ -1,9 +1,9 @@
-"""Contract of the station catalogs of IMGWTools behind ``StationCatalogAdapter``.
+"""Contract of the station catalogs of Obserwator behind ``StationCatalogAdapter``.
 
-The IMGW adapter names a provider's station catalog by the producer's own slot
-key and reads a catalog version with ``imgwtools.read_catalog``: what it gives
+The Obserwator adapter names a provider's station catalog by the producer's own slot
+key and reads a catalog version with ``obserwator.read_catalog``: what it gives
 must be what the producer itself reads in its offline fixture stores
-(``imgwtools.testing``), stations without a location included with their
+(``obserwator.testing``), stations without a location included with their
 reason, and a version the producer refuses is its error, never stations.
 """
 
@@ -13,11 +13,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from imgwtools import iter_store, providers, read_catalog
+from obserwator import iter_store, providers, read_catalog
 
-from archiwista.adapter.imgw import load
-from archiwista.adapter.imgw.adapter import ImgwAdapter
 from archiwista.adapter.kartograf import load as load_kartograf
+from archiwista.adapter.obserwator import load
+from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.sources import SourceContext, Station, StationCatalogAdapter
 
@@ -28,27 +28,27 @@ CZ_CATALOG = "catalog:cz.chmi.stations"
 
 
 @pytest.fixture
-def adapter(tmp_path: Path) -> ImgwAdapter:
+def adapter(tmp_path: Path) -> ObserwatorAdapter:
     """Create the adapter with its entry-point factory."""
-    created = load(SourceContext(cache_dir=tmp_path / "cache" / "imgw"))
-    assert isinstance(created, ImgwAdapter)
+    created = load(SourceContext(cache_dir=tmp_path / "cache" / "obserwator"))
+    assert isinstance(created, ObserwatorAdapter)
     return created
 
 
-def _catalog_version(adapter: ImgwAdapter, root: Path, key: str) -> Path:
+def _catalog_version(adapter: ObserwatorAdapter, root: Path, key: str) -> Path:
     """Return the current version of a provider's catalog, relative to the store."""
     version = adapter.current_version(root, key)
     assert version is not None
     return version
 
 
-def _copy(imgw_store: Stores, root: Path) -> Path:
-    shutil.copytree(imgw_store("complete_pl_cz"), root)
+def _copy(obserwator_store: Stores, root: Path) -> Path:
+    shutil.copytree(obserwator_store("complete_pl_cz"), root)
     return root
 
 
-def test_only_the_imgw_adapter_has_station_catalogs(
-    adapter: ImgwAdapter, tmp_path: Path
+def test_only_the_obserwator_adapter_has_station_catalogs(
+    adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """The capability is optional: Kartograf keeps no station catalog."""
     kartograf = load_kartograf(SourceContext(cache_dir=tmp_path / "cache" / "k"))
@@ -58,7 +58,7 @@ def test_only_the_imgw_adapter_has_station_catalogs(
 
 
 def test_each_provider_of_the_registry_has_its_catalog_slot(
-    adapter: ImgwAdapter,
+    adapter: ObserwatorAdapter,
 ) -> None:
     """``catalog:<key prefix>.stations`` is the catalog of the provider it names."""
     named = {
@@ -75,10 +75,10 @@ def test_each_provider_of_the_registry_has_its_catalog_slot(
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
 def test_the_catalog_slots_are_the_producers_catalogs_and_nothing_else(
-    imgw_store: Stores, adapter: ImgwAdapter, variant: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
     """Every slot of ``iter_store``: a catalog names its provider, others none."""
-    root = imgw_store(variant)
+    root = obserwator_store(variant)
     slots = {
         entry.slot: (entry.kind, entry.provider)
         for entry in iter_store(root)
@@ -98,10 +98,10 @@ def test_the_catalog_slots_are_the_producers_catalogs_and_nothing_else(
     ("key", "count"), [(PL_CATALOG, 6), (CZ_CATALOG, 7)], ids=["imgw", "chmi"]
 )
 def test_read_stations_gives_every_station_the_producer_reads(
-    imgw_store: Stores, adapter: ImgwAdapter, key: str, count: int
+    obserwator_store: Stores, adapter: ObserwatorAdapter, key: str, count: int
 ) -> None:
     """Codes as text in the catalog's order, points and reasons as the producer's."""
-    root = imgw_store("complete_pl_cz")
+    root = obserwator_store("complete_pl_cz")
     version = _catalog_version(adapter, root, key)
     features = read_catalog(root / version)
 
@@ -119,10 +119,10 @@ def test_read_stations_gives_every_station_the_producer_reads(
 
 
 def test_a_station_keeps_the_fields_of_the_catalog(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """Kind, river, hydrographic code and order, location source and uncertainty."""
-    root = imgw_store("complete_pl_cz")
+    root = obserwator_store("complete_pl_cz")
 
     imgw = {
         s.code: s
@@ -176,10 +176,10 @@ def test_a_station_keeps_the_fields_of_the_catalog(
 
 
 def test_a_version_unlike_its_sidecar_is_the_producers_error(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
-    """Same size, other bytes: IMGWTools refuses it and no station comes out."""
-    root = _copy(imgw_store, tmp_path / "store")
+    """Same size, other bytes: Obserwator refuses it and no station comes out."""
+    root = _copy(obserwator_store, tmp_path / "store")
     version = _catalog_version(adapter, root, PL_CATALOG)
     path = root / version
     data = path.read_bytes()
@@ -189,14 +189,14 @@ def test_a_version_unlike_its_sidecar_is_the_producers_error(
     with pytest.raises(ProducerError) as raised:
         adapter.read_stations(root, version)
 
-    assert raised.value.package == "imgwtools"
+    assert raised.value.package == "obserwator"
 
 
 def test_a_file_that_is_no_catalog_is_the_producers_error(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A series listing is not a station catalog."""
-    root = imgw_store("complete")
+    root = obserwator_store("complete")
     series = adapter.current_version(root, "series:pl.imgw.hydro_daily")
     assert series is not None
 
@@ -208,10 +208,10 @@ def test_a_file_that_is_no_catalog_is_the_producers_error(
     hasattr(os, "geteuid") and os.geteuid() == 0, reason="root reads any file"
 )
 def test_a_catalog_the_system_cannot_read_is_an_unavailable_store(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A file without read permission is no verdict of the producer."""
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     version = _catalog_version(adapter, root, CZ_CATALOG)
     path = root / version
     path.chmod(0)

@@ -2,7 +2,7 @@
 
 ``GET /stations/{code}/series`` reads the values of one or two variables of a
 station's current series through the producer over the index of a scanned
-copy of ``complete`` (``imgwtools.testing``): each unit's value up to
+copy of ``complete`` (``obserwator.testing``): each unit's value up to
 ``max_points`` units, else the least, mean and greatest value of intervals,
 the gaps each variable's label counts cut at the range's ends (by default the
 variables' known span, ADR-045 erratum 1; ``complete_pl_cz`` for the ČHMÚ
@@ -25,7 +25,7 @@ from urllib.parse import urlencode
 
 import httpx
 import pytest
-from imgwtools import read_series, read_series_index
+from obserwator import read_series, read_series_index
 
 from archiwista.auth import LOCAL_OWNER
 from archiwista.cli import main
@@ -80,33 +80,35 @@ def _serve(stores: Stores, base: Path, variant: str) -> Iterator[Served]:
     root = base / "store"
     shutil.copytree(stores(variant), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: config.roots()})
-        scan_store(registry.adapter("imgw"), writer, settings, STORE, mode="full")
+        scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
         yield Served(api.session(LOCAL_OWNER), paths, root)
 
 
 @pytest.fixture(scope="module")
 def served(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+    obserwator_store: Stores, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[Served]:
     """Serve the index of a copy of ``complete`` after a full scan."""
-    yield from _serve(imgw_store, tmp_path_factory.mktemp("station-series"), "complete")
+    yield from _serve(
+        obserwator_store, tmp_path_factory.mktemp("station-series"), "complete"
+    )
 
 
 @pytest.fixture(scope="module")
 def served_cz(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+    obserwator_store: Stores, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[Served]:
     """Serve the index of a copy of ``complete_pl_cz`` (IMGW and ČHMÚ stations)."""
     base = tmp_path_factory.mktemp("station-series-cz")
-    yield from _serve(imgw_store, base, "complete_pl_cz")
+    yield from _serve(obserwator_store, base, "complete_pl_cz")
 
 
 def _series(served: Served, code: str, variables: Sequence[str]) -> list[Any]:

@@ -7,7 +7,7 @@ export const setup = {
   title_first: "Pierwsze uruchomienie",
   title_edit: "Ustawienia",
   intro_first:
-    "Wskaż magazyn Kartografa albo IMGWTools i — jeśli chcesz — katalogi projektów. Archiwista tylko czyta te katalogi: nie zapisuje w nich żadnych plików, a indeks i pamięć podręczną trzyma lokalnie na tym komputerze.",
+    "Wskaż magazyn Kartografa albo Obserwatora i — jeśli chcesz — katalogi projektów. Archiwista tylko czyta te katalogi: nie zapisuje w nich żadnych plików, a indeks i pamięć podręczną trzyma lokalnie na tym komputerze.",
   intro_edit:
     "Zmiana magazynów, katalogów projektów, trybu pracy i pamięci podglądów. Zapis zastępuje wszystkie ustawienia naraz; nowy albo przeniesiony magazyn jest od razu skanowany od nowa.",
   steps_label: "Kroki kreatora",
@@ -29,7 +29,7 @@ export const setup = {
     kartograf_hint:
       "Pełna ścieżka katalogu głównego magazynu Kartografa, czyli katalogu z plikiem " +
       "kartograf-store.json i katalogami produktów, np. /mnt/nas/kartograf albo Z:\\kartograf.",
-    producers: { kartograf: "Kartograf", imgw: "IMGWTools" },
+    producers: { kartograf: "Kartograf", obserwator: "Obserwator" },
     default_root:
       "{producer} zapisuje domyślnie w katalogu {path} ({origin}); jest tam magazyn " +
       "ze znacznikiem. Archiwista niczego w nim nie zapisze.",
@@ -46,10 +46,10 @@ export const setup = {
     remove: "Usuń magazyn",
     name_required: "Wpisz nazwę magazynu.",
     kartograf_required: "Wpisz pełną ścieżkę katalogu Kartografa.",
-    imgw: "Katalog IMGWTools",
-    imgw_hint:
-      "Pełna ścieżka katalogu głównego magazynu IMGWTools, w którym leży plik imgw-store.json, np. /mnt/nas/imgw albo Z:\\imgw. Zostaw puste, jeśli magazyn nie ma danych IMGW.",
-    directory_required: "Wpisz pełną ścieżkę katalogu Kartografa albo katalogu IMGWTools.",
+    obserwator: "Katalog Obserwatora",
+    obserwator_hint:
+      "Pełna ścieżka katalogu głównego magazynu Obserwatora, w którym leży plik obserwator-store.json, np. /mnt/nas/obserwator albo Z:\\obserwator. Zostaw puste, jeśli magazyn nie ma danych IMGW.",
+    directory_required: "Wpisz pełną ścieżkę katalogu Kartografa albo katalogu Obserwatora.",
     id_invalid: "Identyfikator: małe litery, cyfry, „-” i „_” (najwyżej 32 znaki), na początku litera albo cyfra.",
     id_duplicate: "Dwa magazyny mają ten sam identyfikator „{id}”.",
   },
@@ -85,7 +85,7 @@ export const setup = {
     legend: "Podsumowanie",
     stores: "Magazyny:",
     kartograf: "Kartograf:",
-    imgw: "IMGWTools:",
+    obserwator: "Obserwator:",
     projects: "Katalogi projektów:",
     mode: "Tryb pracy:",
     online: "z podkładami online",

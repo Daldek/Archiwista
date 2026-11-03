@@ -1,7 +1,7 @@
-"""Contract with IMGWTools' store API and of Archiwista's IMGW adapter.
+"""Contract with Obserwator's store API and of Archiwista's Obserwator adapter.
 
-The adapter must see exactly what ``imgwtools.iter_store`` sees in the
-producer's own offline fixture stores (``imgwtools.testing``): archives,
+The adapter must see exactly what ``obserwator.iter_store`` sees in the
+producer's own offline fixture stores (``obserwator.testing``): archives,
 series and station catalogs as versions, a version the producer cannot read
 as its problem and nothing parsed, an observation never as a version. It
 judges a directory by the marker file name and schema, and every judgement
@@ -19,13 +19,13 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-import imgwtools
+import obserwator
 import pytest
-from imgwtools import (
-    IMGWDataError,
-    IMGWError,
-    IMGWStoreConflictError,
+from obserwator import (
     Meta,
+    ObserwatorDataError,
+    ObserwatorError,
+    ObserwatorStoreConflictError,
     init_store,
     iter_store,
     open_store,
@@ -35,14 +35,14 @@ from imgwtools import (
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
-from archiwista.adapter.imgw import (
+from archiwista.adapter.obserwator import (
     PACKAGE,
     PRODUCER,
     SCHEMAS,
     SUPPORTED_VERSIONS,
     load,
 )
-from archiwista.adapter.imgw.adapter import ImgwAdapter
+from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
 from archiwista.errors import ProducerError, SourceUnavailableError, UnsupportedError
 from archiwista.sources import (
     CurrentVersionAdapter,
@@ -59,8 +59,8 @@ from archiwista.sources import (
     SourceSegment,
     VersionCommandAdapter,
 )
-from tests.fixtures.imgw_edits import add_version, drop_sidecar, rewrite_sidecar
 from tests.fixtures.network import no_network
+from tests.fixtures.obserwator_edits import add_version, drop_sidecar, rewrite_sidecar
 
 type Stores = Callable[[str], Path]
 type Row = tuple[object, ...]
@@ -78,10 +78,10 @@ CZ_REGISTER_SLOT = Path(
 
 
 @pytest.fixture
-def adapter(tmp_path: Path) -> ImgwAdapter:
+def adapter(tmp_path: Path) -> ObserwatorAdapter:
     """Create the adapter with its entry-point factory."""
-    created = load(SourceContext(cache_dir=tmp_path / "cache" / "imgw"))
-    assert isinstance(created, ImgwAdapter)
+    created = load(SourceContext(cache_dir=tmp_path / "cache" / "obserwator"))
+    assert isinstance(created, ObserwatorAdapter)
     return created
 
 
@@ -132,27 +132,27 @@ def _producer_rows(root: Path) -> Counter[Row]:
     )
 
 
-def _entries(adapter: ImgwAdapter, root: Path) -> list[SourceEntry]:
+def _entries(adapter: ObserwatorAdapter, root: Path) -> list[SourceEntry]:
     return list(adapter.iter_entries(root))
 
 
-def _copy(imgw_store: Stores, root: Path, variant: str = "complete") -> Path:
+def _copy(obserwator_store: Stores, root: Path, variant: str = "complete") -> Path:
     """Copy a shared fixture store so that a test can change it."""
-    shutil.copytree(imgw_store(variant), root)
+    shutil.copytree(obserwator_store(variant), root)
     return root
 
 
-def test_installed_imgwtools_within_supported_range() -> None:
-    """The imported IMGWTools is one the adapter declares it reads."""
+def test_installed_obserwator_within_supported_range() -> None:
+    """The imported Obserwator is one the adapter declares it reads."""
     supported = SpecifierSet(SUPPORTED_VERSIONS)
 
-    assert supported.contains(Version(imgwtools.__version__), prereleases=True)
-    assert (PRODUCER, PACKAGE) == ("imgw", "imgwtools")
-    assert SCHEMAS == ("imgw-store/1", "imgw-meta/1", "imgw-series/1")
+    assert supported.contains(Version(obserwator.__version__), prereleases=True)
+    assert (PRODUCER, PACKAGE) == ("obserwator", "obserwator")
+    assert SCHEMAS == ("obserwator-store/1", "obserwator-meta/1", "obserwator-series/1")
 
 
 def test_adapter_implements_the_source_interface_and_describes_its_datasets(
-    adapter: ImgwAdapter,
+    adapter: ObserwatorAdapter,
 ) -> None:
     """The store has no segments to scan, links, sheets or coordinate operations."""
     assert isinstance(adapter, SourceAdapter)
@@ -172,23 +172,23 @@ def test_adapter_implements_the_source_interface_and_describes_its_datasets(
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
 def test_entries_equal_what_iter_store_yields(
-    imgw_store: Stores, adapter: ImgwAdapter, variant: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
     """Kind, slot, path, label and SHA-256 of every entry are the producer's."""
-    root = imgw_store(variant)
+    root = obserwator_store(variant)
 
     entries = _entries(adapter, root)
 
     assert _rows(entries) == _producer_rows(root)
     assert {entry.store for entry in entries} == {str(root)}
-    assert {entry.producer for entry in entries} == {"imgw"}
+    assert {entry.producer for entry in entries} == {"obserwator"}
 
 
 def test_a_relabeled_version_is_the_same_content_under_a_new_label(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A republished archive is its own version; older ones stay versions."""
-    entries = _entries(adapter, imgw_store("complete"))
+    entries = _entries(adapter, obserwator_store("complete"))
 
     versions = [e for e in entries if e.slot_path == ARCHIVE_SLOT]
 
@@ -202,10 +202,10 @@ def test_a_relabeled_version_is_the_same_content_under_a_new_label(
 
 
 def test_series_and_catalogs_are_versions_and_nothing_is_a_problem(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """Series (also an outdated one) and the station catalog are versions."""
-    entries = _entries(adapter, imgw_store("complete"))
+    entries = _entries(adapter, obserwator_store("complete"))
 
     series = Counter(e.segment for e in entries if e.relative_path.parts[0] == "series")
 
@@ -224,10 +224,14 @@ def test_series_and_catalogs_are_versions_and_nothing_is_a_problem(
     ],
 )
 def test_a_version_the_producer_cannot_read_is_its_problem_and_nothing_is_parsed(
-    imgw_store: Stores, adapter: ImgwAdapter, variant: str, code: str, slot: Path
+    obserwator_store: Stores,
+    adapter: ObserwatorAdapter,
+    variant: str,
+    code: str,
+    slot: Path,
 ) -> None:
     """The producer's problem code is the entry's; the rest of the store is read."""
-    root = imgw_store(variant)
+    root = obserwator_store(variant)
 
     entries = _entries(adapter, root)
 
@@ -240,10 +244,10 @@ def test_a_version_the_producer_cannot_read_is_its_problem_and_nothing_is_parsed
 
 
 def test_an_observation_is_history_and_never_a_version(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A source republished the same content: the register belongs to the slot."""
-    entries = _entries(adapter, imgw_store("complete_pl_cz"))
+    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
 
     (observation,) = [e for e in entries if e.kind == "observation"]
     (version,) = [
@@ -266,10 +270,10 @@ def test_an_observation_is_history_and_never_a_version(
 
 
 def test_an_observation_carries_the_signal_the_producer_kept(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """When the source served the bytes, from where, and their size and digest."""
-    entries = _entries(adapter, imgw_store("complete_pl_cz"))
+    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
 
     (observation,) = [e for e in entries if e.kind == "observation"]
 
@@ -294,10 +298,10 @@ def test_an_observation_carries_the_signal_the_producer_kept(
 
 
 def test_a_slot_has_the_producers_key_and_a_name_for_people(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """The key is the producer's own; an archive is its file, a catalog its key."""
-    root = imgw_store("complete_pl_cz")
+    root = obserwator_store("complete_pl_cz")
 
     entries = _entries(adapter, root)
 
@@ -323,10 +327,10 @@ def test_a_slot_has_the_producers_key_and_a_name_for_people(
 
 
 def test_a_problem_without_a_slot_has_no_key_and_no_dataset(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A stray item of the store belongs to no slot, so it has no segment."""
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     stray = root / "archives" / "versions" / "stray"
     stray.mkdir()
     (stray / "notes.txt").write_text("x", encoding="utf-8")
@@ -339,7 +343,7 @@ def test_a_problem_without_a_slot_has_no_key_and_no_dataset(
 
 
 def test_a_dataset_of_the_registry_is_described_by_its_polish_title_country_and_family(
-    adapter: ImgwAdapter,
+    adapter: ObserwatorAdapter,
 ) -> None:
     """A segment is a dataset: its name, its provider's country and its family."""
     assert adapter.describe_segment(HYDRO) == SourceSegment(
@@ -367,13 +371,13 @@ def test_a_dataset_of_the_registry_is_described_by_its_polish_title_country_and_
     }
 
 
-@pytest.mark.parametrize("key", [dataset.key for dataset in imgwtools.datasets()])
+@pytest.mark.parametrize("key", [dataset.key for dataset in obserwator.datasets()])
 def test_every_dataset_of_the_registry_is_a_known_segment_of_its_providers_country(
-    adapter: ImgwAdapter, key: str
+    adapter: ObserwatorAdapter, key: str
 ) -> None:
     """The registry is the producer's own, so no dataset is left unrecognised."""
-    dataset = imgwtools.get_dataset(key)
-    provider = imgwtools.get_provider(dataset.provider)
+    dataset = obserwator.get_dataset(key)
+    provider = obserwator.get_provider(dataset.provider)
 
     described = adapter.describe_segment(key)
 
@@ -388,7 +392,7 @@ def test_every_dataset_of_the_registry_is_a_known_segment_of_its_providers_count
 
 
 def test_a_station_catalog_is_named_after_its_provider_and_an_unknown_key_by_itself(
-    adapter: ImgwAdapter,
+    adapter: ObserwatorAdapter,
 ) -> None:
     """The catalogs are slots of the store but no datasets of the registry."""
     assert adapter.describe_segment("pl.imgw.stations") == SourceSegment(
@@ -414,20 +418,22 @@ def test_a_station_catalog_is_named_after_its_provider_and_an_unknown_key_by_its
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz", "corrupt"])
 def test_every_dataset_a_fixture_store_names_is_recognised(
-    imgw_store: Stores, adapter: ImgwAdapter, variant: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
     """What the producer writes into a store, its registry knows."""
-    segments = {e.segment for e in _entries(adapter, imgw_store(variant)) if e.segment}
+    segments = {
+        e.segment for e in _entries(adapter, obserwator_store(variant)) if e.segment
+    }
 
     assert segments
     assert all(adapter.describe_segment(name).known for name in segments)
 
 
 def test_the_two_providers_keep_their_datasets_catalogs_and_countries_apart(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """IMGW-PIB and ČHMÚ files and station catalogs do not collide."""
-    entries = _entries(adapter, imgw_store("complete_pl_cz"))
+    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
 
     metas = [e.meta for e in entries if e.meta is not None]
     catalogs = {e.segment: e for e in entries if e.relative_path.parts[0] == "stations"}
@@ -450,10 +456,10 @@ def test_the_two_providers_keep_their_datasets_catalogs_and_countries_apart(
 
 
 def test_the_canonical_content_of_a_chmi_file_is_kept_and_is_none_for_imgw(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """The producer's canonical content rides along; nothing is computed."""
-    entries = _entries(adapter, imgw_store("complete_pl_cz"))
+    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
 
     forms = {
         (e.segment, e.meta.content_form, e.meta.content_sha256 is None)
@@ -468,10 +474,10 @@ def test_the_canonical_content_of_a_chmi_file_is_kept_and_is_none_for_imgw(
 
 @pytest.mark.parametrize("slot", [ARCHIVE_SLOT, HYDRO_SERIES, PL_CATALOG], ids=str)
 def test_read_meta_carries_the_common_core_for_an_archive_a_series_and_a_catalog(
-    imgw_store: Stores, adapter: ImgwAdapter, slot: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, slot: Path
 ) -> None:
     """DEV-19.16: the fields every sidecar has, read again on demand."""
-    root = imgw_store("complete")
+    root = obserwator_store("complete")
     entry = next(e for e in _entries(adapter, root) if e.slot_path == slot)
 
     meta = adapter.read_meta(replace(entry, meta=None, handle=None))
@@ -498,16 +504,16 @@ def test_read_meta_carries_the_common_core_for_an_archive_a_series_and_a_catalog
         produced.producer_version,
     )
     assert (meta.written_by, meta.producer_version) == (
-        "imgwtools",
-        imgwtools.__version__,
+        "obserwator",
+        obserwator.__version__,
     )
     assert (meta.label, meta.label_source) == (
         _produced_label(produced),
         _produced_version(produced)["label_source"],
     )
     assert meta.raw_sidecar is not None
-    assert meta.raw_sidecar["schema"] == "imgw-meta/1"
-    assert meta.raw_sidecar["producer"] == "imgwtools"
+    assert meta.raw_sidecar["schema"] == "obserwator-meta/1"
+    assert meta.raw_sidecar["producer"] == "obserwator"
     assert meta.raw_sidecar["producer_version"] == produced.producer_version
     assert meta.raw_sidecar["request"] == produced.request
     assert meta.raw_sidecar["extra"] == produced.extra
@@ -515,10 +521,10 @@ def test_read_meta_carries_the_common_core_for_an_archive_a_series_and_a_catalog
 
 
 def test_an_unknown_dataset_key_has_no_current_key(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """``dataset_key`` is ``None`` for a key the producer does not know."""
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     sidecar = next(root.glob(f"{ARCHIVE_SLOT}/*/codz_2024.zip.meta.json"))
     document = json.loads(sidecar.read_text(encoding="utf-8"))
     document["dataset"] = "pl.imgw.removed_dataset"
@@ -536,10 +542,10 @@ def test_an_unknown_dataset_key_has_no_current_key(
 
 
 def test_footprint_of_an_archive_and_a_series_is_their_country(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A file of IMGW-PIB or ČHMÚ covers a country; a catalog has no place."""
-    entries = _entries(adapter, imgw_store("complete_pl_cz"))
+    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
 
     found = {
         (e.relative_path.parts[0], adapter.footprint(e).location)
@@ -560,7 +566,7 @@ def test_footprint_of_an_archive_and_a_series_is_their_country(
     assert (country.location, country.source) == ("country", "country")
 
 
-def test_scan_errors_and_scopes(adapter: ImgwAdapter, tmp_path: Path) -> None:
+def test_scan_errors_and_scopes(adapter: ObserwatorAdapter, tmp_path: Path) -> None:
     """A missing store is unavailable; the store has no segments to scan."""
     with pytest.raises(SourceUnavailableError):
         list(adapter.iter_entries(tmp_path / "missing"))
@@ -592,10 +598,10 @@ def _places(entries: list[SourceEntry]) -> Counter[Row]:
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
 def test_known_versions_come_back_skipped_with_no_sidecar_read(
-    imgw_store: Stores, adapter: ImgwAdapter, variant: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
     """``known_versions`` is ``skip_versions``: the same entries, no version read."""
-    root = imgw_store(variant)
+    root = obserwator_store(variant)
     full = _entries(adapter, root)
 
     again = list(
@@ -609,14 +615,14 @@ def test_known_versions_come_back_skipped_with_no_sidecar_read(
 
 
 def test_what_is_not_known_is_read_in_full(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """Read what is not known in full; a known version is not looked at.
 
     A new version has its meta and a new broken one is a problem; the caller
     vouches for a known one, and a scan that names none sees what broke.
     """
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     known = _known(_entries(adapter, root))
     fresh = add_version(root, ARCHIVE_SLOT.as_posix(), label="2026-10-22")
     broken = add_version(root, ARCHIVE_SLOT.as_posix(), label="2026-10-23")
@@ -639,10 +645,10 @@ def test_what_is_not_known_is_read_in_full(
 
 
 def test_a_version_written_by_an_older_release_keeps_its_number(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """The sidecar's ``producer`` and ``producer_version`` are the file's own."""
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     older = next(e for e in _entries(adapter, root) if e.slot_path == ARCHIVE_SLOT)
     rewrite_sidecar(root, older.relative_path.as_posix(), producer_version="2.9.0")
 
@@ -650,29 +656,29 @@ def test_a_version_written_by_an_older_release_keeps_its_number(
 
     meta = entries[older.relative_path].meta
     assert meta is not None and meta.raw_sidecar is not None
-    assert (meta.written_by, meta.producer_version) == ("imgwtools", "2.9.0")
+    assert (meta.written_by, meta.producer_version) == ("obserwator", "2.9.0")
     assert meta.raw_sidecar["producer_version"] == "2.9.0"
     others = {
         e.meta.producer_version
         for path, e in entries.items()
         if e.meta is not None and path != older.relative_path
     }
-    assert others == {imgwtools.__version__}
+    assert others == {obserwator.__version__}
 
 
 def test_a_path_with_a_link_is_refused_by_the_producer_with_its_message(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
-    """IMGWTools reads no path with a symbolic link; its message is kept."""
+    """Obserwator reads no path with a symbolic link; its message is kept."""
     link = tmp_path / "link"
-    link.symlink_to(imgw_store("complete"), target_is_directory=True)
+    link.symlink_to(obserwator_store("complete"), target_is_directory=True)
 
     with pytest.raises(ProducerError) as raised:
         list(adapter.iter_entries(link))
 
     assert (raised.value.package, raised.value.exception) == (
-        "imgwtools",
-        "IMGWStoreError",
+        "obserwator",
+        "ObserwatorStoreError",
     )
     state = adapter.probe(link)
     assert (state.status, state.detail) == ("error", raised.value.message)
@@ -680,16 +686,16 @@ def test_a_path_with_a_link_is_refused_by_the_producer_with_its_message(
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
 def test_the_current_version_of_every_slot_is_the_producers_relative_to_the_store(
-    imgw_store: Stores, adapter: ImgwAdapter, variant: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
-    """The adapter asks IMGWTools and answers with the path of a version it lists."""
-    root = imgw_store(variant)
+    """The adapter asks Obserwator and answers with the path of a version it lists."""
+    root = obserwator_store(variant)
     entries = _entries(adapter, root)
     keys = sorted({e.slot_key for e in entries if e.slot_key})
 
     answers = {key: adapter.current_version(root, key) for key in keys}
 
-    produced = {key: imgwtools.current_version(root, slot=key) for key in keys}
+    produced = {key: obserwator.current_version(root, slot=key) for key in keys}
     assert keys and all(answers.values())
     assert answers == {
         key: found.version.relative_to(root)
@@ -706,10 +712,10 @@ def test_the_current_version_of_every_slot_is_the_producers_relative_to_the_stor
 
 
 def test_a_version_without_its_sidecar_is_skipped_and_the_older_one_answers(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """An interrupted publication is no version: the version before it is current."""
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     before = adapter.current_version(root, ARCHIVE_KEY)
     newest = add_version(root, ARCHIVE_SLOT.as_posix(), label="2026-10-30")
     assert adapter.current_version(root, ARCHIVE_KEY) == Path(newest)
@@ -724,14 +730,14 @@ def test_a_version_without_its_sidecar_is_skipped_and_the_older_one_answers(
     ("variant", "key"), [("corrupt", ARCHIVE_KEY), ("unknown_schema", SERIES_KEY)]
 )
 def test_a_broken_version_leaves_its_slot_without_a_current_version(
-    imgw_store: Stores, adapter: ImgwAdapter, variant: str, key: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str, key: str
 ) -> None:
     """The producer refuses to choose, and an older version is not chosen instead."""
-    root = imgw_store(variant)
+    root = obserwator_store(variant)
     older = [e for e in _entries(adapter, root) if e.slot_key == key and e.meta]
 
-    with pytest.raises(IMGWDataError):
-        imgwtools.current_version(root, slot=key)
+    with pytest.raises(ObserwatorDataError):
+        obserwator.current_version(root, slot=key)
 
     assert older
     assert adapter.current_version(root, key) is None
@@ -747,28 +753,28 @@ def test_a_broken_version_leaves_its_slot_without_a_current_version(
     ids=["size_mismatch", "invalid_meta", "stray_file"],
 )
 def test_every_way_a_version_is_broken_leaves_the_slot_without_a_current_version(
-    imgw_store: Stores,
-    adapter: ImgwAdapter,
+    obserwator_store: Stores,
+    adapter: ObserwatorAdapter,
     tmp_path: Path,
     damage: Callable[[Path, str], object],
 ) -> None:
     """A size that differs, an invalid field and a stray file are all refused."""
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     version = adapter.current_version(root, ARCHIVE_KEY)
     assert version is not None
 
     damage(root, version.as_posix())
 
-    with pytest.raises(IMGWDataError):
-        imgwtools.current_version(root, slot=ARCHIVE_KEY)
+    with pytest.raises(ObserwatorDataError):
+        obserwator.current_version(root, slot=ARCHIVE_KEY)
     assert adapter.current_version(root, ARCHIVE_KEY) is None
 
 
 def test_a_slot_the_producer_cannot_read_has_no_current_version_and_no_error(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A slot an earlier scan indexed must not fail the scan that finds it gone."""
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     directory = root / ARCHIVE_SLOT
     moved = directory.with_name("codz_2024_moved")
     directory.rename(moved)
@@ -782,27 +788,27 @@ def test_a_slot_the_producer_cannot_read_has_no_current_version_and_no_error(
 
 
 def test_a_root_that_is_no_store_anymore_is_the_producers_refusal(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
-    """The store, not the slot, is the problem: the error of IMGWTools is kept."""
-    root = _copy(imgw_store, tmp_path / "store")
-    (root / "imgw-store.json").unlink()
+    """The store, not the slot, is the problem: the error of Obserwator is kept."""
+    root = _copy(obserwator_store, tmp_path / "store")
+    (root / "obserwator-store.json").unlink()
 
     with pytest.raises(ProducerError) as raised:
         adapter.current_version(root, ARCHIVE_KEY)
 
     assert (raised.value.package, raised.value.exception) == (
-        "imgwtools",
-        "IMGWStoreError",
+        "obserwator",
+        "ObserwatorStoreError",
     )
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root reads any file")
 def test_a_sidecar_the_system_cannot_read_is_an_unavailable_store(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A file that cannot be read is the system's problem, as in a scan."""
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     version = adapter.current_version(root, ARCHIVE_KEY)
     assert version is not None
     sidecar = root / f"{version.as_posix()}.meta.json"
@@ -822,7 +828,7 @@ class Case:
     ``code`` is the first of the ``StoreInfo.problem_codes`` the reader gives
     (``None`` for a store it reads): the adapter judges by it, and by the
     names in the directory where one code covers several directories.
-    ``call`` is the IMGWTools writer call that pins the verdict: ``init_store``
+    ``call`` is the Obserwator writer call that pins the verdict: ``init_store``
     or ``open_store``. ``refused`` says whether the writer refuses the
     directory and ``why`` is the ``details.reason`` of the refusal.
     """
@@ -838,7 +844,7 @@ class Case:
 
 
 def _marker_of(root: Path) -> dict[str, object]:
-    return json.loads((root / "imgw-store.json").read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    return json.loads((root / "obserwator-store.json").read_text(encoding="utf-8"))  # type: ignore[no-any-return]
 
 
 def _empty(root: Path, store: Path) -> None:
@@ -856,7 +862,7 @@ def _whole_store(root: Path, store: Path) -> None:
 
 def _no_marker(root: Path, store: Path) -> None:
     shutil.copytree(store, root)
-    (root / "imgw-store.json").unlink()
+    (root / "obserwator-store.json").unlink()
 
 
 def _layout_only(root: Path, store: Path) -> None:
@@ -866,21 +872,21 @@ def _layout_only(root: Path, store: Path) -> None:
 def _other_schema(root: Path, store: Path) -> None:
     shutil.copytree(store, root)
     marker = _marker_of(root)
-    (root / "imgw-store.json").write_text(
-        json.dumps({**marker, "schema": "imgw-store/2"}), encoding="utf-8"
+    (root / "obserwator-store.json").write_text(
+        json.dumps({**marker, "schema": "obserwator-store/2"}), encoding="utf-8"
     )
 
 
 def _marker_not_json(root: Path, store: Path) -> None:
     shutil.copytree(store, root)
-    (root / "imgw-store.json").write_text("{not json", encoding="utf-8")
+    (root / "obserwator-store.json").write_text("{not json", encoding="utf-8")
 
 
 def _without_created_by(root: Path, store: Path) -> None:
     shutil.copytree(store, root)
     marker = _marker_of(root)
     del marker["created_by"]
-    (root / "imgw-store.json").write_text(json.dumps(marker), encoding="utf-8")
+    (root / "obserwator-store.json").write_text(json.dumps(marker), encoding="utf-8")
 
 
 def _kartograf(root: Path, store: Path) -> None:
@@ -1010,16 +1016,16 @@ CASES = [
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
 def test_probe_judges_a_directory_as_the_producer_does(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path, case: Case
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path, case: Case
 ) -> None:
-    """Each verdict on a directory is pinned to what IMGWTools does with it."""
+    """Each verdict on a directory is pinned to what Obserwator does with it."""
     root = tmp_path / "root"
-    case.build(root, imgw_store("complete"))
+    case.build(root, obserwator_store("complete"))
 
     state = adapter.probe(root)
 
     assert (state.status, state.reason) == (case.status, case.reason)
-    assert (state.store, state.package_version) == (str(root), imgwtools.__version__)
+    assert (state.store, state.package_version) == (str(root), obserwator.__version__)
     assert (state.supported_versions, state.schemas) == (SUPPORTED_VERSIONS, SCHEMAS)
     assert (state.detail is None) == (case.status == "available")
     assert (state.hint is None) == (case.reason != "no_marker")
@@ -1028,47 +1034,47 @@ def test_probe_judges_a_directory_as_the_producer_does(
     if not case.refused:
         assert calls[case.call](root).root == root
     else:
-        with pytest.raises(IMGWError) as refused:
+        with pytest.raises(ObserwatorError) as refused:
             calls[case.call](root)
         assert refused.value.details.get("reason") == case.why
-        assert isinstance(refused.value, IMGWStoreConflictError) == (
+        assert isinstance(refused.value, ObserwatorStoreConflictError) == (
             case.call == "init_store"
         )
 
 
 def test_init_store_turns_a_missing_marker_into_an_available_store(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
-    """``imgw store init`` is the fix the hint names, and after it the store reads."""
+    """``obserwator store init`` is the fix the hint names; after it the store reads."""
     root = tmp_path / "magazyn z spacją"
-    _no_marker(root, imgw_store("complete"))
+    _no_marker(root, obserwator_store("complete"))
 
     before = adapter.probe(root)
     init_store(root)
     after = adapter.probe(root)
 
     assert (before.status, before.reason) == ("incompatible", "no_marker")
-    assert before.hint == f"imgw store init --root '{root}'"
+    assert before.hint == f"obserwator store init --root '{root}'"
     assert before.detail is not None and before.hint in before.detail
     assert (after.status, after.reason, after.hint) == ("available", None, None)
     assert _rows(_entries(adapter, root)) == _producer_rows(root)
 
 
 def test_an_unsupported_marker_names_both_schemas(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """The text says what the marker has and what this version reads."""
     root = tmp_path / "root"
-    _other_schema(root, imgw_store("complete"))
+    _other_schema(root, obserwator_store("complete"))
 
     state = adapter.probe(root)
 
     assert state.detail is not None
-    assert "imgw-store/2" in state.detail and "imgw-store/1" in state.detail
+    assert "obserwator-store/2" in state.detail and "obserwator-store/1" in state.detail
 
 
 def test_a_directory_that_cannot_be_listed_is_an_error_not_a_verdict(
-    adapter: ImgwAdapter, tmp_path: Path
+    adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A missing directory and a file are ``error`` with no reason."""
     (tmp_path / "file").write_text("x", encoding="utf-8")
@@ -1080,16 +1086,16 @@ def test_a_directory_that_cannot_be_listed_is_an_error_not_a_verdict(
 
 
 def test_the_adapter_reads_a_store_without_pyarrow(
-    imgw_store: Stores, tmp_path: Path
+    obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Reading needs no Parquet file: the adapter never imports ``pyarrow``."""
-    root = imgw_store("complete_pl_cz")
+    root = obserwator_store("complete_pl_cz")
     script = """
 import sys
 from pathlib import Path
 
 sys.modules["pyarrow"] = None
-from archiwista.adapter.imgw import load
+from archiwista.adapter.obserwator import load
 from archiwista.sources import SourceContext
 
 adapter = load(SourceContext(cache_dir=Path(sys.argv[2])))
@@ -1125,14 +1131,14 @@ def _stored(root: Path, kind: str) -> str:
     )
 
 
-def test_command_for_version_of_an_archive_is_imgwtools_call_without_the_root(
-    imgw_store: Stores, adapter: ImgwAdapter
+def test_command_for_version_of_an_archive_is_obserwator_call_without_the_root(
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
-    """The call IMGWTools rebuilds offline, the store root left to the caller."""
+    """The call Obserwator rebuilds offline, the store root left to the caller."""
     # Arrange
-    root = imgw_store("complete")
+    root = obserwator_store("complete")
     version = _stored(root, "archive")
-    produced = imgwtools.command_for_version(version, root=root)
+    produced = obserwator.command_for_version(version, root=root)
 
     # Act
     with no_network() as attempts:
@@ -1141,7 +1147,7 @@ def test_command_for_version_of_an_archive_is_imgwtools_call_without_the_root(
     # Assert
     assert isinstance(adapter, VersionCommandAdapter)
     assert attempts == []
-    assert (call.producer, call.command) == ("imgw", produced.command)
+    assert (call.producer, call.command) == ("obserwator", produced.command)
     assert "root" in produced.options
     assert dict(call.options) == {
         name: value for name, value in produced.options.items() if name != "root"
@@ -1150,16 +1156,16 @@ def test_command_for_version_of_an_archive_is_imgwtools_call_without_the_root(
 
 
 def test_command_for_version_of_a_catalog_built_from_a_users_file_is_refused(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
-    """``unsupported``, ``command_not_rebuildable``, IMGWTools' text unchanged."""
+    """``unsupported``, ``command_not_rebuildable``, Obserwator's text unchanged."""
     # Arrange
-    root = _copy(imgw_store, tmp_path / "store")
+    root = _copy(obserwator_store, tmp_path / "store")
     version = _stored(root, "catalog")
     request = dict(read_meta(root / version).request)
     rewrite_sidecar(root, version, request={**request, "user_locations": "moje.csv"})
-    with pytest.raises(IMGWError) as produced:
-        imgwtools.command_for_version(version, root=root)
+    with pytest.raises(ObserwatorError) as produced:
+        obserwator.command_for_version(version, root=root)
 
     # Act
     with pytest.raises(UnsupportedError) as raised:
@@ -1175,15 +1181,15 @@ def test_command_for_version_of_a_catalog_built_from_a_users_file_is_refused(
     assert error.details["version"] == version
 
 
-def test_command_for_version_of_no_version_is_imgwtools_refusal_with_its_code(
-    imgw_store: Stores, adapter: ImgwAdapter
+def test_command_for_version_of_no_version_is_obserwator_refusal_with_its_code(
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A path that is no stored version: ``ProducerError``, never ``unsupported``."""
     # Arrange
-    root = imgw_store("complete")
+    root = obserwator_store("complete")
     version = "archives/versions/nic/2026-01-01_00000000/nic.zip"
-    with pytest.raises(IMGWError) as produced:
-        imgwtools.command_for_version(version, root=root)
+    with pytest.raises(ObserwatorError) as produced:
+        obserwator.command_for_version(version, root=root)
 
     # Act
     with pytest.raises(ProducerError) as raised:

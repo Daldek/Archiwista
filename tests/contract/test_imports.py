@@ -2,7 +2,7 @@
 
 Upper layers know just ``archiwista.sources`` (A-ADR-014, A-ADR-019,
 A-ADR-024): a producer can change its internals without breaking them, and
-Archiwista starts without the optional IMGWTools. The server starts without
+Archiwista starts without the optional Obserwator. The server starts without
 the libraries of the render processes (plan v0.2, decision 3).
 """
 
@@ -21,15 +21,15 @@ import archiwista
 PACKAGE_DIR = Path(archiwista.__file__).parent
 ADAPTER_DIRS = {
     "kartograf": PACKAGE_DIR / "adapter" / "kartograf",
-    "imgwtools": PACKAGE_DIR / "adapter" / "imgw",
+    "obserwator": PACKAGE_DIR / "adapter" / "obserwator",
 }
-# Imports every module outside the adapters with IMGWTools made unavailable,
+# Imports every module outside the adapters with Obserwator made unavailable,
 # records whether that imported Kartograf, then loads the plugins.
-START_WITHOUT_IMGWTOOLS = """
+START_WITHOUT_OBSERWATOR = """
 import importlib, json, pkgutil, sys
 from pathlib import Path
 
-sys.modules["imgwtools"] = None
+sys.modules["obserwator"] = None
 import archiwista
 
 names = [
@@ -79,7 +79,7 @@ def _imports(path: Path) -> Iterator[tuple[int, str, tuple[str, ...]]]:
 
 
 def test_producers_are_imported_only_in_their_adapters() -> None:
-    """``kartograf`` and ``imgwtools`` appear only in their adapter packages."""
+    """``kartograf`` and ``obserwator`` appear only in their adapter packages."""
     misplaced = [
         f"{path.relative_to(PACKAGE_DIR)}:{line} {module}"
         for path in sorted(PACKAGE_DIR.rglob("*.py"))
@@ -107,27 +107,27 @@ def test_kartograf_adapter_uses_only_public_api() -> None:
         assert set(names) <= public, f"{place}: {sorted(set(names) - public)}"
 
 
-def test_imgw_adapter_uses_only_public_api_and_never_pyarrow() -> None:
-    """The adapter imports public names of ``imgwtools`` and never ``pyarrow``."""
-    imgwtools = pytest.importorskip("imgwtools")
-    public = set(imgwtools.__all__)
+def test_obserwator_adapter_uses_only_public_api_and_never_pyarrow() -> None:
+    """The adapter imports public names of ``obserwator`` and never ``pyarrow``."""
+    obserwator = pytest.importorskip("obserwator")
+    public = set(obserwator.__all__)
     imports = [
         (f"{path.name}:{line}", module, names)
-        for path in sorted(ADAPTER_DIRS["imgwtools"].rglob("*.py"))
+        for path in sorted(ADAPTER_DIRS["obserwator"].rglob("*.py"))
         for line, module, names in _imports(path)
-        if module.partition(".")[0] in {"imgwtools", "pyarrow"}
+        if module.partition(".")[0] in {"obserwator", "pyarrow"}
     ]
 
     assert imports
     for place, module, names in imports:
-        assert module == "imgwtools" and names, f"{place}: import {module}"
+        assert module == "obserwator" and names, f"{place}: import {module}"
         assert set(names) <= public, f"{place}: {sorted(set(names) - public)}"
 
 
-def test_archiwista_starts_without_imgwtools(tmp_path: Path) -> None:
-    """Without IMGWTools every module imports and only the IMGW source is lost."""
+def test_archiwista_starts_without_obserwator(tmp_path: Path) -> None:
+    """Without Obserwator every module imports and only its source is lost."""
     result = subprocess.run(
-        [sys.executable, "-c", START_WITHOUT_IMGWTOOLS, str(tmp_path)],
+        [sys.executable, "-c", START_WITHOUT_OBSERWATOR, str(tmp_path)],
         capture_output=True,
         text=True,
         check=False,
@@ -137,7 +137,7 @@ def test_archiwista_starts_without_imgwtools(tmp_path: Path) -> None:
     report = json.loads(result.stdout)
     assert "archiwista.sources.registry" in report["modules"]
     assert report["kartograf_in_upper_layers"] == []
-    assert report["states"] == {"imgw": "not_installed", "kartograf": "available"}
+    assert report["states"] == {"obserwator": "not_installed", "kartograf": "available"}
 
 
 def test_server_start_imports_no_preview_library(tmp_path: Path) -> None:

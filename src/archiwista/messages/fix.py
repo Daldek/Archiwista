@@ -182,7 +182,7 @@ MESSAGES = {
             " poleceniem {producer}."
         ),
     ),
-    "imgw_missing_sidecar": Text(
+    "obserwator_missing_sidecar": Text(
         (
             "Not critical and usually temporary: wait until the download ends. If"
             " it was interrupted, run the same {producer} download again; it"

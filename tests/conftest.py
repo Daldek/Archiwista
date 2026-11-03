@@ -14,25 +14,25 @@ from archiwista.messages import language
 from tests.fixtures.isolation import Canary, isolated_producers
 
 if TYPE_CHECKING:
-    from imgwtools.testing import FixtureVariant
+    from obserwator.testing import FixtureVariant
 
-# The tests of the IMGW adapter and of the index of its stores import IMGWTools at
-# module level. Without the extra `imgw` (the second CI configuration, A-ADR-024)
-# they are not collected; the rest of the suite passes without it.
+# The tests of the Obserwator adapter and of the index of its stores import
+# Obserwator at module level. Without the extra `obserwator` (the second CI
+# configuration, A-ADR-024) they are not collected; the rest of the suite passes
+# without it.
 collect_ignore = (
     []
-    if importlib.util.find_spec("imgwtools")
+    if importlib.util.find_spec("obserwator")
     else [
-        "contract/test_imgw.py",
-        "contract/test_imgw_default_root.py",
-        "contract/test_imgw_series.py",
-        "contract/test_imgw_stations.py",
-        "contract/test_imgw_values.py",
+        "contract/test_obserwator.py",
+        "contract/test_obserwator_default_root.py",
+        "contract/test_obserwator_series.py",
+        "contract/test_obserwator_stations.py",
+        "contract/test_obserwator_values.py",
         "e2e/test_stations_map.py",
-        "integration/test_imgw_index.py",
-        "integration/test_imgw_projects.py",
-        "integration/test_imgw_series.py",
-        "integration/test_imgw_stations.py",
+        "integration/test_obserwator_index.py",
+        "integration/test_obserwator_series.py",
+        "integration/test_obserwator_stations.py",
         "integration/test_series_labels.py",
         "integration/test_station_compare_api.py",
         "integration/test_station_datasets_api.py",
@@ -88,7 +88,7 @@ def restore_umask() -> Iterator[None]:
 
 @pytest.fixture(scope="session", autouse=True)
 def producer_canary(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Canary]:
-    """Run the session as on a computer without settings of Kartograf and IMGWTools.
+    """Run the session as on a computer without settings of Kartograf and Obserwator.
 
     The settings file is empty and every directory the producers would use, the
     default store roots among them, lies in a canary tree that does not exist
@@ -119,12 +119,12 @@ def polish() -> Iterator[None]:
 
 
 @pytest.fixture(scope="session")
-def imgw_store(
+def obserwator_store(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> Callable[[str], Path]:
-    """Return ``store(variant)``, an offline IMGWTools store built once per variant.
+    """Return ``store(variant)``, an offline Obserwator store built once per variant.
 
-    The producer's own builder (``imgwtools.testing.build_fixture_store``) writes it
+    The producer's own builder (``obserwator.testing.build_fixture_store``) writes it
     with its public writers and recorded answers, so no request leaves the process.
     Tests share a store read-only and copy it to change it.
     """
@@ -132,9 +132,9 @@ def imgw_store(
 
     def store(variant: str = "complete") -> Path:
         if variant not in built:
-            from imgwtools.testing import build_fixture_store
+            from obserwator.testing import build_fixture_store
 
-            root = tmp_path_factory.mktemp(f"imgw-{variant}") / "store"
+            root = tmp_path_factory.mktemp(f"obserwator-{variant}") / "store"
             build_fixture_store(root, variant=cast("FixtureVariant", variant))
             built[variant] = root
         return built[variant]

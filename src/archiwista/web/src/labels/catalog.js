@@ -163,7 +163,7 @@ export const catalog = {
     list_title: "Pliki pasujące do filtrów jako lista",
     timeline_title: "Warstwy produktu: warianty w wierszach, lata w kolumnach",
   },
-  /** The stations of an IMGWTools product (views/catalog-stations.js; SPEC 6.5 m, 6.8). */
+  /** The stations of an Obserwator product (views/catalog-stations.js; SPEC 6.5 m, 6.8). */
   stations: {
     search_placeholder: "Szukaj: nazwa stacji, rzeka albo początek kodu…",
     search_hint: "Część nazwy stacji albo rzeki (wielkość liter bez znaczenia) albo początek kodu stacji.",
@@ -186,7 +186,7 @@ export const catalog = {
     source: {
       api_hydro: "API IMGW (hydro)",
       api_meteo: "API IMGW (meteo)",
-      static: "plik położeń IMGWTools",
+      static: "plik położeń Obserwatora",
       user: "plik współrzędnych",
       chmi_hydro_now: "ČHMÚ: dane bieżące hydro",
       chmi_hydro_meta3: "ČHMÚ: metadane hydro",

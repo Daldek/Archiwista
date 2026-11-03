@@ -1,6 +1,6 @@
 """A team's projects in tests: a store, the project directory and three people.
 
-``team_place`` writes a store ``zespol`` whose Kartograf and IMGW directories
+``team_place`` writes a store ``zespol`` whose Kartograf and Obserwator directories
 are marked stores, the project directory ``nas/projekty``, settings naming
 both (in team mode, ``save_team``, unless asked otherwise; with the
 ``default_project_visibility`` asked) and an index that knows the store.
@@ -15,8 +15,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-import imgwtools
 import kartograf
+import obserwator
 
 from archiwista.auth import LOCAL_OWNER, LOCAL_PRINCIPAL_ID, Principal
 from archiwista.auth.authorize import principal_for
@@ -52,13 +52,13 @@ class TeamPlace:
         The settings, the index and the state database.
     projects : Path
         The project directory of the settings.
-    imgw : Path
-        The store's IMGW directory (a marked IMGW store).
+    obserwator : Path
+        The store's Obserwator directory (a marked Obserwator store).
     """
 
     paths: AppPaths
     projects: Path
-    imgw: Path
+    obserwator: Path
 
     def body(self, name: str) -> dict[str, str]:
         """Return the body of ``POST /projects`` of a project ``name``."""
@@ -99,7 +99,7 @@ def team_place(
     """Write the store, the project directory and the settings (team mode)."""
     share = tmp_path / "nas"
     kartograf.init_store(share / "kartograf")
-    imgwtools.init_store(share / "imgw")
+    obserwator.init_store(share / "obserwator")
     projects = share / "projekty"
     projects.mkdir()
     paths = AppPaths(
@@ -109,7 +109,7 @@ def team_place(
         id=STORE,
         name="Zespół",
         kartograf=share / "kartograf",
-        imgw=share / "imgw",
+        obserwator=share / "obserwator",
         kind="share",
     )
     settings = AppSettings(
@@ -124,7 +124,7 @@ def team_place(
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: store.roots()})
-    return TeamPlace(paths, projects, share / "imgw")
+    return TeamPlace(paths, projects, share / "obserwator")
 
 
 @contextmanager

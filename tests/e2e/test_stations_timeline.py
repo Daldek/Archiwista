@@ -119,11 +119,11 @@ def hydrological(year: int) -> str:
 
 
 def test_the_tab_is_one_click_from_the_list_and_keeps_the_filters(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """The tab "Oś czasu" beside "Lista": one address, the filters' stations."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     filters = {"q": "raba", "sort": "name"}
     stations = timeline(page, kind="hydro", dataset=DAILY, **filters)
@@ -153,11 +153,11 @@ def test_the_tab_is_one_click_from_the_list_and_keeps_the_filters(
 
 
 def test_a_station_row_shows_its_years_and_a_tooltip_names_the_longest_gap(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """The H cells of 149190310 are those of its coverage; Q replaces them."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     stations = timeline(page, kind="hydro", dataset=DAILY)
     at = [item["code"] for item in stations].index(RABA)
@@ -199,11 +199,11 @@ def test_a_station_row_shows_its_years_and_a_tooltip_names_the_longest_gap(
 
 
 def test_keys_move_by_year_and_row_and_fold_a_station(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Enter expands a station, arrows and Home/End move, Space folds it."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     stations = timeline(page, kind="hydro", dataset=DAILY)
     series = stations[0]["series"][0]
@@ -246,11 +246,11 @@ def test_keys_move_by_year_and_row_and_fold_a_station(
 
 
 def test_the_year_type_switch_numbers_the_columns_anew(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """The switch "kalendarzowe": calendar years and the API's cells of them."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     stations = timeline(page, kind="hydro", dataset=DAILY)
     at = [item["code"] for item in stations].index(RABA)

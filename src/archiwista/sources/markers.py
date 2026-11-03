@@ -16,7 +16,7 @@ from types import MappingProxyType
 STORE_MARKERS: Mapping[str, str] = MappingProxyType(
     {
         "kartograf": "kartograf-store.json",
-        "imgw": "imgw-store.json",
+        "obserwator": "obserwator-store.json",
     }
 )
 """Marker file name by producer id."""
@@ -25,7 +25,7 @@ NESTING_DEPTH = 2
 """Levels below a directory that ``store_below`` looks into.
 
 A store that was put into another store's tree lies in one of its first levels
-(the products and segments of Kartograf, the trees and datasets of IMGWTools),
+(the products and segments of Kartograf, the trees and datasets of Obserwator),
 which are a few dozen directories; the slots below them are tens of thousands.
 The producer's own writer looks at the whole tree before it writes.
 """

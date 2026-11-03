@@ -2,7 +2,7 @@
 
 ``GET /stations``, ``/stations/timeline``, ``/stations/{code}``,
 ``/stations/{code}/coverage`` and ``GET /map/stations`` answer from the index
-of a scanned copy of ``complete_pl_cz`` (``imgwtools.testing``): the stations
+of a scanned copy of ``complete_pl_cz`` (``obserwator.testing``): the stations
 of both providers, the location groups counted apart (SPEC 4.3 point 3), the
 coverage of each variable with its licence and attribution, the boundary of
 an area by the location uncertainty, and ``503`` while the source is not
@@ -84,7 +84,7 @@ class Served:
 def _scanned(paths: AppPaths, roots: dict[str, Path], registry: PluginRegistry) -> None:
     """Configure a store over each root and scan it fully into the index."""
     configs = tuple(
-        StoreConfig(id=store, name=store.title(), imgw=root, kind="local")
+        StoreConfig(id=store, name=store.title(), obserwator=root, kind="local")
         for store, root in roots.items()
     )
     settings = AppSettings(stores=configs)
@@ -94,18 +94,18 @@ def _scanned(paths: AppPaths, roots: dict[str, Path], registry: PluginRegistry) 
         writer.sync_stores({config.id: config.roots() for config in configs})
         writer.write_area(AREA)
         for config in configs:
-            adapter = registry.adapter("imgw")
+            adapter = registry.adapter("obserwator")
             scan_store(adapter, writer, settings, config.id, mode="full")
 
 
 @pytest.fixture(scope="module")
 def served(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+    obserwator_store: Stores, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[Served]:
     """Serve the index of a copy of ``complete_pl_cz`` after a full scan."""
     base = tmp_path_factory.mktemp("stations-api")
     root = base / "store"
-    shutil.copytree(imgw_store("complete_pl_cz"), root)
+    shutil.copytree(obserwator_store("complete_pl_cz"), root)
     paths = local_paths(base)
     registry = load_registry(cache_dir=paths.cache_dir)
     _scanned(paths, {STORE: root}, registry)
@@ -151,7 +151,7 @@ def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
     """The card names the series version, the file with its digest and paths."""
     # Arrange
     config = ConfigStore(served.paths.config_file).load().store(STORE)
-    assert config is not None and config.imgw is not None
+    assert config is not None and config.obserwator is not None
 
     # Act
     answer = served.json(f"/stations/{RABA}")
@@ -192,7 +192,7 @@ def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
     assert series["coverage"]["Q"]["unknown_years"] == [{"from": 1951, "to": 2023}]
     assert answer["paths"] == {
         DAILY: {
-            "local": str(config.imgw / series["file"]),
+            "local": str(config.obserwator / series["file"]),
             "aliases": [],
             "personal": None,
         }
@@ -359,13 +359,13 @@ def test_the_map_draws_located_stations_or_their_grid(served: Served) -> None:
 
 
 def test_a_code_of_two_stations_names_them_until_store_and_provider_choose(
-    imgw_store: Stores, tmp_path: Path
+    obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Two stores over copies of one store: the code alone is ambiguous."""
     # Arrange
     roots = {store: tmp_path / store for store in (STORE, COPY)}
     for root in roots.values():
-        shutil.copytree(imgw_store("complete_pl_cz"), root)
+        shutil.copytree(obserwator_store("complete_pl_cz"), root)
     paths = local_paths(tmp_path)
     registry = load_registry(cache_dir=paths.cache_dir)
     _scanned(paths, roots, registry)
@@ -396,12 +396,12 @@ def test_a_code_of_two_stations_names_them_until_store_and_provider_choose(
 def test_station_routes_answer_503_while_the_source_is_not_available(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing: str
 ) -> None:
-    """Without IMGWTools the stations the index may hold are not shown (SPEC 5.8)."""
+    """Without Obserwator the stations the index may hold are not shown (SPEC 5.8)."""
     # Arrange
     paths = local_paths(tmp_path)
     registry: PluginRegistry = NoSources()
     if missing == "package":
-        hide_packages(monkeypatch, "imgwtools")
+        hide_packages(monkeypatch, "obserwator")
         registry = load_registry(cache_dir=paths.cache_dir)
 
     # Act
@@ -426,11 +426,11 @@ def test_station_routes_answer_503_while_the_source_is_not_available(
     for response in answers:
         assert_problem(response, 503, "missing_dependency", "source_unavailable")
         source = response.json()["details"]["source"]
-        assert (source["id"], source["state"]) == ("imgw", "not_installed")
-        assert source["requirement"] == "archiwista[imgw]"
-        assert 'pip install "archiwista[imgw]"' in response.json()["hint"]
+        assert (source["id"], source["state"]) == ("obserwator", "not_installed")
+        assert source["requirement"] == "archiwista[obserwator]"
+        assert 'pip install "archiwista[obserwator]"' in response.json()["hint"]
     assert polish.headers["content-language"] == "pl"
-    assert 'pip install "archiwista[imgw]"' in polish.json()["detail"]
+    assert 'pip install "archiwista[obserwator]"' in polish.json()["detail"]
 
 
 def test_openapi_documents_the_station_routes(served: Served) -> None:

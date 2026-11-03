@@ -61,11 +61,11 @@ def subpaths(line: Locator) -> list[list[float]]:
 
 
 def test_the_gaps_are_grey_bands_the_line_never_crosses(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """H of Raba Górna: four bands, two one-vertex subpaths, no vertex in a band."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     query = urlencode({"store": STORE, "provider": "IMGW-PIB", "variable": "H"})
     (variable,) = api(page, f"/stations/149190310/series?{query}")["variables"]
@@ -114,11 +114,11 @@ def test_the_gaps_are_grey_bands_the_line_never_crosses(
 
 
 def test_the_bands_are_the_gaps_of_the_cards_label_in_its_year_type(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """T of Špindlerův Mlýn: "luki 92%" has its band; calendar years have two."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
     card = page.get_by_role("dialog", name="Špindlerův Mlýn")
     key = page.locator(".sc-key", has_text="T")
@@ -148,11 +148,11 @@ def test_the_bands_are_the_gaps_of_the_cards_label_in_its_year_type(
 
 
 def test_a_request_rewritten_to_30_points_shows_the_note_of_a_simplified_chart(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """``max_points=30`` over 366 days: intervals of 13 days, a band and the note."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     asked: list[int] = []
 
@@ -187,11 +187,11 @@ def test_a_request_rewritten_to_30_points_shows_the_note_of_a_simplified_chart(
 
 
 def test_a_selection_narrows_the_whole_series_to_daily_values_and_writes_the_range(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """731 days simplified; a selection gives daily values, a month 31 vertices."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
     page.goto(card_address(served, SPINDLER))
     card = page.get_by_role("dialog", name="Špindlerův Mlýn")
@@ -225,11 +225,11 @@ def test_a_selection_narrows_the_whole_series_to_daily_values_and_writes_the_ran
 
 
 def test_the_keys_zoom_move_and_give_back_the_whole_series(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """``+`` halves the range, an arrow moves it, ``Home`` removes it."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
     page.goto(card_address(served, SPINDLER))
     card = page.get_by_role("dialog", name="Špindlerův Mlýn")

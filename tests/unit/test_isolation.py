@@ -1,7 +1,7 @@
 """The tests run as on a computer without settings of the producers (M4).
 
 ``tests/conftest.py`` points the settings and every default directory of
-Kartograf and IMGWTools at a canary tree and fails the test after which anything
+Kartograf and Obserwator at a canary tree and fails the test after which anything
 lies there: a call that writes without a store root of its own would otherwise
 put files into the default root of whoever runs the tests (Decision 1 of the
 plan of 2026-10-25).
@@ -21,11 +21,11 @@ from archiwista.adapter.kartograf import load
 from archiwista.sources import SourceContext
 from tests.fixtures.isolation import Canary, isolated_producers
 
-IMGW_DIRECTORIES = (
-    "IMGW_ROOT",
-    "IMGW_DATA_DIR",
-    "IMGW_CACHE_DIR",
-    "IMGW_REFERENCE_DIR",
+OBSERWATOR_DIRECTORIES = (
+    "OBSERWATOR_ROOT",
+    "OBSERWATOR_DATA_DIR",
+    "OBSERWATOR_CACHE_DIR",
+    "OBSERWATOR_REFERENCE_DIR",
 )
 
 
@@ -53,19 +53,19 @@ def test_isolation_replaces_the_settings_of_the_developer(
         f'[kartograf]\nroot = "{theirs / "from-file"}"\nlang = "en"\n', encoding="utf-8"
     )
     monkeypatch.setenv("NOGAT_CONFIG", str(theirs / "nogat.toml"))
-    for producer in ("NOGAT", "KARTOGRAF", "IMGW"):
+    for producer in ("NOGAT", "KARTOGRAF", "OBSERWATOR"):
         monkeypatch.setenv(f"{producer}_DATA_DIR", str(theirs / f"{producer}-data"))
         monkeypatch.setenv(f"{producer}_CACHE_DIR", str(theirs / f"{producer}-cache"))
         monkeypatch.setenv(f"{producer}_LANG", "en")
     monkeypatch.setenv("KARTOGRAF_ROOT", str(theirs / "kartograf"))
-    monkeypatch.setenv("IMGW_ROOT", str(theirs / "imgw"))
-    monkeypatch.setenv("IMGW_REFERENCE_DIR", str(theirs / "reference"))
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(theirs / "obserwator"))
+    monkeypatch.setenv("OBSERWATOR_REFERENCE_DIR", str(theirs / "reference"))
 
     # Act
     with isolated_producers(tmp_path / "work") as canary:
         inside = kartograf.get_config()
-        imgw = {name: Path(os.environ[name]) for name in IMGW_DIRECTORIES}
-        imgw_language = os.environ["IMGW_LANG"]
+        obserwator = {name: Path(os.environ[name]) for name in OBSERWATOR_DIRECTORIES}
+        obserwator_language = os.environ["OBSERWATOR_LANG"]
     outside = kartograf.get_config()
 
     # Assert
@@ -74,8 +74,8 @@ def test_isolation_replaces_the_settings_of_the_developer(
     assert inside.keys["data_dir"].value == canary.data_dir
     assert inside.keys["cache_dir"].value == canary.cache_dir
     assert inside.keys["lang"].value == "pl"
-    assert all(path.is_relative_to(canary.base) for path in imgw.values())
-    assert imgw_language == "pl"
+    assert all(path.is_relative_to(canary.base) for path in obserwator.values())
+    assert obserwator_language == "pl"
     assert outside.store.root == theirs / "kartograf"
     assert outside.keys["lang"].value == "en"
 
@@ -86,7 +86,12 @@ def test_isolation_adapter_reads_leave_the_canary_untouched(
     """Reading a store through the adapter writes into no default root."""
     # Arrange: the variables name other places, a store waits to be read
     elsewhere = tmp_path / "elsewhere"
-    for name in ("KARTOGRAF_ROOT", "IMGW_ROOT", "NOGAT_DATA_DIR", "NOGAT_CACHE_DIR"):
+    for name in (
+        "KARTOGRAF_ROOT",
+        "OBSERWATOR_ROOT",
+        "NOGAT_DATA_DIR",
+        "NOGAT_CACHE_DIR",
+    ):
         monkeypatch.setenv(name, str(elsewhere / name))
     built = build_fixture_store(tmp_path / "store")
     adapter = load(SourceContext(cache_dir=tmp_path / "cache" / "kartograf"))

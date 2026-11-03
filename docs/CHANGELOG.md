@@ -117,7 +117,7 @@ command-line interface may change.
   the version again (`producer`, `command`, `options` without the store root) and its
   command line with the store's directory (`line`, `null` for a producer without
   commands). The producer rebuilds it from the version's metadata, offline (Kartograf's
-  `command_for_file`, KB-6; IMGWTools' `command_for_version`, IMGW-21); where it cannot,
+  `command_for_file`, KB-6; Obserwator's `command_for_version`, IMGW-21); where it cannot,
   the answer is `422 unsupported` with the reason `command_not_rebuildable`, the
   producer's text and a hint (a derived file, for example). The local index keeps each
   answer for the installed version of the producer (table `version_calls`), so the
@@ -545,8 +545,8 @@ command-line interface may change.
   unit: a missing unit `None`, accumulated sums flagged, the dates of half-year
   extremes) and names, from the producer's registry, the dataset of the half-year
   characteristics and the characteristics that hold a variable's extremes
-  (`characteristics_dataset`, `extremes_of`). The IMGW adapter reads with
-  `imgwtools.read_series`. (ADR-045, plan I8.4)
+  (`characteristics_dataset`, `extremes_of`). The Obserwator adapter reads with
+  `obserwator.read_series`. (ADR-045, plan I8.4)
 
 - "Oś czasu" of the stations in the Catalog, beside "Lista" (ADR-045, plan I8.3): the
   stations of one dataset with the filters of the list, a row per station with the
@@ -565,7 +565,7 @@ command-line interface may change.
   only their rows. For a person the command draws a line of year cells per variable
   with its label. A page of 200 water gauges with H, Q and T over 75 years is answered
   within 300 ms (p95). (ADR-045, plan I8.3)
-- The Catalog lists the stations of an IMGWTools product (ADR-045, plan I8.2): a row
+- The Catalog lists the stations of an Obserwator product (ADR-045, plan I8.2): a row
   per station with a line per variable of its series (the symbol with the fill of its
   coverage, the label and the full years), the code, the river with its hydrographic
   code and the location's source, along rivers or by name ("Wzdłuż rzek", "Nazwa") and
@@ -593,7 +593,7 @@ command-line interface may change.
   without a dataset or a station type, takes the type remembered for hydro data (until
   now each family kept its own default there). A `year_type` in the request wins and
   changes nothing; half-year characteristics stay in hydrological years.
-- Stations on the map (ADR-045, plan I8.1). A product of IMGWTools shows its stations in
+- Stations on the map (ADR-045, plan I8.1). A product of Obserwator shows its stations in
   place of outlines: the shape says the station type (a triangle for a water gauge, a
   square for a climatological or synoptic station, a circle for a precipitation post),
   the colour and fill the coverage of the "Kolor punktów" variable (green solid, orange
@@ -643,47 +643,50 @@ command-line interface may change.
   and the job and render processes follow the level, and a variable that names no level
   is a `validation_error`. Uvicorn's start-up lines show only with `--verbose` or
   `ARCHIWISTA_LOG_LEVEL=info`. (DEV-12.2)
-- The first-run wizard offers the directory Kartograf and IMGWTools each use when a call
-  names no store (`KARTOGRAF_ROOT` or `IMGW_ROOT`, `[kartograf] root` or `[imgw] root` of
-  `nogat.toml`, else `<data_dir>/kartograf` or `<data_dir>/imgw`, DEV-19.2) under the
+- The first-run wizard offers the directory Kartograf and Obserwator each use when a call
+  names no store (`KARTOGRAF_ROOT` or `OBSERWATOR_ROOT`, `[kartograf] root` or
+  `[obserwator] root` of `nogat.toml`, else `<data_dir>/kartograf` or
+  `<data_dir>/obserwator`, DEV-19.2) under the
   empty field of that producer, with the button "Użyj tego katalogu", when it exists and
-  holds `kartograf-store.json` or `imgw-store.json`. It is only offered: nothing is entered or saved
+  holds `kartograf-store.json` or `obserwator-store.json`. It is only offered: nothing is entered or saved
   until the person clicks and saves, and Archiwista never uses that directory for a call.
   `GET /sources` and `archiwista sources` report it as `default_root` (`path`, `source`
-  `default`, `env`, `dotenv` (IMGWTools reads `.env`) or `file`, `name`, `exists`, `marked`, `message`; `null` for a source
+  `default`, `env`, `dotenv` (Obserwator reads `.env`) or `file`, `name`, `exists`, `marked`, `message`; `null` for a source
   without one); `/health` leaves it out (it is polled; the report is on demand). Kartograf
-  and IMGWTools give the root with `store_root()`, which reads no store. `archiwista doctor` prints the root, the layer of the settings that gave it
+  and Obserwator give the root with `store_root()`, which reads no store. `archiwista doctor` prints the root, the layer of the settings that gave it
   and whether it exists and is a store. (DEV-19.2, ADR-033)
-- The IMGWTools source behind the extra `archiwista[imgw]`: one plugin, `imgw`, reads a
-  store root of IMGWTools for both of its providers, IMGW-PIB and ČHMÚ (archives, series
-  and station catalogs as versions, the producer's own problems, the observation register
-  of a slot as history), judges the marker `imgw-store.json` and says why it refuses a
-  directory (`no_marker` with `imgw store init --root <path>`, `unsupported_marker`,
+- The Obserwator source behind the extra `archiwista[obserwator]`: one plugin,
+  `obserwator`, reads a store root of Obserwator for both of its providers, IMGW-PIB and
+  ČHMÚ (archives, series and station catalogs as versions, the producer's own problems,
+  the observation register of a slot as history), judges the marker
+  `obserwator-store.json` and says why it refuses a directory (`no_marker` with
+  `obserwator store init --root <path>`, `unsupported_marker`,
   `foreign_store`, `not_a_store`). A marker without `created_by` is accepted, as the
   producer accepts it. An incremental scan reads no sidecar of a version the index knows
   (`skip_versions` of `iter_store`), and a file card shows the package and the version
   that wrote the sidecar. `GET /sources` and `archiwista doctor` list the source; without
-  the extra it is `not_installed` with `pip install "archiwista[imgw]"` as the fix, and
-  Kartograf is unaffected. A store takes an IMGW directory beside or instead of its
+  the extra it is `not_installed` with `pip install "archiwista[obserwator]"` as the fix,
+  and Kartograf is unaffected. A store takes an Obserwator directory beside or instead of its
   Kartograf one (the next entry). `uv sync --locked --all-extras` installs the extra; CI
   also runs the suite without it. (ADR 0032, DEV-19.12, DEV-19.13)
-- A store can name an IMGWTools directory, `imgw` in the settings (`GET` and `PUT
+- A store can name an Obserwator directory, `obserwator` in the settings (`GET` and `PUT
   /settings`, `config.toml`), beside the Kartograf one or instead of it: one of the two
   is required, and a settings file with only `kartograf` loads and saves as before. The
-  wizard and the settings offer the field "Katalog IMGWTools" while the source `imgw` is
+  wizard and the settings offer the field "Katalog Obserwatora" while the source
+  `obserwator` is
   available or the store already has such a directory (a saved directory is never dropped
   by a form that cannot offer it). A scan skips the directory of a source that is not
   available, with the notice `source_skipped`, and keeps its entry in the settings: the
   Kartograf directory of the same store is still scanned and probed, and a store whose
   every source is unavailable starts no scan; the notice does not keep a routine scan
-  from being forgotten. Files of an IMGW directory are indexed as versions of their
-  slots (the entry on the index of IMGW slots below). (SPEC 5.5, 5.8)
+  from being forgotten. Files of an Obserwator directory are indexed as versions of their
+  slots (the entry on the index of Obserwator slots below). (SPEC 5.5, 5.8)
 - A producer directory that lies inside a store of any producer, or holds one, is refused
   as `root_nested` at its own field: an ancestor of the directory holds `kartograf-store.json`
-  or `imgw-store.json`, or a directory up to two levels below it does (no link is
+  or `obserwator-store.json`, or a directory up to two levels below it does (no link is
   followed; the producer's own writer looks at the whole tree). Only a new or a moved
   directory is looked around, so an unplugged share does not block other edits. (DEV-19.14)
-- The index of an IMGW directory keeps what IMGWTools calls things (`SCHEMA_VERSION` 7:
+- The index of an Obserwator directory keeps what Obserwator calls things (`SCHEMA_VERSION` 7:
   an existing index is rebuilt when it is opened and filled by the next full scan, as
   with every schema change). The segment of an archive, a series or a station catalog
   is its dataset, named in Polish from the producer's registry (`Dane hydrologiczne
@@ -698,8 +701,8 @@ command-line interface may change.
   neither a version, a current version nor part of any count; a record the producer no
   longer lists is forgotten. A producer that lists no segments can describe the ones
   its entries name (`SegmentDescriptionAdapter`). (SPEC 4.3, ADR 0032)
-- The index knows the current version of an IMGW slot, which no link names: at the end of
-  a scan IMGWTools is asked (`current_version`; the capability `CurrentVersionAdapter`)
+- The index knows the current version of an Obserwator slot, which no link names: at the end
+  of a scan Obserwator is asked (`current_version`; the capability `CurrentVersionAdapter`)
   for the slots the scan touched (a version written, back or gone, a problem found or
   resolved) and for those a scan that did not finish left without one; a scan that
   changed nothing asks for none. A slot with a damaged version (an invalid sidecar,
@@ -712,9 +715,9 @@ command-line interface may change.
   4.8.1, ADR 0032)
 - A scan of one segment (`segment` of `POST /stores/{store}/scan`) goes only to the data
   source that owns the segment in the index (`IndexQueries.segment_producers`), so a
-  Kartograf segment is never offered to the IMGW directory of the same store; a name the
-  index does not know goes to the sources that scan by segment, as it did before. IMGWTools
-  reads only its whole directory (its dataset is a label), so a job that names a segment
+  Kartograf segment is never offered to the Obserwator directory of the same store; a name
+  the index does not know goes to the sources that scan by segment, as it did before.
+  Obserwator reads only its whole directory (its dataset is a label), so a job that names a segment
   it owns fails as `unsupported` before anything is scanned. (SPEC 4.4, ADR 0032)
 - The index keeps the stations of each provider's current station catalog
   (`SCHEMA_VERSION` 10: an existing index is rebuilt when it is opened and filled by the
@@ -725,7 +728,7 @@ command-line interface may change.
   (`none`, `zero`, `outside_country`) and no point; a located one is a point of the
   R*Tree `station_points`. A station is its store, provider and code as text, so the
   codes of the two providers never collide, and a new catalog version replaces the
-  provider's stations at once. A catalog IMGWTools refuses leaves its provider without
+  provider's stations at once. A catalog Obserwator refuses leaves its provider without
   stations and the scan says so (notice `stations_unreadable`). (SPEC 4.3, 4.4, 4.8.1,
   ADR 0032)
 - The index keeps the coverage of each dataset's current series of stations
@@ -738,7 +741,7 @@ command-line interface may change.
   own known periods (ČHMÚ), and each of its years is counted in hydrological and
   calendar years (half-year characteristics: hydrological only) from the gap lists:
   its units, the known ones and those with a value, so a year without a station file
-  is unknown, never a gap. A listing IMGWTools refuses leaves its dataset without
+  is unknown, never a gap. A listing Obserwator refuses leaves its dataset without
   coverage and the scan says so (notice `series_unreadable`). (SPEC 4.3, 4.4, 4.8.4,
   ADR 0032)
 - The coverage labels of SPEC 4.8.4 come from the index alone, never from a series file:
@@ -770,7 +773,7 @@ command-line interface may change.
   map view, with each variable's state and label when `dataset` is given, or their
   grid above `limit`. A code that several stations share (two stores or providers) is
   `400` (`ambiguous_station`, `details.stations`) until `store` and `provider` name
-  one. All four answer `503 missing_dependency` (`source_unavailable`) while IMGWTools
+  one. All four answer `503 missing_dependency` (`source_unavailable`) while Obserwator
   is not available, even when the index holds stations. The archive badge and the
   input archives of the card are not built yet. (SPEC 9.2, 6.7, 6.8, ADR 0032
   decision 13)
@@ -779,21 +782,21 @@ command-line interface may change.
   /stations/{code}` as an option of the same name (a repeatable parameter a repeatable
   option: `--coverage Q:continuous --coverage Q:gaps`). With `--json` they print the
   routes' answers, a refusal the routes' problem as the `archiwista-error/1` document
-  (exit 6 without IMGWTools); without it, Polish lines for a person: each station with
+  (exit 6 without Obserwator); without it, Polish lines for a person: each station with
   the label of every variable of its series and the counters of the whole result, or
   the card with its facts, location, series and licence. (AGENT_API, ADR 0032
   decision 13)
-- The projects of IMGWTools: the project directories are searched for
+- The projects of Obserwator: the project directories are searched for
   `imgw-project.json` beside `kartograf-project.json` after a scan of a store with an
-  IMGW directory, and a directory with both manifests is one project with the tasks of
-  both, each with its producer; its pins name versions of the IMGW index (state, slot,
-  label), and `GET /projects/{project}/status` and `archiwista project-status` give
-  IMGWTools' check of its manifest (`not_downloaded`, `ok`, `corrupt`, `missing`)
+  Obserwator directory, and a directory with both manifests is one project with the tasks
+  of both, each with its producer; its pins name versions of the Obserwator index (state,
+  slot, label), and `GET /projects/{project}/status` and `archiwista project-status` give
+  Obserwator's check of its manifest (`not_downloaded`, `ok`, `corrupt`, `missing`)
   beside Kartograf's. An invalid manifest of one producer shows that producer's
   message and hides nothing of the other's, and a task name used in both manifests is
   the project problem `duplicate_task`. The Projects view and the store's projects show
   each manifest's store and state, and on a card of two manifests "Manifest
-  producenta" chooses the manifest its actions act on. IMGWTools has no project
+  producenta" chooses the manifest its actions act on. Obserwator has no project
   actions yet: an action on its manifest is refused (`422`, `no_project_actions`;
   v0.5). (SPEC 4.7, ADR 0032 decision 14)
 - The producers' commands as data, for people and agents (ADR-034): `GET /commands` and
@@ -1091,6 +1094,28 @@ command-line interface may change.
 
 ### Changed
 
+- **Breaking:** IMGWTools is called Obserwator (Nogat ECO-057, Obserwator's ADR-009), and
+  every name Archiwista derives from the tool follows; nothing else changes. The source
+  is pinned to Obserwator `651d4d73` (`pyproject.toml`, `uv.lock`; the supported range
+  is unchanged) and installed with the extra `archiwista[obserwator]` (was
+  `archiwista[imgw]`). The plugin and producer is `obserwator` (was `imgw`) in `GET
+  /sources`, `archiwista doctor`, `GET /commands`, the index and a project's stores, sets
+  and pins; its adapter is `archiwista.adapter.obserwator`. A store names its directory
+  `obserwator` in `config.toml` and in `GET`/`PUT /settings` (was `imgw`; the wizard's
+  field is "Katalog Obserwatora"), and a refusal of the producer has the reason
+  `obserwator_error` with `details.obserwator` (was `imgwtools_error`,
+  `details.imgwtools`). The adapter reads the marker `obserwator-store.json`
+  (`obserwator-store/1`), the sidecars `obserwator-meta/1` and the series index
+  `obserwator-series/1`, names `obserwator store init --root <path>` as the fix of a
+  store without a marker, and the wizard offers the root of `OBSERWATOR_ROOT`,
+  `[obserwator] root` of `nogat.toml` or `<data_dir>/obserwator`. IMGW-PIB, the dataset
+  keys `pl.imgw.*`, the requirement ids IMGW-1 to IMGW-21 and the export folder `IMGW`
+  keep their names. No alias and no conversion (ECO-056): rename `imgw` to `obserwator`
+  in the stores of `config.toml` (the old key is refused), download the data again into
+  an Obserwator store (Obserwator reads no store marked `imgw-store.json`), and rename
+  `"producer": "imgw"` to `"obserwator"` in a project file a development build wrote (a
+  closed set's `pins_sha256` then no longer matches its pins). The local index is
+  rebuilt (schema 18) when it is opened and filled by the next full scan.
 - Kartograf is re-pinned to `eab8612d` (`pyproject.toml`, `uv.lock`; the supported range is
   unchanged): `--geometry` selects the sheets each feature's geometry meets, not its
   envelope's, and reads GeoJSON (Kartograf ADR-058; A-ADR-035 erratum 2).
@@ -1109,14 +1134,15 @@ command-line interface may change.
   projektu…"), and the plan window's "Dodaj jako zadanie projektu" becomes "Dodaj do
   projektu"; the project jobs become verify, check, re-pin and restore; the card gets the
   project's activity from the action log, and exports of the pinned data (the QGIS
-  export stays v1.1). Kartograf and IMGWTools remove their project
+  export stays v1.1). Kartograf and Obserwator remove their project
   manifests (`kartograf-project.json`, `imgw-project.json`), which Archiwista will no longer
   read or migrate. SPEC (4.7, 8.4, 9.2, 13 "Projects"), SCOPE and PRD describe it, A-ADR-039
   and A-ADR-040 are superseded, and `docs/plans/2026-10-31-archiwista-projects.md` builds it
   in the phases P2 to P6, released together with v0.3 and v0.4.
 
 - **Breaking:** the producers are re-pinned to their commits without projects (A-ADR-049,
-  plan P4): Kartograf `dbcfe5bb` and IMGWTools `8cd6844c` (`pyproject.toml`, `uv.lock`;
+  plan P4): Kartograf `dbcfe5bb` and IMGWTools (now Obserwator) `8cd6844c`
+  (`pyproject.toml`, `uv.lock`;
   the supported ranges are unchanged); their project manifests and functions are gone.
   The source interface `archiwista.sources` no longer has `ProjectActionAdapter` and the
   project types `PinnedVersion`, `ProjectTaskRun`, `ProjectRun`, `ProjectFileState`,
@@ -1330,7 +1356,7 @@ command-line interface may change.
   the order of DOC-2.1 for an app, `docs/PROGRESS.md` has the three sections of the
   standard, `docs/DEVELOPMENT_STANDARDS.md` is gone (the project rules are in `CLAUDE.md`),
   the plans of v0.1 and v0.2 are in `docs/plans/`, ADR-030 is the first decision in
-  `docs/decisions/` and `docs/IMGWTOOLS_REQUIREMENTS.md` is removed (IMGWTools 3.0.0 meets
+  `docs/decisions/` and `docs/IMGWTOOLS_REQUIREMENTS.md` is removed (Obserwator 3.0.0 meets
   it; SPEC 12.7 keeps the identifiers). (DEV-2.1, DEV-1.3, DEV-17.4, ECO-005, DOC-2.1,
   DOC-3.1, DOC-6.1, DOC-8.2)
 - **Breaking for developers:** the environment is managed by uv. `uv sync --locked`
@@ -1361,7 +1387,8 @@ command-line interface may change.
   never writes the marker: run the command once for each store an earlier Kartograf wrote.
   It verifies the layout first and refuses a store with stray entries (`invalid_layout`, the
   list is in `details.problems`), which you move out. A marker of another schema, or one
-  that is not JSON, is `unsupported_marker`; the root of an IMGW store (`imgw-store.json`)
+  that is not JSON, is `unsupported_marker`; the root of an Obserwator store
+  (`obserwator-store.json`)
   is `foreign_store`; a directory whose segments are none of Kartograf's, such as the
   parent of a store, is `not_a_store` and its message asks for the directory that holds
   `kartograf-store.json` instead of the `--output` directory. An empty directory and one
@@ -1374,7 +1401,7 @@ command-line interface may change.
   ends in `/data`), the description of the `kartograf` setting in the OpenAPI document, the
   README, USAGE and the SPEC. The SPEC also has the names of the data-output convention:
   the argument and manifest key `root`, `set_project_root`, the envelope `kartograf-result/1`
-  of `run_command` (it has no `cancel` yet), and for IMGWTools `IMGW_REFERENCE_DIR`, the
+  of `run_command` (it has no `cancel` yet), and for Obserwator `OBSERWATOR_REFERENCE_DIR`, the
   statuses `new` and `unchanged` and the marker fields `tool`, `created_at` and
   `producer_version`. (ECO-051)
 - The tests find the repository from the test file, never through the installed package,
@@ -1450,7 +1477,8 @@ command-line interface may change.
   no `query` (required for `catalog` only).
 - Pinning versions of two producers of one store in one request (a local group, A-ADR-049
   decision 1) wrote the first producer's directory as the second one's `stores[]` root,
-  so the project's IMGW pins showed `unknown` and a later IMGW pin was refused with
+  so the project's Obserwator pins showed `unknown` and a later Obserwator pin was
+  refused with
   `409 unknown_store`. Each producer's entry now names its own directory of the store.
 - A re-pin of a plan group dropped each pin whose file the run reported without a
   `version_path` (counted as `dropped`). Such a file is now pinned as its slot's current

@@ -1,8 +1,9 @@
-"""The IMGW directory in the first-run wizard and the settings (plan I2, SPEC 5.8).
+"""The Obserwator directory in the first-run wizard and the settings (plan I2).
 
-The field "Katalog IMGWTools" is offered while the source ``imgw`` is available
-or the store already has an IMGW directory; without the package a first run
-shows no such field, and a directory saved earlier stays in the settings.
+SPEC 5.8: the field "Katalog Obserwatora" is offered while the source
+``obserwator`` is available or the store already has an Obserwator directory;
+without the package a first run shows no such field, and a directory saved earlier
+stays in the settings.
 """
 
 import re
@@ -32,31 +33,31 @@ def to_save_step(page: Page) -> None:
         page.get_by_role("button", name="Dalej").click()
 
 
-def test_wizard_saves_a_store_of_only_an_imgw_directory(
-    serve: Serve, tab: Tab, imgw_store: Callable[[str], Path]
+def test_wizard_saves_a_store_of_only_an_obserwator_directory(
+    serve: Serve, tab: Tab, obserwator_store: Callable[[str], Path]
 ) -> None:
     """One of the two directories is enough, and the scheduler indexes the store."""
     # Arrange
-    pytest.importorskip("imgwtools")
-    root = imgw_store("complete")
+    pytest.importorskip("obserwator")
+    root = obserwator_store("complete")
     served = serve()
     page = tab.page
     open_shell(page, served.token_url())
     expect(page.get_by_role("heading", name="Pierwsze uruchomienie")).to_be_visible()
-    imgw = page.get_by_label("Katalog IMGWTools")
-    expect(imgw).to_be_visible()
+    obserwator = page.get_by_label("Katalog Obserwatora")
+    expect(obserwator).to_be_visible()
     page.get_by_label("Nazwa", exact=True).fill("Dane IMGW")
 
     # Act
     page.get_by_role("button", name="Dalej").click()
     refused = page.get_by_text(
-        "Wpisz pełną ścieżkę katalogu Kartografa albo katalogu IMGWTools."
+        "Wpisz pełną ścieżkę katalogu Kartografa albo katalogu Obserwatora."
     )
     expect(refused).to_be_visible()
-    imgw.fill(str(root))
+    obserwator.fill(str(root))
     to_save_step(page)
     summary = page.locator(".summary-store")
-    expect(summary).to_contain_text("IMGWTools:")
+    expect(summary).to_contain_text("Obserwator:")
     expect(summary).to_contain_text(str(root))
     expect(summary).not_to_contain_text("Kartograf:")
     page.get_by_role("button", name="Zapisz i zindeksuj").click()
@@ -67,16 +68,16 @@ def test_wizard_saves_a_store_of_only_an_imgw_directory(
 
     # Assert
     (store,) = served.settings().stores
-    assert (store.kartograf, store.imgw) == (None, root)
+    assert (store.kartograf, store.obserwator) == (None, root)
     tab.assert_clean()
 
 
-def test_wizard_offers_no_imgw_field_without_the_source(
+def test_wizard_offers_no_obserwator_field_without_the_source(
     serve: Serve, tab: Tab, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A first run without IMGWTools asks for Kartograf's directory only."""
+    """A first run without Obserwator asks for Kartograf's directory only."""
     # Arrange
-    hide_packages(monkeypatch, "imgwtools")
+    hide_packages(monkeypatch, "obserwator")
     served = serve()
     page = tab.page
     open_shell(page, served.token_url())
@@ -91,19 +92,19 @@ def test_wizard_offers_no_imgw_field_without_the_source(
         "aria-invalid", "true"
     )
     expect(page.get_by_text("Wpisz pełną ścieżkę katalogu Kartografa.")).to_be_visible()
-    expect(page.get_by_label("Katalog IMGWTools")).to_have_count(0)
-    expect(page.locator(".source.bad")).to_contain_text("imgw")
+    expect(page.get_by_label("Katalog Obserwatora")).to_have_count(0)
+    expect(page.locator(".source.bad")).to_contain_text("obserwator")
     tab.assert_clean()
 
 
-def test_wizard_keeps_a_saved_imgw_directory_while_its_source_is_missing(
+def test_wizard_keeps_a_saved_obserwator_directory_while_its_source_is_missing(
     serve: Serve, tab: Tab, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """The saved directory is shown, and saving the form does not drop it."""
     # Arrange
     store = make_store(tmp_path / "store", slots=24, seed=7)
-    imgw = tmp_path / "imgw"
-    imgw.mkdir()
+    obserwator = tmp_path / "obserwator"
+    obserwator.mkdir()
     saved = AppSettings(
         offline=True,
         stores=(
@@ -111,12 +112,12 @@ def test_wizard_keeps_a_saved_imgw_directory_while_its_source_is_missing(
                 id="zespol",
                 name="Zespół",
                 kartograf=store.root,
-                imgw=imgw,
+                obserwator=obserwator,
                 kind="local",
             ),
         ),
     )
-    hide_packages(monkeypatch, "imgwtools")
+    hide_packages(monkeypatch, "obserwator")
     served = serve(saved)
     page = tab.page
     open_shell(page, served.token_url())
@@ -124,9 +125,9 @@ def test_wizard_keeps_a_saved_imgw_directory_while_its_source_is_missing(
     expect(page.get_by_role("heading", name="Ustawienia")).to_be_visible()
 
     # Act
-    field = page.get_by_label("Katalog IMGWTools")
-    expect(field).to_have_value(str(imgw))
-    expect(page.locator(".source.bad")).to_contain_text("imgw")
+    field = page.get_by_label("Katalog Obserwatora")
+    expect(field).to_have_value(str(obserwator))
+    expect(page.locator(".source.bad")).to_contain_text("obserwator")
     to_save_step(page)
     page.get_by_role("button", name=re.compile("Zapisz ustawienia")).click()
     expect(page.get_by_text("Zapisano ustawienia.")).to_be_visible()

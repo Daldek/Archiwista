@@ -1,4 +1,4 @@
-"""Second producer plugin of the plugin tests; not a production IMGW source.
+"""Second producer plugin of the plugin tests; not the production Obserwator source.
 
 Tests register it the way production plugins are registered: they put this
 directory, holding its ``*.dist-info/entry_points.txt``, on ``sys.path``. The

@@ -1,9 +1,9 @@
 """Keep the tests away from the settings and default roots of the producers.
 
-Kartograf and IMGWTools take their settings from ``nogat.toml`` and from the
-variables ``KARTOGRAF_*``, ``IMGW_*`` and ``NOGAT_*`` (DEV-18.1), and a call
+Kartograf and Obserwator take their settings from ``nogat.toml`` and from the
+variables ``KARTOGRAF_*``, ``OBSERWATOR_*`` and ``NOGAT_*`` (DEV-18.1), and a call
 that names no store root reads and writes the default root of the producer,
-``<data_dir>/kartograf`` or ``<data_dir>/imgw`` (DEV-19.2). A test run on a
+``<data_dir>/kartograf`` or ``<data_dir>/obserwator`` (DEV-19.2). A test run on a
 developer's computer would meet that computer's settings and, through one
 forgotten ``root=``, write into the developer's real store.
 
@@ -64,13 +64,13 @@ class Canary:
         return self.base / "kartograf"
 
     @property
-    def imgw_root(self) -> Path:
-        """The default store root of IMGWTools (``IMGW_ROOT``)."""
-        return self.base / "imgw"
+    def obserwator_root(self) -> Path:
+        """The default store root of Obserwator (``OBSERWATOR_ROOT``)."""
+        return self.base / "obserwator"
 
     @property
-    def imgw_reference_dir(self) -> Path:
-        """The directory of IMGWTools' reference data (``IMGW_REFERENCE_DIR``)."""
+    def obserwator_reference_dir(self) -> Path:
+        """Obserwator's reference data directory (``OBSERWATOR_REFERENCE_DIR``)."""
         return self.base / "reference"
 
     def environment(self) -> dict[str, str]:
@@ -90,11 +90,11 @@ class Canary:
             "KARTOGRAF_DATA_DIR": data,
             "KARTOGRAF_CACHE_DIR": cache,
             "KARTOGRAF_LANG": LANGUAGE,
-            "IMGW_ROOT": str(self.imgw_root),
-            "IMGW_DATA_DIR": data,
-            "IMGW_CACHE_DIR": cache,
-            "IMGW_REFERENCE_DIR": str(self.imgw_reference_dir),
-            "IMGW_LANG": LANGUAGE,
+            "OBSERWATOR_ROOT": str(self.obserwator_root),
+            "OBSERWATOR_DATA_DIR": data,
+            "OBSERWATOR_CACHE_DIR": cache,
+            "OBSERWATOR_REFERENCE_DIR": str(self.obserwator_reference_dir),
+            "OBSERWATOR_LANG": LANGUAGE,
         }
 
     def appeared(self) -> list[str]:
@@ -126,7 +126,7 @@ class Canary:
             f"{len(found)} paths appeared in the canary tree of the producers: "
             f"{shown}. A producer wrote to a default root or directory because "
             "the call named no store root of its own: pass root= (Kartograf) or "
-            'options["root"] (IMGWTools). The tree is emptied.',
+            'options["root"] (Obserwator). The tree is emptied.',
             pytrace=False,
         )
 

@@ -34,9 +34,9 @@ KNOWN_PROBLEMS = frozenset(
 )
 # Codes whose text depends on the producer, as ``(producer, code)``: their
 # entries are ``problem.<producer>_<code>`` and ``fix.<producer>_<code>``.
-# IMGWTools' ``missing_sidecar`` is a download in progress or an interrupted
+# Obserwator's ``missing_sidecar`` is a download in progress or an interrupted
 # one, not the file Kartograf's code means.
-PRODUCER_TEXTS = frozenset({("imgw", "missing_sidecar")})
+PRODUCER_TEXTS = frozenset({("obserwator", "missing_sidecar")})
 
 
 @dataclass(frozen=True, slots=True)

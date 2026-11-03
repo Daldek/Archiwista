@@ -21,7 +21,7 @@ from archiwista.sources.types import SourceState
 # Producer packages whose own errors have a reason of their own.
 PRODUCER_REASONS: Mapping[str, str] = {
     "kartograf": "kartograf_error",
-    "imgwtools": "imgwtools_error",
+    "obserwator": "obserwator_error",
 }
 
 

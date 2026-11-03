@@ -18,7 +18,7 @@ datasets of ``GET /stations/datasets``. Each calls the function behind its
 route without HTTP, as the local owner (whose preferences number the years
 without ``year_type`` and give ``personal`` of a copy path): ``--json``
 prints the route's model, a refusal the route's problem as the
-``archiwista-error/1`` document (``503`` while IMGWTools is not available
+``archiwista-error/1`` document (``503`` while Obserwator is not available
 becomes its exit code). Nothing here uses the network or writes but the
 state database, which is created when missing.
 """

@@ -1,7 +1,7 @@
-"""Coverage of the IMGWTools series of stations in the local index (plan I5).
+"""Coverage of the Obserwator series of stations in the local index (plan I5).
 
 Every test scans a copy of a fixture store of the producer's own builder
-(``imgwtools.testing``) through the real adapter, offline. The index holds the
+(``obserwator.testing``) through the real adapter, offline. The index holds the
 coverage of the current version of each dataset's series: every variable of
 every station as the series index gives it, and each of its years in both year
 types computed from the gap lists against the known periods (SPEC 4.8.4); a
@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from imgwtools import current_version, read_series_index
+from obserwator import current_version, read_series_index
 
 from archiwista.config import AppSettings, StoreConfig
 from archiwista.errors import ProducerError, SourceUnavailableError
@@ -111,19 +111,21 @@ class _Env:
 
 
 @pytest.fixture
-def open_env(imgw_store: Stores, tmp_path: Path) -> Iterator[Callable[[str], _Env]]:
+def open_env(
+    obserwator_store: Stores, tmp_path: Path
+) -> Iterator[Callable[[str], _Env]]:
     """Return ``open(variant)``: a private copy of a fixture store with its index."""
     writers: list[IndexWriter] = []
 
     def open_(variant: str) -> _Env:
         root = tmp_path / f"store-{variant}"
-        shutil.copytree(imgw_store(variant), root)
+        shutil.copytree(obserwator_store(variant), root)
         index = tmp_path / f"index-{variant}.sqlite"
         writer = IndexWriter(index)
         writers.append(writer)
-        config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+        config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
         writer.sync_stores({STORE: config.roots()})
-        adapter = load_registry(cache_dir=tmp_path / "cache").adapter("imgw")
+        adapter = load_registry(cache_dir=tmp_path / "cache").adapter("obserwator")
         return _Env(root, index, adapter, writer, AppSettings(stores=(config,)), [])
 
     yield open_
@@ -166,7 +168,7 @@ def _publish(root: Path, dataset: str, edit: Callable[[dict[str, Any]], None]) -
 
     The version directory is ``<label>_<sha8>`` with the edited ``series.json``,
     the series files of the current version and the sidecar (SHA-256, size,
-    label, a later build), so IMGWTools takes it as the current version.
+    label, a later build), so Obserwator takes it as the current version.
     Returns its ``series.json`` relative to the store.
     """
     source = _current(root, dataset).parent
@@ -422,7 +424,7 @@ def test_a_series_the_producer_refuses_is_said_and_holds_no_coverage(
 
     def refusing(root: Path, version: Path) -> SeriesListing:
         if version.as_posix() == refused:
-            raise ProducerError("imgwtools", "IMGWDataError", "series broken")
+            raise ProducerError("obserwator", "ObserwatorDataError", "series broken")
         return original(root, version)
 
     monkeypatch.setattr(series, "read_series_index", refusing)

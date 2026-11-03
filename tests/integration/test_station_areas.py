@@ -83,7 +83,7 @@ def index(tmp_path: Path) -> Iterator[IndexQueries]:
     """Return the queries of an index with the stations, the area and the series."""
     path = tmp_path / "index.sqlite"
     with IndexWriter(path) as writer, IndexQueries(path) as queries:
-        writer.sync_stores({STORE: {"imgw": tmp_path / "dane" / "imgw"}})
+        writer.sync_stores({STORE: {"obserwator": tmp_path / "dane" / "obserwator"}})
         writer.write_area(AREA)
         stations = [
             Station(
@@ -103,7 +103,7 @@ def index(tmp_path: Path) -> Iterator[IndexQueries]:
         ]
         writer.replace_stations(
             STORE,
-            "imgw",
+            "obserwator",
             PL,
             slot="stations/versions",
             version="stations/versions/2026-10-26_00000000/stations.geojson",
@@ -151,7 +151,7 @@ def _write_listing(
     slug = dataset.rsplit(".", 1)[1]
     writer.replace_series(
         STORE,
-        "imgw",
+        "obserwator",
         slot=f"series/versions/{slug}",
         version=f"series/versions/{slug}/2026-10-26_00000000/series.json",
         listing=SeriesListing(

@@ -237,17 +237,18 @@ def test_doctor_optional_plugin_missing_is_only_a_warning(
 ) -> None:
     """A producer no store uses does not fail the diagnostics."""
     configure(paths, store_root)
-    imgw = SourceState(producer="imgw", status="not_installed")
+    obserwator = SourceState(producer="obserwator", status="not_installed")
 
     report = run_doctor(
         paths,
-        FakeRegistry(source_states=(KARTOGRAF, imgw)),
+        FakeRegistry(source_states=(KARTOGRAF, obserwator)),
         port_available=lambda port: True,
     )
 
     assert report.errors == 0
     assert any(
-        check.level == "warning" and 'pip install "archiwista[imgw]"' in str(check.fix)
+        check.level == "warning"
+        and 'pip install "archiwista[obserwator]"' in str(check.fix)
         for check in report.checks
     )
 

@@ -665,7 +665,7 @@ export function listSheets(query, { signal } = {}) {
  * @param {{store?: string}} [query]
  * @param {RequestOptions} [options]
  * @returns {Promise<StationDatasets>}
- * @throws {ApiError} `503 missing_dependency` without IMGWTools.
+ * @throws {ApiError} `503 missing_dependency` without Obserwator.
  */
 export function listStationDatasets(query = {}, { signal } = {}) {
   return request("GET", "/stations/datasets", { query, signal });
@@ -679,7 +679,7 @@ export function listStationDatasets(query = {}, { signal } = {}) {
  * @param {RequestOptions} [options]
  * @returns {Promise<StationList>}
  * @throws {ApiError} `400` (a coverage filter without `dataset`, a cursor of
- *   another query), `503 missing_dependency` without IMGWTools.
+ *   another query), `503 missing_dependency` without Obserwator.
  */
 export function listStations(filters, { signal } = {}) {
   return request("GET", "/stations", { query: filters, signal });
@@ -694,7 +694,7 @@ export function listStations(filters, { signal } = {}) {
  * @param {RequestOptions} [options]
  * @returns {Promise<StationTimelinePage>}
  * @throws {ApiError} `400` (no `dataset`, a cursor of another query),
- *   `503 missing_dependency` without IMGWTools.
+ *   `503 missing_dependency` without Obserwator.
  */
 export function listStationTimeline(filters, { signal } = {}) {
   return request("GET", "/stations/timeline", { query: filters, signal });
@@ -707,7 +707,7 @@ export function listStationTimeline(filters, { signal } = {}) {
  * @param {StationMapFilters} filters
  * @param {RequestOptions} [options]
  * @returns {Promise<StationMapView>}
- * @throws {ApiError} `503 missing_dependency` without IMGWTools.
+ * @throws {ApiError} `503 missing_dependency` without Obserwator.
  */
 export function listMapStations(filters, { signal } = {}) {
   return request("GET", "/map/stations", { query: filters, signal });
@@ -722,7 +722,7 @@ export function listMapStations(filters, { signal } = {}) {
  * @param {RequestOptions} [options]
  * @returns {Promise<StationCard>}
  * @throws {ApiError} `404` (no such station), `400 ambiguous_station`,
- *   `503 missing_dependency` without IMGWTools.
+ *   `503 missing_dependency` without Obserwator.
  */
 export function getStation(code, lookup, { signal } = {}) {
   return request("GET", `/stations/${one(code)}`, { query: lookup, signal });
@@ -738,7 +738,7 @@ export function getStation(code, lookup, { signal } = {}) {
  * @param {RequestOptions} [options]
  * @returns {Promise<StationChart>}
  * @throws {ApiError} `404` (no such station or series), `400` (a variable the
- *   series lacks, a reversed range), `503 missing_dependency` without IMGWTools.
+ *   series lacks, a reversed range), `503 missing_dependency` without Obserwator.
  */
 export function getStationSeries(code, query, { signal } = {}) {
   return request("GET", `/stations/${one(code)}/series`, { query, signal });
@@ -754,7 +754,7 @@ export function getStationSeries(code, query, { signal } = {}) {
  * @returns {Promise<StationComparison>}
  * @throws {ApiError} `400` (one or more than five stations, a variable no
  *   station has, a reversed range), `404` (no such station, none with a series
- *   of the dataset), `503 missing_dependency` without IMGWTools.
+ *   of the dataset), `503 missing_dependency` without Obserwator.
  */
 export function compareStations(query, { signal } = {}) {
   return request("GET", "/stations/compare", { query, signal });

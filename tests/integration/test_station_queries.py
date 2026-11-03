@@ -42,8 +42,8 @@ def index(tmp_path: Path) -> Iterator[tuple[IndexWriter, IndexQueries]]:
     with IndexWriter(path) as writer, IndexQueries(path) as queries:
         writer.sync_stores(
             {
-                STORE: {"imgw": tmp_path / "dane" / "imgw"},
-                OTHER: {"imgw": tmp_path / "drugi" / "imgw"},
+                STORE: {"obserwator": tmp_path / "dane" / "obserwator"},
+                OTHER: {"obserwator": tmp_path / "drugi" / "obserwator"},
             }
         )
         yield writer, queries
@@ -55,7 +55,7 @@ def _write(
     slot = "stations/versions" + ("/chmi_stations" if provider == CZ else "")
     writer.replace_stations(
         store,
-        "imgw",
+        "obserwator",
         provider,
         slot=slot,
         version=f"{slot}/2026-10-26_00000000/stations.geojson",

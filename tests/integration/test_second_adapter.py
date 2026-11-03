@@ -66,7 +66,7 @@ def test_second_adapter_indexes_and_browses_without_core_changes(
 
     # Assert
     states = {item["producer"]: item["status"] for item in sources}
-    assert set(states) == {"external", "imgw", "kartograf"}
+    assert set(states) == {"external", "obserwator", "kartograf"}
     assert (states["external"], states["kartograf"]) == ("available", "available")
     assert [row["slot"] for row in page["items"]] == ["opady.csv", "stany.csv"]
     assert page["items"][0]["segment"]["producer"] == "external"
