@@ -50,7 +50,7 @@ Option A, with these rules for every phase:
 3. **No aliases** (ECO-020, D4): a removed route, command, field or table goes in the commit
    that replaces it; nothing reads `kartograf-project.json` or `imgw-project.json`, and
    nothing mentions them to people.
-4. **Producer pins.** P2 and P3 keep Kartograf `745e8b18…` and IMGWTools `6bd35a49…`
+4. **Producer pins.** P2 and P3 keep Kartograf `a4b92916…` and IMGWTools `71bae778…`
    (`pyproject.toml`); P4 re-pins both to the commits that removed their projects and added
    `command_for_file` (KB-6) and `command_for_version` (IMGW-21), once those are pushed.
 5. **Documents.** Each phase updates what it makes untrue in the same commit: SPEC (where

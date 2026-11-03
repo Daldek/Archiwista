@@ -34,7 +34,7 @@ Both producers are untagged, so no data is migrated and no old name stays (ECO-0
 | Option | Verdict |
 |---|---|
 | A. Migrate first (M1 to M5), then build the IMGWTools source (I) and v0.3 (A) on the new API, the two in parallel on separate branches | Chosen |
-| B. Build v0.3 on the current pin `8e9bcbb` and migrate at the release | Rejected: at the pin `run_command(command, options, *, output_dir, ...)` takes the store root as `output_dir`, required, and returns the bare report; ADR-054 gives that keyword the meaning "plain directory", makes the store `root` optional (a forgotten one falls back to the default root without an error) and wraps the result in the envelope `kartograf-result/1`. A call written now becomes a plain write into the store root when the pin moves, and only a root that already has its marker stops it (`output_in_store`). The reports and plans v0.3 reads change too (`files[].file.path` becomes `files[].path`, the `store` of `kartograf-plan/1` becomes `root`), so v0.3 would be written twice |
+| B. Build v0.3 on the current pin `b8971fd` and migrate at the release | Rejected: at the pin `run_command(command, options, *, output_dir, ...)` takes the store root as `output_dir`, required, and returns the bare report; ADR-054 gives that keyword the meaning "plain directory", makes the store `root` optional (a forgotten one falls back to the default root without an error) and wraps the result in the envelope `kartograf-result/1`. A call written now becomes a plain write into the store root when the pin moves, and only a root that already has its marker stops it (`output_in_store`). The reports and plans v0.3 reads change too (`files[].file.path` becomes `files[].path`, the `store` of `kartograf-plan/1` becomes `root`), so v0.3 would be written twice |
 | C. Wait for the tags `v0.8.0` and `v3.0.0` and pin them | Rejected: the tags need the author (DEV-3.3), and REL-5.3 allows the commit pin that the Nogat plan names |
 | D. Accept both names of the store root in the adapter for a transition | Rejected: no aliases or shims (ECO-020); both producers are untagged, so one window of development heads is supported |
 | E. Bring all of v0.5 (stations views, charts, synchronisation) forward with the source | Rejected: synchronisation and the IMGW actions need the v0.3 action layer; only the read side is planned (Part 2), and its station views (I8, Part 4) once the author answered M5 and M11 (2026-10-26) |
@@ -131,13 +131,13 @@ acceptance tests; "(new)" means a test file or test to write.
 ### Part 1. Migration to the data-output convention (M)
 
 What the producers changed and where Archiwista meets it (read at Kartograf
-`feature/data-output` `7394e8ea` and IMGWTools `feature/data-output` `a304521`):
+`feature/data-output` `7394e8ea` and IMGWTools `feature/data-output` `08f1a7b`):
 
-| Name or behaviour | Pin `8e9bcbb` | After the convention | Archiwista sites |
+| Name or behaviour | Pin `b8971fd` | After the convention | Archiwista sites |
 |---|---|---|---|
 | Store root of the read API | first parameter `output_dir` of `list_segments`, `list_partitions`, `iter_store` | `root` | calls at `adapter.py:120,188,317,424` are positional; the contract pins the name, `tests/contract/test_kartograf.py:53,55,60` |
 | Store of a project | `Project.output_dir`, manifest key `output_dir` | `Project.root`, key `root` of `kartograf-project/1` | `adapter.py:645`; fixtures and tests of M1 |
-| Version string | `0.8.0` | `0.8.0.dev0` (Kartograf commit `51fb3128`, REL-1.1) | `adapter/kartograf/__init__.py:17`; `test_kartograf.py:271` |
+| Version string | `0.8.0` | `0.8.0.dev0` (Kartograf commit `89ce1f9b`, REL-1.1) | `adapter/kartograf/__init__.py:17`; `test_kartograf.py:271` |
 | Sidecar `kartograf-meta/1` | no producer fields | optional `producer`, `producer_version`; `Sidecar` has both | not read yet (I1 reads them for both producers) |
 | Marker | none | `kartograf-store.json`, schema `kartograf-store/1` with `schema`, `tool`, `created_at`, `producer_version`; the first write and `kartograf store init` (public `init_store`) create it | `probe` and the fixtures (M2) |
 | Default root | none | `KARTOGRAF_ROOT`, `[kartograf] root` of `nogat.toml`, else `<data_dir>/kartograf`; `store_root()` reports it with its source | never used for a call (Decision 1); suggested in the wizard (M5) |
@@ -176,7 +176,7 @@ States of a configured Kartograf directory (the table M2 implements):
      `uv lock` resolves it only where the uv git database of Kartograf's URL holds it
      (Nogat plan step 7, "Integration rule"): `git fetch` the local branch into the
      database below the uv cache `git-v1/db/` that holds the current pin (the one in
-     which `git cat-file -t 8e9bcbb058d1…` answers `commit`), then run `uv lock`.
+     which `git cat-file -t b8971fdabd60…` answers `commit`), then run `uv lock`.
    - *Change.* `pyproject.toml:14-18` (the commit and its comment) and `uv.lock`;
      `SUPPORTED_VERSIONS` of `adapter/kartograf/__init__.py:17` becomes
      `>=0.8.0.dev0,<0.9`, because PEP 440 sorts `0.8.0.dev0` below `0.8.0` and the range
@@ -288,7 +288,7 @@ left for the author: mark the real stores (D9).
 
 ### Part 2. The IMGWTools source (I)
 
-What the adapter must know about IMGWTools after ADR-007 (read at `a304521`):
+What the adapter must know about IMGWTools after ADR-007 (read at `08f1a7b`):
 
 | IMGWTools | Archiwista |
 |---|---|
@@ -908,11 +908,11 @@ by the author or by a session with access; none is a blocker of M.
 | Kartograf | KB-7: `find_admin_units` | A15 |
 | Kartograf | the store segment of an availability combination (`AvailabilityCombination.segment`, or a function from a source key, a sheet system and a height system to it): the report names the height system as the source does (`EVRF2007`), a sidecar by its EPSG code, so the store badge of A3 cannot tell the versions of two height systems apart (interim: dataset, sheet, year and campaign) | A3, A10 |
 | Kartograf | KH-1 as `set_project_root(project_dir, *, root)` (the SPEC called it `set_project_output_dir`) | a later "change store" action (A13 explains) |
-| Kartograf | ~~a read-only `store_state(root)` in `kartograf.__all__` (`marked`, `layout`, `new`, `foreign`), so that consumers need not judge the marker by file name (Retman keeps a copy too)~~ **done** (Kartograf `ba1e8ee7`, ADR-054 erratum 2: a nested store and a marker of another schema raise as a write does, an unreadable marker is an `OSError`; the probe uses it and `adapter/kartograf/marker.py` is gone, ADR-031 erratum 1; Retman's copy in `src/retman/stores.py` stays for Retman) | M2, I1 (removed the copy) |
-| Kartograf | ~~a read-only `store_root()`, or `get_config()` without `store.size_bytes`, in `kartograf.__all__`~~ **done** (Kartograf `45dedf4a`: `store_root()` returns `StoreRoot(root, source, name, marker_exists)` and reads no store; the adapter uses it, ADR-033) | M5 (removed the walk) |
+| Kartograf | ~~a read-only `store_state(root)` in `kartograf.__all__` (`marked`, `layout`, `new`, `foreign`), so that consumers need not judge the marker by file name (Retman keeps a copy too)~~ **done** (Kartograf `02acad6b`, ADR-054 erratum 2: a nested store and a marker of another schema raise as a write does, an unreadable marker is an `OSError`; the probe uses it and `adapter/kartograf/marker.py` is gone, ADR-031 erratum 1; Retman's copy in `src/retman/stores.py` stays for Retman) | M2, I1 (removed the copy) |
+| Kartograf | ~~a read-only `store_root()`, or `get_config()` without `store.size_bytes`, in `kartograf.__all__`~~ **done** (Kartograf `c655639b`: `store_root()` returns `StoreRoot(root, source, name, marker_exists)` and reads no store; the adapter uses it, ADR-033) | M5 (removed the walk) |
 | Kartograf | the examples of `kartograf-commands/1` as the lines `format_command` writes: the second example of `project add` (`kartograf project add gleby soil hsg --sheet N-34-130-D --depth 0-5cm`) gives `--sheet` before `--depth`, and the canonical line has `--depth` first; a test of Kartograf that formats every example back would keep them canonical (found in A1, whose contract test therefore compares the calls read back, not the text) | A1 |
-| Kartograf | ~~`run_command("project add", …)` passes the options of the task in their JSON form on to `add_project_task`, which takes library arguments: a box (`bbox` with `bbox_crs`) passes `validate_command` and is then refused (`option 'bbox_crs' does not belong to the task`); the catalog's call should convert them as `kartograf project add` does (found in A7, whose adapter calls the library functions and converts the box itself, ADR-039)~~ **done** (Kartograf `fe1ebc70`, ADR-052 erratum 3, the MCP tool too; the adapter calls `run_command("project add", …)` and its conversion is gone, ADR-039 erratum 2) | A7 |
-| Kartograf | ~~a reason `project_locked` (and the lock's path in `details`) on the `ValidationError` of a lock that stays past `LOCK_TIMEOUT_S`, and `.kartograf-project.lock` as a public name: today the refusal has no reason and the name is internal, so Archiwista recognises a left lock by the directory beside the manifest (found in A8, ADR-040)~~ **done** (Kartograf `745e8b18`, ADR-040 erratum 3 there: `ProjectLockedError`, `details.path`, `TaskResult.reason`, `kartograf.PROJECT_LOCK`; the adapter reads the reason, ADR-040 erratum 2) | A8 |
+| Kartograf | ~~`run_command("project add", …)` passes the options of the task in their JSON form on to `add_project_task`, which takes library arguments: a box (`bbox` with `bbox_crs`) passes `validate_command` and is then refused (`option 'bbox_crs' does not belong to the task`); the catalog's call should convert them as `kartograf project add` does (found in A7, whose adapter calls the library functions and converts the box itself, ADR-039)~~ **done** (Kartograf `50b501b5`, ADR-052 erratum 3, the MCP tool too; the adapter calls `run_command("project add", …)` and its conversion is gone, ADR-039 erratum 2) | A7 |
+| Kartograf | ~~a reason `project_locked` (and the lock's path in `details`) on the `ValidationError` of a lock that stays past `LOCK_TIMEOUT_S`, and `.kartograf-project.lock` as a public name: today the refusal has no reason and the name is internal, so Archiwista recognises a left lock by the directory beside the manifest (found in A8, ADR-040)~~ **done** (Kartograf `a4b92916`, ADR-040 erratum 3 there: `ProjectLockedError`, `details.path`, `TaskResult.reason`, `kartograf.PROJECT_LOCK`; the adapter reads the reason, ADR-040 erratum 2) | A8 |
 | IMGWTools | a machine code in `StoreInfo` (today only `problems` texts; `missing_marker` covers a layout without a marker and a foreign directory) | I1 |
 | IMGWTools | `parse_command(line)` beside `format_command`, as Kartograf's KB-2, so that a pasted `imgw …` line becomes a call | the IMGW actions (v0.5; ADR-034) |
 | IMGWTools | a `hydro_semiannual` series in the `complete` variant of `imgwtools.testing.build_fixture_store`, for a station of the daily series, with dated half-year extremes, so that the extremes of the chart are tested on the producer's own data (interim: synthetic records in the unit test) | I8.4, I8.5 |
@@ -994,7 +994,7 @@ Read on 2026-10-25; nothing was built or run beyond one version-range check with
 Heads: Archiwista `chore/nogat-2.1` `2b167c3` (the message catalog is one commit on
 `wip/message-catalog`, `3cae3f9`); Kartograf `feature/data-output` `7394e8ea` with
 uncommitted changes (plain mode of the tracks, the `output_dir`/`root` group, documents);
-IMGWTools `feature/data-output` `a304521` (done on the branch, a smoke run on the real
+IMGWTools `feature/data-output` `08f1a7b` (done on the branch, a smoke run on the real
 servers is open); Nogat `feature/data-output` `68d44f3`.
 
 Facts found that the first drafts of the call-site lists did not have:

@@ -1091,7 +1091,7 @@ command-line interface may change.
 
 ### Changed
 
-- Kartograf is re-pinned to `26ee4592` (`pyproject.toml`, `uv.lock`; the supported range is
+- Kartograf is re-pinned to `eab8612d` (`pyproject.toml`, `uv.lock`; the supported range is
   unchanged): `--geometry` selects the sheets each feature's geometry meets, not its
   envelope's, and reads GeoJSON (Kartograf ADR-058; A-ADR-035 erratum 2).
 - The plan window of a download has one "Zamknij" instead of "Zwiń" and "Zamknij" (the
@@ -1116,7 +1116,7 @@ command-line interface may change.
   in the phases P2 to P6, released together with v0.3 and v0.4.
 
 - **Breaking:** the producers are re-pinned to their commits without projects (A-ADR-049,
-  plan P4): Kartograf `8ad55ab6` and IMGWTools `4bf8bb0d` (`pyproject.toml`, `uv.lock`;
+  plan P4): Kartograf `dbcfe5bb` and IMGWTools `8cd6844c` (`pyproject.toml`, `uv.lock`;
   the supported ranges are unchanged); their project manifests and functions are gone.
   The source interface `archiwista.sources` no longer has `ProjectActionAdapter` and the
   project types `PinnedVersion`, `ProjectTaskRun`, `ProjectRun`, `ProjectFileState`,
@@ -1220,7 +1220,7 @@ command-line interface may change.
   with H, Q and T of 75 years went from about 255 ms to about 200 ms (median) on the
   development machine. `archiwista stations list --help` no longer says the list is by
   name only.
-- Kartograf is pinned at `745e8b18`, and the adapter uses what it asked for (plan, Requests):
+- Kartograf is pinned at `a4b92916`, and the adapter uses what it asked for (plan, Requests):
   the probe of a store is Kartograf's `store_state(root)`, not a copy of its judgement by file
   name (`adapter/kartograf/marker.py` is gone; ADR-031 erratum 1): the reasons keep their names,
   the parent of a store is now `foreign_store` (Kartograf's `nested_store`) and a directory with
@@ -1261,7 +1261,7 @@ command-line interface may change.
   modules instead of 83 (0.365 s instead of 0.530 s) (ADR-044, option C).
 - The plan of a row of an availability report ("Pobierz…") right after the report asks GUGiK
   nothing: the adapter's `check` opens Archiwista's metadata cache with
-  `refresh_ttl_seconds=PLAN_REFRESH_TTL_S` (one hour), and Kartograf `70ef08ef` (ADR-056)
+  `refresh_ttl_seconds=PLAN_REFRESH_TTL_S` (one hour), and Kartograf `082cd9b0` (ADR-056)
   plans NMT, NMPT and LAZ hints from the index answers the report cached; a report older than
   the hour, the CZ part and every run still ask the source. Kartograf's recorded Kraków
   report: 288 requests for the checks of its 34 hints before, none after, the same positions.
@@ -1269,7 +1269,7 @@ command-line interface may change.
 - `GET /map/sheets` items carry `zone`: the PL-2000 zone (5-8) of the powiats the sheet lies
   over, `null` in PL-1992; the `geometry` of a PL-2000 sheet that a zone boundary cuts is its
   part inside its zone (a `Polygon` or `MultiPolygon`). The adapter's `sheet_grid` takes
-  Kartograf's `find_sheet_outlines` (Kartograf pinned at `34fab30b`), and `SheetGrid` holds
+  Kartograf's `find_sheet_outlines` (Kartograf pinned at `c93f1efc`), and `SheetGrid` holds
   the `zones` and the `extents` of the whole sheets; a view is sized by the extent of the
   sheet at its centre, not by its outline.
 - The problems of a store, the problems of a file card and the pins of a project name the
@@ -1339,7 +1339,7 @@ command-line interface may change.
   lock. Development tools are the `dev` dependency group, and the extra `dev` is
   gone. (DEV-6.2, DEV-6.3, DEV-6.5)
 - Kartograf is pinned by commit in `pyproject.toml` instead of being installed editable
-  from a sibling checkout: `c31ca04c`, the head of its branch `feature/data-output` (the
+  from a sibling checkout: `d11f6219`, the head of its branch `feature/data-output` (the
   data-output convention, ADR-054; the commit is on GitHub). The release pull request
   replaces the commit with the tag. The range of Kartograf versions the adapter reads is
   `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`, `>=0.8.0.dev0,<0.9` while the

@@ -1368,7 +1368,7 @@ licenses compatible with MIT; a copyleft dependency requires a separate decision
 reviewed by a lawyer (disclaimer in `docs/CLA.md`).
 
 **Erratum 1 (2026-10-18, user decision):** the CLA is accepted ("we use what we
-already have"). IMGWTools already has the same process (commit `999c8a7`: `docs/CLA.md` identical
+already have"). IMGWTools already has the same process (commit `6b353dc`: `docs/CLA.md` identical
 to Hydraulik's, `CONTRIBUTING.md`, `CONTRIBUTORS.md`, the pull request template
 `.github/pull_request_template.md`); the other projects (Kartograf, Hydrograf, Hydrolog,
 Retman) have only the MIT `LICENSE`, and none uses the DCO. Archiwista also gets a pull request

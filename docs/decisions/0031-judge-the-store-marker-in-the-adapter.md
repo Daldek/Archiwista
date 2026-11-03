@@ -87,7 +87,7 @@ and schema, after `list_segments`:
 - A change of the marker's name or schema in Kartograf, or of what it takes for a layout,
   fails a contract test when the pin moves, instead of a person's store being mis-judged.
 
-**Erratum 1 (2026-10-26, Kartograf `ba1e8ee7`, its ADR-054 erratum 2):** Kartograf offers
+**Erratum 1 (2026-10-26, Kartograf `02acad6b`, its ADR-054 erratum 2):** Kartograf offers
 `store_state(root)`, so the copy of decision 3 is gone with `adapter/kartograf/marker.py`. The
 probe lists the root (a missing one is still `error`) and asks `store_state`: `marked` and `new`
 are `available`; `layout` is `no_marker` with the same text and hint; `foreign` (other files and
