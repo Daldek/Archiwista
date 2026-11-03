@@ -4,7 +4,7 @@
 **Status:** Accepted. Supplements A-ADR-019 and A-ADR-024. Decided by the plan
 `docs/plans/2026-10-25-archiwista-next.md` (Part 2, steps I1 to I7), whose approval is
 delegated; the author may still amend it (D8). Decision 14 is superseded by ADR-049
-(erratum 1).
+(erratum 1); the tool is called Obserwator (erratum 2, ECO-057).
 
 **Context:** A-ADR-019 gave Archiwista two producers behind one source interface, and
 A-ADR-024 made Kartograf required and IMGWTools an optional plugin, both before IMGWTools
@@ -333,3 +333,19 @@ them `manifests[]` of the API, `producer_required`, `other_producer`, `duplicate
 `no_project_actions`. The adapter no longer reads projects (`read_project`, `project_status`)
 and its `SCHEMAS` lose `imgw-project/1`. The other decisions are unchanged; the IMGW versions a
 project pins are pins like Kartograf's (ADR-049 decision 8).
+
+**Erratum 2 (2026-11-03, the author's decision ECO-057; Obserwator ADR-009):** IMGWTools is
+called Obserwator, and every name this record derives from the tool follows; no decision
+changes. The extra is `archiwista[obserwator]` (`obserwator[store]`, pinned by commit), the
+entry point `obserwator = "archiwista.adapter.obserwator:load"`, and the package
+declares `PRODUCER = "obserwator"`, `PACKAGE = "obserwator"` and the `SCHEMAS`
+`obserwator-store/1`, `obserwator-meta/1` and `obserwator-series/1`. A store names the
+directory `obserwator` (`StoreConfig.obserwator`, field "Katalog Obserwatora"), the
+marker is `obserwator-store.json`, the fix of a store without it is `obserwator store init
+--root <path>`, the default root comes from `OBSERWATOR_ROOT`, `[obserwator] root` of
+`nogat.toml` or `<data_dir>/obserwator`, and a producer error has the reason
+`obserwator_error`. The provider IMGW-PIB, the dataset keys `pl.imgw.*` and the
+requirement ids IMGW-1 to IMGW-21 keep their names. Nothing is migrated (ECO-056): the
+index is rebuilt (`SCHEMA_VERSION` 18), and a settings file, a store or a project file
+that names `imgw` is renamed by hand or written again. The names above in decisions 1
+to 14 read through this map.

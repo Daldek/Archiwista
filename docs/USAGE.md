@@ -1,6 +1,6 @@
 # User guide: Archiwista 0.3
 
-Archiwista 0.3 "Actions" shows a Kartograf store, and the files of an IMGWTools
+Archiwista 0.3 "Actions" shows a Kartograf store, and the files of an Obserwator
 store, on a map, in a catalog and in file cards, with previews, the Fan, the
 Timeline and comparison; projects have a folder of own data and snapshots. It
 acts through the producer: it asks the source what it has for an area, plans and
@@ -24,17 +24,17 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
      addresses and in the API), the full path of the Kartograf store root (the
      directory that holds `kartograf-store.json` and the product directories,
      usually called `data/`) and the kind: local disk or network share (detected
-     by default). A store needs the Kartograf store root, the root of an IMGWTools
-     store (the directory with `imgw-store.json`, field "Katalog IMGWTools") or
-     both. The IMGW field is offered while the IMGW source is installed (`pip
-     install "archiwista[imgw]"`) or the store already has such a directory; a
+     by default). A store needs the Kartograf store root, the root of an Obserwator
+     store (the directory with `obserwator-store.json`, field "Katalog Obserwatora") or
+     both. The Obserwator field is offered while the Obserwator source is installed (`pip
+     install "archiwista[obserwator]"`) or the store already has such a directory; a
      directory inside another store is refused. A store written by an earlier
      version of its producer has no marker: the wizard then shows the command to
-     run once, `kartograf store init --root <path>` or `imgw store init --root
+     run once, `kartograf store init --root <path>` or `obserwator store init --root
      <path>`. There can be several stores.
-     If the directory Kartograf or IMGWTools itself uses when a call names no store
-     (`KARTOGRAF_ROOT` or `IMGW_ROOT`, `[kartograf] root` or `[imgw] root` of
-     `nogat.toml`, else `<data_dir>/kartograf` or `<data_dir>/imgw`) exists and holds
+     If the directory Kartograf or Obserwator itself uses when a call names no store
+     (`KARTOGRAF_ROOT` or `OBSERWATOR_ROOT`, `[kartograf] root` or `[obserwator] root` of
+     `nogat.toml`, else `<data_dir>/kartograf` or `<data_dir>/obserwator`) exists and holds
      the producer's marker, the wizard offers it under the empty field of that
      producer with the button "Użyj tego katalogu"; it is entered only by your click.
    - **Projects** ("Projekty"): directories in which Archiwista finds its project
@@ -329,7 +329,7 @@ and a directory holding only one of them is no project.
   (a set in the making only). An action that cannot be used now is disabled, and the
   card lists each reason once: changing the project (the owner or an administrator), a
   producer's store that matches no configured one, the right to write the stores, a
-  producer without commands (IMGWTools until v0.5), a version without a command,
+  producer without commands (Obserwator until v0.5), a version without a command,
   offline mode, a job of the project already running, a closed set, and a set with
   nothing missing. One job of a project runs at a time; the card follows
   it and, when it ends, reads the project again and marks each pin with what the job
@@ -654,7 +654,7 @@ and `--until` with a time zone. An export is itself an entry of the log.
 
 ## IMGW stations
 
-A product of IMGWTools chosen on the map (hydro, meteo, or the station catalogs
+A product of Obserwator chosen on the map (hydro, meteo, or the station catalogs
 themselves) shows its stations in place of outlines. The shape of a point is the
 station type: a triangle for a water gauge, a square for a climatological or synoptic
 station, a circle for a precipitation post. Its colour and fill are the coverage of
@@ -751,7 +751,7 @@ each provider's formula.
 ![The comparison of stations](reports/v0.5-screenshots/06-porownanie-stacji.webp)
 
 The command line and the API (`GET /api/v1/stations`) show the stations and the
-coverage of their series from the index while IMGWTools is installed:
+coverage of their series from the index while Obserwator is installed:
 
 ```sh
 archiwista stations list --dataset pl.imgw.hydro_daily --coverage Q:continuous --min-complete-years Q:30
@@ -799,8 +799,8 @@ stations (`--station MAGAZYN/DOSTAWCA/KOD`, repeated) in one dataset over one ra
 (by default every known day of the variable at those stations): the range once, then
 each station with the variable's label and full years and its chart as `stations
 series` writes it, or "brak danych" for a station without it;
-`--json` gives the points. Without IMGWTools each refuses with the repair command
-`pip install "archiwista[imgw]"`.
+`--json` gives the points. Without Obserwator each refuses with the repair command
+`pip install "archiwista[obserwator]"`.
 
 ## Session
 
@@ -1081,9 +1081,9 @@ turns the permission log into the action log.
   is not chosen by the name of an administrative unit.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
-- It indexes the files of an IMGWTools store (archives, series, station
+- It indexes the files of an Obserwator store (archives, series, station
   catalogs), and shows its stations on the map, in the Catalog and
   in the station card and through `archiwista stations` and the API, but has no
-  chart or comparison of stations in the interface and no IMGW actions yet (v0.5).
+  chart or comparison of stations in the interface and no Obserwator actions yet (v0.5).
 - It does not show object differences between snapshots and has no sign-in or
   team work (v0.4).

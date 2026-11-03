@@ -36,7 +36,7 @@ develop it.
 
 - **Project boundaries.** Archiwista does not download or process source
   data itself: it delegates these tasks to store producers (Kartograf,
-  IMGWTools) through their public APIs. If a producer lacks a function,
+  Obserwator) through their public APIs. If a producer lacks a function,
   document a requirement for that producer (`docs/SPEC.md`, section 12)
   instead of working around it in Archiwista. The Kartograf store is read-only
   to Archiwista; writes to that store go through Kartograf's public API.
@@ -88,7 +88,7 @@ Please also tick the CLA box in the pull-request template.
 
 Found a bug or have a feature idea? Open a GitHub issue with steps to
 reproduce, expected and actual behavior, and your environment (OS and
-Archiwista, Kartograf, and IMGWTools versions, where applicable).
+Archiwista, Kartograf, and Obserwator versions, where applicable).
 
 Security problems are not reported as public issues: see
 [`SECURITY.md`](SECURITY.md).
