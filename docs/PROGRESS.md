@@ -7,31 +7,34 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 
 ## Status
 
-The working branch is `feature/archiwista-projects` (from `feature/v0.4-team`, which
-holds v0.3, v0.4, the station views and the user guide). The author's team test server
-(port 8090, https://archiwista-test.debever.pl) runs `4027755` of it since 2026-11-03
-about 00:00 (step A3 of Nogat's plan `2026-11-02-archiwista-sets-for-hydrograf.md`),
-with `TMPDIR` on disk. Nothing after 0.2.0 is merged into `develop` or released.
+The working branch is `develop`. On 2026-11-03 `feature/archiwista-projects` (`10dd702`,
+which holds Nogat standard 2.1, the IMGWTools source and station views, the data output,
+v0.3, v0.4, the user guide and the projects) and `plan/next-version` were merged into it
+(`6f1caef`, `7b3eb79`; no pull request, the author's decision) and the merged branches
+deleted; `feat/mockup` stays (Open questions). The author's team test server (port 8090,
+https://archiwista-test.debever.pl) runs `4027755` (in `develop`) since 2026-11-03 about
+00:00 (step A3 of Nogat's plan `2026-11-02-archiwista-sets-for-hydrograf.md`), with
+`TMPDIR` on disk. Nothing after 0.2.0 is released.
 
 | Component | State | Note |
 |---|---|---|
-| Projects in Archiwista's own file (A-ADR-049 and its errata 1 to 4; Nogat plan `2026-10-31-archiwista-projects.md` step 5, ECO-054; plan `docs/plans/2026-10-31-archiwista-projects.md`) | done on `feature/archiwista-projects`, deployed on the test server | A project is a directory holding `archiwista-project.json` (`archiwista-project/1`; lock and atomic write; discovery by that file alone; index schema 16, state schema 4), its area files in `obszary/`. Groups, shown as „Zestaw”, hold pins: from the store (Katalog, map, store view: "Dodaj do projektu…"; a filter or a map layer pins the versions it shows) and from the plan window (a plan group keeps the producer's calls). Jobs verify, check, re-pin and restore over `POST /projects/{project}/jobs` (`PROTOCOL_VERSION` 13), rebuilt from Kartograf's `command_for_file` and IMGWTools' `command_for_version`; a pin without a rebuildable command stays pinnable with check and restore disabled with the reason (D5). The card shows the activity from the action log. "Usuń projekt…" removes a project from Archiwista, never data (erratum 2). The export is flat: `eksport/<name>/` with one folder per category (`NMT`, `BDOT`, `ORTO`, …), copies of the files and `README.txt`, optionally `eksport/<name>.zip` (erratum 1); a ZIP holding exactly one raster is exported unpacked, an XYZ file with the coordinate system to set in QGIS (erratum 4). The producers' project manifests and ADR-039/ADR-040 are gone. Pins: Kartograf `26ee4592`, IMGWTools `4bf8bb0d` (the pushed heads of their `feature/archiwista-projects`) |
-| Katalog: the variant of a row | done on `feature/archiwista-projects`, deployed on the test server | Each row, the file card and the map's "Warianty (segmenty)" name the variant (resolution and height system, `web/src/variant.js`); the „Wariant” filter is `segment` of `GET /slots`; file rows wrap their text and grow (`7252df5`, `96c72eb`) |
-| Availability: a polygon area as GeoJSON | done on `feature/archiwista-projects`, deployed on the test server | Areas reach Kartograf as WGS84 GeoJSON (`<data-dir>/areas/<id>.geojson`; a plan group's call names `obszary/<id>.geojson`, A-ADR-035 erratum 2, A-ADR-049 erratum 3), and Kartograf ADR-058 selects sheets by the shape, not its envelope (`9e26138`, `c5a3d8c`). The store badge „pobrane” matches by survey work (`0509143`) |
-| Plan window: bounded requests | done on `feature/archiwista-projects`, deployed on the test server | Four requests in flight (`requestEach`), a bare `503` is `server_busy`, after a 116-sheet set exceeded the server's 100 connections (`c9fd47b`); one „Zamknij” keeps a download's window reopenable from the list (`d4daea6`) |
-| Previews of a ZIP of one raster (GUGiK's XYZ of 2020) | done on `feature/archiwista-projects`, deployed on the test server | Previewed as that raster through `/vsizip/`, format named "XYZ (ZIP)" (`formats.raster_member`, the rule exports share; `43c2254`) |
-| Phone fields | done on `feature/archiwista-projects`, deployed on the test server | Fields at 16 px on a phone, so iOS does not zoom in after sign-in (`1f2ed39`) |
-| A project's area for the map, the Katalog and a producer's call (A-ADR-049 erratum 5; the author confirmed the interface on 2026-11-02, D7 of Nogat's plan `2026-11-02-archiwista-sets-for-hydrograf.md`) | done on `feature/archiwista-projects` (`0d4f958`, `2ceca75`), deployed on the test server | "Obszar projektu" in the map's step 1 and the Katalog's area filter; "Obszar polecenia" runs a pasted call on the area of step 1 or a project's (`POST /commands/area`, `archiwista commands area`, the source capability `AreaCommandAdapter`, Kartograf's `with_area`: the area as `--geometry`, else its box); the plan window's "Obszar" row; the project card's "Pliki obszaru w Katalogu" and file count |
-| Draft sets (A-ADR-049 erratum 6; step A2 of Nogat's plan `2026-11-02-archiwista-sets-for-hydrograf.md`) | done on `feature/archiwista-projects` (`21eff04`..`6ece8ca`), gated, deployed on the test server | A group's `state`, `open` or `closed` (no member: closed), with `closed_at`, `closed_by` and `pins_sha256` in the project file; close, „Otwórz do edycji” and uncall; one producer per set (D12); index schema 17. `archiwista-state/2` back to `/1` is deferred to release preparation (the author) |
-| User guide `/instrukcja` | done, in `feature/v0.4-team` | A-ADR-048 (proposed; the author decides on merging): twelve Polish slides served without a session, "Instrukcja" in the top bar; slide 9 shows the project card |
-| v0.4 "Team" | built on `feature/v0.4-team` | plan `docs/plans/2026-10-26-plan-v0.4.md` T1 to T12 (ADR-046, ADR-047; security D6, D7, D10); acceptance with three people, the permission matrix, the ASVS checklist; the LAN runbook ran once on one machine with real components (`docs/reports/v0.4-lan-runbook.md`); macOS fixes (no `RLIMIT_AS`, `TCP_NODELAY`, `F_GETPATH`) |
-| v0.3 "Actions" | built | plan `docs/plans/2026-10-25-archiwista-next.md` Part 3: A1 to A14 (ADR-034 to ADR-044): producer commands, availability at the source, the plan window, downloads and job controls, preview warm-up, background downloads; its project actions (A7, A8, A13) are replaced by A-ADR-049. Report `docs/reports/v0.3-measurements.md` |
-| IMGWTools source and station views | done, in `feature/v0.4-team` | plan `docs/plans/2026-10-25-archiwista-next.md` Parts 2 and 4 (ADR-032, ADR-045): IMGW stores indexed, stations, series coverage, the station map, Katalog list, Timeline, card, chart and comparison |
-| Data output (DEV §19, ECO-051) | done, in `feature/v0.4-team` | plan `docs/plans/2026-10-25-archiwista-next.md` Part 1 (ADR-031, ADR-033): store markers, store roots, the producers' default roots offered in the wizard, tests isolated from the producers' settings |
+| Projects in Archiwista's own file (A-ADR-049 and its errata 1 to 4; Nogat plan `2026-10-31-archiwista-projects.md` step 5, ECO-054; plan `docs/plans/2026-10-31-archiwista-projects.md`) | done, in `develop`, deployed on the test server | A project is a directory holding `archiwista-project.json` (`archiwista-project/1`; lock and atomic write; discovery by that file alone; index schema 16, state schema 4), its area files in `obszary/`. Groups, shown as „Zestaw”, hold pins: from the store (Katalog, map, store view: "Dodaj do projektu…"; a filter or a map layer pins the versions it shows) and from the plan window (a plan group keeps the producer's calls). Jobs verify, check, re-pin and restore over `POST /projects/{project}/jobs` (`PROTOCOL_VERSION` 13), rebuilt from Kartograf's `command_for_file` and IMGWTools' `command_for_version`; a pin without a rebuildable command stays pinnable with check and restore disabled with the reason (D5). The card shows the activity from the action log. "Usuń projekt…" removes a project from Archiwista, never data (erratum 2). The export is flat: `eksport/<name>/` with one folder per category (`NMT`, `BDOT`, `ORTO`, …), copies of the files and `README.txt`, optionally `eksport/<name>.zip` (erratum 1); a ZIP holding exactly one raster is exported unpacked, an XYZ file with the coordinate system to set in QGIS (erratum 4). The producers' project manifests and ADR-039/ADR-040 are gone. Pins: Kartograf `26ee4592`, IMGWTools `4bf8bb0d` (the pushed heads of their `feature/archiwista-projects`) |
+| Katalog: the variant of a row | done, in `develop`, deployed on the test server | Each row, the file card and the map's "Warianty (segmenty)" name the variant (resolution and height system, `web/src/variant.js`); the „Wariant” filter is `segment` of `GET /slots`; file rows wrap their text and grow (`7252df5`, `96c72eb`) |
+| Availability: a polygon area as GeoJSON | done, in `develop`, deployed on the test server | Areas reach Kartograf as WGS84 GeoJSON (`<data-dir>/areas/<id>.geojson`; a plan group's call names `obszary/<id>.geojson`, A-ADR-035 erratum 2, A-ADR-049 erratum 3), and Kartograf ADR-058 selects sheets by the shape, not its envelope (`9e26138`, `c5a3d8c`). The store badge „pobrane” matches by survey work (`0509143`) |
+| Plan window: bounded requests | done, in `develop`, deployed on the test server | Four requests in flight (`requestEach`), a bare `503` is `server_busy`, after a 116-sheet set exceeded the server's 100 connections (`c9fd47b`); one „Zamknij” keeps a download's window reopenable from the list (`d4daea6`) |
+| Previews of a ZIP of one raster (GUGiK's XYZ of 2020) | done, in `develop`, deployed on the test server | Previewed as that raster through `/vsizip/`, format named "XYZ (ZIP)" (`formats.raster_member`, the rule exports share; `43c2254`) |
+| Phone fields | done, in `develop`, deployed on the test server | Fields at 16 px on a phone, so iOS does not zoom in after sign-in (`1f2ed39`) |
+| A project's area for the map, the Katalog and a producer's call (A-ADR-049 erratum 5; the author confirmed the interface on 2026-11-02, D7 of Nogat's plan `2026-11-02-archiwista-sets-for-hydrograf.md`) | done, in `develop` (`0d4f958`, `2ceca75`), deployed on the test server | "Obszar projektu" in the map's step 1 and the Katalog's area filter; "Obszar polecenia" runs a pasted call on the area of step 1 or a project's (`POST /commands/area`, `archiwista commands area`, the source capability `AreaCommandAdapter`, Kartograf's `with_area`: the area as `--geometry`, else its box); the plan window's "Obszar" row; the project card's "Pliki obszaru w Katalogu" and file count |
+| Draft sets (A-ADR-049 erratum 6; step A2 of Nogat's plan `2026-11-02-archiwista-sets-for-hydrograf.md`) | done, in `develop` (`21eff04`..`6ece8ca`), gated, deployed on the test server | A group's `state`, `open` or `closed` (no member: closed), with `closed_at`, `closed_by` and `pins_sha256` in the project file; close, „Otwórz do edycji” and uncall; one producer per set (D12); index schema 17. `archiwista-state/2` back to `/1` is deferred to release preparation (the author) |
+| User guide `/instrukcja` | done, in `develop` | A-ADR-048 (proposed; merged into `develop` with the stack on 2026-11-03): twelve Polish slides served without a session, "Instrukcja" in the top bar; slide 9 shows the project card |
+| v0.4 "Team" | built, in `develop` | plan `docs/plans/2026-10-26-plan-v0.4.md` T1 to T12 (ADR-046, ADR-047; security D6, D7, D10); acceptance with three people, the permission matrix, the ASVS checklist; the LAN runbook ran once on one machine with real components (`docs/reports/v0.4-lan-runbook.md`); macOS fixes (no `RLIMIT_AS`, `TCP_NODELAY`, `F_GETPATH`) |
+| v0.3 "Actions" | built, in `develop` | plan `docs/plans/2026-10-25-archiwista-next.md` Part 3: A1 to A14 (ADR-034 to ADR-044): producer commands, availability at the source, the plan window, downloads and job controls, preview warm-up, background downloads; its project actions (A7, A8, A13) are replaced by A-ADR-049. Report `docs/reports/v0.3-measurements.md` |
+| IMGWTools source and station views | done, in `develop` | plan `docs/plans/2026-10-25-archiwista-next.md` Parts 2 and 4 (ADR-032, ADR-045): IMGW stores indexed, stations, series coverage, the station map, Katalog list, Timeline, card, chart and comparison |
+| Data output (DEV §19, ECO-051) | done, in `develop` | plan `docs/plans/2026-10-25-archiwista-next.md` Part 1 (ADR-031, ADR-033): store markers, store roots, the producers' default roots offered in the wizard, tests isolated from the producers' settings |
 | Release 0.2.0 "Previews" | done | released on `develop`, not tagged and not merged into `main` (author's decision) |
 | Nogat standard 2.1 | done | structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry; skipped items below |
 | Deploy on the test server (A3) | done 2026-11-03 about 00:00 | `4027755` on :8090, `Environment=TMPDIR=<data-dir>/tmp` in the unit (Kartograf unpacks BDOT10k there; `/tmp` is a small tmpfs). The index was rebuilt from schema 16 to 17, which dropped the sessions (everyone signs in again), the job history and the 18 drawn rectangles of the map. Copies taken before the restart (index 16, state 4, the old unit) and the rollback to `dd4268c`: `/home/claude-agent/data/archiwista-public/backup-2026-11-02/` and its `ROLLBACK.txt` |
-| Gate | green on the A2 tree (2026-11-02, about 23:30) | full run: 2749 passed, `TMPDIR` on a local disk, the author's test server holding port 8090. The Firefox run of `tests/e2e/test_guide.py` no longer stalls it (`8d16cef`): the test resized the app's tab behind the guide's tab, and `set_viewport_size` waits without a timeout for a size Firefox may never give a covered tab. A full run takes about 50 to 60 minutes; start it without other test suites running |
+| Gate | green on the A2 tree (2026-11-02, about 23:30) | full run: 2749 passed, `TMPDIR` on a local disk, the author's test server holding port 8090. `develop` after the merge has the tree of `10dd702`, which differs from the gated one in `docs/PROGRESS.md` only. The Firefox run of `tests/e2e/test_guide.py` no longer stalls it (`8d16cef`): the test resized the app's tab behind the guide's tab, and `set_viewport_size` waits without a timeout for a size Firefox may never give a covered tab. A full run takes about 50 to 60 minutes; start it without other test suites running |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; no run of either workflow is known |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
@@ -43,7 +46,6 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 | `docs/CLA.md` text and signing mechanism | the author's legal text: it says "comment on the pull request", while DEV-16.5 says checkbox plus a line in `CONTRIBUTORS.md` in the same pull request |
 | `Approved:` lines of the executed plans v0.1 and v0.2 (DEV-17.4) | approval is the author's statement |
 | Tags, releases, replacing the producers' commit pins by tags, PyPI name `nogat-archiwista` (phases 5 and 6) | need the producers' tags and the author's approval |
-| Pull request and merge of `chore/nogat-2.1` (pushed) into `develop` | approvals (DEV-3.3) |
 
 ## Next
 
@@ -51,14 +53,14 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    restore the 18 drawn rectangles from the backup's `index.sqlite` (schema 16).
 2. A welcome dialog for a first visit and its slide in the guide `/instrukcja`.
 3. Release preparation (the author): `archiwista-state/2` back to `/1` (a format
-   identifier not yet released on `main` stays at `/1`), then the merge below.
-4. Merge and release, per decisions D2 and D3 of Nogat's plan
+   identifier not yet released on `main` stays at `/1`), then the release below.
+4. Release, per decisions D2 and D3 of Nogat's plan
    `2026-10-31-archiwista-projects.md`: one Archiwista release holds v0.3, v0.4 and the
-   projects, outside the first release set (Archiwista follows the producers' tags in its
-   own session, REL-5.4). Then: replace the commit pins by
-   the producers' tags (REL-5.3, REL-2.1), merge with the author's approval, CHANGELOG
-   version, tag, the Nogat registry (the edge Archiwista → IMGWTools is still
-   `planned`). Re-pin first if a producer commits on its branch again: `uv lock
+   projects (all in `develop` since 2026-11-03), outside the first release set
+   (Archiwista follows the producers' tags in its own session, REL-5.4). Then: replace
+   the commit pins by the producers' tags (REL-5.3, REL-2.1), CHANGELOG version and tag
+   with the author's approval, the Nogat registry (the edge Archiwista → IMGWTools is
+   still `planned`). Re-pin first if a producer commits on its branch again: `uv lock
    --offline` resolves a commit only from uv's git database
    (`~/.cache/uv/git-v1/db/`), so fetch the producer's branch into it, change the commit
    in `pyproject.toml`, `uv lock --offline`, `uv sync --locked --all-extras`.
@@ -123,6 +125,8 @@ Decisions awaiting the author:
   its own action, "Sprawdź aktualizacje" (ADR-042 option I). Should a window built from
   that check stand before them as well (option H)?
 - `main` of this repository is not on GitHub: push and make it the default branch (ECO-008).
+- `feat/mockup` (pushed, six commits of 2026-10-17): the first clickable mockup, superseded
+  by `fb4268d` in `develop` (`mockup/`); its commits are in no other branch. Delete it?
 
 Open outside this repository:
 
