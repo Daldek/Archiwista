@@ -1063,6 +1063,44 @@ copy into an empty state database only; a copy made before v0.4
 (`archiwista-state/1`) imports too. Make one before upgrading to v0.4: its first start
 turns the permission log into the action log.
 
+## Feedback ("Zgłoś uwagę")
+
+**Sending.** "Zgłoś uwagę" in the top bar (on a phone its speech-bubble icon) opens a
+window for anyone signed in, in both modes: "Opis problemu lub sugestii" (up to 5,000
+characters, the counter below it), "Imię lub e-mail (opcjonalnie)" (up to 200) and
+"Dołącz dane diagnostyczne (ostatnie akcje w aplikacji, błędy, parametry zapytań)",
+checked. The diagnostics are the interface's last 50 events — each API call with its
+method, address, status, duration and, for a refusal, the problem's `code` and
+`details.reason` (Archiwista's server gives no request id), and each script error —,
+the view with its parameters and the environment (browser, language, window size,
+address without its fragment, Archiwista's version, the mode), at most 100,000
+characters; never a request's body, a password, a token or a file's content. "Pokaż co
+zostanie wysłane" shows exactly what is sent, taken when the window opened. "Wyślij"
+says "Dziękujemy! Zgłoszenie zostało zapisane." and closes the window two seconds
+later; "Anuluj" and `Esc` close it without sending.
+
+**Where reports live.** In the state database `<data-dir>/state.sqlite` (table
+`feedback`, from schema version 5), with the time, the account that sent it (an
+agent's: its person's; none for the owner of a local installation), the page's
+address and the browser's `User-Agent`. They stay until an administrator deletes
+them.
+
+**Reading them.** An administrator (in local mode the owner) opens "Zgłoszenia" at
+the bottom of the navigation: the reports newest first, 50 a page, with "nowe: N" for
+the unread ones and "nowe" at each. Opening a report shows its text, contact, account,
+page, browser, view, environment and events, and marks it read; "Oznacz
+nieprzeczytane" undoes that and "Usuń" deletes it after a confirmation. Scripts use
+`GET /api/v1/admin/feedback?limit=50&offset=0`, `PATCH /api/v1/admin/feedback/{id}`
+(`{"is_read": true}`) and `DELETE /api/v1/admin/feedback/{id}`; without a server,
+`sqlite3 <data-dir>/state.sqlite "SELECT id, created_at, user_id, message FROM
+feedback ORDER BY id DESC"` lists them.
+
+**Backing them up.** `archiwista state export` does not hold the reports. Copy the
+whole state database with SQLite's online backup, safe while the server runs:
+`sqlite3 <data-dir>/state.sqlite ".backup '<backup-dir>/state.sqlite'"`. The copy
+holds the password hashes too: keep it as secret as the export (mode `0600`).
+Restoring is putting the copy back in place while the server is stopped.
+
 ## When something does not work
 
 - `archiwista doctor` checks the installation, the Kartograf plugin, the

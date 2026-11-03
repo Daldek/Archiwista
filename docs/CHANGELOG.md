@@ -9,6 +9,25 @@ command-line interface may change.
 
 ### Added
 
+- "Zgłoś uwagę" (Hydrograf's feedback): a button of the top bar opens a window where
+  anyone signed in describes a fault or an idea (up to 5,000 characters, with a
+  counter), may leave a name or an e-mail address (up to 200) and attaches the
+  diagnostics unless they uncheck them: the interface's last 50 events (each API call
+  with its status, duration and, for a refusal, its `code` and `details.reason`; script
+  errors), the view with its parameters and the environment, at most 100,000
+  characters, never a request's body, a token or a file's content; "Pokaż co zostanie
+  wysłane" shows exactly what is sent. The report is kept in the state database
+  (schema version 5, table `feedback`) with the account that sent it, none for the
+  owner of a local installation. Administrators read the reports newest first in the
+  new view "Zgłoszenia" (unread count, "nowe" badges, the whole report with its
+  diagnostics, "Oznacz przeczytane"/"Oznacz nieprzeczytane", "Usuń" after a
+  confirmation). API: `POST /api/v1/feedback` (any session, `201 {id, status}`),
+  `GET /api/v1/admin/feedback?limit&offset` (`{items, total, unread_count}`),
+  `PATCH /api/v1/admin/feedback/{id}` (`{is_read}`, answers the report) and
+  `DELETE /api/v1/admin/feedback/{id}` (`204`), the last three for the role `admin`
+  (`feedback.manage`; others `403 permission_denied`, logged), `404` (reason
+  `feedback_not_found`) for an unknown report. `archiwista state export` does not
+  hold the reports: back up `state.sqlite` with SQLite's `.backup` to keep them.
 - Sets in the making (A-ADR-049 erratum 6): a project's set is open, "w budowie",
   while it is built from several plan windows and hand-picked versions of one
   producer, and closed once complete. "Zamknij zestaw" freezes it and writes

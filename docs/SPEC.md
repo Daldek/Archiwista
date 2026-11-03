@@ -613,13 +613,16 @@ The **state database** (A-ADR-029) is a separate SQLite file
 the directory after `realpath`, independent of the index; owner; `public` /
 `users` / `group` / `private`; entries for people and groups), from v0.4 the passwords
 (Argon2id hashes in a table of their own, 10.2), each person's preferences and the action
-log, which the log of permission changes of v0.1 became (10.2, A-ADR-047). This state cannot
+log, which the log of permission changes of v0.1 became (10.2, A-ADR-047), and the
+feedback reports of "Zgłoś uwagę" (table `feedback`, schema version 5: text, contact,
+page, browser, diagnostics, read flag and the sending account; 6.5, 9.2). This state cannot
 be rebuilt from disk, so "Przebuduj
 indeks" (Rebuild index) does not touch it, the schema changes through migrations (not by rebuilding),
 and a backup is provided by `archiwista state export` (JSON
 `archiwista-state/2` from v0.4, with the password hashes: a secret, written with mode `0600`;
 `archiwista-state/1` still imports), restored by `archiwista state import` into an empty
-database.
+database; the feedback reports are not in that document and are kept by a copy of the
+file (SQLite `.backup`).
 
 In a production deployment the store may remain on an HDD/NAS, but the Archiwista
 data directory (index and preview cache) should be on a local SSD.
@@ -3500,6 +3503,8 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /projects/{id}/access`, `PUT /projects/{id}/access` | owner and visibility of a project (`public`, `users`, `group`, `private`) with a list of people and groups — owner or administrator; every change goes to the action log |
 | `GET /log`, `GET /log/export` | administrator, from v0.4: the action log newest first (filters `actor`, `action`, `outcome`, `target`, `since`, `until`; a cursor); the export streams the same entries as `format=jsonl` or `csv` (cells that could start a formula are escaped) and is itself an entry (10.2) |
 | `GET /preferences`, `PUT /preferences` | any session, its own preferences (the owner's in local mode; an agent's are its account's; the defaults before the first change): `year_types` (`hydro`, `meteo`: `hydrological` or `calendar`, by default hydrological and calendar; the numbering of the station routes without `year_type`, 6.7), `basemap` (a configured basemap's name, `""` for none, `null` for the first configured one; another name is `400 unknown_basemap`) and `path_aliases` (at most 20 pairs `server` (an absolute prefix on the server) and `personal` (the same place on the person's computer), each at most 400 characters) applied only to paths shown and copied (`CopyPath.personal`: through the first alias whose server prefix holds the path, `null` without one), never to the server's access to files (10.2); `PUT` replaces them all (an omitted field takes its default) and is not logged (A-ADR-047) |
+| `POST /feedback` | any session: a report of "Zgłoś uwagę" (Hydrograf's mechanism and limits): `message` (1 to 5,000 characters, blank refused), `contact` (at most 200), `page_url` (at most 500), `diagnostics` (any JSON object of at most 100,000 characters as compact JSON: the interface's last 50 events, the view and its parameters, the environment; never a request body, a token or a file's content) → `201 {id, status: "ok"}`; kept with the account that sent it (none for the local owner) and the `User-Agent` (cut to 500); over a limit `400 validation_error`; not logged |
+| `GET /admin/feedback`, `PATCH /admin/feedback/{id}`, `DELETE /admin/feedback/{id}` | administrator (`feedback.manage`): the reports newest first (`limit` 1–200, default 50; `offset`) as `{items, total, unread_count}`; marking one read or unread (`{is_read}`, a strict boolean; answers the report); deleting one (`204`); an unknown report `404 not_found`, reason `feedback_not_found`; the view "Zgłoszenia" (6.5) |
 | `GET /health` | versions of Archiwista, Kartograf and Obserwator, state of stores (producers' directories), index and jobs |
 
 ### 9.3 Examples

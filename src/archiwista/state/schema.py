@@ -3,9 +3,9 @@
 The state database (``state.sqlite`` next to ``index.sqlite`` in the user
 data directory; never on a share or in a store) keeps what no file on disk
 can rebuild: accounts, groups and memberships, roles, project access,
-passwords, preferences and the action log. An index rebuild never touches
-it. Its schema therefore changes by migrations, each one taking
-``PRAGMA user_version`` a step further, all pending ones in one
+passwords, preferences, the action log and the feedback reports. An index
+rebuild never touches it. Its schema therefore changes by migrations, each
+one taking ``PRAGMA user_version`` a step further, all pending ones in one
 transaction, and never by a rebuild; a database written by a newer
 Archiwista is refused rather than changed.
 
@@ -22,7 +22,11 @@ principal, and turns the permission log into ``action_log`` (its entries
 kept with the outcome ``ok``; new: the client address, the outcome and
 details), which a trigger keeps append-only. Version 4 (A-ADR-049 decision
 14) indexes the action log by target and by the project in the details of a
-job's entries, which a project's activity reads.
+job's entries, which a project's activity reads. Version 5 adds ``feedback``:
+the reports people send with "Zgłoś uwagę" (the text, an optional contact,
+the page, the browser, optional diagnostics as JSON, whether an administrator
+has read it, and the account that sent it, ``NULL`` for the owner of a local
+installation), with the limits of Hydrograf's table as checks.
 """
 
 import sqlite3
@@ -196,8 +200,39 @@ def _version_4(connection: sqlite3.Connection) -> None:
         connection.execute(statement)
 
 
+_VERSION_5 = (
+    """
+    CREATE TABLE feedback (
+        id INTEGER PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        user_id TEXT,
+        message TEXT NOT NULL CHECK (length(message) BETWEEN 1 AND 5000),
+        contact TEXT CHECK (length(contact) <= 200),
+        page_url TEXT CHECK (length(page_url) <= 500),
+        user_agent TEXT CHECK (length(user_agent) <= 500),
+        diagnostics TEXT
+            CHECK (json_valid(diagnostics) AND length(diagnostics) <= 100000),
+        is_read INTEGER NOT NULL DEFAULT 0 CHECK (is_read IN (0, 1))
+    )
+    """,
+    "CREATE INDEX feedback_created_at ON feedback (created_at DESC, id DESC)",
+)
+
+
+def _version_5(connection: sqlite3.Connection) -> None:
+    """Keep the reports of „Zgłoś uwagę” (feedback)."""
+    for statement in _VERSION_5:
+        connection.execute(statement)
+
+
 # Migration ``i`` takes a database from user_version ``i`` to ``i + 1``.
-MIGRATIONS: tuple[Migration, ...] = (_version_1, _version_2, _version_3, _version_4)
+MIGRATIONS: tuple[Migration, ...] = (
+    _version_1,
+    _version_2,
+    _version_3,
+    _version_4,
+    _version_5,
+)
 STATE_SCHEMA_VERSION = len(MIGRATIONS)
 
 

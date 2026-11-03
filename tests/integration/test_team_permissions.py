@@ -110,6 +110,7 @@ MATRIX: dict[Action, frozenset[str]] = {
     "store.scan": PRIVILEGED,
     "job.cancel": PRIVILEGED | MEMBER,
     "log.read": PRIVILEGED,
+    "feedback.manage": PRIVILEGED,
 }
 
 

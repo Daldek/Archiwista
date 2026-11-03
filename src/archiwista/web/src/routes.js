@@ -62,6 +62,13 @@ export const VIEWS = [
   { id: "setup", icon: "settings", bottom: true, load: () => import("./setup.js") },
   { id: "accounts", icon: "user", bottom: true, admin: true, load: () => import("./views/accounts.js") },
   { id: "groups", icon: "users", bottom: true, admin: true, load: () => import("./views/groups.js") },
+  {
+    id: "feedback",
+    icon: "message",
+    bottom: true,
+    admin: true,
+    load: () => import("./views/feedback.js"),
+  },
   { id: "log", icon: "file", bottom: true, admin: true, load: () => import("./views/log.js") },
 ];
 

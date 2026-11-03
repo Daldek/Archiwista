@@ -3,6 +3,8 @@
 Unlike the index, this state cannot be rebuilt from files (A-ADR-029, SPEC
 4.3): it changes by migrations and is backed up with ``archiwista state
 export`` (``archiwista-state/2``, a secret: it holds the password hashes).
+The feedback reports are not in that document: a copy of the database file
+(SQLite ``.backup``) keeps them.
 """
 
 from archiwista.state.export import (
@@ -35,6 +37,8 @@ from archiwista.state.store import (
     ActionQuery,
     ActionRecorder,
     ActorKind,
+    FeedbackPage,
+    FeedbackRecord,
     GroupRecord,
     Outcome,
     PasswordRecord,
@@ -67,6 +71,8 @@ __all__ = [
     "ActionQuery",
     "ActionRecorder",
     "ActorKind",
+    "FeedbackPage",
+    "FeedbackRecord",
     "GroupRecord",
     "Migration",
     "Outcome",

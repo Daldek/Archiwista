@@ -165,10 +165,11 @@ def test_store_write_needs_role_or_setting(
 
 
 @pytest.mark.parametrize(
-    "action", ["users.manage", "groups.manage", "settings.write", "log.read"]
+    "action",
+    ["users.manage", "groups.manage", "settings.write", "log.read", "feedback.manage"],
 )
 def test_administration_needs_admin_role(state: StateStore, action: Action) -> None:
-    """Accounts, groups, settings and the log: administrators and the local owner."""
+    """Accounts, groups, settings, the log, feedback: administrators, local owner."""
     # Arrange
     authorizer = _authorizer(state)
 

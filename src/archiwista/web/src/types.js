@@ -2662,4 +2662,61 @@
  * @property {CallPlan[]} calls - In the order of the job's calls.
  */
 
+/**
+ * A report of „Zgłoś uwagę” (`POST /feedback`): Hydrograf's limits.
+ *
+ * @typedef {object} FeedbackRequest
+ * @property {string} message - 1 to 5,000 characters; blank is refused.
+ * @property {string|null} [contact] - A name or an e-mail address, at most 200.
+ * @property {string|null} [page_url] - The page's address, at most 500.
+ * @property {FeedbackDiagnostics|null} [diagnostics] - At most 100,000 characters
+ *   of compact JSON.
+ */
+
+/**
+ * What „Dołącz dane diagnostyczne” attaches (diagnostics.js `snapshot`); the
+ * server keeps any JSON object as sent.
+ *
+ * @typedef {object} FeedbackDiagnostics
+ * @property {Array<{t: string, type: string, data: Object<string, *>}>} events -
+ *   `api_call` (method, endpoint, status, duration_ms; code and reason of a
+ *   refusal; repeat and last of a call made again) and `js_error` (message,
+ *   source, stack), the oldest first.
+ * @property {{view: string|null, params: Object<string, string>}} view
+ * @property {Object<string, *>} env - userAgent, language, viewport, url,
+ *   timestamp, version, mode.
+ */
+
+/**
+ * @typedef {object} FeedbackCreated
+ * @property {number} id - The report's number.
+ * @property {"ok"} status
+ */
+
+/**
+ * A report as an administrator reads it (`GET /admin/feedback`).
+ *
+ * @typedef {object} FeedbackItem
+ * @property {number} id - A later report has a greater number.
+ * @property {string} created_at - When it was sent.
+ * @property {string|null} user_id - The account that sent it; null for the owner
+ *   of a local installation.
+ * @property {string} message
+ * @property {string|null} contact
+ * @property {string|null} page_url
+ * @property {string|null} user_agent
+ * @property {Object<string, *>|null} diagnostics - As the person's browser sent
+ *   it: any JSON object, shown as text only.
+ * @property {boolean} is_read
+ */
+
+/**
+ * A page of the reports, newest first.
+ *
+ * @typedef {object} FeedbackList
+ * @property {FeedbackItem[]} items
+ * @property {number} total - Every report, all pages together.
+ * @property {number} unread_count - Those nobody marked read.
+ */
+
 export {};

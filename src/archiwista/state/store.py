@@ -12,6 +12,8 @@ nothing. ``record`` writes the entries of actions that change nothing here
 (a sign-in, a refusal); no method changes an entry, and only
 ``prune_actions`` deletes old ones, logging that it did (``log.prune``).
 ``project_activity`` reads a project's entries (A-ADR-049 decision 14).
+``add_feedback``, ``feedback``, ``set_feedback_read`` and ``delete_feedback``
+keep the reports of "Zgłoś uwagę"; like preferences, they are not logged.
 
 ``StateStore`` keeps the data rules (ids, names, known people and groups,
 entries that fit the visibility) but decides no permissions: that is
@@ -143,6 +145,10 @@ SELECT a.project, a.owner, a.visibility, a.updated_at,
          ORDER BY group_id)) AS groups
 FROM project_acl a
 """
+_FEEDBACK_SELECT = (
+    "SELECT id, created_at, user_id, message, contact, page_url, user_agent,"
+    " diagnostics, is_read FROM feedback"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,6 +308,64 @@ class PreferenceRecord:
     principal: str
     document: dict[str, object]
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class FeedbackRecord:
+    """A report a person sent with "Zgłoś uwagę" (the feedback of Hydrograf).
+
+    Attributes
+    ----------
+    id : int
+        The report's number; a later report has a greater one.
+    created_at : datetime
+        When it was sent (UTC).
+    user_id : str or None
+        The account that sent it (an agent's: its person's); ``None`` for the
+        owner of a local installation, who has no account.
+    message : str
+        What the person wrote, 1 to 5,000 characters.
+    contact : str or None
+        A name or an e-mail address, at most 200 characters.
+    page_url : str or None
+        The address of the page it was sent from, at most 500 characters.
+    user_agent : str or None
+        The browser's ``User-Agent``, cut to 500 characters.
+    diagnostics : dict[str, object] or None
+        What the person chose to attach: the interface's recent events, the
+        view and the environment, at most 100,000 characters of JSON.
+    is_read : bool
+        Whether an administrator has marked it read.
+    """
+
+    id: int
+    created_at: datetime
+    user_id: str | None
+    message: str
+    contact: str | None
+    page_url: str | None
+    user_agent: str | None
+    diagnostics: dict[str, object] | None
+    is_read: bool
+
+
+@dataclass(frozen=True, slots=True)
+class FeedbackPage:
+    """A page of the feedback reports, newest first, and the counts of them all.
+
+    Attributes
+    ----------
+    items : tuple[FeedbackRecord, ...]
+        The reports of the page.
+    total : int
+        How many reports there are, on every page.
+    unread : int
+        How many of them no administrator has marked read.
+    """
+
+    items: tuple[FeedbackRecord, ...]
+    total: int
+    unread: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -1309,6 +1373,112 @@ class StateStore:
             )
             return _preferences(connection, "principal = ?", (principal,))[0]
 
+    # Feedback.
+
+    def add_feedback(
+        self,
+        *,
+        user_id: str | None,
+        message: str,
+        contact: str | None = None,
+        page_url: str | None = None,
+        user_agent: str | None = None,
+        diagnostics: Mapping[str, object] | None = None,
+    ) -> FeedbackRecord:
+        """Keep a report sent with "Zgłoś uwagę", unread.
+
+        The values are kept as given (``archiwista.services.feedback`` checks
+        their limits; the table's checks refuse what breaks them); nothing is
+        logged: a report changes nothing anyone may do or see.
+
+        Parameters
+        ----------
+        user_id : str or None
+            The account that sends it; ``None`` for the owner of a local
+            installation.
+        message : str
+            The text, 1 to 5,000 characters.
+        contact, page_url, user_agent : str or None, optional
+            A name or an e-mail address (at most 200 characters), the page's
+            address and the browser (at most 500 each).
+        diagnostics : Mapping[str, object] or None, optional
+            The attached diagnostics, kept as compact JSON of at most 100,000
+            characters.
+
+        Returns
+        -------
+        FeedbackRecord
+            The report as kept, with its number and time.
+        """
+        with self._write() as connection:
+            cursor = connection.execute(
+                "INSERT INTO feedback (created_at, user_id, message, contact,"
+                " page_url, user_agent, diagnostics) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    _now(),
+                    user_id,
+                    message,
+                    contact,
+                    page_url,
+                    user_agent,
+                    _compact_json(diagnostics),
+                ),
+            )
+            return _existing_feedback(connection, int(cursor.lastrowid or 0))
+
+    def feedback(self, *, limit: int, offset: int = 0) -> FeedbackPage:
+        """Return a page of the feedback reports, newest first.
+
+        Parameters
+        ----------
+        limit : int
+            At most this many reports.
+        offset : int, default 0
+            How many of the newest reports to skip.
+        """
+        with self._read() as connection:
+            rows = connection.execute(
+                f"{_FEEDBACK_SELECT} ORDER BY created_at DESC, id DESC"
+                " LIMIT ? OFFSET ?",
+                (limit, offset),
+            ).fetchall()
+            total, unread = connection.execute(
+                "SELECT count(*), coalesce(sum(NOT is_read), 0) FROM feedback"
+            ).fetchone()
+        return FeedbackPage(tuple(map(_feedback, rows)), int(total), int(unread))
+
+    def set_feedback_read(self, feedback_id: int, *, is_read: bool) -> FeedbackRecord:
+        """Mark a report read or unread; return it.
+
+        Raises
+        ------
+        NotFoundError
+            No report has this number.
+        """
+        with self._write() as connection:
+            changed = connection.execute(
+                "UPDATE feedback SET is_read = ? WHERE id = ?",
+                (int(is_read), feedback_id),
+            ).rowcount
+            if not changed:
+                raise _feedback_not_found(feedback_id)
+            return _existing_feedback(connection, feedback_id)
+
+    def delete_feedback(self, feedback_id: int) -> None:
+        """Delete a report for good.
+
+        Raises
+        ------
+        NotFoundError
+            No report has this number.
+        """
+        with self._write() as connection:
+            deleted = connection.execute(
+                "DELETE FROM feedback WHERE id = ?", (feedback_id,)
+            ).rowcount
+            if not deleted:
+                raise _feedback_not_found(feedback_id)
+
     # Backups.
 
     def restore(self, snapshot: StateSnapshot) -> None:
@@ -1681,6 +1851,38 @@ def _preferences(
     )
 
 
+def _feedback(row: sqlite3.Row) -> FeedbackRecord:
+    return FeedbackRecord(
+        id=row["id"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        user_id=row["user_id"],
+        message=row["message"],
+        contact=row["contact"],
+        page_url=row["page_url"],
+        user_agent=row["user_agent"],
+        diagnostics=_from_json(row["diagnostics"]),
+        is_read=bool(row["is_read"]),
+    )
+
+
+def _existing_feedback(
+    connection: sqlite3.Connection, feedback_id: int
+) -> FeedbackRecord:
+    row = connection.execute(
+        f"{_FEEDBACK_SELECT} WHERE id = ?", (feedback_id,)
+    ).fetchone()
+    if row is None:
+        raise _feedback_not_found(feedback_id)
+    return _feedback(row)
+
+
+def _feedback_not_found(feedback_id: int) -> NotFoundError:
+    return NotFoundError(
+        message("state.feedback_not_found", feedback_id=feedback_id),
+        reason="feedback_not_found",
+    )
+
+
 def _actions(
     connection: sqlite3.Connection,
     condition: str = "1",
@@ -1993,6 +2195,13 @@ def _access_state(access: ProjectAccessRecord) -> dict[str, object]:
 
 def _json(value: Mapping[str, object] | None) -> str | None:
     return None if value is None else json.dumps(value, ensure_ascii=False)
+
+
+def _compact_json(value: Mapping[str, object] | None) -> str | None:
+    """Return JSON without spaces: the form whose length the feedback limit counts."""
+    if value is None:
+        return None
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def _from_json(text: str | None) -> dict[str, object] | None:

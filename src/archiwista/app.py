@@ -56,6 +56,7 @@ from archiwista.api import areas as area_routes
 from archiwista.api import availability as availability_routes
 from archiwista.api import commands as command_routes
 from archiwista.api import compare as compare_routes
+from archiwista.api import feedback as feedback_routes
 from archiwista.api import files as file_routes
 from archiwista.api import jobs as job_routes
 from archiwista.api import layers as layer_routes
@@ -245,6 +246,7 @@ def create_app(
     app.include_router(command_routes.router, prefix=API_PREFIX)
     app.include_router(layer_routes.router, prefix=API_PREFIX)
     app.include_router(owndata_routes.router, prefix=API_PREFIX)
+    app.include_router(feedback_routes.router, prefix=API_PREFIX)
     if jobs is not None:
         app.include_router(job_routes.router, prefix=API_PREFIX)
         app.include_router(owndata_routes.job_router, prefix=API_PREFIX)

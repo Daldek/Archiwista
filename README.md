@@ -46,7 +46,7 @@ Archiwista itself writes nothing in a store: from v0.3 a download goes through t
 |---|---|---|
 | settings `config.toml` | `~/.config/archiwista/` | the wizard or the "Ustawienia" (Settings) view |
 | index `index.sqlite` | `~/.local/share/archiwista/` | yes: `archiwista reindex` |
-| state database `state.sqlite`: accounts and their password hashes, groups, project sharing, preferences, the action log | `~/.local/share/archiwista/` | **no**: back up with `archiwista state export` (a secret, mode `0600`), restore with `state import` |
+| state database `state.sqlite`: accounts and their password hashes, groups, project sharing, preferences, the action log, the feedback reports | `~/.local/share/archiwista/` | **no**: back up with `archiwista state export` (a secret, mode `0600`), restore with `state import`; the feedback reports are not in that export: copy the file with `sqlite3 ~/.local/share/archiwista/state.sqlite ".backup '<backup-dir>/state.sqlite'"` (a secret too: it holds the password hashes) |
 | `cache/`: unit boundaries (TERYT, KU) fetched by the plugin | `~/.local/share/archiwista/` | yes, from the network |
 | `jobs/`: logs of background jobs (90 days, 1 GB at most) | `~/.local/share/archiwista/` | not needed for work |
 | `areas/`: copies of the area files that were loaded | `~/.local/share/archiwista/` | load the file again |
@@ -79,6 +79,7 @@ The local data directory has mode `0700` and the `archiwista` commands run with 
 | Rebuild the index | `archiwista reindex [--store STORE]` (a full scan in the foreground) | `POST /stores/{store}/scan` (a background job) |
 | One-time session address, for example for an agent | `archiwista token [--json \| --revoke-all]` | `POST /session/tokens` |
 | Accounts, groups, project sharing, state backup | `archiwista users`, `groups`, `share`, `state export` and `state import` | none |
+| Feedback ("Zgłoś uwagę" in the top bar): send a report; administrators read, mark and delete them in the view "Zgłoszenia" (or with `sqlite3 state.sqlite "SELECT id, created_at, user_id, message FROM feedback ORDER BY id DESC"`) | none | `POST /feedback`, `GET /admin/feedback`, `PATCH`/`DELETE /admin/feedback/{id}` |
 
 The read commands work without a running server: they use the local index and the services that the HTTP routes use. Building a preview, preparing previews ahead, scanning own data, making a snapshot and checking the availability at the source run as jobs in worker processes, in the foreground in the CLI and in the background in the server. The log goes to standard error, never to standard output; `--verbose` (debug) or `--quiet` (errors only), before or after the command name, sets its level, and without them the variable `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`, `error`; default `warning`) does.
 
