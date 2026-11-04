@@ -1113,6 +1113,8 @@ command-line interface may change.
 
 ### Changed
 
+- The Obserwator pin and the README links use the renamed repository
+  `github.com/Daldek/Obserwator` (was `Daldek/IMGWTools`); the commit is unchanged.
 - **Breaking:** IMGWTools is called Obserwator (Nogat ECO-057, Obserwator's ADR-009), and
   every name Archiwista derives from the tool follows; nothing else changes. The source
   is pinned to Obserwator `651d4d73` (`pyproject.toml`, `uv.lock`; the supported range

@@ -13,7 +13,7 @@ Archiwista is a local web application for browsing the spatial-data stores that 
 
 | Need | Use instead |
 |---|---|
-| Download or process data | [Kartograf](https://github.com/Daldek/Kartograf) (Polish and Czech spatial data) or [Obserwator](https://github.com/Daldek/IMGWTools) (IMGW data); Archiwista only calls their public API |
+| Download or process data | [Kartograf](https://github.com/Daldek/Kartograf) (Polish and Czech spatial data) or [Obserwator](https://github.com/Daldek/Obserwator) (IMGW data); Archiwista only calls their public API |
 | GIS analysis, editing data | QGIS; Archiwista is not an editor |
 | Hydrological calculations, statistics of series | [Hydrolog](https://github.com/Daldek/Hydrolog) and [Retman](https://github.com/Daldek/Retman) |
 | Current IMGW or ČHMÚ data (states, warnings) | the services of the institutes; Archiwista shows archives and series from the store |
@@ -94,7 +94,7 @@ Archiwista never writes to a store itself: a download goes through the producer'
 | Tool | Relation |
 |---|---|
 | [Kartograf](https://github.com/Daldek/Kartograf) | writes the stores that Archiwista reads; the only importer of it is the adapter in `src/archiwista/adapter/kartograf/` |
-| [Obserwator](https://github.com/Daldek/IMGWTools) | writes the IMGW measurement archives; an optional plugin (`archiwista[obserwator]`) planned for v0.5 |
+| [Obserwator](https://github.com/Daldek/Obserwator) | writes the IMGW measurement archives; an optional plugin (`archiwista[obserwator]`) planned for v0.5 |
 | [Nogat](https://github.com/Daldek/Nogat) | the ecosystem: the standard 2.1 that this repository follows and the error registry |
 | QGIS | analysis and editing of the files that Archiwista shows; the QGIS plugin is in the Kartograf repository |
 
