@@ -63,7 +63,7 @@ dependencies = [
 # the tag `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
 # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator`.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/IMGWTools@ea158dc6f703a5ababd91ff54e7ddec35b4f389b",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@ea158dc6f703a5ababd91ff54e7ddec35b4f389b",
 ]
 
 [dependency-groups]
