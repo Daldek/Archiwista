@@ -1,9 +1,9 @@
-"""Changes to an IMGWTools fixture store, made the way a download changes it.
+"""Changes to an Obserwator fixture store, made the way a download changes it.
 
 A download adds an immutable ``<label>_<sha8>`` version directory (the data
 file and its ``.meta.json`` sidecar) next to the other versions of a slot. The
-helpers change a store built by ``imgwtools.testing`` after a scan; paths are
-relative to the store root (IMGWTools' ``--root`` directory) with ``/``.
+helpers change a store built by ``obserwator.testing`` after a scan; paths are
+relative to the store root (Obserwator's ``--root`` directory) with ``/``.
 """
 
 import json

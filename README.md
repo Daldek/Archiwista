@@ -1,6 +1,6 @@
 # Archiwista: a local web application for browsing spatial-data stores
 
-Archiwista is a local web application for browsing the spatial-data stores that Kartograf writes (and, from v0.5, the IMGW archives that IMGWTools writes): catalog, map, file previews, version comparison, and project folders with snapshots of own data. It has a web interface, an HTTP API and a command line, and never writes to a store.
+Archiwista is a local web application for browsing the spatial-data stores that Kartograf writes (and, from v0.5, the IMGW archives that Obserwator writes): catalog, map, file previews, version comparison, and project folders with snapshots of own data. It has a web interface, an HTTP API and a command line, and never writes to a store.
 
 ## When to use
 
@@ -13,7 +13,7 @@ Archiwista is a local web application for browsing the spatial-data stores that 
 
 | Need | Use instead |
 |---|---|
-| Download or process data | [Kartograf](https://github.com/Daldek/Kartograf) (Polish and Czech spatial data) or [IMGWTools](https://github.com/Daldek/IMGWTools) (IMGW data); Archiwista only calls their public API |
+| Download or process data | [Kartograf](https://github.com/Daldek/Kartograf) (Polish and Czech spatial data) or [Obserwator](https://github.com/Daldek/IMGWTools) (IMGW data); Archiwista only calls their public API |
 | GIS analysis, editing data | QGIS; Archiwista is not an editor |
 | Hydrological calculations, statistics of series | [Hydrolog](https://github.com/Daldek/Hydrolog) and [Retman](https://github.com/Daldek/Retman) |
 | Current IMGW or ČHMÚ data (states, warnings) | the services of the institutes; Archiwista shows archives and series from the store |
@@ -46,7 +46,7 @@ Archiwista itself writes nothing in a store: from v0.3 a download goes through t
 |---|---|---|
 | settings `config.toml` | `~/.config/archiwista/` | the wizard or the "Ustawienia" (Settings) view |
 | index `index.sqlite` | `~/.local/share/archiwista/` | yes: `archiwista reindex` |
-| state database `state.sqlite`: accounts and their password hashes, groups, project sharing, preferences, the action log | `~/.local/share/archiwista/` | **no**: back up with `archiwista state export` (a secret, mode `0600`), restore with `state import` |
+| state database `state.sqlite`: accounts and their password hashes, groups, project sharing, preferences, the action log, the feedback reports | `~/.local/share/archiwista/` | **no**: back up with `archiwista state export` (a secret, mode `0600`), restore with `state import`; the feedback reports are not in that export: copy the file with `sqlite3 ~/.local/share/archiwista/state.sqlite ".backup '<backup-dir>/state.sqlite'"` (a secret too: it holds the password hashes) |
 | `cache/`: unit boundaries (TERYT, KU) fetched by the plugin | `~/.local/share/archiwista/` | yes, from the network |
 | `jobs/`: logs of background jobs (90 days, 1 GB at most) | `~/.local/share/archiwista/` | not needed for work |
 | `areas/`: copies of the area files that were loaded | `~/.local/share/archiwista/` | load the file again |
@@ -79,6 +79,7 @@ The local data directory has mode `0700` and the `archiwista` commands run with 
 | Rebuild the index | `archiwista reindex [--store STORE]` (a full scan in the foreground) | `POST /stores/{store}/scan` (a background job) |
 | One-time session address, for example for an agent | `archiwista token [--json \| --revoke-all]` | `POST /session/tokens` |
 | Accounts, groups, project sharing, state backup | `archiwista users`, `groups`, `share`, `state export` and `state import` | none |
+| Feedback ("Zgłoś uwagę" in the top bar): send a report; administrators read, mark and delete them in the view "Zgłoszenia" (or with `sqlite3 state.sqlite "SELECT id, created_at, user_id, message FROM feedback ORDER BY id DESC"`) | none | `POST /feedback`, `GET /admin/feedback`, `PATCH`/`DELETE /admin/feedback/{id}` |
 
 The read commands work without a running server: they use the local index and the services that the HTTP routes use. Building a preview, preparing previews ahead, scanning own data, making a snapshot and checking the availability at the source run as jobs in worker processes, in the foreground in the CLI and in the background in the server. The log goes to standard error, never to standard output; `--verbose` (debug) or `--quiet` (errors only), before or after the command name, sets its level, and without them the variable `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`, `error`; default `warning`) does.
 
@@ -93,7 +94,7 @@ Archiwista never writes to a store itself: a download goes through the producer'
 | Tool | Relation |
 |---|---|
 | [Kartograf](https://github.com/Daldek/Kartograf) | writes the stores that Archiwista reads; the only importer of it is the adapter in `src/archiwista/adapter/kartograf/` |
-| [IMGWTools](https://github.com/Daldek/IMGWTools) | writes the IMGW measurement archives; an optional plugin (`archiwista[imgw]`) planned for v0.5 |
+| [Obserwator](https://github.com/Daldek/IMGWTools) | writes the IMGW measurement archives; an optional plugin (`archiwista[obserwator]`) planned for v0.5 |
 | [Nogat](https://github.com/Daldek/Nogat) | the ecosystem: the standard 2.1 that this repository follows and the error registry |
 | QGIS | analysis and editing of the files that Archiwista shows; the QGIS plugin is in the Kartograf repository |
 
@@ -114,7 +115,7 @@ A job that does not succeed exits `11` (failed) or `130` (cancelled or interrupt
 
 ## Data and licensing
 
-Archiwista holds no data of its own besides the project files it writes on a person's command (`archiwista-project/1`, an open JSON format): it shows what the producers wrote, with the metadata of each file's sidecar (`kartograf-meta/1`, `imgw-meta/1`), which carries the licence of the data. The data sources and their terms are those of Kartograf and IMGWTools. The default basemap is OpenFreeMap vector tiles (OpenStreetMap data), with the attribution shown on the map; in offline mode the jobs that need the network are refused. The code is under the MIT licence. Third-party files in the package keep their own licences beside them: the interface's libraries (`src/archiwista/web/vendor/`), Swagger UI (`src/archiwista/api/swagger/`), and the list of common passwords of the password policy (`src/archiwista/auth/common-passwords.txt`, derived from SecLists by Daniel Miessler, MIT, `common-passwords.LICENSE`; its source, commit and rule are in `common-passwords.json`).
+Archiwista holds no data of its own besides the project files it writes on a person's command (`archiwista-project/1`, an open JSON format): it shows what the producers wrote, with the metadata of each file's sidecar (`kartograf-meta/1`, `obserwator-meta/1`), which carries the licence of the data. The data sources and their terms are those of Kartograf and Obserwator. The default basemap is OpenFreeMap vector tiles (OpenStreetMap data), with the attribution shown on the map; in offline mode the jobs that need the network are refused. The code is under the MIT licence. Third-party files in the package keep their own licences beside them: the interface's libraries (`src/archiwista/web/vendor/`), Swagger UI (`src/archiwista/api/swagger/`), and the list of common passwords of the password policy (`src/archiwista/auth/common-passwords.txt`, derived from SecLists by Daniel Miessler, MIT, `common-passwords.LICENSE`; its source, commit and rule are in `common-passwords.json`).
 
 ## Documentation
 

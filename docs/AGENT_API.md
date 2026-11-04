@@ -28,7 +28,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | card of one version | `archiwista version MAGAZYN WERSJA` | `GET /stores/{store}/versions/{version}` |
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
-| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the IMGWTools source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
+| stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the Obserwator source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
 | a project's exports from its pins: copies in category folders with `README.txt` in `eksport/NAZWA/`, optionally a ZIP (A-ADR-049), their list and the ZIP | `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports`, `GET /projects/{project}/exports/{name}/zip` |
 | a project's activity from the action log: its changes and its jobs, newest first, without the client address (A-ADR-049) | `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
@@ -699,7 +699,7 @@ curl -sf -b "$JAR" -H "$H" "$BASE/local-coverage?area_id=$AREA&product=nmt&store
 archiwista search --area-id="$AREA" --product=nmt --json
 ```
 
-**Stations and the coverage of their series** (the IMGWTools source, plans I6 and I8).
+**Stations and the coverage of their series** (the Obserwator source, plans I6 and I8).
 `GET /stations` pages the stations of the station catalogs of IMGW-PIB and ČHMÚ along
 rivers (`sort=river`, the default: by the hydrographic code, so a tributary follows
 its river, then the provider's order on the river, then the name) or by name
@@ -728,7 +728,7 @@ never a gap) and `GET /map/stations?bbox=…` the located stations of a view, wi
 each variable's state and label when `dataset` is given, or a grid above `limit`. A
 code that several stations share answers `400` with `details.reason`
 `ambiguous_station` and the stations in `details.stations`: ask again with `store`
-and `provider`. Without IMGWTools every station route answers `503
+and `provider`. Without Obserwator every station route answers `503
 missing_dependency` (`source_unavailable`) with the fix in `hint`. `GET
 /stations/datasets` names the datasets with station series (`archiwista stations
 datasets`): each one's key, the producer's name of its segment, provider, family,
@@ -945,7 +945,7 @@ without a store root (ready for `POST /commands/parse` and a plan), the `area`,
 the catalog `400` (`unknown_command`), a command that takes no area `422
 unsupported` (`no_area_option`), as is a producer without commands
 (`no_commands`) or one that takes no area of Archiwista (`no_area_commands`;
-IMGWTools until its actions). `archiwista commands area` prints the same model
+Obserwator until its actions). `archiwista commands area` prints the same model
 with `--json`, otherwise the line and, below it, the replaced options.
 
 ```sh
@@ -1105,7 +1105,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 | 422 | `unsupported` | `preview_unavailable`: the file has no preview of the kind asked for (`details.preview_reason`: `code`, `message`, `fix`); `no_commands`: the producer offers no commands; `no_availability`: the producer checks no availability of the product (`details.allowed`: the products it checks); `no_area_option`: the command takes no area (`POST /commands/area`); `no_area_commands`: the producer takes no area of Archiwista in a command |
 | 422 | `calculation_error` | `preview_timeout`: a render process ran past its time limit |
 | 429 | `rate_limited` | `preview_busy`: the render pool is full; `login_blocked`: too many failed sign-ins of the account or the address; `scan_running`: the person's scan of a data folder waits or runs; `scan_too_soon`: the project's folder was asked to be scanned less than a minute ago; `too_many_downloads`: the person streams two file downloads (`…/file`) already; wait for `Retry-After` (also `details.retry_after_s`) |
-| 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `imgwtools_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.imgwtools` have `exception` and the unchanged `message` |
+| 500 | `data_error` | `area_unreadable`: an area file cannot be read (for a file with several layers `details.layers`: choose one with `?layer=`); `kartograf_error`, `obserwator_error`, `producer_error`: the producer rejected the call, `details.kartograf`/`details.obserwator` have `exception` and the unchanged `message` |
 | 500 | `io_error` | `project_file_write_failed`: the project file, its directory or its area file cannot be written (permissions, a full disk); the hint names the directory |
 | 500 | `internal_error` | a defect of Archiwista: details in the server's log |
 | 503 | `missing_dependency` | `source_unavailable`: the producer plugin is missing; `source_incompatible`: it has an unsupported version or schema; `details.source` (`id`, `state`, `package_version`, `supported_versions`, `requirement`), the fix is in `hint` and at the end of `detail`; `renderer_not_started`: a preview route could not start a render process on the server (the cause is in the server's log; nothing is remembered about the file, ask again once it is fixed) |
@@ -1158,7 +1158,7 @@ Long operations return `202 Accepted` with a job (`JobDetail`) and the header
 
 | Request | Body | Notes |
 |---|---|---|
-| `POST /stores/{store}/scan` | optionally `{"mode": "incremental"}` (default) or `"full"`, optionally `"segment"` | scan of a store into the index, an administrator's (v0.4, `store.scan`); a `segment` is scanned by the data source that owns it, and a source that reads only its whole directory (IMGWTools: a segment is a dataset) ends the job as `unsupported` |
+| `POST /stores/{store}/scan` | optionally `{"mode": "incremental"}` (default) or `"full"`, optionally `"segment"` | scan of a store into the index, an administrator's (v0.4, `store.scan`); a `segment` is scanned by the data source that owns it, and a source that reads only its whole directory (Obserwator: a segment is a dataset) ends the job as `unsupported` |
 | `POST /stores/{store}/footprints` | none | unit outlines (TERYT, KU) from the network, an administrator's (v0.4); offline → `409 conflict` (`offline_mode`) |
 | `POST /stores/{store}/link-check` | `{"slot": "…"}` | confirmation of the target of a slot's link, an administrator's (v0.4); an unknown slot → `404` |
 | `POST /projects/{project}/scan` | none | scan of the project's folder, open to those who see the project; a waiting scan of the folder is joined; otherwise (v0.4) a person, with their agents, has one such scan waiting or running (`429 rate_limited`, `scan_running`) and a folder is asked for once a minute (`scan_too_soon`), with `Retry-After`; the computer's owner is not limited |
@@ -1339,7 +1339,7 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `code` | `details.reason` | What it means |
 |---|---|---|
 | `store_unavailable` | `store_unreadable` | the store cannot be read now (an unmounted share); the index stays as it was, try again later |
-| `store_unavailable` | `no_marker`, `unsupported_marker`, `foreign_store`, `not_a_store` | the producer refuses the directory (Kartograf: no `kartograf-store.json` beside a layout, a marker of another schema or not JSON, the root of an IMGW store, the parent of a store); `hint` gives the command, for `no_marker` `kartograf store init --root <path>`, which marks the store once; the index stays as it was |
+| `store_unavailable` | `no_marker`, `unsupported_marker`, `foreign_store`, `not_a_store` | the producer refuses the directory (Kartograf: no `kartograf-store.json` beside a layout, a marker of another schema or not JSON, the root of an Obserwator store, the parent of a store); `hint` gives the command, for `no_marker` `kartograf store init --root <path>`, which marks the store once; the index stays as it was |
 | `missing_dependency` | `source_unavailable`, `source_incompatible` | the producer plugin is missing or has an unsupported version: `details.source` and `hint` give the fix |
 | `missing_dependency` | `own_reader_failed` | the process that reads own data did not start (for example without the GDAL bindings) |
 | `missing_dependency` | `renderer_not_started` | a `preview` or `preview_warm` job could not start a build or render process on the server (the cause is in the server's log); nothing is kept about the files, try again once it is fixed |
@@ -1351,7 +1351,7 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `data_error` | `kartograf_error` (`<package>_error`) | the producer rejected the call: `details.kartograf` has `exception` and the unchanged `message` |
 | `forbidden` | `path_outside_root` | a path leaves the store or the project folder |
 | `not_found` | none | the store, slot, project or file is unknown |
-| `unsupported` | none | the producer cannot do it (a link check without link support; a scan of one segment of a directory the producer reads whole, as IMGWTools does) |
+| `unsupported` | none | the producer cannot do it (a link check without link support; a scan of one segment of a directory the producer reads whole, as Obserwator does) |
 | `cancelled` | none | cancelled by the person, or the store was removed |
 | `cancelled` | `interrupted` | the server stopped or the worker was interrupted; safe to try again |
 | `internal_error` | `worker_crashed` | the worker ended without a result: `detail` names the signal or exit status and the job log |
@@ -1421,10 +1421,10 @@ archiwista log export --format csv --since 2026-10-01T00:00:00+02:00 --output dz
 
 - Local mode only: one person on `127.0.0.1`, no login; accounts and groups
   serve the visibility of projects (A-ADR-029).
-- Actions run the commands of Kartograf's catalog; IMGWTools has no actions yet
+- Actions run the commands of Kartograf's catalog; Obserwator has no actions yet
   (v0.5). An area is a drawn, sheet or file area as in v0.1, not the name of an
   administrative unit (plan A15, Kartograf KB-7).
-- The files of an IMGWTools store are indexed (archives, series, station
+- The files of an Obserwator store are indexed (archives, series, station
   catalogs), and its stations and the coverage of their series are read through
   `/stations` and `archiwista stations` (section 5); the stations in the
   interface, the chart data, the comparison of stations and the archive badge

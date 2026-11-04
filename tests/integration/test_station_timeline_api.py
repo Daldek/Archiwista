@@ -2,7 +2,7 @@
 
 ``GET /stations/timeline`` pages the stations of one dataset with the filters,
 order and cursor of ``GET /stations`` over the index of a scanned copy of
-``complete_pl_cz`` (``imgwtools.testing``), each station with its series year
+``complete_pl_cz`` (``obserwator.testing``), each station with its series year
 by year exactly as ``GET /stations/{code}/coverage`` gives it; ``dataset`` is
 required. ``archiwista stations timeline`` prints the same. The page's years
 are read at once: 200 stations of 75 years each are answered within the
@@ -75,21 +75,21 @@ class Served:
 
 @pytest.fixture(scope="module")
 def served(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+    obserwator_store: Stores, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[Served]:
     """Serve the index of a copy of ``complete_pl_cz`` after a full scan."""
     base = tmp_path_factory.mktemp("station-timeline")
     root = base / "store"
-    shutil.copytree(imgw_store("complete_pl_cz"), root)
+    shutil.copytree(obserwator_store("complete_pl_cz"), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: config.roots()})
-        scan_store(registry.adapter("imgw"), writer, settings, STORE, mode="full")
+        scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
         yield Served(api.session(LOCAL_OWNER), paths)
 
@@ -308,10 +308,10 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
     folder = "series/versions/hydro_daily/2026-10-26_00000000"
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: {"imgw": root}})
+        writer.sync_stores({STORE: {"obserwator": root}})
         writer.replace_stations(
             STORE,
-            "imgw",
+            "obserwator",
             "IMGW-PIB",
             slot="stations/versions",
             version="stations/versions/2026-10-26_00000000/stations.geojson",
@@ -332,7 +332,7 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
         )
         writer.replace_series(
             STORE,
-            "imgw",
+            "obserwator",
             slot="series/versions/hydro_daily",
             version=f"{folder}/series.json",
             listing=SeriesListing(
@@ -367,7 +367,7 @@ def test_a_page_of_200_stations_of_75_years_within_300_ms(tmp_path: Path) -> Non
     # Arrange
     paths = local_paths(tmp_path)
     ConfigStore(paths.config_file).save(AppSettings())
-    _perf_index(paths, tmp_path / "store" / "imgw")
+    _perf_index(paths, tmp_path / "store" / "obserwator")
     path = f"/stations/timeline?dataset={DAILY}&limit={PERF_STATIONS}"
 
     # Act

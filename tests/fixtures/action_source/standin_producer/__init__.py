@@ -1,8 +1,8 @@
-"""Fake producer library of the action tests, called the way IMGWTools is.
+"""Fake producer library of the action tests, called the way Obserwator is.
 
 Its catalog (``list_commands``, ``command_schema``) has two commands. A command
 that works on a store takes the store root as an option of the call,
-``options["root"]`` (path role ``root``), as IMGWTools does, where Kartograf
+``options["root"]`` (path role ``root``), as Obserwator does, where Kartograf
 takes it by name beside the options. ``validate_command`` returns the options
 as the library reads them (texts trimmed, a value of a choice in lower case),
 ``format_command`` writes the canonical line of a call and ``parse_command``

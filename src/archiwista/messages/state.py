@@ -94,6 +94,10 @@ MESSAGES = {
         'There is no group "{id}".',
         "Nie ma grupy „{id}”.",
     ),
+    "feedback_not_found": Text(
+        "Feedback {feedback_id} not found.",
+        "Nie znaleziono zgłoszenia {feedback_id}.",
+    ),
     "last_admin": Text(
         (
             'The account "{id}" is the last administrator of the team who can sign'

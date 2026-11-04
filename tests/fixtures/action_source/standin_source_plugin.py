@@ -1,9 +1,9 @@
-"""Stand-in producer plugin of the action tests: commands called as IMGWTools'.
+"""Stand-in producer plugin of the action tests: commands called as Obserwator's.
 
 Tests register it the way production plugins are registered: they put this
 directory, holding its ``*.dist-info/entry_points.txt``, on ``sys.path``. Its
 producer (``standin_producer``) takes the store root as ``options["root"]``,
-as IMGWTools does; the adapter keeps the root out of the producer-neutral
+as Obserwator does; the adapter keeps the root out of the producer-neutral
 options, in ``CommandCall.run["root"]`` and in the ``root`` of ``validate``,
 as the Kartograf adapter does with a producer that takes it by name beside
 the options. Its availability takes the area, its countries and ``refresh``
@@ -14,7 +14,7 @@ names it), its station the unit a scan reads it by; a file kept as
 ``<kind>/<station>/<label>/<file>`` is another version of the slot
 ``<kind>/<station>/<file>``. Each version's ``content_sha256`` is the SHA-256
 of its bytes with CRLF read as LF, so a file whose line ends changed holds the
-same content (as IMGWTools' canonical content). A plan is narrowed
+same content (as Obserwator's canonical content). A plan is narrowed
 (``narrow``) by the ``file`` of its items. The call of a stored file
 (``command_for_version``) is its station's fetch; a file of
 ``standin_producer.DERIVED`` is refused as ``command_not_rebuildable``.

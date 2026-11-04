@@ -94,6 +94,9 @@ file was read: ``ok``, ``mismatch``, ``NULL`` without one), and keeps the
 ``selections`` of a ``plan`` group too; ``pins`` gains ``calls``, the places
 of a ``plan`` group's calls whose runs pinned it (JSON, ``NULL`` without the
 member).
+
+Version 18 (Nogat ECO-057): the producer ``imgw`` is called ``obserwator``, so
+an index whose rows name ``imgw`` is rebuilt.
 """
 
 import sqlite3
@@ -105,7 +108,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 

@@ -284,8 +284,8 @@ def test_plugins_default_root_comes_from_the_source_that_has_one(
 ) -> None:
     """Kartograf reports its root; a source without the capability has none.
 
-    Nor has a producer that no plugin registers. IMGWTools reports its root as
-    well (``test_imgw_default_root.py``, collected with the extra ``imgw``).
+    Nor has a producer that no plugin registers. Obserwator reports its root as
+    well (``test_obserwator_default_root.py``, collected with the extra ``obserwator``).
     """
     # Arrange
     registry = load_registry(cache_dir=tmp_path / "cache")

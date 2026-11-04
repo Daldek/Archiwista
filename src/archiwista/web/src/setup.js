@@ -1,15 +1,15 @@
 /**
  * The first-run wizard, and later the settings it edits (docs/SPEC.md 5.5,
  * docs/plans/2026-10-18-plan-v0.1.md 10a, plan v0.2 step 12a): stores (Kartograf's store
- * root, the directory with `kartograf-store.json`, and the IMGWTools store root, the
- * directory with `imgw-store.json`, while the source `imgw` is available or the store
- * already has one, SPEC 5.8), project directories, offline mode and the preview cache
- * limit (with the cache's usage from `/health`), saved at once with `PUT
+ * root, the directory with `kartograf-store.json`, and the Obserwator store root, the
+ * directory with `obserwator-store.json`, while the source `obserwator` is available or
+ * the store already has one, SPEC 5.8), project directories, offline mode and the preview
+ * cache limit (with the cache's usage from `/health`), saved at once with `PUT
  * /settings`. The server checks the directories and asks the producer about
  * each new or moved one; anything wrong keeps the settings in effect and
  * comes back as Polish problems per field, shown at the field. The directory a producer
  * itself would use for a store (`default_root` of `GET /sources`) is offered under a
- * store's empty field of that producer (Kartograf, IMGWTools) when it exists and holds the
+ * store's empty field of that producer (Kartograf, Obserwator) when it exists and holds the
  * marker, and is entered only by the person's click. A new store's
  * full scan is started by the server's scheduler (step 6b) and its progress
  * shows in the index banner. The step lives in the address
@@ -29,9 +29,10 @@ import { html, Icon, ProblemView, Spinner, useEffect, useId, useRef, useState } 
 const L = T.setup;
 const STEPS = ["stores", "projects", "mode", "save"];
 const STORE_ID = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-/** Settings fields of problems: `stores[0].kartograf`, `stores[0].imgw`, `project_dirs[1]`. */
+/** Settings fields of problems: `stores[0].kartograf`, `stores[0].obserwator`,
+ * `project_dirs[1]`. */
 const FIELD = /^(stores|project_dirs)\[(\d+)\](?:\.(\w+))?$/;
-const STORE_FIELDS = new Set(["id", "name", "kartograf", "imgw", "kind"]);
+const STORE_FIELDS = new Set(["id", "name", "kartograf", "obserwator", "kind"]);
 const NO_ERRORS = { stores: {}, projects: {}, preview: null, general: [] };
 const LIMIT_GB = { min: 1, max: 10_000 };
 const GIB = 1024 ** 3;
@@ -182,7 +183,7 @@ function Wizard({ initial }) {
 function StoresStep({ draft, change, errors, problem }) {
   const { health } = useApp();
   const roots = useDefaultRoots(
-    draft.stores.some((store) => !store.kartograf.trim() || !store.imgw.trim()),
+    draft.stores.some((store) => !store.kartograf.trim() || !store.obserwator.trim()),
   );
   // The offer of a producer: its default root, unless a store already has it.
   const offered = (producer) => {
@@ -221,14 +222,14 @@ function StoresStep({ draft, change, errors, problem }) {
                 onUse=${() => update(store.key, { kartograf: offered("kartograf").path })} />`
             : null}
         <//>
-        ${imgwOffered(store, health?.sources)
-          ? html`<${TextField} label=${L.store.imgw} hint=${L.store.imgw_hint}
-              value=${store.imgw} mono error=${fieldErrors.imgw}
-              name=${`stores[${index}].imgw`}
-              onInput=${(value) => update(store.key, { imgw: value })}>
-              ${offered("imgw") && !store.imgw.trim()
-                ? html`<${DefaultRootOffer} producer="imgw" root=${offered("imgw")}
-                    onUse=${() => update(store.key, { imgw: offered("imgw").path })} />`
+        ${obserwatorOffered(store, health?.sources)
+          ? html`<${TextField} label=${L.store.obserwator} hint=${L.store.obserwator_hint}
+              value=${store.obserwator} mono error=${fieldErrors.obserwator}
+              name=${`stores[${index}].obserwator`}
+              onInput=${(value) => update(store.key, { obserwator: value })}>
+              ${offered("obserwator") && !store.obserwator.trim()
+                ? html`<${DefaultRootOffer} producer="obserwator" root=${offered("obserwator")}
+                    onUse=${() => update(store.key, { obserwator: offered("obserwator").path })} />`
                 : null}
             <//>`
           : null}
@@ -383,7 +384,7 @@ function SaveStep({ draft, problem, saving }) {
           (store) => html`<div class="summary-store">
             <b>${store.name}</b> <code>${store.id}</code>
             <${SummaryPath} label=${L.summary.kartograf} path=${store.kartograf} />
-            <${SummaryPath} label=${L.summary.imgw} path=${store.imgw} />
+            <${SummaryPath} label=${L.summary.obserwator} path=${store.obserwator} />
             <div class="muted">${store.kind ? T.common.store_kind[store.kind] : L.summary.kind_auto}</div>
           </div>`,
         )}</dd>
@@ -505,7 +506,7 @@ function draftOf(settings) {
     id: store.id,
     name: store.name,
     kartograf: store.kartograf ?? "",
-    imgw: store.imgw ?? "",
+    obserwator: store.obserwator ?? "",
     kind: store.kind ?? "",
     idEdited: true,
     original: store,
@@ -524,7 +525,7 @@ function emptyStore() {
     id: "",
     name: "",
     kartograf: "",
-    imgw: "",
+    obserwator: "",
     kind: "",
     idEdited: false,
     original: null,
@@ -547,7 +548,7 @@ function bodyOf(initial, draft) {
         id: store.id.trim(),
         name: store.name.trim(),
         kartograf: store.kartograf.trim() || null,
-        imgw: store.imgw.trim() || null,
+        obserwator: store.obserwator.trim() || null,
         kind: store.kind || null,
         path_aliases: store.original?.path_aliases ?? {},
       })),
@@ -557,13 +558,14 @@ function bodyOf(initial, draft) {
 }
 
 /**
- * Whether a store's IMGW field is offered: the source `imgw` is available (SPEC 5.8), or the
- * store has a directory already (saved, or typed): a hidden entry would be dropped silently.
+ * Whether a store's Obserwator field is offered: the source `obserwator` is available
+ * (SPEC 5.8), or the store has a directory already (saved, or typed): a hidden entry
+ * would be dropped silently.
  */
-function imgwOffered(store, sources) {
-  const imgw = (sources ?? []).find((source) => source.producer === "imgw");
-  const held = [store.original?.imgw, store.imgw].some((path) => path?.trim());
-  return imgw?.status === "available" || held;
+function obserwatorOffered(store, sources) {
+  const obserwator = (sources ?? []).find((source) => source.producer === "obserwator");
+  const held = [store.original?.obserwator, store.obserwator].some((path) => path?.trim());
+  return obserwator?.status === "available" || held;
 }
 
 function storeErrors(stores, sources) {
@@ -573,8 +575,8 @@ function storeErrors(stores, sources) {
     const found = {};
     const id = store.id.trim();
     if (!store.name.trim()) found.name = L.store.name_required;
-    if (!store.kartograf.trim() && !store.imgw.trim()) {
-      const either = imgwOffered(store, sources);
+    if (!store.kartograf.trim() && !store.obserwator.trim()) {
+      const either = obserwatorOffered(store, sources);
       found.kartograf = either ? L.store.directory_required : L.store.kartograf_required;
     }
     if (!STORE_ID.test(id)) found.id = L.store.id_invalid;

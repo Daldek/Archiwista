@@ -114,7 +114,7 @@ def install_requirement(producer: str) -> str:
         Archiwista's own dependency on a core producer, e.g.
         ``"kartograf@ git+https://github.com/Daldek/Kartograf@<commit>"``;
         otherwise the Archiwista extra named after the producer, e.g.
-        ``"archiwista[imgw]"``.
+        ``"archiwista[obserwator]"``.
     """
     requirement = app_requirement(producer)
     if requirement is not None:

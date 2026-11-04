@@ -1,6 +1,6 @@
-"""The stations of an IMGWTools product in the Catalog (plan I8.2, ADR-045).
+"""The stations of an Obserwator product in the Catalog (plan I8.2, ADR-045).
 
-A product of the producer ``imgw`` lists its stations instead of files: the
+A product of the producer ``obserwator`` lists its stations instead of files: the
 rows are those of ``GET /stations`` (located ones first, then "Bez
 położenia"), along rivers unless the order by name is chosen, a line per
 variable with its label. A station without a position shows the catalog's
@@ -153,11 +153,11 @@ def settled(
 
 
 def test_the_rows_are_those_of_the_api_along_rivers_or_by_name(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Both groups as ``GET /stations`` reads them; "Nazwa" orders by name."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     along, counts = expected(page)
     by_name, _ = expected(page, sort="name")
@@ -191,11 +191,11 @@ def test_the_rows_are_those_of_the_api_along_rivers_or_by_name(
 
 
 def test_stations_without_a_position_show_the_reason_and_no_map_link(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """The group "Bez położenia" is last: the reason, the card, no way to the map."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     rows, counts = expected(page, kind="hydro")
     open_list(page, served, product="hydro")
@@ -230,7 +230,7 @@ def test_stations_without_a_position_show_the_reason_and_no_map_link(
 
 
 def test_the_map_counter_opens_the_group_expanded(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """The map's "N stacji bez położenia" opens the Catalog's group, unfolded.
 
@@ -238,7 +238,7 @@ def test_the_map_counter_opens_the_group_expanded(
     Catalog lists the stations with its series.
     """
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     unlocated = stations(page, kind="hydro", dataset=DAILY, location="none")
     count = unlocated["counts"]["unlocated"]
@@ -266,11 +266,11 @@ def test_the_map_counter_opens_the_group_expanded(
 
 
 def test_above_50_located_stations_the_group_starts_folded(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """With more than 50 located "Bez położenia" is folded until Enter."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     rows, counts = expected(page, kind="hydro")
     many = {**counts, "located": 51}
@@ -307,11 +307,11 @@ def test_above_50_located_stations_the_group_starts_folded(
 
 
 def test_river_and_coverage_filters_change_the_address_and_the_rows(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """A river code with tributaries, then a coverage chip; the hidden count."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     river = {"kind": "hydro", "river_code": "21", "river_scope": "tributaries"}
     tributaries, along = expected(page, **river)
@@ -349,11 +349,11 @@ def test_river_and_coverage_filters_change_the_address_and_the_rows(
 
 
 def test_the_year_type_switch_numbers_the_labels_and_is_remembered(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """The switch "kalendarzowe": the API's labels with ``year_type``, kept."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     hydrological, counts = expected(page, kind="hydro")
     calendar, _ = expected(page, kind="hydro", year_type="calendar")
@@ -396,11 +396,11 @@ def test_the_year_type_switch_numbers_the_labels_and_is_remembered(
 
 
 def test_keys_move_through_the_rows_fold_the_group_open_the_card_and_the_map(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Arrows, Home/End, Enter on "Bez położenia" and on a station (its card), M."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     rows, counts = expected(page)
     first = stations(page, location="with")["items"][0]

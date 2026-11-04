@@ -1,9 +1,9 @@
 """A scan of one segment goes to the producers that own it (ADR 0032, decision 9).
 
 Every test runs real worker processes (``tests.fixtures.job_worker``) on a generated
-Kartograf store and, where a test says so, on a store of IMGWTools beside it or
+Kartograf store and, where a test says so, on a store of Obserwator beside it or
 instead of it, offline. The index knows the owner of a segment from the scan that
-described it; a producer that reads only its whole directory (IMGWTools) cannot scan
+described it; a producer that reads only its whole directory (Obserwator) cannot scan
 one segment, and refuses the job as ``unsupported``.
 """
 
@@ -64,14 +64,14 @@ def test_a_kartograf_store_scans_a_segment_the_index_knows_or_does_not_yet(
             assert (record.result["segment"], record.result["projects"]) == (NMT, None)
 
 
-def test_a_store_of_only_imgw_files_refuses_a_segment_scan_and_scans_whole(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, imgw_store: Stores
+def test_a_store_of_only_obserwator_files_refuses_a_segment_scan_and_scans_whole(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, obserwator_store: Stores
 ) -> None:
-    """A dataset is a label for IMGWTools: the job fails, the index stays as it was."""
+    """A dataset is a label for Obserwator: the job fails, the index stays as it was."""
     # Arrange
-    pytest.importorskip("imgwtools")
+    pytest.importorskip("obserwator")
     with jobs_env(
-        tmp_path, monkeypatch, imgw=imgw_store("complete"), kartograf=False
+        tmp_path, monkeypatch, obserwator=obserwator_store("complete"), kartograf=False
     ) as env:
         whole = env.scan("full")
         indexed = env.state()
@@ -82,10 +82,10 @@ def test_a_store_of_only_imgw_files_refuses_a_segment_scan_and_scans_whole(
         after = env.state()
 
         # Assert
-        assert env.queries.segment_producers(STORE, DATASET) == ("imgw",)
-        assert {producer for producer, _ in _scanned(whole)} == {"imgw"}
-        _refused(refused, env, producer="imgw", segment=DATASET)
-        _refused(unknown, env, producer="imgw", segment=UNKNOWN)
+        assert env.queries.segment_producers(STORE, DATASET) == ("obserwator",)
+        assert {producer for producer, _ in _scanned(whole)} == {"obserwator"}
+        _refused(refused, env, producer="obserwator", segment=DATASET)
+        _refused(unknown, env, producer="obserwator", segment=UNKNOWN)
         assert indexed.slots > 0 and indexed.versions > 0
         assert indexed.indexed_at is not None
         assert (after.slots, after.versions, after.indexed_at) == (
@@ -96,19 +96,24 @@ def test_a_store_of_only_imgw_files_refuses_a_segment_scan_and_scans_whole(
 
 
 def test_a_mixed_store_scans_a_segment_only_through_its_owner(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, imgw_store: Stores
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, obserwator_store: Stores
 ) -> None:
-    """The owner of a Kartograf segment scans it; the IMGW directory is not read."""
+    """The owner of a Kartograf segment scans it; the Obserwator directory is unread."""
     # Arrange
-    pytest.importorskip("imgwtools")
-    with jobs_env(tmp_path, monkeypatch, imgw=imgw_store("complete")) as env:
+    pytest.importorskip("obserwator")
+    with jobs_env(
+        tmp_path, monkeypatch, obserwator=obserwator_store("complete")
+    ) as env:
         whole = env.scan("full")
 
         # Act
         kartograf = env.run("scan", segment=NMT)
-        imgw = env.run("scan", segment=DATASET)
+        obserwator = env.run("scan", segment=DATASET)
 
         # Assert
-        assert {producer for producer, _ in _scanned(whole)} == {"kartograf", "imgw"}
+        assert {producer for producer, _ in _scanned(whole)} == {
+            "kartograf",
+            "obserwator",
+        }
         assert _scanned(kartograf) == [("kartograf", NMT)]
-        _refused(imgw, env, producer="imgw", segment=DATASET)
+        _refused(obserwator, env, producer="obserwator", segment=DATASET)

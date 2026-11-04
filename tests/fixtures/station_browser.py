@@ -1,7 +1,7 @@
-"""IMGWTools fixture stores behind a real ``archiwista serve`` (plan I8).
+"""Obserwator fixture stores behind a real ``archiwista serve`` (plan I8).
 
 The station views show the stations of a copy of a store of
-``imgwtools.testing``: ``complete`` has one located water gauge (Raba Górna,
+``obserwator.testing``: ``complete`` has one located water gauge (Raba Górna,
 on the Raba) and one located precipitation post (Warszawa) beside stations
 without a position; ``complete_pl_cz`` adds the stations of ČHMÚ. The server
 is offline. Helpers start a session, read the API in the interface's
@@ -53,9 +53,9 @@ API_GET = """async (path) => {
 
 def station_settings(source: Path, base: Path) -> AppSettings:
     """Copy a fixture store under ``base``; return offline settings with it."""
-    root = base / "imgw"
+    root = base / "obserwator"
     shutil.copytree(source, root)
-    store = StoreConfig(id=STORE, name="Dane IMGW", imgw=root, kind="local")
+    store = StoreConfig(id=STORE, name="Dane IMGW", obserwator=root, kind="local")
     return AppSettings(offline=True, stores=(store,))
 
 

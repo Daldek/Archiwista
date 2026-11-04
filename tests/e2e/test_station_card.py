@@ -72,11 +72,11 @@ def dialog(page: Page, name: str) -> Locator:
 
 
 def test_a_point_of_the_map_opens_its_card(
-    serve: Serve, tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """The tooltip says a click opens the card; the click opens it (Chromium)."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
     query = f"/map/stations?bbox={WORLD}&dataset={DAILY}&kind=hydro"
     (gauge,) = api(page, query)["items"]
@@ -101,11 +101,11 @@ def test_a_point_of_the_map_opens_its_card(
 
 
 def test_a_row_of_the_list_opens_the_card_and_so_does_its_address(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """A click on a row, ``Esc`` back to the row, the address alone; the IMGW link."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     answer = card_answer(page, RABA)
     page.goto(address(served, view="catalog", product="hydro"))
@@ -150,11 +150,11 @@ def test_a_row_of_the_list_opens_the_card_and_so_does_its_address(
 
 
 def test_esc_at_once_after_a_row_opens_the_card_closes_it(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """``Esc`` before the opened card has rendered still takes it off the address."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     page.goto(address(served, view="catalog", product="hydro"))
     grid = page.get_by_role("grid", name="Lista stacji katalogu")
@@ -181,11 +181,11 @@ def test_esc_at_once_after_a_row_opens_the_card_closes_it(
 
 
 def test_the_header_switch_numbers_the_labels_in_calendar_years(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Switched to calendar years: the API's labels, the address, the preference."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     hydrological = labels_of(card_answer(page, RABA))
     calendar = labels_of(card_answer(page, RABA, year_type="calendar"))
@@ -221,11 +221,11 @@ def test_the_header_switch_numbers_the_labels_in_calendar_years(
 
 
 def test_a_station_without_a_position_has_its_reason_and_no_map_action(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """The catalog's reason, no "Pokaż na mapie"; a located one opens the map on it."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
     located = card_answer(page, RABA)["station"]["location"]
     page.goto(
@@ -259,11 +259,11 @@ def test_a_station_without_a_position_has_its_reason_and_no_map_action(
 
 
 def test_the_formula_and_the_file_path_are_copied_as_the_card_gives_them(
-    serve: Serve, tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """The IMGW formula and the series file's path are copied as given (Chromium)."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
     page.context.grant_permissions(
         ["clipboard-read", "clipboard-write"], origin=served.base
@@ -292,7 +292,7 @@ def test_the_formula_and_the_file_path_are_copied_as_the_card_gives_them(
     expect(card.locator(".fc-attribution")).to_have_text(series["attribution"])
     assert copied == {
         "Kopiuj atrybucję": series["attribution"],
-        "Kopiuj ścieżkę pliku": str(tmp_path / "imgw" / series["file"]),
+        "Kopiuj ścieżkę pliku": str(tmp_path / "obserwator" / series["file"]),
     }
     assert answer["paths"][DAILY]["local"] == copied["Kopiuj ścieżkę pliku"]
     tab.assert_clean()

@@ -2,7 +2,7 @@
  * The stations on the map (docs/SPEC.md 6.7, 4.8.4; plan I8.1, ADR-045).
  *
  * A product whose segments belong to the producer of the station catalogs
- * (`imgw`) is drawn as its stations in place of outlines. A station is a
+ * (`obserwator`) is drawn as its stations in place of outlines. A station is a
  * point whose shape says its type — a triangle for a water gauge, a square
  * for a climatological or synoptic station, a circle for a precipitation
  * post — and whose colour and fill say the coverage state of one variable,
@@ -35,8 +35,8 @@ import { map as L } from "../labels/map.js";
 import { GLYPH_FONT } from "../maplibre.js";
 import { html } from "../ui.js";
 
-/** The producer whose plugin keeps the station catalogs (IMGWTools). */
-export const STATION_PRODUCER = "imgw";
+/** The producer whose plugin keeps the station catalogs (Obserwator). */
+export const STATION_PRODUCER = "obserwator";
 /** Products that are a station kind (`kind` of `GET /map/stations`). */
 export const STATION_KINDS = ["hydro", "meteo"];
 /** Types of a meteo station, the type chips (`meteo_kind`). */

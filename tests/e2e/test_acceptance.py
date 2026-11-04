@@ -905,7 +905,7 @@ def test_acceptance_second_plugin_beside_kartograf(
     expect(card).to_be_visible()
     expect(axis(card)).to_have_count(1)
 
-    assert set(sources) == {"external", "imgw", "kartograf"}
+    assert set(sources) == {"external", "obserwator", "kartograf"}
     assert (
         sources["external"]["status"] == sources["kartograf"]["status"] == "available"
     )

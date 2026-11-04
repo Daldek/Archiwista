@@ -1,9 +1,9 @@
-"""Contract of the series indexes of IMGWTools behind ``SeriesIndexAdapter``.
+"""Contract of the series indexes of Obserwator behind ``SeriesIndexAdapter``.
 
-The IMGW adapter names the dataset whose series a slot is by the producer's
+The Obserwator adapter names the dataset whose series a slot is by the producer's
 own slot key and reads the index of a series version with
-``imgwtools.read_series_index``: what it gives must be what the producer itself
-reads in its offline fixture stores (``imgwtools.testing``), with each
+``obserwator.read_series_index``: what it gives must be what the producer itself
+reads in its offline fixture stores (``obserwator.testing``), with each
 station's series file relative to the store, and a version the producer
 refuses is its error, never coverage.
 """
@@ -14,11 +14,11 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from imgwtools import get_dataset, iter_store, read_series_index
+from obserwator import get_dataset, iter_store, read_series_index
 
-from archiwista.adapter.imgw import load
-from archiwista.adapter.imgw.adapter import ImgwAdapter
 from archiwista.adapter.kartograf import load as load_kartograf
+from archiwista.adapter.obserwator import load
+from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.sources import SeriesIndexAdapter, SourceContext
 
@@ -33,22 +33,22 @@ SERIES_SLOTS = (
 
 
 @pytest.fixture
-def adapter(tmp_path: Path) -> ImgwAdapter:
+def adapter(tmp_path: Path) -> ObserwatorAdapter:
     """Create the adapter with its entry-point factory."""
-    created = load(SourceContext(cache_dir=tmp_path / "cache" / "imgw"))
-    assert isinstance(created, ImgwAdapter)
+    created = load(SourceContext(cache_dir=tmp_path / "cache" / "obserwator"))
+    assert isinstance(created, ObserwatorAdapter)
     return created
 
 
-def _series_version(adapter: ImgwAdapter, root: Path, key: str) -> Path:
+def _series_version(adapter: ObserwatorAdapter, root: Path, key: str) -> Path:
     """Return the current version of a dataset's series, relative to the store."""
     version = adapter.current_version(root, key)
     assert version is not None
     return version
 
 
-def test_only_the_imgw_adapter_has_series_indexes(
-    adapter: ImgwAdapter, tmp_path: Path
+def test_only_the_obserwator_adapter_has_series_indexes(
+    adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """The capability is optional: Kartograf keeps no series of stations."""
     kartograf = load_kartograf(SourceContext(cache_dir=tmp_path / "cache" / "k"))
@@ -59,10 +59,10 @@ def test_only_the_imgw_adapter_has_series_indexes(
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
 def test_the_series_slots_name_their_datasets_and_no_other_slot_does(
-    imgw_store: Stores, adapter: ImgwAdapter, variant: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
     """Every slot of ``iter_store``: a series names its dataset, the others none."""
-    root = imgw_store(variant)
+    root = obserwator_store(variant)
     slots = {
         entry.slot: entry.kind
         for entry in iter_store(root)
@@ -81,10 +81,10 @@ def test_the_series_slots_name_their_datasets_and_no_other_slot_does(
 
 @pytest.mark.parametrize("key", SERIES_SLOTS)
 def test_read_series_index_gives_every_station_the_producer_reads(
-    imgw_store: Stores, adapter: ImgwAdapter, key: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, key: str
 ) -> None:
     """Stations, variables, periods and gaps as the producer's; files in the store."""
-    root = imgw_store("complete_pl_cz")
+    root = obserwator_store("complete_pl_cz")
     version = _series_version(adapter, root, key)
     index = read_series_index(root / version)
     dataset = get_dataset(index.dataset)
@@ -125,10 +125,10 @@ def test_read_series_index_gives_every_station_the_producer_reads(
 
 
 def test_a_station_of_per_station_files_keeps_its_own_periods(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """ČHMÚ: the station's files decide its known periods, the version's do not."""
-    root = imgw_store("complete_pl_cz")
+    root = obserwator_store("complete_pl_cz")
     czech = adapter.read_series_index(
         root, _series_version(adapter, root, "series:cz.chmi.hydro_daily")
     )
@@ -145,11 +145,11 @@ def test_a_station_of_per_station_files_keeps_its_own_periods(
 
 
 def test_a_version_unlike_its_sidecar_is_the_producers_error(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
-    """Same size, other bytes: IMGWTools refuses it and no coverage comes out."""
+    """Same size, other bytes: Obserwator refuses it and no coverage comes out."""
     root = tmp_path / "store"
-    shutil.copytree(imgw_store("complete"), root)
+    shutil.copytree(obserwator_store("complete"), root)
     version = _series_version(adapter, root, "series:pl.imgw.hydro_daily")
     path = root / version
     data = path.read_bytes()
@@ -159,14 +159,14 @@ def test_a_version_unlike_its_sidecar_is_the_producers_error(
     with pytest.raises(ProducerError) as raised:
         adapter.read_series_index(root, version)
 
-    assert raised.value.package == "imgwtools"
+    assert raised.value.package == "obserwator"
 
 
 def test_a_file_that_is_no_series_index_is_the_producers_error(
-    imgw_store: Stores, adapter: ImgwAdapter
+    obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A station catalog is not a series index."""
-    root = imgw_store("complete")
+    root = obserwator_store("complete")
     catalog = _series_version(adapter, root, "catalog:pl.imgw.stations")
 
     with pytest.raises(ProducerError):
@@ -177,11 +177,11 @@ def test_a_file_that_is_no_series_index_is_the_producers_error(
     hasattr(os, "geteuid") and os.geteuid() == 0, reason="root reads any file"
 )
 def test_a_series_index_the_system_cannot_read_is_an_unavailable_store(
-    imgw_store: Stores, adapter: ImgwAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A file without read permission is no verdict of the producer."""
     root = tmp_path / "store"
-    shutil.copytree(imgw_store("complete_pl_cz"), root)
+    shutil.copytree(obserwator_store("complete_pl_cz"), root)
     version = _series_version(adapter, root, "series:cz.chmi.meteo_daily")
     path = root / version
     path.chmod(0)

@@ -148,7 +148,7 @@ def test_api_every_read_route_answers_from_the_index(served: ServedStore) -> Non
     assert sheets["items"][0]["zone"] is None  # PL-1992 has no zones
     assert project["groups"] and project["project"] == projects["items"][0]["project"]
     producers = {item["producer"]: item["status"] for item in sources["items"]}
-    assert list(producers) == ["imgw", "kartograf"]
+    assert list(producers) == ["kartograf", "obserwator"]
     assert producers["kartograf"] == "available"
     assert not page["stale"] and page["stale_stores"] == []
 

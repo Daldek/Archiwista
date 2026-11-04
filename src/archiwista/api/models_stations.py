@@ -1209,9 +1209,11 @@ class StationCard(IndexAnswer):
             "station": _STATION_EXAMPLE,
             "paths": {
                 "pl.imgw.hydro_daily": {
-                    "local": f"/mnt/nas/imgw/{_SERIES_DIR}/stations/149190310.parquet",
+                    "local": (
+                        f"/mnt/nas/obserwator/{_SERIES_DIR}/stations/149190310.parquet"
+                    ),
                     "aliases": [
-                        "Z:\\imgw\\series\\versions\\hydro_daily\\2026-08-31_ab12cd34"
+                        "Z:\\obserwator\\series\\versions\\hydro_daily\\2026-08-31_ab12cd34"
                         "\\stations\\149190310.parquet"
                     ],
                     "personal": None,
@@ -1227,7 +1229,7 @@ class StationCard(IndexAnswer):
             "The station's series file of each dataset (`series[].file`) on this"
             " computer, as mounted on others (path aliases, SPEC 4.6) and through"
             " the person's own (`personal`), by dataset key; none for a store whose"
-            " IMGW directory is no longer configured."
+            " Obserwator directory is no longer configured."
         )
     )
 

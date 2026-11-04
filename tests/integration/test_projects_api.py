@@ -291,7 +291,7 @@ _REFUSED: dict[str, tuple[str, str, dict[str, Any], list[str]]] = {
     "unknown_store": ("PUT", "/projects/raba/stores/kartograf", {"store": "brak"}, []),
     "store_without_producer": (
         "PUT",
-        "/projects/raba/stores/imgw",
+        "/projects/raba/stores/obserwator",
         {"store": STORE},
         [],
     ),

@@ -12,7 +12,7 @@ project's own cause (ERR-1): the codes of earlier versions, such as
 ``session_required``, ``preview_busy`` or ``area_too_large``, are reasons
 now. Other members of ``details`` give the context: ``source`` for an
 unavailable or incompatible producer plugin (with the pip requirement that
-fixes it), ``kartograf`` or ``imgwtools`` for a producer's own error (its
+fixes it), ``kartograf`` or ``obserwator`` for a producer's own error (its
 exception and unchanged message), ``option`` for the option of a command a
 producer or Archiwista refused, ``problems`` for invalid settings, ``job``
 for the job in the way of a ``409 conflict`` (or building the preview of a

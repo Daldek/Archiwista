@@ -67,7 +67,7 @@ def source_list(registry: PluginRegistry) -> SourceList:
     The root and the products are asked of each available plugin that has
     them: unlike ``source_infos``, which the polled ``/health`` uses, this
     asks the producer for its reports (``store_root()`` of Kartograf and
-    IMGWTools: two ``stat`` calls; the products of its catalog).
+    Obserwator: two ``stat`` calls; the products of its catalog).
     """
     items = []
     for info in source_infos(registry):

@@ -556,8 +556,8 @@ def test_config_store_keeps_the_directories_it_has_and_loads_old_files(
     settings = AppSettings(
         stores=(
             make_store("kart", tmp_path / "k"),
-            make_store("imgw", None, imgw=tmp_path / "i"),
-            make_store("both", tmp_path / "b", imgw=tmp_path / "bi"),
+            make_store("obserwator", None, obserwator=tmp_path / "i"),
+            make_store("both", tmp_path / "b", obserwator=tmp_path / "bi"),
         )
     )
     config = ConfigStore(tmp_path / "config.toml")
@@ -571,15 +571,15 @@ def test_config_store_keeps_the_directories_it_has_and_loads_old_files(
     assert config.load() == settings
     assert [store.roots() for store in settings.stores] == [
         {"kartograf": tmp_path / "k"},
-        {"imgw": tmp_path / "i"},
-        {"kartograf": tmp_path / "b", "imgw": tmp_path / "bi"},
+        {"obserwator": tmp_path / "i"},
+        {"kartograf": tmp_path / "b", "obserwator": tmp_path / "bi"},
     ]
-    assert (text.count("kartograf = "), text.count("imgw = ")) == (2, 2)
-    assert loaded.imgw is None and loaded.roots() == {
+    assert (text.count("kartograf = "), text.count("obserwator = ")) == (2, 2)
+    assert loaded.obserwator is None and loaded.roots() == {
         "kartograf": Path("/mnt/nas/kartograf")
     }
     again = AppSettings(stores=(loaded,))
-    assert "imgw" not in dump_settings(again)
+    assert "obserwator" not in dump_settings(again)
     assert parse_settings(tomllib.loads(dump_settings(again))) == again
 
 
@@ -608,36 +608,42 @@ def test_config_store_ignores_a_retired_setting_until_the_next_save(
     assert config.load() == loaded
 
 
-@pytest.mark.parametrize("store", [{}, {"kartograf": None, "imgw": None}])
+@pytest.mark.parametrize("store", [{}, {"kartograf": None, "obserwator": None}])
 def test_config_store_needs_a_directory_and_detects_its_kind_from_any(
     store: dict[str, None],
 ) -> None:
-    """A store with no directory is refused as a whole; IMGW's gives the kind."""
+    """A store with no directory is refused as a whole; Obserwator's gives the kind."""
     with pytest.raises(SettingsValidationError) as error:
         parse_settings({"stores": [{"id": "a", "name": "A", **store}]})
     share = parse_settings(
-        {"stores": [{"id": "a", "name": "A", "imgw": "\\\\nas\\dane\\imgw"}]}
+        {
+            "stores": [
+                {"id": "a", "name": "A", "obserwator": "\\\\nas\\dane\\obserwator"}
+            ]
+        }
     )
 
     problem = error.value.problems[0]
     assert (problem.code, problem.field) == ("invalid_value", "stores[0]")
-    assert "at least one producer directory: kartograf or imgw" in problem.message
+    assert "at least one producer directory: kartograf or obserwator" in problem.message
     assert share.stores[0].kind == "share"
 
 
 def test_config_validate_checks_each_directory_of_a_store_at_its_own_field(
     tmp_path: Path,
 ) -> None:
-    """The IMGW directory is checked like the Kartograf one and named by its field."""
+    """The Obserwator directory is checked like Kartograf's and named by its field."""
     # Arrange
     kartograf = tmp_path / "kartograf"
     kartograf.mkdir()
-    both = AppSettings(stores=(make_store("a", kartograf, imgw=tmp_path / "brak"),))
-    imgw = tmp_path / "imgw"
-    imgw.mkdir()
-    only = AppSettings(stores=(make_store("a", None, imgw=imgw),))
+    both = AppSettings(
+        stores=(make_store("a", kartograf, obserwator=tmp_path / "brak"),)
+    )
+    obserwator = tmp_path / "obserwator"
+    obserwator.mkdir()
+    only = AppSettings(stores=(make_store("a", None, obserwator=obserwator),))
     failing = ProbeRegistry(
-        failing={imgw: SourceState(producer="imgw", status="not_installed")}
+        failing={obserwator: SourceState(producer="obserwator", status="not_installed")}
     )
 
     # Act
@@ -646,11 +652,13 @@ def test_config_validate_checks_each_directory_of_a_store_at_its_own_field(
     refused = validate_settings(only, failing)
 
     # Assert
-    assert [(p.code, p.field) for p in missing] == [("root_missing", "stores[0].imgw")]
-    assert "imgw" in missing[0].message
+    assert [(p.code, p.field) for p in missing] == [
+        ("root_missing", "stores[0].obserwator")
+    ]
+    assert "obserwator" in missing[0].message
     assert accepted == ()
     assert [(p.code, p.field) for p in refused] == [
-        ("source_not_installed", "stores[0].imgw")
+        ("source_not_installed", "stores[0].obserwator")
     ]
 
 
@@ -659,14 +667,14 @@ def test_config_validate_finds_a_directory_inside_a_store_by_its_marker(
 ) -> None:
     """A marker of either producer in an ancestor nests the directory under it."""
     # Arrange
-    imgw_store = _mark(tmp_path / "imgw", "imgw-store.json")
+    obserwator_store = _mark(tmp_path / "obserwator", "obserwator-store.json")
     kartograf_store = _mark(tmp_path / "kartograf", "kartograf-store.json")
-    inside_imgw = imgw_store / "kartograf"
-    inside_kartograf = kartograf_store / "nmt" / "imgw"
-    inside_imgw.mkdir()
+    inside_obserwator = obserwator_store / "kartograf"
+    inside_kartograf = kartograf_store / "nmt" / "obserwator"
+    inside_obserwator.mkdir()
     inside_kartograf.mkdir(parents=True)
     settings = AppSettings(
-        stores=(make_store("a", inside_imgw, imgw=inside_kartograf),)
+        stores=(make_store("a", inside_obserwator, obserwator=inside_kartograf),)
     )
 
     # Act
@@ -675,10 +683,10 @@ def test_config_validate_finds_a_directory_inside_a_store_by_its_marker(
     # Assert
     assert [(p.code, p.field) for p in problems] == [
         ("root_nested", "stores[0].kartograf"),
-        ("root_nested", "stores[0].imgw"),
+        ("root_nested", "stores[0].obserwator"),
     ]
-    assert str(imgw_store) in problems[0].message
-    assert "imgw-store.json" in problems[0].message
+    assert str(obserwator_store) in problems[0].message
+    assert "obserwator-store.json" in problems[0].message
     assert str(kartograf_store) in problems[1].message
     assert "kartograf-store.json" in problems[1].message
 
@@ -697,7 +705,7 @@ def test_config_validate_looks_two_levels_below_a_directory_for_a_store(
     """A store down in the tree is found to the bounded depth, not deeper."""
     # Arrange
     root = _mark(tmp_path / "kartograf", "kartograf-store.json")
-    folder = _mark(root.joinpath(*below), "imgw-store.json")
+    folder = _mark(root.joinpath(*below), "obserwator-store.json")
 
     # Act
     problems = validate_settings(
@@ -717,10 +725,11 @@ def test_config_validate_accepts_stores_beside_each_other_with_their_own_markers
 ) -> None:
     """A marker in the directory itself, or in a sibling's, nests nothing."""
     kartograf = _mark(tmp_path / "data" / "kartograf", "kartograf-store.json")
-    imgw = _mark(tmp_path / "data" / "imgw", "imgw-store.json")
+    obserwator = _mark(tmp_path / "data" / "obserwator", "obserwator-store.json")
 
     problems = validate_settings(
-        AppSettings(stores=(make_store("a", kartograf, imgw=imgw),)), ProbeRegistry()
+        AppSettings(stores=(make_store("a", kartograf, obserwator=obserwator),)),
+        ProbeRegistry(),
     )
 
     assert problems == ()
@@ -731,7 +740,7 @@ def test_config_validate_judges_by_the_real_path_and_enters_no_link(
 ) -> None:
     """A link into a store nests; a link out of a directory is not followed."""
     # Arrange
-    store = _mark(tmp_path / "imgw", "imgw-store.json")
+    store = _mark(tmp_path / "obserwator", "obserwator-store.json")
     inner = store / "kartograf"
     inner.mkdir()
     shortcut = tmp_path / "shortcut"
@@ -761,7 +770,7 @@ def test_config_validate_reads_markers_only_around_new_or_moved_directories(
 ) -> None:
     """Markers are read around new or moved directories only: a share may be gone."""
     # Arrange
-    store = _mark(tmp_path / "imgw", "imgw-store.json")
+    store = _mark(tmp_path / "obserwator", "obserwator-store.json")
     (store / "kartograf").mkdir()
     (store / "other").mkdir()
     saved = AppSettings(stores=(make_store("a", store / "kartograf"),))

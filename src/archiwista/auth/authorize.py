@@ -9,13 +9,14 @@ of a listing at once. Routers and the command line never decide on their
 own: they pass the principal to the services, which ask here.
 
 Rules (v0.1, ``project.write`` since v0.2, ``project.create``,
-``store.scan`` and ``log.read`` since v0.4):
+``store.scan`` and ``log.read`` since v0.4, ``feedback.manage`` with the
+feedback reports):
 
 - ``admin`` manages accounts, groups and settings, scans the stores, reads
-  the action log, sees every project and manages the access and the content
-  of each (``users.manage``, ``groups.manage``, ``settings.write``,
-  ``store.scan``, ``log.read``, ``project.view``, ``project.share``,
-  ``project.write``);
+  the action log and the feedback reports, sees every project and manages
+  the access and the content of each (``users.manage``, ``groups.manage``,
+  ``settings.write``, ``store.scan``, ``log.read``, ``feedback.manage``,
+  ``project.view``, ``project.share``, ``project.write``);
 - every principal acting for a person (the local owner, a ``user``, an
   ``agent``; not the scheduler) creates a project where none is yet
   (``project.create``); the service makes an account that creates one (a
@@ -70,6 +71,7 @@ type Action = Literal[
     "store.scan",
     "job.cancel",
     "log.read",
+    "feedback.manage",
 ]
 
 ACTIONS: tuple[Action, ...] = (
@@ -84,12 +86,20 @@ ACTIONS: tuple[Action, ...] = (
     "store.scan",
     "job.cancel",
     "log.read",
+    "feedback.manage",
 )
 ADMIN = "admin"
 STORE_WRITER = "store_writer"
 
 _ADMIN_ACTIONS: frozenset[Action] = frozenset(
-    {"users.manage", "groups.manage", "settings.write", "store.scan", "log.read"}
+    {
+        "users.manage",
+        "groups.manage",
+        "settings.write",
+        "store.scan",
+        "log.read",
+        "feedback.manage",
+    }
 )
 
 
@@ -221,7 +231,7 @@ class Authorizer:
             ``project.view``, ``project.share``, ``project.write``,
             ``project.create``, ``users.manage``, ``groups.manage``,
             ``settings.write``, ``store.write``, ``store.scan``,
-            ``job.cancel`` or ``log.read``.
+            ``job.cancel``, ``log.read`` or ``feedback.manage``.
         resource : str or None, optional
             For ``project.view``, ``project.share`` and ``project.write``: the
             project's access key (``access_key`` of its directory,

@@ -1,6 +1,6 @@
-"""IMGWTools store reads behind Archiwista's producer-neutral source interface.
+"""Obserwator store reads behind Archiwista's producer-neutral source interface.
 
-Only names of ``imgwtools.__all__`` are used. A scan maps the entries of
+Only names of ``obserwator.__all__`` are used. A scan maps the entries of
 ``iter_store`` to ``SourceEntry`` values: archives, series, station catalogs
 and PMAXTP cells are ``version`` entries, a version or an observation the
 producer cannot read is a ``problem`` with the producer's own problem code,
@@ -8,7 +8,7 @@ and the observation register of an archive slot (a source that republished
 the same content under a new signal) is ``observation`` entries, never
 versions. The producer's own record rides along as the entry's handle.
 
-IMGWTools has no links and cannot scan one segment alone: a slot is the
+Obserwator has no links and cannot scan one segment alone: a slot is the
 directory that holds its versions (``<slot>/<label>_<sha8>/<file>``), named
 by the producer's own slot (``slot_key``, e.g.
 ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``), and an entry's
@@ -17,11 +17,11 @@ by the producer's own slot (``slot_key``, e.g.
 producer declares for it as a product (``hydro``, ``meteo``), which only groups
 the datasets. The versions the index knows (``ScanScope.known_versions``) are
 the ``skip_versions`` of ``iter_store``: they come back ``skipped``, with no
-sidecar read. A slot has no link, so ``current_version`` asks IMGWTools which
+sidecar read. A slot has no link, so ``current_version`` asks Obserwator which
 version of a slot is the current one, ``read_stations`` reads a provider's
 station catalog version with ``read_catalog``, ``read_series_index`` the
 index of a dataset's series version with ``read_series_index`` and
-``read_values`` a station's values from it with ``read_series`` (IMGWTools
+``read_values`` a station's values from it with ``read_series`` (Obserwator
 reads the Parquet file; Archiwista imports no ``pyarrow``). Exceptions of the
 producer surface as ``ProducerError`` with the message unchanged.
 """
@@ -34,11 +34,11 @@ from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import cast
 
-from imgwtools import (
+from obserwator import (
     DatasetDescriptor,
-    IMGWError,
     Meta,
     NormalizedRecord,
+    ObserwatorError,
     SeriesIndex,
     StationCoverage,
     StationFeature,
@@ -58,10 +58,10 @@ from imgwtools import (
     store_info,
     store_root,
 )
-from imgwtools import current_version as current_of_slot
-from imgwtools import read_meta as read_sidecar
+from obserwator import current_version as current_of_slot
+from obserwator import read_meta as read_sidecar
 
-from archiwista.adapter.imgw import PACKAGE, PRODUCER, SCHEMAS
+from archiwista.adapter.obserwator import PACKAGE, PRODUCER, SCHEMAS
 from archiwista.errors import (
     NotFoundError,
     ProducerError,
@@ -93,12 +93,12 @@ from archiwista.sources import (
 from archiwista.sources.markers import STORE_MARKERS, foreign_markers
 
 _MARKER = STORE_MARKERS[PRODUCER]
-# IMGWTools' reason of a version whose call its metadata do not rebuild, and
+# Obserwator's reason of a version whose call its metadata do not rebuild, and
 # the option of a call that names the store root (A-ADR-049 D-10).
 _NOT_REBUILDABLE = "command_not_rebuildable"
 _ROOT = "root"
 # The trees whose presence is the layout of a store, and the state file the
-# server keeps in a default root: IMGWTools' own rules (``init_store``). A
+# server keeps in a default root: Obserwator's own rules (``init_store``). A
 # contract test compares them with its verdicts.
 _LAYOUT = frozenset({"archives", "series", "stations", "pmaxtp"})
 _STATE_FILES = frozenset({"api_keys.json"})
@@ -107,7 +107,7 @@ _STATE_FILES = frozenset({"api_keys.json"})
 _MARKER_REFUSED = frozenset({"invalid_marker", "unsupported_store"})
 # A directory beside the versions of an archive slot: its observation register.
 _REGISTER = "observations"
-# Kinds of a slot ``<kind>:<dataset>[:<selector>]`` (IMGWTools spec 13.7).
+# Kinds of a slot ``<kind>:<dataset>[:<selector>]`` (Obserwator spec 13.7).
 _SLOT_KINDS = frozenset({"archive", "series", "catalog", "pmaxtp"})
 # The last part of the key of a provider's station catalog (``pl.imgw.stations``):
 # a slot of the store that is no dataset of the registry.
@@ -129,7 +129,7 @@ _NO_FLAGS: frozenset[str] = frozenset()
 _NO_DATES: Mapping[str, tuple[datetime | None, datetime | None]] = MappingProxyType({})
 # Trees whose files cover a whole country; the others have no place.
 _COUNTRY_TREES = frozenset({"archives", "series"})
-# The codes of an IMGWTools error that say a slot has no current version, not that
+# The codes of an Obserwator error that say a slot has no current version, not that
 # the store is unusable: a version of the slot is broken (``data_error``) or the
 # producer cannot read the slot (``validation_error``: a link in its path, a key it
 # does not know). ``io_error`` is a file the system cannot read and
@@ -137,13 +137,13 @@ _COUNTRY_TREES = frozenset({"archives", "series"})
 _SLOT_UNREADABLE = frozenset({"data_error", "validation_error"})
 
 
-class ImgwAdapter:
-    """Read an IMGWTools store (its ``--root`` directory) for Archiwista.
+class ObserwatorAdapter:
+    """Read an Obserwator store (its ``--root`` directory) for Archiwista.
 
     Parameters
     ----------
     supported_versions : str
-        IMGWTools versions Archiwista supports, e.g. ``">=3.0.0,<4"``.
+        Obserwator versions Archiwista supports, e.g. ``">=3.0.0,<4"``.
 
     Notes
     -----
@@ -167,7 +167,7 @@ class ImgwAdapter:
         self.supported_versions = supported_versions
 
     def probe(self, root: Path) -> SourceState:
-        """Report whether ``root`` is a readable IMGWTools store.
+        """Report whether ``root`` is a readable Obserwator store.
 
         The marker is judged by its file name and schema (DEV-19.12), the
         other states by the names in the directory.
@@ -175,7 +175,7 @@ class ImgwAdapter:
         Parameters
         ----------
         root : Path
-            The store root: the directory that holds ``imgw-store.json``.
+            The store root: the directory that holds ``obserwator-store.json``.
 
         Returns
         -------
@@ -188,24 +188,24 @@ class ImgwAdapter:
             writes it), ``unsupported_marker`` (another schema or no usable
             marker), ``foreign_store`` (the marker of another producer) or
             ``not_a_store`` (anything else, e.g. the parent of a store);
-            ``error`` when the directory cannot be listed or IMGWTools
+            ``error`` when the directory cannot be listed or Obserwator
             refuses the path.
         """
         try:
             names = frozenset(os.listdir(root))
             info = store_info(root)
-        except (OSError, IMGWError) as error:
+        except (OSError, ObserwatorError) as error:
             return self._state("error", root, detail=str(error))
         if info.supported:
             return self._state("available", root)
         return self._unsupported(root, info, names)
 
     def default_root(self) -> DefaultRoot:
-        """Report the store root IMGWTools uses when a call names none.
+        """Report the store root Obserwator uses when a call names none.
 
-        Read from ``imgwtools.store_root()``: ``IMGW_ROOT``, the same variable
-        in a ``.env`` file, ``[imgw] root`` of ``nogat.toml``, else
-        ``<data_dir>/imgw`` (DEV-19.2). Archiwista names the store in every
+        Read from ``obserwator.store_root()``: ``OBSERWATOR_ROOT``, the same variable
+        in a ``.env`` file, ``[obserwator] root`` of ``nogat.toml``, else
+        ``<data_dir>/obserwator`` (DEV-19.2). Archiwista names the store in every
         call, so it never uses this directory; it is an offer. The report
         looks for one file, the marker, and reads no store.
 
@@ -213,7 +213,7 @@ class ImgwAdapter:
         -------
         DefaultRoot
             The directory, the layer of the settings that gave it, whether it
-            exists and whether it holds ``imgw-store.json``.
+            exists and whether it holds ``obserwator-store.json``.
         """
         default = store_root()
         return DefaultRoot(
@@ -252,7 +252,7 @@ class ImgwAdapter:
             The store cannot be listed or becomes unreadable during the scan
             (e.g. a disconnected share).
         ProducerError
-            IMGWTools refused the path (a link in it, or ``..``).
+            Obserwator refused the path (a link in it, or ``..``).
         ValueError
             A scan of a segment, units or a part was asked for.
         """
@@ -276,7 +276,7 @@ class ImgwAdapter:
         """
         try:
             meta = read_sidecar(Path(entry.store) / entry.relative_path)
-        except IMGWError as error:
+        except ObserwatorError as error:
             raise _failure(entry.store, error) from error
         return _entry_meta(entry.store, entry.relative_path, meta)
 
@@ -302,15 +302,15 @@ class ImgwAdapter:
             its family: the ``kind`` of the registry (``hydro``, ``meteo``),
             for the dataset that has none (PMAXTP) its short name, ``pmaxtp``,
             and ``stations`` for a catalog; ``None`` for a key that is not
-            recognised. IMGWTools has no products, so it only groups the
+            recognised. Obserwator has no products, so it only groups the
             datasets, and the key itself is not read (SPEC 4.2.1).
         """
         return _describe(segment)
 
     def current_version(self, root: Path, slot_key: str) -> Path | None:
-        """Return the current version of a slot, as IMGWTools chooses it.
+        """Return the current version of a slot, as Obserwator chooses it.
 
-        IMGWTools reads every sidecar of the slot: the newest ``Last-Modified``
+        Obserwator reads every sidecar of the slot: the newest ``Last-Modified``
         of an archive and the newest download of a series, a catalog or a PMAXTP
         cell win. A version directory without its sidecar is an interrupted
         publication and is skipped.
@@ -329,7 +329,7 @@ class ImgwAdapter:
             The version's file relative to ``root``. ``None`` when the slot has
             no version, when one of its versions is broken (an invalid
             sidecar, another schema, a size that differs from the sidecar's;
-            a stray file; IMGWTools never chooses an older version in its
+            a stray file; Obserwator never chooses an older version in its
             place, and ``iter_entries`` reports the broken one) and when the
             producer cannot read the slot at all (a link in its path, a key it
             no longer knows): a slot the index still holds from an earlier
@@ -340,13 +340,13 @@ class ImgwAdapter:
         SourceUnavailableError
             The system cannot read a file of the slot.
         ProducerError
-            IMGWTools refused the store itself (it is no longer a store).
+            Obserwator refused the store itself (it is no longer a store).
         """
         try:
             found = current_of_slot(root, slot=slot_key)
         except OSError as error:
             raise _unavailable(str(root), str(error)) from error
-        except IMGWError as error:
+        except ObserwatorError as error:
             if error.code in _SLOT_UNREADABLE:
                 return None
             raise _failure(str(root), error) from error
@@ -383,7 +383,7 @@ class ImgwAdapter:
     def read_stations(self, root: Path, version: Path) -> tuple[Station, ...]:
         """Read every station of a catalog version with ``read_catalog``.
 
-        IMGWTools checks the file against the SHA-256 and size of its sidecar
+        Obserwator checks the file against the SHA-256 and size of its sidecar
         and names the provider from the sidecar. A station without a location
         keeps the catalog's reason.
 
@@ -404,7 +404,7 @@ class ImgwAdapter:
         SourceUnavailableError
             The system cannot read the file.
         ProducerError
-            IMGWTools refused the version: broken, unlike its sidecar, or no
+            Obserwator refused the version: broken, unlike its sidecar, or no
             station catalog.
         """
         path = root / version
@@ -412,7 +412,7 @@ class ImgwAdapter:
             features = read_catalog(path)
         except OSError as error:
             raise _unavailable(str(path), str(error)) from error
-        except IMGWError as error:
+        except ObserwatorError as error:
             raise _failure(str(path), error) from error
         return tuple(_station(feature) for feature in features)
 
@@ -438,13 +438,13 @@ class ImgwAdapter:
             return None
         try:
             return str(get_dataset(dataset).key)
-        except IMGWError:
+        except ObserwatorError:
             return None
 
     def read_series_index(self, root: Path, version: Path) -> SeriesListing:
         """Read the index of a series version with ``read_series_index``.
 
-        IMGWTools checks ``series.json`` against its sidecar and that every
+        Obserwator checks ``series.json`` against its sidecar and that every
         station's series file is there, without reading one. The dataset's
         provider, family, unit and first year come from the registry entry
         the index names.
@@ -467,7 +467,7 @@ class ImgwAdapter:
         SourceUnavailableError
             The system cannot read the file.
         ProducerError
-            IMGWTools refused the version: broken, unlike its sidecar, or no
+            Obserwator refused the version: broken, unlike its sidecar, or no
             series index.
         """
         path = root / version
@@ -476,14 +476,16 @@ class ImgwAdapter:
             dataset = get_dataset(index.dataset)
         except OSError as error:
             raise _unavailable(str(path), str(error)) from error
-        except IMGWError as error:
+        except ObserwatorError as error:
             raise _failure(str(path), error) from error
         unit = _SERIES_UNITS.get(dataset.time_unit)
         if unit is None:
             text = message(
-                "source.imgw_series_unit", dataset=dataset.key, unit=dataset.time_unit
+                "source.obserwator_series_unit",
+                dataset=dataset.key,
+                unit=dataset.time_unit,
             )
-            raise ProducerError(PACKAGE, "IMGWDataError", text)
+            raise ProducerError(PACKAGE, "ObserwatorDataError", text)
         directory = PurePosixPath(version.as_posix()).parent
         return _series_listing(index, dataset, directory, unit)
 
@@ -499,7 +501,7 @@ class ImgwAdapter:
     ) -> Iterator[SeriesValues]:
         """Yield a station's values of a series version with ``read_series``.
 
-        IMGWTools checks the index against its sidecar and the station's
+        Obserwator checks the index against its sidecar and the station's
         Parquet file against the index before the first unit. A unit the
         builder filled in, a gap or a unit that is not known, is ``missing``:
         its value ``None``.
@@ -530,7 +532,7 @@ class ImgwAdapter:
         SourceUnavailableError
             The system cannot read a file of the version.
         ProducerError
-            IMGWTools refused the version, a variable or the range.
+            Obserwator refused the version, a variable or the range.
         """
         path = root / version
         try:
@@ -540,10 +542,10 @@ class ImgwAdapter:
                 yield _series_values(record)
         except OSError as error:
             raise _unavailable(str(path), str(error)) from error
-        except IMGWError as error:
+        except ObserwatorError as error:
             if error.details.get("option") == "station":
                 text = message(
-                    "source.imgw_series_station", station=station, version=version
+                    "source.obserwator_series_station", station=station, version=version
                 )
                 raise NotFoundError(text) from error
             raise _failure(str(path), error) from error
@@ -565,11 +567,11 @@ class ImgwAdapter:
         -------
         str or None
             Its key; ``None`` when the registry has none or several, and for a
-            dataset IMGWTools does not know or one without a family.
+            dataset Obserwator does not know or one without a family.
         """
         try:
             descriptor = get_dataset(dataset)
-        except IMGWError:
+        except ObserwatorError:
             return None
         if descriptor.kind is None:
             return None
@@ -585,7 +587,7 @@ class ImgwAdapter:
     def extremes_of(self, dataset: str, variable: str) -> Mapping[Extreme, str]:
         """Return the characteristics that hold a variable's extremes.
 
-        IMGWTools names the characteristics of a variable after it and their
+        Obserwator names the characteristics of a variable after it and their
         statistic (``Q_min``, ``Q_mean``, ``Q_max``: the variables of its
         registry); one is an extreme of the variable when the characteristics
         dataset holds it in the variable's unit. No disk access.
@@ -623,7 +625,7 @@ class ImgwAdapter:
         entry : SourceEntry
             An entry of ``iter_entries`` or one rebuilt from the index.
         network : bool, default False
-            Ignored: IMGWTools needs no request to place a file.
+            Ignored: Obserwator needs no request to place a file.
 
         Returns
         -------
@@ -643,16 +645,16 @@ class ImgwAdapter:
         return "IMGW"
 
     def command_for_version(self, version: str, *, root: Path) -> CommandCall:
-        """Return the call that selects a stored version again (IMGWTools').
+        """Return the call that selects a stored version again (Obserwator's).
 
-        IMGWTools rebuilds it offline from the version's sidecar and the
+        Obserwator rebuilds it offline from the version's sidecar and the
         store's layout; its store root (``options["root"]``) is no option of
         the producer-neutral call, whose caller names the configured store.
 
         Raises
         ------
         UnsupportedError
-            IMGWTools cannot rebuild the call (``unsupported``, reason
+            Obserwator cannot rebuild the call (``unsupported``, reason
             ``command_not_rebuildable``), its text unchanged.
         ProducerError
             Any other refusal (``not_found``, ``data_error``,
@@ -660,7 +662,7 @@ class ImgwAdapter:
         """
         try:
             call = command_for_version(version, root=root)
-        except IMGWError as error:
+        except ObserwatorError as error:
             details = dict(error.details)
             if (
                 error.code == "unsupported"
@@ -704,12 +706,12 @@ class ImgwAdapter:
     def _unsupported(
         self, root: Path, info: StoreInfo, names: frozenset[str]
     ) -> SourceState:
-        """Judge a directory IMGWTools does not read, by the codes of ``store_info``.
+        """Judge a directory Obserwator does not read, by the codes of ``store_info``.
 
         ``invalid_marker`` and ``unsupported_store`` are a marker the producer
         refuses. ``missing_marker`` is one code for the layout of a store
         without its marker and for a directory that is no store, and
-        ``imgw-store.json`` of another producer is a marker it does not know,
+        ``obserwator-store.json`` of another producer is a marker it does not know,
         so the names in the directory tell those apart.
         """
         codes = frozenset(info.problem_codes)
@@ -717,7 +719,7 @@ class ImgwAdapter:
             return self._state("error", root, detail="; ".join(info.problems))
         if codes & _MARKER_REFUSED:
             text = message(
-                "source.imgw_unsupported_marker",
+                "source.obserwator_unsupported_marker",
                 found=info.schema or message("source.schema_unknown"),
                 expected=SCHEMAS[0],
             )
@@ -729,18 +731,18 @@ class ImgwAdapter:
             (name for name in foreign_markers(PRODUCER) if name in names), None
         )
         if foreign is not None:
-            detail = message("source.imgw_foreign_store", marker=foreign)
+            detail = message("source.obserwator_foreign_store", marker=foreign)
             return self._state(
                 "incompatible", root, detail=detail, reason="foreign_store"
             )
         if names & _LAYOUT:
-            hint = f"imgw store init --root {shlex.quote(str(root))}"
-            detail = message("source.imgw_no_marker", hint=hint)
+            hint = f"obserwator store init --root {shlex.quote(str(root))}"
+            detail = message("source.obserwator_no_marker", hint=hint)
             return self._state(
                 "incompatible", root, detail=detail, reason="no_marker", hint=hint
             )
         if names - _STATE_FILES:
-            detail = message("source.imgw_not_store")
+            detail = message("source.obserwator_not_store")
             return self._state(
                 "incompatible", root, detail=detail, reason="not_a_store"
             )
@@ -757,12 +759,12 @@ class ImgwAdapter:
                 yield _source_entry(store, base, entry)
         except OSError as error:
             raise _unavailable(store, str(error)) from error
-        except IMGWError as error:
+        except ObserwatorError as error:
             raise _failure(store, error) from error
 
 
 def _source_entry(store: str, base: Path, entry: StoreEntry) -> SourceEntry:
-    """IMGWTools' entry as a producer-neutral one, paths relative to the root."""
+    """Obserwator's entry as a producer-neutral one, paths relative to the root."""
     path = base if entry.version is None else entry.version
     relative = path.relative_to(base)
     kind = _kind(entry)
@@ -874,7 +876,7 @@ def _describe(segment: str) -> SourceSegment:
     """Describe a dataset key: a registry dataset, a station catalog, or none."""
     try:
         dataset = get_dataset(segment)
-    except IMGWError:
+    except ObserwatorError:
         pass
     else:
         country = get_provider(dataset.provider).country
@@ -883,7 +885,9 @@ def _describe(segment: str) -> SourceSegment:
         return SourceSegment(segment, family, country, dataset.key, title, True)
     for provider in providers():
         if segment == f"{provider.key_prefix}.{_CATALOG}":
-            name = message("source.imgw_catalog", "pl", provider=provider.short_name)
+            name = message(
+                "source.obserwator_catalog", "pl", provider=provider.short_name
+            )
             return SourceSegment(
                 segment, _CATALOG, provider.country, segment, str(name), True
             )
@@ -902,7 +906,7 @@ def _polish(text: str) -> str:
 
 
 def _entry_meta(store: str, relative: Path, meta: Meta) -> EntryMeta:
-    """Producer-neutral metadata from a parsed ``imgw-meta/1`` sidecar."""
+    """Producer-neutral metadata from a parsed ``obserwator-meta/1`` sidecar."""
     version = _mapping(meta.extra.get("version"))
     period = _mapping(meta.extra.get("period"))
     return EntryMeta(
@@ -931,7 +935,7 @@ def _entry_meta(store: str, relative: Path, meta: Meta) -> EntryMeta:
 
 
 def _raw_sidecar(meta: Meta) -> dict[str, object]:
-    """Return the sidecar as IMGWTools parsed it, for display.
+    """Return the sidecar as Obserwator parsed it, for display.
 
     ``Meta`` does not keep the text of the file, so this is the document of
     its fields, not the file.
@@ -1061,7 +1065,9 @@ def _series_values(record: NormalizedRecord) -> SeriesValues:
     )
 
 
-def _failure(where: str, error: IMGWError) -> ProducerError | SourceUnavailableError:
+def _failure(
+    where: str, error: ObserwatorError
+) -> ProducerError | SourceUnavailableError:
     """Return the Archiwista error for a producer's own.
 
     A file the system cannot read (``io_error``) is an unavailable store;

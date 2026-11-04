@@ -6,7 +6,7 @@ local owner's in local mode. A path alias is validated (an absolute prefix on
 the server, at most 20 of them) and changes only ``personal`` of the copy
 paths a person is shown: no route reaches a file through one. How the year
 types number the station routes is ``test_year_types.py``'s (it needs
-IMGWTools).
+Obserwator).
 """
 
 from collections.abc import Iterator

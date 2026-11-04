@@ -1,5 +1,5 @@
 /**
- * The stations of a product of the station producer (`imgw`) in the Catalog
+ * The stations of a product of the station producer (`obserwator`) in the Catalog
  * (docs/SPEC.md 6.8, sketch 6.5 m; plan I8.2, ADR-045): `GET /stations` page
  * by page (200 rows, the cursor) with the filters of the address, along
  * rivers unless the address asks for the order by name (`sort`).

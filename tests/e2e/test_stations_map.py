@@ -1,6 +1,6 @@
-"""The stations of an IMGWTools product on the map (plan I8.1, ADR-045).
+"""The stations of an Obserwator product on the map (plan I8.1, ADR-045).
 
-A product of the producer ``imgw`` shows its stations in place of outlines:
+A product of the producer ``obserwator`` shows its stations in place of outlines:
 a point's tooltip names the station, its type and river and labels every
 variable of the chosen dataset; far stations at a low zoom form a neutral
 cluster that zooms in on a click, stations at one position spread around it
@@ -86,11 +86,11 @@ def between(first: dict[str, Any], second: dict[str, Any]) -> tuple[float, float
 
 
 def test_the_tooltip_of_a_water_gauge_labels_each_variable(
-    serve: Serve, tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Centred on the water gauge: its name, type, river and H, Q, T (Chromium)."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
     query = f"/map/stations?bbox={WORLD}&dataset={DAILY}&kind=hydro"
     (gauge,) = api(page, query)["items"]
@@ -116,11 +116,11 @@ def test_the_tooltip_of_a_water_gauge_labels_each_variable(
 
 
 def test_far_stations_at_a_low_zoom_form_a_cluster_that_zooms_in(
-    serve: Serve, tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Raba Górna and Warszawa at zoom 2 are one cluster; a click zooms in."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
     lon, lat = between(*located(page))
     open_stations(page, served, product="stations", center=f"{lon},{lat}", zoom="2")
@@ -140,11 +140,11 @@ def test_far_stations_at_a_low_zoom_form_a_cluster_that_zooms_in(
 
 
 def test_stations_at_one_position_spread_around_their_cluster(
-    serve: Serve, tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """A cluster that cannot fall apart spreads its stations until ``Esc``."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
     first, second = located(page)
     lon, lat = float(first["lon"]), float(first["lat"])
@@ -185,11 +185,11 @@ def test_stations_at_one_position_spread_around_their_cluster(
 
 
 def test_above_the_limit_the_cells_are_drawn_and_fit_on_click(
-    serve: Serve, tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """``limit=1``: the grid's cells are neutral circles that fit on a click."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
     lon, lat = between(*located(page))
 
@@ -231,11 +231,11 @@ def test_above_the_limit_the_cells_are_drawn_and_fit_on_click(
 
 
 def test_legend_counter_and_chips_stand_beside_the_map(
-    serve: Serve, engine_tab: Tab, imgw_store: Stores, tmp_path: Path
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Shapes and fills by text, the unlocated counter, "Kolor punktów", datasets."""
     # Arrange
-    served = serve(station_settings(imgw_store("complete_pl_cz"), tmp_path))
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
     answer = api(page, "/stations/datasets")
     datasets = [item["dataset"] for item in answer["items"] if item["kind"] == "hydro"]

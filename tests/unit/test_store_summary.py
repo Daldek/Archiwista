@@ -175,12 +175,12 @@ def test_store_summary_names_the_producer_each_problem_belongs_to(
     write_pass(writer, [problem(stray, "unknown_segment", segment=NMT, slot=None)])
     folder = "archives/stray"
     writer.write_segments(
-        STORE, "imgw", [SourceSegment(folder, None, None, None, folder, False)]
+        STORE, "obserwator", [SourceSegment(folder, None, None, None, folder, False)]
     )
-    writer.begin_pass(STORE, "imgw", segment=None, slots=None, full=False)
+    writer.begin_pass(STORE, "obserwator", segment=None, slots=None, full=False)
     other = replace(
         problem(f"{folder}/x", "unknown_segment", segment=folder, slot=None),
-        producer="imgw",
+        producer="obserwator",
     )
     writer.write_entries([other])
     writer.finish_pass()
@@ -190,15 +190,15 @@ def test_store_summary_names_the_producer_each_problem_belongs_to(
         Path("/projekty/Wisla"),
         "Wisła",
         store=STORE,
-        producer="imgw",
-        pins=[pin(absent, sha(9), producer="imgw")],
+        producer="obserwator",
+        pins=[pin(absent, sha(9), producer="obserwator")],
         group="pomiary",
     )
     config = StoreConfig(
         id=STORE,
         name="Zespół",
         kartograf=Path(ROOT),
-        imgw=Path("/mnt/nas/imgw"),
+        obserwator=Path("/mnt/nas/obserwator"),
         kind="share",
     )
 
@@ -208,15 +208,15 @@ def test_store_summary_names_the_producer_each_problem_belongs_to(
     # Assert
     by_path = {p.path: p for p in problems}
     assert "kartograf" in by_path[stray].message
-    assert "imgw" in by_path[other.relative_path.as_posix()].message
+    assert "obserwator" in by_path[other.relative_path.as_posix()].message
     assert "kartograf" not in by_path[other.relative_path.as_posix()].message
-    assert "with the imgw command" in by_path[absent].instruction
+    assert "with the obserwator command" in by_path[absent].instruction
 
 
 def test_store_summary_words_a_version_without_a_sidecar_for_its_producer(
     index: tuple[IndexWriter, IndexQueries],
 ) -> None:
-    """In IMGWTools it is a download in progress; its other codes keep their texts."""
+    """In Obserwator it is a download in progress; its other codes keep their texts."""
     # Arrange
     writer, queries = index
     leftover = slot_path(NMT, "M-34-1-C")
@@ -225,14 +225,14 @@ def test_store_summary_words_a_version_without_a_sidecar_for_its_producer(
     )
     folder = "pl.imgw.hydro_daily"
     writer.write_segments(
-        STORE, "imgw", [SourceSegment(folder, None, "PL", folder, "Dane", True)]
+        STORE, "obserwator", [SourceSegment(folder, None, "PL", folder, "Dane", True)]
     )
-    writer.begin_pass(STORE, "imgw")
+    writer.begin_pass(STORE, "obserwator")
     writer.write_entries(
         [
             replace(
                 problem(f"archives/{code}", code, segment=folder, slot=None),
-                producer="imgw",
+                producer="obserwator",
             )
             for code in ("missing_sidecar", "unknown_schema", "invalid_json")
         ]
@@ -247,9 +247,11 @@ def test_store_summary_words_a_version_without_a_sidecar_for_its_producer(
     by_path = {p.path: p for p in problems}
     kartograf = by_path[leftover]
     assert "delete the leftover" in kartograf.instruction
-    imgw = by_path["archives/missing_sidecar"]
-    assert "download in progress" in imgw.message
-    assert "temporary" in imgw.instruction and "delete" not in imgw.instruction
+    obserwator = by_path["archives/missing_sidecar"]
+    assert "download in progress" in obserwator.message
+    assert (
+        "temporary" in obserwator.instruction and "delete" not in obserwator.instruction
+    )
     schema = by_path["archives/unknown_schema"]
     assert "schema" in schema.message and "newer version" in schema.instruction
     assert "Store problem (invalid_json)" in by_path["archives/invalid_json"].message

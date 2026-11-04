@@ -258,29 +258,29 @@ def test_first_run_wizard_offers_the_default_root_and_enters_it_on_a_click(
 def test_first_run_wizard_offers_both_default_roots_each_under_its_own_field(
     serve: Serve, tab: Tab, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Kartograf's and IMGWTools' stores are offered, each entered by its own click."""
-    imgwtools = pytest.importorskip("imgwtools")
+    """Kartograf's and Obserwator's stores are offered, each entered by a click."""
+    producer = pytest.importorskip("obserwator")
     store = make_store(tmp_path / "store", slots=24, seed=7)
-    imgw_root = tmp_path / "imgw"
-    imgwtools.init_store(imgw_root)
+    obserwator_root = tmp_path / "obserwator"
+    producer.init_store(obserwator_root)
     monkeypatch.setenv("KARTOGRAF_ROOT", str(store.root))
-    monkeypatch.setenv("IMGW_ROOT", str(imgw_root))
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(obserwator_root))
     served = serve()
     page = tab.page
     open_shell(page, served.token_url())
     kartograf = page.get_by_label("Katalog Kartografa")
-    imgw = page.get_by_label("Katalog IMGWTools")
+    obserwator = page.get_by_label("Katalog Obserwatora")
     kartograf_offer = page.get_by_text("Kartograf zapisuje domyślnie w katalogu")
-    imgw_offer = page.get_by_text("IMGWTools zapisuje domyślnie w katalogu")
+    obserwator_offer = page.get_by_text("Obserwator zapisuje domyślnie w katalogu")
 
     expect(kartograf_offer).to_contain_text(str(store.root))
-    expect(imgw_offer).to_contain_text(str(imgw_root))
-    expect(imgw_offer).to_contain_text("zmienna IMGW_ROOT")
-    expect(imgw).to_have_value("")  # offered, not entered
+    expect(obserwator_offer).to_contain_text(str(obserwator_root))
+    expect(obserwator_offer).to_contain_text("zmienna OBSERWATOR_ROOT")
+    expect(obserwator).to_have_value("")  # offered, not entered
     page.get_by_role("button", name="Użyj tego katalogu").nth(1).click()
-    expect(imgw).to_have_value(str(imgw_root))
+    expect(obserwator).to_have_value(str(obserwator_root))
     expect(kartograf).to_have_value("")
-    expect(imgw_offer).to_have_count(0)  # it is entered: nothing left to offer
+    expect(obserwator_offer).to_have_count(0)  # it is entered: nothing left to offer
     expect(kartograf_offer).to_have_count(1)
     tab.assert_clean()
 

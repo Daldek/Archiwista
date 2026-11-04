@@ -88,9 +88,9 @@ from archiwista.services import series_chart
 from archiwista.sources import GeoJSONGeometry, SeriesValuesAdapter
 from archiwista.sources.registry import PluginRegistry
 
-# The producer whose plugin keeps the station catalogs and series (IMGWTools,
+# The producer whose plugin keeps the station catalogs and series (Obserwator,
 # for IMGW-PIB and ČHMÚ): without it the stations are not shown (SPEC 5.8).
-STATION_PRODUCER = "imgw"
+STATION_PRODUCER = "obserwator"
 
 router = APIRouter(tags=["stations"])
 
@@ -113,8 +113,8 @@ def require_station_source(registry: PluginRegistry) -> None:
     Raises
     ------
     SourceStateError
-        ``503``: IMGWTools is not installed (``missing_dependency``, reason
-        ``source_unavailable``, the fix ``pip install "archiwista[imgw]"``),
+        ``503``: Obserwator is not installed (``missing_dependency``, reason
+        ``source_unavailable``, the fix ``pip install "archiwista[obserwator]"``),
         does not fit or failed to load; the stations the index still holds
         are not shown (SPEC 5.8).
     """
@@ -555,7 +555,7 @@ def _read_chart(
     Raises
     ------
     NotFoundError
-        The station's store has no IMGWTools directory configured.
+        The station's store has no Obserwator directory configured.
     SourceUnavailableError, ProducerError
         The producer could not read the series.
     """
@@ -824,7 +824,7 @@ def list_stations(
     counts them after the other filters, `location=none` lists them. The
     coverage filters (`coverage`, `min_complete_years`) need `dataset`;
     `counts.hidden` says how many stations they hide. `503` while the source
-    of the stations (IMGWTools) is not available.
+    of the stations (Obserwator) is not available.
     """
     return station_list(queries, settings.get(), preferences, registry, filters)
 
@@ -848,7 +848,7 @@ def list_station_datasets(
     default, the label of its current series version and the distinct
     variables of its stations' series (`variables`, the first being the
     default colour of the map's points). `503` while the source of the
-    stations (IMGWTools) is not available.
+    stations (Obserwator) is not available.
     """
     return station_datasets(queries, settings.get(), preferences, registry, query)
 
@@ -875,7 +875,7 @@ def list_stations_timeline(
     `unknown`). `variable` (repeatable) keeps the stations with a value of
     each variable, and only their years. The years of the whole page are read
     from the index at once, never from a series file. `503` while the source
-    of the stations (IMGWTools) is not available.
+    of the stations (Obserwator) is not available.
     """
     return station_timeline_page(
         queries, settings.get(), preferences, registry, filters
@@ -906,7 +906,7 @@ def compare_stations(
     series or the variable has `null` for both ("brak danych"). `400`
     (reason `unknown_variable`) when no station's series has the variable,
     `404` when none of them has a series of the dataset; `503` while the
-    source of the stations (IMGWTools) is not available.
+    source of the stations (Obserwator) is not available.
     """
     return station_comparison(queries, settings.get(), preferences, registry, query)
 

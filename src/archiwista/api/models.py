@@ -514,7 +514,7 @@ _STORE_SETTINGS_EXAMPLE = {
     "id": _STORE,
     "name": "Zespół",
     "kartograf": "/mnt/nas/kartograf/data",
-    "imgw": "/mnt/nas/imgw",
+    "obserwator": "/mnt/nas/obserwator",
     "kind": "share",
     "path_aliases": {"/mnt/nas/": "Z:\\"},
 }
@@ -550,7 +550,7 @@ class ProblemDetails(BaseModel):
     ``preview_busy``) and does not depend on the language of the ``detail``. Other
     members of ``details`` give the context: ``source`` (an unavailable
     producer plugin and the pip requirement fixing it), ``kartograf`` or
-    ``imgwtools`` (the producer's exception and its unchanged message),
+    ``obserwator`` (the producer's exception and its unchanged message),
     ``problems`` (invalid settings, field by field), ``job`` (``id``,
     ``kind``, ``state`` of the job in the way of a ``409 conflict``),
     ``preview_reason`` (why a file has no preview), ``blocked_by`` (why a
@@ -1758,17 +1758,17 @@ class SourceInfo(BaseModel):
     model_config = _examples(
         _SOURCE_EXAMPLE,
         {
-            "producer": "imgw",
+            "producer": "obserwator",
             "status": "not_installed",
             "package_version": None,
             "supported_versions": None,
             "schemas": [],
-            "detail": message("plugin.module_missing", "en", module="imgwtools"),
+            "detail": message("plugin.module_missing", "en", module="obserwator"),
             "message": with_detail(
-                message("doctor.source_not_installed", "en", producer="imgw"),
-                message("plugin.module_missing", "en", module="imgwtools"),
+                message("doctor.source_not_installed", "en", producer="obserwator"),
+                message("plugin.module_missing", "en", module="obserwator"),
             ),
-            "fix": message("fix.install", "en", requirement="archiwista[imgw]"),
+            "fix": message("fix.install", "en", requirement="archiwista[obserwator]"),
         },
     )
 
@@ -2292,7 +2292,7 @@ class ScanRequest(BaseModel):
         description=(
             "Only this segment (`<product>/<variant>`, see /products); the"
             " whole store and its projects when omitted. A data source that reads"
-            " only its whole directory (IMGWTools: a segment is a dataset, a label)"
+            " only its whole directory (Obserwator: a segment is a dataset, a label)"
             " cannot scan one segment: the job fails with `unsupported`."
         ),
     )
@@ -3352,15 +3352,16 @@ class StoreSettings(BaseModel):
         description=(
             "Kartograf's store root: the directory that holds kartograf-store.json"
             " and the product directories (usually called data). Left out when the"
-            " store has only `imgw`; one of the two is required."
+            " store has only `obserwator`; one of the two is required."
         ),
     )
-    imgw: str | None = Field(
+    obserwator: str | None = Field(
         default=None,
         description=(
-            "IMGWTools' store root, the directory that holds `imgw-store.json`. Left"
-            " out when the store has only `kartograf`; a new or moved directory needs"
-            " the source `imgw` to be available (`GET /sources`)."
+            "Obserwator's store root, the directory that holds"
+            " `obserwator-store.json`. Left out when the store has only `kartograf`; a"
+            " new or moved directory needs the source `obserwator` to be available"
+            " (`GET /sources`)."
         ),
     )
     kind: StoreKind | None = Field(
@@ -3379,7 +3380,7 @@ class StoreSettings(BaseModel):
             id=store.id,
             name=store.name,
             kartograf=None if store.kartograf is None else str(store.kartograf),
-            imgw=None if store.imgw is None else str(store.imgw),
+            obserwator=None if store.obserwator is None else str(store.obserwator),
             kind=store.kind,
             path_aliases=dict(store.path_aliases),
         )

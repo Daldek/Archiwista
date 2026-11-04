@@ -256,7 +256,7 @@ export const map = {
     fan_title: "Warstwy lat obszaru na łuku: każda w całości, wybrana powiększona",
     catalog_title: "Katalog z tymi samymi filtrami: lista plików albo oś czasu",
   },
-  /** The stations of an IMGWTools product on the map (map/stations.js; SPEC 6.7, 4.8.4). */
+  /** The stations of an Obserwator product on the map (map/stations.js; SPEC 6.7, 4.8.4). */
   stations: {
     kind: {
       hydro: "wodowskaz",

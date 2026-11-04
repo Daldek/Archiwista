@@ -229,7 +229,7 @@
  * @property {string} [blocked_by] - Why a snapshot cannot be made now.
  * @property {string[]} [layers] - The layers of an area file to choose from.
  * @property {{exception: string, message: string}} [kartograf] - The producer's own
- *   error (`imgwtools` and other producers likewise).
+ *   error (`obserwator` and other producers likewise).
  */
 
 // Index state (9a: /health, /sources, /stores) -------------------------------
@@ -1613,9 +1613,9 @@
  * @property {string} name
  * @property {string|null} [kartograf] - Kartograf's store root: the directory that holds
  *   `kartograf-store.json` and the product directories (usually called `data`); null when
- *   the store has only `imgw`.
- * @property {string|null} [imgw] - IMGWTools' store root, the directory with
- *   `imgw-store.json`; null when the store has only `kartograf`. One of the two is
+ *   the store has only `obserwator`.
+ * @property {string|null} [obserwator] - Obserwator's store root, the directory with
+ *   `obserwator-store.json`; null when the store has only `kartograf`. One of the two is
  *   required.
  * @property {StoreKind|null} [kind] - `local` or `share`; detected from the file system
  *   when omitted.
@@ -1820,7 +1820,7 @@
  * @typedef {object} ScanRequest
  * @property {"incremental"|"full"} [mode] - Default `incremental`.
  * @property {string} [segment] - Only this segment (Kartograf: `<product>/<variant>`);
- *   a data source that reads only its whole directory (IMGWTools) fails the job as
+ *   a data source that reads only its whole directory (Obserwator) fails the job as
  *   `unsupported`.
  */
 
@@ -2660,6 +2660,63 @@
  *   producer tells; null when it tells none of them, never 0 for unknown.
  * @property {boolean} size_complete - Every position to download has its size.
  * @property {CallPlan[]} calls - In the order of the job's calls.
+ */
+
+/**
+ * A report of „Zgłoś uwagę” (`POST /feedback`): Hydrograf's limits.
+ *
+ * @typedef {object} FeedbackRequest
+ * @property {string} message - 1 to 5,000 characters; blank is refused.
+ * @property {string|null} [contact] - A name or an e-mail address, at most 200.
+ * @property {string|null} [page_url] - The page's address, at most 500.
+ * @property {FeedbackDiagnostics|null} [diagnostics] - At most 100,000 characters
+ *   of compact JSON.
+ */
+
+/**
+ * What „Dołącz dane diagnostyczne” attaches (diagnostics.js `snapshot`); the
+ * server keeps any JSON object as sent.
+ *
+ * @typedef {object} FeedbackDiagnostics
+ * @property {Array<{t: string, type: string, data: Object<string, *>}>} events -
+ *   `api_call` (method, endpoint, status, duration_ms; code and reason of a
+ *   refusal; repeat and last of a call made again) and `js_error` (message,
+ *   source, stack), the oldest first.
+ * @property {{view: string|null, params: Object<string, string>}} view
+ * @property {Object<string, *>} env - userAgent, language, viewport, url,
+ *   timestamp, version, mode.
+ */
+
+/**
+ * @typedef {object} FeedbackCreated
+ * @property {number} id - The report's number.
+ * @property {"ok"} status
+ */
+
+/**
+ * A report as an administrator reads it (`GET /admin/feedback`).
+ *
+ * @typedef {object} FeedbackItem
+ * @property {number} id - A later report has a greater number.
+ * @property {string} created_at - When it was sent.
+ * @property {string|null} user_id - The account that sent it; null for the owner
+ *   of a local installation.
+ * @property {string} message
+ * @property {string|null} contact
+ * @property {string|null} page_url
+ * @property {string|null} user_agent
+ * @property {Object<string, *>|null} diagnostics - As the person's browser sent
+ *   it: any JSON object, shown as text only.
+ * @property {boolean} is_read
+ */
+
+/**
+ * A page of the reports, newest first.
+ *
+ * @typedef {object} FeedbackList
+ * @property {FeedbackItem[]} items
+ * @property {number} total - Every report, all pages together.
+ * @property {number} unread_count - Those nobody marked read.
  */
 
 export {};

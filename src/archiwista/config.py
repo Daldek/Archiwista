@@ -93,7 +93,7 @@ DEFAULT_PROJECT_VISIBILITIES: tuple[DefaultProjectVisibility, ...] = (
 _STORE_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 # Producers whose directory a store can name, in the order of its settings: the
 # first one found decides the detected kind and the order of ``roots()``.
-STORE_PRODUCERS = ("kartograf", "imgw")
+STORE_PRODUCERS = ("kartograf", "obserwator")
 
 
 class SourceRegistryView(Protocol):
@@ -219,8 +219,8 @@ class StoreConfig(BaseModel):
     kartograf : Path or None
         Store root of Kartograf: the directory that holds ``kartograf-store.json``
         and the product directories (usually called ``data``).
-    imgw : Path or None
-        IMGWTools store root, the directory that holds ``imgw-store.json``.
+    obserwator : Path or None
+        Obserwator store root, the directory that holds ``obserwator-store.json``.
         At least one of the two directories is required; one of them left out
         is ``None``, never an empty path.
     kind : {"local", "share"}
@@ -235,7 +235,7 @@ class StoreConfig(BaseModel):
     id: str
     name: str
     kartograf: AbsolutePath | None = None
-    imgw: AbsolutePath | None = None
+    obserwator: AbsolutePath | None = None
     kind: StoreKind
     path_aliases: dict[str, str] = Field(default_factory=dict)
 
@@ -281,7 +281,7 @@ class StoreConfig(BaseModel):
 
     def roots(self) -> dict[str, Path]:
         """Return the configured producer directories keyed by producer id."""
-        found = {"kartograf": self.kartograf, "imgw": self.imgw}
+        found = {"kartograf": self.kartograf, "obserwator": self.obserwator}
         return {producer: root for producer, root in found.items() if root is not None}
 
     def local_path(self, path: str) -> Path:

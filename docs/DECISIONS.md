@@ -12,6 +12,9 @@ versioned store).
 
 From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` (DOC-8.2); this file keeps ADR-001 to 029 and the index of all of them.
 
+IMGWTools, the producer of the IMGW data, is called Obserwator since 2026-11-03 (Nogat
+ECO-057); the decisions keep the names of their time, and ADR-032 erratum 2 maps them.
+
 **Status vocabulary** (the `**Status:**` line of each entry):
 - `accepted`: the decision is in force;
 - `proposed`: recorded in the spec, waiting for the user's decision (an open question or a mockup is indicated);
@@ -55,7 +58,7 @@ From ADR-030 on, each decision is a separate file `docs/decisions/NNNN-slug.md` 
 | [ADR-029](#adr-029-store-write-role-and-project-sharing) | Store write role and project sharing | 2026-10-18 | accepted (user decision; amends ADR-013; permissions model from v0.1; erratum 1: the own data folder is set by an administrator until v0.4; erratum 2: the data folder by its owner, scans, LDAP/AD groups deferred, v0.4) |
 | [ADR-030](decisions/0030-adopt-the-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | 2026-10-25 | proposed (accepted when the author approves and merges `chore/nogat-2.1`) |
 | [ADR-031](decisions/0031-judge-the-store-marker-in-the-adapter.md) | Judge the store marker in the adapter, and refuse a store without one | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-014) |
-| [ADR-032](decisions/0032-imgwtools-source.md) | The IMGWTools source: one adapter, the extra, read first | 2026-10-25 | accepted, partly superseded by ADR-049 (decision 14: a project is its directory, with the manifest of each producer); amends ADR-019 and ADR-024; the plan's approval is delegated; erratum 1: ADR-049 |
+| [ADR-032](decisions/0032-imgwtools-source.md) | The IMGWTools source: one adapter, the extra, read first | 2026-10-25 | accepted, partly superseded by ADR-049 (decision 14: a project is its directory, with the manifest of each producer); amends ADR-019 and ADR-024; the plan's approval is delegated; erratum 1: ADR-049; erratum 2: IMGWTools is called Obserwator, and the extra, plugin, settings field, marker and ids follow (ECO-057) |
 | [ADR-033](decisions/0033-offer-the-default-root-in-the-wizard.md) | Offer the producer's default root in the wizard, and never use it | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-034](decisions/0034-producer-commands-as-data.md) | The producers' commands as data, an optional capability of the adapters | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
 | [ADR-035](decisions/0035-availability-at-the-source.md) | The availability at the source, a job with a stored report | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a row's lines are planned by one job (ADR-044) |

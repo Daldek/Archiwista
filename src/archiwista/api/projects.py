@@ -938,7 +938,7 @@ _JOB_UNSUPPORTED: dict[int | str, dict[str, Any]] = {
                 "schema": {"$ref": "#/components/schemas/ProblemDetails"},
                 "example": problem_example(
                     "unsupported",
-                    message("command.no_commands", "en", producer="imgw"),
+                    message("command.no_commands", "en", producer="obserwator"),
                     reason="no_commands",
                 ),
             }

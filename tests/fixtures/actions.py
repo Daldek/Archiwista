@@ -1,7 +1,7 @@
 """The stand-in producer's actions on a configured store (plan 2026-10-25, A4).
 
 A store's settings name only the directories of the producers Archiwista
-configures (Kartograf's, IMGW's). ``StandinStore`` gives the stand-in
+configures (Kartograf's, Obserwator's). ``StandinStore`` gives the stand-in
 (``tests/fixtures/action_source``) the store's Kartograf directory in the test's
 own process, and ``standin_in_settings`` does it for every store the API and
 the commands of a test load; the settings reach a worker process as JSON, so

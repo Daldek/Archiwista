@@ -1,10 +1,10 @@
 """Coverage labels of the fixture series from the index alone (plan I5, SPEC 4.8.4).
 
 The table of edge cases worked out by hand from the series of the producer's
-own fixture store (``imgwtools.testing``): continuous, with gaps, without a
+own fixture store (``obserwator.testing``): continuous, with gaps, without a
 value, a year unknown because a ČHMÚ station has no file for it (not a gap),
 a variable with an accumulated sum, hydro and meteo in both year types. Every
-test makes IMGWTools refuse to read a series, so a label that needed one would
+test makes Obserwator refuse to read a series, so a label that needed one would
 fail: they come from ``station_series`` and ``series_years`` only.
 """
 
@@ -13,8 +13,8 @@ from collections.abc import Callable, Iterator
 from datetime import date
 from pathlib import Path
 
-import imgwtools
-import imgwtools.store.reader
+import obserwator
+import obserwator.store.reader
 import pytest
 
 from archiwista.api.models_stations import series_label_text
@@ -38,17 +38,17 @@ type Coverage = Callable[..., StationCoverage]
 
 @pytest.fixture(scope="module")
 def index(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+    obserwator_store: Stores, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[Path]:
     """Return the index of a copy of ``complete_pl_cz`` after a full scan."""
     base = tmp_path_factory.mktemp("labels")
     root = base / "store"
-    shutil.copytree(imgw_store("complete_pl_cz"), root)
-    config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+    shutil.copytree(obserwator_store("complete_pl_cz"), root)
+    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
     path = base / "index.sqlite"
     with IndexWriter(path) as writer:
         writer.sync_stores({STORE: config.roots()})
-        adapter = load_registry(cache_dir=base / "cache").adapter("imgw")
+        adapter = load_registry(cache_dir=base / "cache").adapter("obserwator")
         scan_store(adapter, writer, AppSettings(stores=(config,)), STORE, mode="full")
     yield path
 
@@ -60,8 +60,8 @@ def coverage(index: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Coverage]
     def refuse(*args: object, **kwargs: object) -> None:
         raise AssertionError("a label must not read a series")
 
-    monkeypatch.setattr(imgwtools, "read_series", refuse)
-    monkeypatch.setattr(imgwtools.store.reader, "read_series", refuse)
+    monkeypatch.setattr(obserwator, "read_series", refuse)
+    monkeypatch.setattr(obserwator.store.reader, "read_series", refuse)
     with IndexQueries(index) as queries:
 
         def coverage_(

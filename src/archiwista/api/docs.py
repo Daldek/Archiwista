@@ -91,6 +91,10 @@ _TAGS = [
     {"name": "session", "description": "One-time tokens and the session."},
     {"name": "permissions", "description": "Accounts, groups, project access."},
     {"name": "log", "description": "The action log and its export (administrators)."},
+    {
+        "name": "feedback",
+        "description": "Feedback reports: sent by any session, read by administrators.",
+    },
 ]
 _PAGE = """\
 <!doctype html>

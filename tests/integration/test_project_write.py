@@ -47,8 +47,8 @@ WRITES: dict[Who, bool | None] = {
     "other": None,
     "admin": True,
 }
-# A change refused after the permission: the store has no IMGW directory.
-PROBE = "/projects/{key}/stores/imgw"
+# A change refused after the permission: the store has no Obserwator directory.
+PROBE = "/projects/{key}/stores/obserwator"
 
 
 @dataclass(frozen=True)

@@ -1,12 +1,13 @@
 /**
  * The shell around the views (mockup layout): the top bar with the stores,
- * the downloads in the background, the link to the user guide and the
- * session — on a team server the account menu (`AccountMenu`) —, the
- * navigation (a rail on a computer, a bar at the bottom of a phone), the
- * index state banner, the current view of the address and the overlays
- * opened over it, and over all of them the plan windows, the list of
- * downloads and their toasts (downloads.js). Views and overlays come from
- * `routes.js`; the first run, without any store, opens the wizard.
+ * the downloads in the background, „Zgłoś uwagę” (feedback.js), the link to
+ * the user guide and the session — on a team server the account menu
+ * (`AccountMenu`) —, the navigation (a rail on a computer, a bar at the
+ * bottom of a phone), the index state banner, the current view of the
+ * address and the overlays opened over it, and over all of them the plan
+ * windows, the list of downloads and their toasts (downloads.js). Views and
+ * overlays come from `routes.js`; the first run, without any store, opens the
+ * wizard.
  */
 
 import { endSession, endSessionLabel, issueToken, listSessions, readSession } from "./api.js";
@@ -19,6 +20,7 @@ import {
   DownloadToasts,
   PlanWindows,
 } from "./downloads.js";
+import { FeedbackButton } from "./feedback.js";
 import { stamp } from "./format.js";
 import { account as A } from "./labels/account.js";
 import { T, t } from "./labels/index.js";
@@ -183,6 +185,7 @@ function TopBar({ onSessionChange, onSignOut }) {
     <div class="top-actions">
       <${DownloadsIndicator} />
       <${SearchButton} />
+      <${FeedbackButton} />
       <${GuideLink} />
       ${session.team
         ? html`<${AccountMenu} session=${session} onSessionChange=${onSessionChange} onSignOut=${onSignOut} />`

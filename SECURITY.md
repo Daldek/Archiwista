@@ -19,10 +19,10 @@ otherwise.
 ## Scope
 
 Archiwista is a local web server (by default `127.0.0.1` only) that reads the
-data stores of Kartograf and, later, IMGWTools and renders previews of files it
+data stores of Kartograf and, later, Obserwator and renders previews of files it
 finds there. Reports about the session, token and CSRF protection, the
 permissions model (roles, groups, project visibility), the handling of paths
 and of area files, the isolation of the processes that read and render files,
 the local state database, or the supply chain of the package are in scope. The
-producers (Kartograf, IMGWTools) and the third-party libraries have their own
+producers (Kartograf, Obserwator) and the third-party libraries have their own
 policies; report their defects to them.

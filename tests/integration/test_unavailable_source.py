@@ -3,8 +3,8 @@
 The directory of an unavailable source is skipped by the scans and stays in the
 settings; the store's other directories are scanned and probed as before, and a
 store whose every source is unavailable starts no scan. Every test runs real
-worker processes on a generated Kartograf store; the IMGWTools package looks
-not installed, so the source ``imgw`` is ``not_installed`` everywhere.
+worker processes on a generated Kartograf store; the Obserwator package looks
+not installed, so the source ``obserwator`` is ``not_installed`` everywhere.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -31,12 +31,12 @@ def _scans(jobs: tuple[JobRecord, ...]) -> list[JobRecord]:
 def test_scan_and_probe_go_on_without_the_directory_of_an_unavailable_source(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The Kartograf directory is scanned and probed; the IMGW entry stays."""
+    """The Kartograf directory is scanned and probed; the Obserwator entry stays."""
     # Arrange
-    hide_packages(monkeypatch, "imgwtools")
-    imgw = tmp_path / "imgw"
-    imgw.mkdir()
-    with jobs_env(tmp_path, monkeypatch, imgw=imgw) as env:
+    hide_packages(monkeypatch, "obserwator")
+    obserwator = tmp_path / "obserwator"
+    obserwator.mkdir()
+    with jobs_env(tmp_path, monkeypatch, obserwator=obserwator) as env:
         registry = load_registry(cache_dir=env.paths.cache_dir)
         scheduler = ScanScheduler(
             env.jobs, env.settings, registry, index_path=env.paths.index_file
@@ -66,9 +66,9 @@ def test_scan_and_probe_go_on_without_the_directory_of_an_unavailable_source(
     assert [(item["level"], item["code"]) for item in notices] == [
         ("warning", "source_skipped")
     ]
-    assert "imgw" in str(notices[0]["message"])
+    assert "obserwator" in str(notices[0]["message"])
     assert second.state == "succeeded"
-    assert kept == {"kartograf": env.store.root, "imgw": imgw}
+    assert kept == {"kartograf": env.store.root, "obserwator": obserwator}
     assert (indexed.status, indexed.slots > 0) == ("available", True)
 
 
@@ -77,10 +77,10 @@ def test_store_of_only_unavailable_sources_starts_no_scan(
 ) -> None:
     """Nothing can scan the store: the scheduler leaves it alone."""
     # Arrange
-    hide_packages(monkeypatch, "imgwtools")
-    imgw = tmp_path / "imgw"
-    imgw.mkdir()
-    with jobs_env(tmp_path, monkeypatch, imgw=imgw, kartograf=False) as env:
+    hide_packages(monkeypatch, "obserwator")
+    obserwator = tmp_path / "obserwator"
+    obserwator.mkdir()
+    with jobs_env(tmp_path, monkeypatch, obserwator=obserwator, kartograf=False) as env:
         registry = load_registry(cache_dir=env.paths.cache_dir)
         scheduler = ScanScheduler(
             env.jobs, env.settings, registry, index_path=env.paths.index_file

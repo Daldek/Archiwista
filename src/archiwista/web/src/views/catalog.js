@@ -6,7 +6,7 @@
  * `layout=timeline`, the product's layers as variants × years
  * (views/catalog-timeline.js), the chosen one in the right panel
  * „Szczegóły zestawu” (views/set-details.js). A product of the station
- * producer (`imgw`, `GET /products`) is listed as its stations instead
+ * producer (`obserwator`, `GET /products`) is listed as its stations instead
  * (views/catalog-stations.js, plan I8.2), or as `layout=timeline` as the
  * years of one dataset's stations (views/catalog-station-timeline.js, plan
  * I8.3), with the fields of `GET /stations` in the filter panel.

@@ -80,7 +80,12 @@ DOCUMENT: dict[str, Any] = {
             },
             "pins": [
                 {**PIN, "version": "a/b.asc", "content_sha256": OTHER_SHA},
-                {**PIN, "producer": "imgw", "version": "hydro/x.csv", "unit": None},
+                {
+                    **PIN,
+                    "producer": "obserwator",
+                    "version": "hydro/x.csv",
+                    "unit": None,
+                },
             ],
         },
     ],
@@ -231,7 +236,7 @@ BROKEN: list[tuple[Change, str, str]] = [
         "pin_unique",
     ),
     (
-        lambda d: _pin(d).update(producer="imgw"),
+        lambda d: _pin(d).update(producer="obserwator"),
         "/groups/0/pins/0/producer",
         "plan_producer",
     ),
@@ -274,7 +279,7 @@ def test_project_document_parse_document_reads_every_member() -> None:
     assert local.origin.selections[1].query is None
     assert [(pin.producer, pin.unit) for pin in local.pins] == [
         ("kartograf", "N-34-130-D-d-2-4"),
-        ("imgw", None),
+        ("obserwator", None),
     ]
     assert local.pins[0].content_sha256 == OTHER_SHA
 

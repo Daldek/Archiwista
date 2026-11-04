@@ -27,8 +27,12 @@
  * registry, `details.reason` the project's own cause; a `401`, or a `403` with
  * the reason `csrf_rejected`, of any request after the start goes to the
  * `onSessionLost` listeners, so the shell can say how to open a new session.
+ * Every answer, and a request no answer came to, is kept among the events of
+ * the diagnostics „Zgłoś uwagę” may attach (diagnostics.js `recordCall`): its
+ * method, address, status and duration, never its body or headers.
  */
 
+import { recordCall } from "./diagnostics.js";
 import { T, t } from "./labels/index.js";
 
 /** @typedef {import("./types.js").Problem} Problem */
@@ -109,6 +113,10 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").PinsRequest} PinsRequest */
 /** @typedef {import("./types.js").GroupRequest} GroupRequest */
 /** @typedef {import("./types.js").PinOutcome} PinOutcome */
+/** @typedef {import("./types.js").FeedbackRequest} FeedbackRequest */
+/** @typedef {import("./types.js").FeedbackCreated} FeedbackCreated */
+/** @typedef {import("./types.js").FeedbackList} FeedbackList */
+/** @typedef {import("./types.js").FeedbackItem} FeedbackItem */
 
 /**
  * Abort a read: every function takes these options last.
@@ -665,7 +673,7 @@ export function listSheets(query, { signal } = {}) {
  * @param {{store?: string}} [query]
  * @param {RequestOptions} [options]
  * @returns {Promise<StationDatasets>}
- * @throws {ApiError} `503 missing_dependency` without IMGWTools.
+ * @throws {ApiError} `503 missing_dependency` without Obserwator.
  */
 export function listStationDatasets(query = {}, { signal } = {}) {
   return request("GET", "/stations/datasets", { query, signal });
@@ -679,7 +687,7 @@ export function listStationDatasets(query = {}, { signal } = {}) {
  * @param {RequestOptions} [options]
  * @returns {Promise<StationList>}
  * @throws {ApiError} `400` (a coverage filter without `dataset`, a cursor of
- *   another query), `503 missing_dependency` without IMGWTools.
+ *   another query), `503 missing_dependency` without Obserwator.
  */
 export function listStations(filters, { signal } = {}) {
   return request("GET", "/stations", { query: filters, signal });
@@ -694,7 +702,7 @@ export function listStations(filters, { signal } = {}) {
  * @param {RequestOptions} [options]
  * @returns {Promise<StationTimelinePage>}
  * @throws {ApiError} `400` (no `dataset`, a cursor of another query),
- *   `503 missing_dependency` without IMGWTools.
+ *   `503 missing_dependency` without Obserwator.
  */
 export function listStationTimeline(filters, { signal } = {}) {
   return request("GET", "/stations/timeline", { query: filters, signal });
@@ -707,7 +715,7 @@ export function listStationTimeline(filters, { signal } = {}) {
  * @param {StationMapFilters} filters
  * @param {RequestOptions} [options]
  * @returns {Promise<StationMapView>}
- * @throws {ApiError} `503 missing_dependency` without IMGWTools.
+ * @throws {ApiError} `503 missing_dependency` without Obserwator.
  */
 export function listMapStations(filters, { signal } = {}) {
   return request("GET", "/map/stations", { query: filters, signal });
@@ -722,7 +730,7 @@ export function listMapStations(filters, { signal } = {}) {
  * @param {RequestOptions} [options]
  * @returns {Promise<StationCard>}
  * @throws {ApiError} `404` (no such station), `400 ambiguous_station`,
- *   `503 missing_dependency` without IMGWTools.
+ *   `503 missing_dependency` without Obserwator.
  */
 export function getStation(code, lookup, { signal } = {}) {
   return request("GET", `/stations/${one(code)}`, { query: lookup, signal });
@@ -738,7 +746,7 @@ export function getStation(code, lookup, { signal } = {}) {
  * @param {RequestOptions} [options]
  * @returns {Promise<StationChart>}
  * @throws {ApiError} `404` (no such station or series), `400` (a variable the
- *   series lacks, a reversed range), `503 missing_dependency` without IMGWTools.
+ *   series lacks, a reversed range), `503 missing_dependency` without Obserwator.
  */
 export function getStationSeries(code, query, { signal } = {}) {
   return request("GET", `/stations/${one(code)}/series`, { query, signal });
@@ -754,7 +762,7 @@ export function getStationSeries(code, query, { signal } = {}) {
  * @returns {Promise<StationComparison>}
  * @throws {ApiError} `400` (one or more than five stations, a variable no
  *   station has, a reversed range), `404` (no such station, none with a series
- *   of the dataset), `503 missing_dependency` without IMGWTools.
+ *   of the dataset), `503 missing_dependency` without Obserwator.
  */
 export function compareStations(query, { signal } = {}) {
   return request("GET", "/stations/compare", { query, signal });
@@ -1870,6 +1878,54 @@ export function putProjectAccess(project, change) {
   return request("PUT", `/projects/${one(project)}/access`, { json: change });
 }
 
+/**
+ * Send a report of „Zgłoś uwagę” (`POST /feedback`; any session).
+ *
+ * @param {FeedbackRequest} report
+ * @returns {Promise<FeedbackCreated>}
+ * @throws {ApiError} `400 validation_error`: a description blank or over 5,000
+ *   characters, a contact over 200, diagnostics over 100,000 as JSON.
+ */
+export function submitFeedback(report) {
+  return request("POST", "/feedback", { json: report });
+}
+
+/**
+ * A page of the reports, newest first, with the counts of all and of the
+ * unread ones (`GET /admin/feedback`; administrators).
+ *
+ * @param {{limit?: number, offset?: number}} [page]
+ * @param {RequestOptions} [options]
+ * @returns {Promise<FeedbackList>}
+ * @throws {ApiError} `403 permission_denied` for anyone but an administrator.
+ */
+export function listFeedback(page = {}, { signal } = {}) {
+  return request("GET", "/admin/feedback", { query: page, signal });
+}
+
+/**
+ * Mark a report read or unread (`PATCH /admin/feedback/{id}`; administrators).
+ *
+ * @param {number} id
+ * @param {{is_read: boolean}} change
+ * @returns {Promise<FeedbackItem>} The report as changed.
+ * @throws {ApiError} `404 not_found` (reason `feedback_not_found`) for a deleted one.
+ */
+export function updateFeedback(id, change) {
+  return request("PATCH", `/admin/feedback/${one(String(id))}`, { json: change });
+}
+
+/**
+ * Delete a report for good (`DELETE /admin/feedback/{id}`; administrators).
+ *
+ * @param {number} id
+ * @returns {Promise<null>}
+ * @throws {ApiError} `404 not_found` (reason `feedback_not_found`) for a deleted one.
+ */
+export function deleteFeedback(id) {
+  return request("DELETE", `/admin/feedback/${one(String(id))}`);
+}
+
 // Helpers ---------------------------------------------------------------------
 
 /** The CSRF token this tab keeps, or `null`. */
@@ -1907,15 +1963,22 @@ async function send(method, address, { headers, body, signal }) {
   const token = storedToken();
   if (token !== null) headers[CSRF_HEADER] = token;
   headers["Accept-Language"] = LANGUAGE;
+  const started = performance.now();
   let response;
   try {
     response = await fetch(address, { method, headers, body, signal, credentials: "same-origin" });
   } catch (error) {
     if (error?.name === "AbortError") throw error;
-    throw new ApiError(networkProblem());
+    const problem = networkProblem();
+    recordCall(method, address, 0, started, problem);
+    throw new ApiError(problem);
   }
-  if (response.ok) return response;
+  if (response.ok) {
+    recordCall(method, address, response.status, started);
+    return response;
+  }
   const problem = await readProblem(response);
+  recordCall(method, address, response.status, started, problem);
   const refused = problem.status === 401 || problem.details?.reason === "csrf_rejected";
   if (refused && current !== null && storedToken() === token) {
     current = null;

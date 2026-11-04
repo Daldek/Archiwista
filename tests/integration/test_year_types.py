@@ -7,7 +7,7 @@ the data's family when ``year_type`` is absent, a list of both families by
 hydro's, and a given ``year_type`` wins without changing the preference.
 Half-year characteristics stay hydrological, and one person's choice is not
 another's. The index is a scanned copy of ``complete``
-(``imgwtools.testing``) with a synthetic half-year series of Raba Górna,
+(``obserwator.testing``) with a synthetic half-year series of Raba Górna,
 which the fixture stores lack.
 """
 
@@ -83,7 +83,7 @@ def _half_years(writer: IndexWriter) -> None:
     folder = "series/versions/hydro_semiannual"
     writer.replace_series(
         STORE,
-        "imgw",
+        "obserwator",
         slot=folder,
         version=f"{folder}/2026-10-26_00000000/series.json",
         listing=SeriesListing(
@@ -109,21 +109,21 @@ def _half_years(writer: IndexWriter) -> None:
 
 @pytest.fixture(scope="module")
 def served(
-    imgw_store: Stores, tmp_path_factory: pytest.TempPathFactory
+    obserwator_store: Stores, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[Served]:
     """Serve the index of a copy of ``complete`` with the half-year series."""
     base = tmp_path_factory.mktemp("year-types")
     root = base / "store"
-    shutil.copytree(imgw_store("complete"), root)
+    shutil.copytree(obserwator_store("complete"), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", imgw=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores({STORE: config.roots()})
-        scan_store(registry.adapter("imgw"), writer, settings, STORE, mode="full")
+        scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
         _half_years(writer)
     with running_api(paths, registry) as api:
         add_people(api.state)

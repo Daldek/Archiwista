@@ -196,32 +196,34 @@ def test_marker_probe_refuses_a_marker_that_is_no_store_document(
         kartograf.init_store(root)
 
 
-def test_marker_probe_refuses_the_root_of_an_imgw_store(
+def test_marker_probe_refuses_the_root_of_an_obserwator_store(
     adapter: KartografAdapter, root: Path
 ) -> None:
     """The marker of another tool makes the root foreign, as Kartograf says."""
     # Arrange
-    (root / "imgw-store.json").write_text('{"schema": "imgw-store/1"}', "utf-8")
+    (root / "obserwator-store.json").write_text(
+        '{"schema": "obserwator-store/1"}', "utf-8"
+    )
 
     # Act
     refused = adapter.probe(root)
 
     # Assert
     assert _verdict(refused) == ("incompatible", "foreign_store")
-    assert refused.detail is not None and "imgw-store.json" in refused.detail
+    assert refused.detail is not None and "obserwator-store.json" in refused.detail
     with pytest.raises(kartograf.ConflictError) as raised:
         kartograf.init_store(root)
     assert raised.value.reason == "nested_store"  # a store never holds another
 
 
-def test_marker_probe_refuses_an_imgw_root_that_has_no_other_file(
+def test_marker_probe_refuses_an_obserwator_root_that_has_no_other_file(
     adapter: KartografAdapter, tmp_path: Path
 ) -> None:
-    """A root with the marker of IMGW and nothing else is foreign, not new."""
+    """A root with the marker of Obserwator and nothing else is foreign, not new."""
     # Arrange
-    foreign = tmp_path / "imgw"
+    foreign = tmp_path / "obserwator"
     foreign.mkdir()
-    (foreign / "imgw-store.json").write_text("{}", "utf-8")
+    (foreign / "obserwator-store.json").write_text("{}", "utf-8")
 
     # Act
     refused = adapter.probe(foreign)

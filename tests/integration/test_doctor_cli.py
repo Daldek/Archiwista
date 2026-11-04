@@ -47,7 +47,7 @@ def test_doctor_cli_reports_installed_kartograf_plugin(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "[OK] Wtyczka kartograf: wersja 0.8.0" in result.stdout
-    assert "] Wtyczka imgw: " in result.stdout
+    assert "] Wtyczka obserwator: " in result.stdout
     assert not (tmp_path / "config").exists()
 
 
@@ -65,18 +65,18 @@ def test_doctor_cli_names_the_default_store_root_of_kartograf(
     assert producer_canary.appeared() == []
 
 
-def test_doctor_cli_names_the_default_store_root_of_imgw(
+def test_doctor_cli_names_the_default_store_root_of_obserwator(
     tmp_path: Path, producer_canary: Canary
 ) -> None:
-    """The root IMGWTools would use, and the variable that gave it, are printed."""
-    pytest.importorskip("imgwtools")
+    """The root Obserwator would use, and the variable that gave it, are printed."""
+    pytest.importorskip("obserwator")
 
     result = _doctor(tmp_path)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert (
-        "[OK] Wtyczka imgw: domyślny katalog główny magazynu"
-        f" {producer_canary.imgw_root} (zmienna IMGW_ROOT; nie istnieje)"
+        "[OK] Wtyczka obserwator: domyślny katalog główny magazynu"
+        f" {producer_canary.obserwator_root} (zmienna OBSERWATOR_ROOT; nie istnieje)"
     ) in result.stdout
     assert producer_canary.appeared() == []
 

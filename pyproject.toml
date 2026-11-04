@@ -11,20 +11,21 @@ requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Piotr de Bever", email = "git@debever.pl" }]
 dependencies = [
-    # Commit of the Kartograf branch `feature/archiwista-projects` (REL-5.3): the
+    # Commit of the Kartograf branch `develop` (REL-5.3): the
     # store root `root`, the marker `kartograf-store.json`, the default root
     # (`store_root()`), `kartograf.testing` (ADR-054), `find_sheet_outlines`
     # (PL-2000 zones of powiats, Kartograf ADR-055), the refresh TTL of the
     # metadata cache with the index answers shared by the availability report and
     # the plans (Kartograf ADR-056), `store_state()`, Kartograf without
     # projects, with `command_for_file` (KB-6, Kartograf ADR-057; A-ADR-049),
-    # and `--geometry` selecting by the features' shape, GeoJSON accepted
-    # (Kartograf ADR-058; A-ADR-035 erratum 2) (Archiwista's requests) have no
-    # release yet; the commit is on GitHub.
+    # `--geometry` selecting by the features' shape, GeoJSON accepted
+    # (Kartograf ADR-058; A-ADR-035 erratum 2) (Archiwista's requests), and the
+    # marker `obserwator-store.json` of another tool's store (Nogat ECO-057) have
+    # no release yet; the commit is on GitHub.
     # The release pull request replaces the commit with the tag (REL-2.1) and
     # narrows `SUPPORTED_VERSIONS` to `>=0.8.0` (REL-5.6). The versions the
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`.
-    "kartograf @ git+https://github.com/Daldek/Kartograf@eab8612d5666cafa43d1e2c4f0a034583310b66e",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@9deaa314c88f89ea2d9308481e0c0b04751fc792",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
@@ -55,13 +56,14 @@ dependencies = [
 
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
-# catalogs of an IMGWTools store. The commit is the head of the IMGWTools branch
-# `feature/archiwista-projects` (REL-5.3), which has the default root (`store_root()`),
-# no projects and `command_for_version` (IMGW-21, A-ADR-049); the release pull request
-# replaces it with the tag `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
-# adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.imgw`.
-imgw = [
-    "imgwtools[store] @ git+https://github.com/Daldek/IMGWTools@8cd6844c493d27e6a8792c29dfc64528d68a2998",
+# catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057). The
+# commit is the head of the Obserwator branch `feature/obserwator` (REL-5.3), which
+# has the default root (`store_root()`), no projects, `command_for_version` (IMGW-21,
+# A-ADR-049) and the names of its ADR-009; the release pull request replaces it with
+# the tag `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
+# adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator`.
+obserwator = [
+    "obserwator[store] @ git+https://github.com/Daldek/IMGWTools@ea158dc6f703a5ababd91ff54e7ddec35b4f389b",
 ]
 
 [dependency-groups]
@@ -81,11 +83,11 @@ dev = [
 [project.scripts]
 archiwista = "archiwista.cli:main"
 
-# Producer adapters (plugins): factories load(context) -> SourceAdapter. The `imgw`
-# adapter reports `not_installed` until the extra `imgw` is installed.
+# Producer adapters (plugins): factories load(context) -> SourceAdapter. The
+# `obserwator` adapter reports `not_installed` until the extra `obserwator` is installed.
 [project.entry-points."archiwista.sources"]
 kartograf = "archiwista.adapter.kartograf:load"
-imgw = "archiwista.adapter.imgw:load"
+obserwator = "archiwista.adapter.obserwator:load"
 
 [tool.setuptools.packages.find]
 where = ["src"]

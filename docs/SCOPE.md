@@ -24,7 +24,7 @@ the MVP by user decision 2026-10-18). It has six areas:
 5. **IMGW data:** stations, coverage of series, station card, freshness and
    synchronisation of archives, IMGW versions pinned in projects.
 6. **PL + CZ:** a combined view of border data without merging, a merged border
-   surface produced by Kartograf, and ČHMÚ stations through IMGWTools in the
+   surface produced by Kartograf, and ČHMÚ stations through Obserwator in the
    station views.
 
 The QGIS export of a project, the assistant, the mosaic and version comparison
@@ -32,7 +32,7 @@ with a difference model come **after the MVP** (v1.1 to v1.3).
 
 ## In scope of the MVP
 
-- Configuration of stores (a Kartograf directory and/or an IMGW directory) and
+- Configuration of stores (a Kartograf directory and/or an Obserwator directory) and
   of project directories; the first-run wizard.
 - A local, rebuildable index: full and incremental scan, view refresh, a
   visible index state; work on an SMB share, also read-only.
@@ -43,7 +43,7 @@ with a difference model come **after the MVP** (v1.1 to v1.3).
   `private`; a separate local state database with export. The model and its
   enforcement exist from v0.1 (one local owner), store writes are checked from
   v0.3, sign-in and screens from v0.4.
-- Data sources as add-ons: Kartograf required, IMGWTools optional; a missing
+- Data sources as add-ons: Kartograf required, Obserwator optional; a missing
   producer is "source unavailable", not a failure.
 - The "Map" with footprints, area selection (rectangle, polygon, sheet code,
   TERYT, KU, file, unit name) and the state of the store for the area.
@@ -87,7 +87,7 @@ with a difference model come **after the MVP** (v1.1 to v1.3).
   consistency check (systems, vertical datum, resolution) and a hint for the
   missing download; a merged DEM surface on a common grid with a seam report
   (Kartograf, KF) as a background job, pinned in a project like any version; ČHMÚ stations (daily
-  hydro and meteo) in the same views as IMGW stations (IMGWTools, IMGW-15 to
+  hydro and meteo) in the same views as IMGW stations (Obserwator, IMGW-15 to
   IMGW-19).
 - Installation on Linux and Windows, user documentation, a WCAG 2.1 AA audit, a
   security review, performance measurement on a real SMB share.
@@ -186,22 +186,22 @@ Full acceptance criteria: SPEC 13.
    verification, update check, re-pinning and restoring; the project card with its area
    and activity; the exports of copies with `README.txt`. Plan:
    [`plans/2026-10-31-archiwista-projects.md`](plans/2026-10-31-archiwista-projects.md)
-   (phases P2 to P6, after Kartograf and IMGWTools remove their projects).
+   (phases P2 to P6, after Kartograf and Obserwator remove their projects).
    - Gate: SPEC 13 "Projects" (the file written and read back, two writers, pinning
      offline, the plan window's pins, the four jobs, D5, the activity, the exports, UC-06
      live).
    - Status (2026-10-31): P1 (A-ADR-049, SPEC, SCOPE, the plan) done; P2 to P6 open.
-7. **v0.5 "IMGW stations".** The IMGW add-on, stations, coverage of series,
+7. **v0.5 "IMGW stations".** The Obserwator add-on, stations, coverage of series,
    station card, freshness and synchronisation of archives, the check, re-pin and
    restore of IMGW versions pinned in projects.
-   - Gate: the IMGW catalog index agrees with the IMGWTools API; parity with
-     the `imgw` CLI; coverage labels agree with the table of edge cases.
+   - Gate: the IMGW catalog index agrees with the Obserwator API; parity with
+     the `obserwator` CLI; coverage labels agree with the table of edge cases.
 8. **v0.6 "PL + CZ".** A PL + CZ view without merging, the merged border
-   surface by Kartograf (KF), ČHMÚ stations through IMGWTools in the v0.5
+   surface by Kartograf (KF), ČHMÚ stations through Obserwator in the v0.5
    views.
    - Gate: a surface at the border (Cieszyn) in EPSG:2180 and 5514 with a seam
      report, no zeros where `nodata` is, parity with the CLI; the ČHMÚ data index
-     agrees with the IMGWTools API, the coverage labels of ČHMÚ stations agree
+     agrees with the Obserwator API, the coverage labels of ČHMÚ stations agree
      with the table of edge cases; UC-09 and UC-20 live.
 9. **v1.0 "Release" (MVP).** A stable API, installation on Linux and Windows,
    user documentation, audits, measurement on a real SMB share.
@@ -219,11 +219,11 @@ Full acceptance criteria: SPEC 13.
 | v0.2 | none |
 | v0.3 | Kartograf: KA-4 for plan items, KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4 |
 | v0.4 | none |
-| projects (released with v0.3 and v0.4) | Kartograf: KB-6 (`command_for_file`); IMGWTools: IMGW-21 (`command_for_version`); both producers without projects (ECO-054) |
-| v0.5 | IMGWTools: IMGW-1 to IMGW-13, IMGW-20 (dataset key convention); IMGW-14 is withdrawn (A-ADR-049) |
-| v0.6 | Kartograf: KF (merged PL + CZ surface); IMGWTools: IMGW-15 to IMGW-19 (ČHMÚ stations) |
-| v1.0 | releases of Kartograf and IMGWTools with all of the above |
-| v1.1 | IMGWTools: IMGW-12 (series export for the QGIS export) |
+| projects (released with v0.3 and v0.4) | Kartograf: KB-6 (`command_for_file`); Obserwator: IMGW-21 (`command_for_version`); both producers without projects (ECO-054) |
+| v0.5 | Obserwator: IMGW-1 to IMGW-13, IMGW-20 (dataset key convention); IMGW-14 is withdrawn (A-ADR-049) |
+| v0.6 | Kartograf: KF (merged PL + CZ surface); Obserwator: IMGW-15 to IMGW-19 (ČHMÚ stations) |
+| v1.0 | releases of Kartograf and Obserwator with all of the above |
+| v1.1 | Obserwator: IMGW-12 (series export for the QGIS export) |
 | v1.3 | Kartograf: KE, KG |
 
 **Data in the store and its terms** (Archiwista shows the attributions and does
@@ -234,11 +234,11 @@ not change the terms):
 | NMT, NMPT, LAZ, orthophoto, BDOT10k, PRG, EGiB and others | GUGiK (through Kartograf) | free of charge, with the source named |
 | DMR, DMP, orthophoto, ZABAGED, RUIAN and others | ČÚZK (through Kartograf) | CC BY 4.0 |
 | CORINE, SoilGrids | Copernicus, ISRIC (through Kartograf) | open, with attribution |
-| Hydro and meteo archives, station catalog | IMGW-PIB (through IMGWTools) | IMGW-PIB terms: source formulas (section 5 items 3 and 4), purpose of use (section 3 item 2) |
-| Hydro and meteo archives, station metadata (from v0.6) | ČHMÚ (through IMGWTools) | CC BY 4.0, ČHMÚ attribution |
+| Hydro and meteo archives, station catalog | IMGW-PIB (through Obserwator) | IMGW-PIB terms: source formulas (section 5 items 3 and 4), purpose of use (section 3 item 2) |
+| Hydro and meteo archives, station metadata (from v0.6) | ČHMÚ (through Obserwator) | CC BY 4.0, ČHMÚ attribution |
 | Map basemap | OpenFreeMap (OpenMapTiles vector tiles from OSM data, Archiwista's grey style); GUGiK OSM BaseMap (raster, Poland only) | ODbL; attributions on the map: "OpenFreeMap © OpenMapTiles Data from OpenStreetMap", "© OpenStreetMap contributors, GUGiK" |
 
-**Test environment:** the sample live test store of Kartograf and a test IMGW
+**Test environment:** the sample live test store of Kartograf and a test Obserwator
 directory in `<data-dir>`; the synthetic store of 50,000 slots from the
 generator (SPEC 11); an SMB 3 share for measurements.
 
@@ -248,8 +248,8 @@ The full list: SPEC 14.
 
 | Risk | Effect | Countermeasure |
 | --- | --- | --- |
-| The MVP depends on an IMGWTools release with a store (today Beta, IMGW-1 to IMGW-13, IMGW-21) | v1.0 waits for IMGWTools | requirements agreed early; v0.1 to v0.4 without IMGWTools; the IMGW source is an add-on |
-| The MVP depends on ČHMÚ stations in IMGWTools (IMGW-15 to IMGW-19; today the "Observer" sketch without code) | v0.6, and with it v1.0, waits for IMGWTools; a package rename or a separate package changes the adapter | requirements reported early (SPEC 12.7); the same contracts with the supplier as an additive change; one IMGW adapter, the adapter decision at the IMGWTools release |
+| The MVP depends on an Obserwator release with a store (today Beta, IMGW-1 to IMGW-13, IMGW-21) | v1.0 waits for Obserwator | requirements agreed early; v0.1 to v0.4 without Obserwator; the Obserwator source is an add-on |
+| The MVP depends on ČHMÚ stations in Obserwator (IMGW-15 to IMGW-19; the tool was renamed from IMGWTools in ECO-057) | v0.6, and with it v1.0, waits for Obserwator; a separate package changes the adapter | requirements reported early (SPEC 12.7); the same contracts with the supplier as an additive change; one Obserwator adapter, the adapter decision at the Obserwator release |
 | Dependence on Kartograf releases (KA to KH); KF (merged surface, today R6 in the backlog) blocks the MVP | stages wait, v0.6 and v1.0 wait for KF | KA small and first; KF reported as an MVP requirement; a common schedule with the Kartograf roadmap |
 | Team mode in the MVP widens the security scope | a longer way to v1.0 | v0.4 before the IMGW data; a security review in the v1.0 gate |
 | An interface without type checking (Preact + htm without a build, A-ADR-028) | errors found late | browser tests (Playwright), JSDoc; Vite and TypeScript can be added later without a rewrite |

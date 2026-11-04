@@ -2,7 +2,7 @@
 
 The stand-in producer (``tests/fixtures/action_source``) is registered the way
 production plugins are, by an entry point on ``sys.path``. It takes the store
-root among the options of a call, as IMGWTools does, and records every call
+root among the options of a call, as Obserwator does, and records every call
 with the options it received (``standin_producer.CALLS``). The routes of
 ``/api/v1/commands`` and ``archiwista commands`` run over the installed
 Kartograf under the socket guard (``tests/fixtures/network.py``).
@@ -618,8 +618,8 @@ def test_commands_cli_json_equals_http(
                     ),
                 ),
                 (
-                    cli("list", "--producer", "imgw", status=15),
-                    http("GET", "/commands?producer=imgw"),
+                    cli("list", "--producer", "obserwator", status=15),
+                    http("GET", "/commands?producer=obserwator"),
                 ),
                 (
                     cli("area", *imagery, unknown, status=3),

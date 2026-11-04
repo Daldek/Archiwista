@@ -1,7 +1,7 @@
 """Each person's preferences in the interface, in Chromium and Firefox.
 
 Plan v0.4, step T11. A real ``archiwista serve`` in team mode over TLS with an
-IMGWTools fixture store: two people keep different path aliases in „Moje
+Obserwator fixture store: two people keep different path aliases in „Moje
 ścieżki…” of the account menu, and „Kopiuj ścieżkę pliku” of one station's
 series file gives each the path as their own computer has it, the server's
 path still offered beside it. The basemap chosen on the map and the year
@@ -139,14 +139,14 @@ def card_paths(page: Page) -> dict[str, Any]:
 
 
 def test_two_people_copy_one_file_as_their_own_computers_have_it(
-    team_serve: TeamServe, team_tab: TeamTab, imgw_store: Stores, tmp_path: Path
+    team_serve: TeamServe, team_tab: TeamTab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Marek's and Kasia's aliases give each their own path; the server's stays."""
     # Arrange
     served = serve_people(
-        team_serve, station_settings(imgw_store("complete"), tmp_path)
+        team_serve, station_settings(obserwator_store("complete"), tmp_path)
     )
-    root = tmp_path / "imgw"
+    root = tmp_path / "obserwator"
     marek = person(team_tab, served, MAREK)
     kasia = person(team_tab, served, KASIA)
     server_path = card_paths(marek.page)["local"]
@@ -168,7 +168,7 @@ def test_two_people_copy_one_file_as_their_own_computers_have_it(
     # Assert
     assert saved == (200, 200)
     assert marek_copied == "Y:\\" + "\\".join(parts)
-    assert kasia_copied == "/home/kasia/nas/imgw/" + "/".join(parts)
+    assert kasia_copied == "/home/kasia/nas/obserwator/" + "/".join(parts)
     assert card_paths(marek.page)["personal"] == marek_copied
     assert card_paths(kasia.page)["personal"] == kasia_copied
     marek.assert_clean()
@@ -176,7 +176,7 @@ def test_two_people_copy_one_file_as_their_own_computers_have_it(
 
 
 def test_the_basemap_and_the_year_type_follow_a_person_not_a_colleague(
-    team_serve: TeamServe, team_tab: TeamTab, imgw_store: Stores, tmp_path: Path
+    team_serve: TeamServe, team_tab: TeamTab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Marek's choices come back in his second context; Kasia keeps the defaults."""
     with tile_server() as tiles:
@@ -189,7 +189,7 @@ def test_the_basemap_and_the_year_type_follow_a_person_not_a_colleague(
                 attribution="© B",
             ),
         )
-        settings = station_settings(imgw_store("complete"), tmp_path)
+        settings = station_settings(obserwator_store("complete"), tmp_path)
         served = serve_people(
             team_serve,
             settings.model_copy(update={"offline": False, "basemaps": basemaps}),

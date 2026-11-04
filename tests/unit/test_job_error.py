@@ -53,7 +53,7 @@ from archiwista.sources.types import SourceState
         ({"code": "checksum_mismatch"}, "data_error", {"reason": "checksum_mismatch"}),
         ({"code": "integrity_failed"}, "data_error", {"reason": "integrity_failed"}),
         ({"code": "kartograf_error"}, "data_error", {"reason": "kartograf_error"}),
-        ({"code": "imgwtools_error"}, "data_error", {"reason": "imgwtools_error"}),
+        ({"code": "obserwator_error"}, "data_error", {"reason": "obserwator_error"}),
         ({"code": "path_outside_root"}, "forbidden", {"reason": "path_outside_root"}),
         ({"code": "worker_crashed"}, "internal_error", {"reason": "worker_crashed"}),
         ({"code": "protocol_error"}, "internal_error", {"reason": "protocol_error"}),

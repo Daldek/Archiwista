@@ -1346,7 +1346,7 @@ def _project(
 ) -> ProjectWrite:
     """Return a valid project file of ``path``; ``stores``: store by producer."""
     matched = {PRODUCER: STORE} if stores is None else stores
-    roots = {PRODUCER: ROOT, "imgw": "/dane/imgw"}
+    roots = {PRODUCER: ROOT, "obserwator": "/dane/obserwator"}
     document = ProjectDocument(
         name=name,
         description="",
@@ -1426,7 +1426,7 @@ def test_index_project_keeps_its_stores_groups_and_pins(
         ),
         PinGroup("przeplywy", LocalOrigin()),
     )
-    stores: dict[str, str | None] = {PRODUCER: STORE, "imgw": None}
+    stores: dict[str, str | None] = {PRODUCER: STORE, "obserwator": None}
     project = _project(
         "/projekty/Raba", "Raba", ProjectStamp(1, 10), stores=stores, groups=groups
     )
@@ -1444,8 +1444,8 @@ def test_index_project_keeps_its_stores_groups_and_pins(
     ]
     assert record is not None
     assert [(s.producer, s.root, s.store) for s in record.project.stores] == [
-        ("imgw", "/dane/imgw", None),
         (PRODUCER, ROOT, STORE),
+        ("obserwator", "/dane/obserwator", None),
     ]
     assert [(g.name, g.origin, g.producer, g.calls) for g in record.groups] == [
         ("teren", "plan", PRODUCER, (call,)),

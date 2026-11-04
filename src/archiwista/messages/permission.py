@@ -89,4 +89,8 @@ MESSAGES = {
         "Reading the action log requires the administrator role.",
         "Odczyt dziennika działań wymaga roli administratora.",
     ),
+    "feedback_manage": Text(
+        "Reading and managing feedback requires the administrator role.",
+        "Przeglądanie zgłoszeń i zarządzanie nimi wymaga roli administratora.",
+    ),
 }

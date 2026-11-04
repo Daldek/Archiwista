@@ -8,7 +8,7 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 ## Status
 
 The working branch is `develop`. On 2026-11-03 `feature/archiwista-projects` (`10dd702`,
-which holds Nogat standard 2.1, the IMGWTools source and station views, the data output,
+which holds Nogat standard 2.1, the Obserwator source and station views, the data output,
 v0.3, v0.4, the user guide and the projects) and `plan/next-version` were merged into it
 (`6f1caef`, `7b3eb79`; no pull request, the author's decision) and the merged branches
 deleted; `feat/mockup` stays (Open questions). The author's team test server (port 8090,
@@ -18,7 +18,8 @@ https://archiwista-test.debever.pl) runs `4027755` (in `develop`) since 2026-11-
 
 | Component | State | Note |
 |---|---|---|
-| Projects in Archiwista's own file (A-ADR-049 and its errata 1 to 4; Nogat plan `2026-10-31-archiwista-projects.md` step 5, ECO-054; plan `docs/plans/2026-10-31-archiwista-projects.md`) | done, in `develop`, deployed on the test server | A project is a directory holding `archiwista-project.json` (`archiwista-project/1`; lock and atomic write; discovery by that file alone; index schema 16, state schema 4), its area files in `obszary/`. Groups, shown as „Zestaw”, hold pins: from the store (Katalog, map, store view: "Dodaj do projektu…"; a filter or a map layer pins the versions it shows) and from the plan window (a plan group keeps the producer's calls). Jobs verify, check, re-pin and restore over `POST /projects/{project}/jobs` (`PROTOCOL_VERSION` 13), rebuilt from Kartograf's `command_for_file` and IMGWTools' `command_for_version`; a pin without a rebuildable command stays pinnable with check and restore disabled with the reason (D5). The card shows the activity from the action log. "Usuń projekt…" removes a project from Archiwista, never data (erratum 2). The export is flat: `eksport/<name>/` with one folder per category (`NMT`, `BDOT`, `ORTO`, …), copies of the files and `README.txt`, optionally `eksport/<name>.zip` (erratum 1); a ZIP holding exactly one raster is exported unpacked, an XYZ file with the coordinate system to set in QGIS (erratum 4). The producers' project manifests and ADR-039/ADR-040 are gone. Pins: Kartograf `eab8612d`, IMGWTools `8cd6844c` (the pushed heads of their `feature/archiwista-projects`) |
+| IMGWTools is called Obserwator (Nogat ECO-057; Nogat plan `2026-11-03-imgwtools-to-obserwator.md` step 3) | done on `develop`, not deployed | Obserwator `ea158dc6` and Kartograf `9deaa314`, the commits of Nogat's release set `candidate-1` (`ecosystem.py set apply`) (it knows `obserwator-store.json`); the extra, plugin, producer and settings field `obserwator`, the reason `obserwator_error`, the ids `obserwator-*`, the adapter `archiwista.adapter.obserwator`; index schema 18 (a rebuild); A-ADR-032 erratum 2 |
+| Projects in Archiwista's own file (A-ADR-049 and its errata 1 to 4; Nogat plan `2026-10-31-archiwista-projects.md` step 5, ECO-054; plan `docs/plans/2026-10-31-archiwista-projects.md`) | done, in `develop`, deployed on the test server | A project is a directory holding `archiwista-project.json` (`archiwista-project/1`; lock and atomic write; discovery by that file alone; index schema 16, state schema 4), its area files in `obszary/`. Groups, shown as „Zestaw”, hold pins: from the store (Katalog, map, store view: "Dodaj do projektu…"; a filter or a map layer pins the versions it shows) and from the plan window (a plan group keeps the producer's calls). Jobs verify, check, re-pin and restore over `POST /projects/{project}/jobs` (`PROTOCOL_VERSION` 13), rebuilt from Kartograf's `command_for_file` and Obserwator's `command_for_version`; a pin without a rebuildable command stays pinnable with check and restore disabled with the reason (D5). The card shows the activity from the action log. "Usuń projekt…" removes a project from Archiwista, never data (erratum 2). The export is flat: `eksport/<name>/` with one folder per category (`NMT`, `BDOT`, `ORTO`, …), copies of the files and `README.txt`, optionally `eksport/<name>.zip` (erratum 1); a ZIP holding exactly one raster is exported unpacked, an XYZ file with the coordinate system to set in QGIS (erratum 4). The producers' project manifests and ADR-039/ADR-040 are gone. Pins: Kartograf `9deaa314` (its `develop`), Obserwator `651d4d73` (its `feature/obserwator`; both pushed) |
 | Katalog: the variant of a row | done, in `develop`, deployed on the test server | Each row, the file card and the map's "Warianty (segmenty)" name the variant (resolution and height system, `web/src/variant.js`); the „Wariant” filter is `segment` of `GET /slots`; file rows wrap their text and grow (`7252df5`, `96c72eb`) |
 | Availability: a polygon area as GeoJSON | done, in `develop`, deployed on the test server | Areas reach Kartograf as WGS84 GeoJSON (`<data-dir>/areas/<id>.geojson`; a plan group's call names `obszary/<id>.geojson`, A-ADR-035 erratum 2, A-ADR-049 erratum 3), and Kartograf ADR-058 selects sheets by the shape, not its envelope (`9e26138`, `c5a3d8c`). The store badge „pobrane” matches by survey work (`0509143`) |
 | Plan window: bounded requests | done, in `develop`, deployed on the test server | Four requests in flight (`requestEach`), a bare `503` is `server_busy`, after a 116-sheet set exceeded the server's 100 connections (`c9fd47b`); one „Zamknij” keeps a download's window reopenable from the list (`d4daea6`) |
@@ -29,7 +30,7 @@ https://archiwista-test.debever.pl) runs `4027755` (in `develop`) since 2026-11-
 | User guide `/instrukcja` | done, in `develop` | A-ADR-048 (proposed; merged into `develop` with the stack on 2026-11-03): twelve Polish slides served without a session, "Instrukcja" in the top bar; slide 9 shows the project card |
 | v0.4 "Team" | built, in `develop` | plan `docs/plans/2026-10-26-plan-v0.4.md` T1 to T12 (ADR-046, ADR-047; security D6, D7, D10); acceptance with three people, the permission matrix, the ASVS checklist; the LAN runbook ran once on one machine with real components (`docs/reports/v0.4-lan-runbook.md`); macOS fixes (no `RLIMIT_AS`, `TCP_NODELAY`, `F_GETPATH`) |
 | v0.3 "Actions" | built, in `develop` | plan `docs/plans/2026-10-25-archiwista-next.md` Part 3: A1 to A14 (ADR-034 to ADR-044): producer commands, availability at the source, the plan window, downloads and job controls, preview warm-up, background downloads; its project actions (A7, A8, A13) are replaced by A-ADR-049. Report `docs/reports/v0.3-measurements.md` |
-| IMGWTools source and station views | done, in `develop` | plan `docs/plans/2026-10-25-archiwista-next.md` Parts 2 and 4 (ADR-032, ADR-045): IMGW stores indexed, stations, series coverage, the station map, Katalog list, Timeline, card, chart and comparison |
+| Obserwator source and station views | done, in `develop` | plan `docs/plans/2026-10-25-archiwista-next.md` Parts 2 and 4 (ADR-032, ADR-045): Obserwator stores indexed, stations, series coverage, the station map, Katalog list, Timeline, card, chart and comparison |
 | Data output (DEV §19, ECO-051) | done, in `develop` | plan `docs/plans/2026-10-25-archiwista-next.md` Part 1 (ADR-031, ADR-033): store markers, store roots, the producers' default roots offered in the wizard, tests isolated from the producers' settings |
 | Release 0.2.0 "Previews" | done | released on `develop`, not tagged and not merged into `main` (author's decision) |
 | Nogat standard 2.1 | done | structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry; skipped items below |
@@ -47,10 +48,22 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 | `Approved:` lines of the executed plans v0.1 and v0.2 (DEV-17.4) | approval is the author's statement |
 | Tags, releases, replacing the producers' commit pins by tags, PyPI name `nogat-archiwista` (phases 5 and 6) | need the producers' tags and the author's approval |
 
+On 2026-11-04 `feature/feedback` (from `feature/obserwator`; Nogat plan
+`2026-11-03-feedback-in-archiwista-and-hydrolog`, decisions D1, D2, D4–D6) adds
+Hydrograf's "Zgłoś uwagę": the top bar's window with its diagnostics, `POST /feedback`,
+the administrators' `/admin/feedback` routes and view "Zgłoszenia", and the state
+database's schema version 5 (table `feedback`). Its targeted unit, integration and e2e
+tests pass; the full gate has not run on it yet.
+
 ## Next
 
 1. The author: sign in again on :8090 (the rebuild dropped the sessions). Optionally
    restore the 18 drawn rectangles from the backup's `index.sqlite` (schema 16).
+   Merging and deploying `feature/obserwator` rebuilds the index again (schema 18: the
+   sessions, the job history and the drawn rectangles go); the server's settings name no
+   Obserwator directory, so nothing else changes there. An instance with one renames
+   `imgw` to `obserwator` in the stores of its `config.toml` and downloads the data again
+   into an Obserwator store (CHANGELOG).
 2. A welcome dialog for a first visit and its slide in the guide `/instrukcja`.
 3. Release preparation (the author): `archiwista-state/2` back to `/1` (a format
    identifier not yet released on `main` stays at `/1`), then the release below.
@@ -59,7 +72,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
    projects (all in `develop` since 2026-11-03), outside the first release set
    (Archiwista follows the producers' tags in its own session, REL-5.4). Then: replace
    the commit pins by the producers' tags (REL-5.3, REL-2.1), CHANGELOG version and tag
-   with the author's approval, the Nogat registry (the edge Archiwista → IMGWTools is
+   with the author's approval, the Nogat registry (the edge Archiwista → Obserwator is
    still `planned`). Re-pin first if a producer commits on its branch again: `uv lock
    --offline` resolves a commit only from uv's git database
    (`~/.cache/uv/git-v1/db/`), so fetch the producer's branch into it, change the commit
@@ -133,8 +146,8 @@ Open outside this repository:
 - Kartograf: the tag waits for the first release set; Archiwista's later versions need
   KA-4, KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4, KH; KF (merged PL + CZ surface)
   blocks v0.6.
-- IMGWTools: the v0.5 adapter treats `missing_sidecar` as a non-critical, possibly
-  transient problem; the IMGW actions are planned for v0.5.
+- Obserwator: the v0.5 adapter treats `missing_sidecar` as a non-critical, possibly
+  transient problem; the Obserwator actions are planned for v0.5.
 - GPU: the measurement of 30 frames per second or more with 5,000 footprints needs hardware
   WebGL; the test account has no access to `/dev/dri/renderD128`.
 - Basemap: one default provider (OpenFreeMap) is an availability risk outside offline mode.
