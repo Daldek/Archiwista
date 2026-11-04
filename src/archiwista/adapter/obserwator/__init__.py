@@ -20,7 +20,7 @@ PACKAGE = "obserwator"
 # The Obserwator versions the adapter reads (PEP 440). Archiwista's own
 # requirement on Obserwator is a commit or tag (REL-5.3), so it cannot hold
 # the range.
-SUPPORTED_VERSIONS = ">=3.0.0,<4"
+SUPPORTED_VERSIONS = ">=3.0.0.dev0,<4"
 # The contracts of the store: the marker, the sidecar and the series index
 # (Obserwator ADR-007).
 SCHEMAS = ("obserwator-store/1", "obserwator-meta/1", "obserwator-series/1")

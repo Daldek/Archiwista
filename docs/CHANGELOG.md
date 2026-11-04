@@ -1113,6 +1113,11 @@ command-line interface may change.
 
 ### Changed
 
+- The Obserwator pin is Obserwator `1ee5457` (release set candidate-1, its results, errors
+  and catalog after the Nogat standard 1.0). The supported range is `>=3.0.0.dev0,<4`, as
+  that build is `3.0.0.dev0`; the adapter reads the store marker's schema from
+  `StoreInfo.store_schema` and a refusal of the producer keeps its hint (`hint` of the
+  error document beside its unchanged message).
 - The Obserwator pin and the README links use the renamed repository
   `github.com/Daldek/Obserwator` (was `Daldek/IMGWTools`); the commit is unchanged.
 - **Breaking:** IMGWTools is called Obserwator (Nogat ECO-057, Obserwator's ADR-009), and

@@ -3630,7 +3630,7 @@ answer the same):
   "details": {
     "reason": "source_unavailable",
     "source": {"id": "obserwator", "state": "not_installed", "package_version": null,
-               "supported_versions": ">=3.0.0,<4", "requirement": "archiwista[obserwator]"}
+               "supported_versions": ">=3.0.0.dev0,<4", "requirement": "archiwista[obserwator]"}
   }
 }
 ```

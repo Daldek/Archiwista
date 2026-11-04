@@ -143,7 +143,7 @@ class ObserwatorAdapter:
     Parameters
     ----------
     supported_versions : str
-        Obserwator versions Archiwista supports, e.g. ``">=3.0.0,<4"``.
+        Obserwator versions Archiwista supports, e.g. ``">=3.0.0.dev0,<4"``.
 
     Notes
     -----
@@ -655,10 +655,10 @@ class ObserwatorAdapter:
         ------
         UnsupportedError
             Obserwator cannot rebuild the call (``unsupported``, reason
-            ``command_not_rebuildable``), its text unchanged.
+            ``command_not_rebuildable``), its text and hint unchanged.
         ProducerError
             Any other refusal (``not_found``, ``data_error``,
-            ``validation_error``, ``store_unavailable``) with its code.
+            ``validation_error``, ``store_unavailable``) with its code and hint.
         """
         try:
             call = command_for_version(version, root=root)
@@ -671,12 +671,14 @@ class ObserwatorAdapter:
                 raise UnsupportedError(
                     str(error),
                     details={"producer": PRODUCER, "version": version, **details},
+                    hint=error.hint,
                 ) from error
             raise ProducerError(
                 PACKAGE,
                 type(error).__name__,
                 str(error),
                 code=error.code,
+                hint=error.hint,
                 details=details,
             ) from error
         options = {name: value for name, value in call.options.items() if name != _ROOT}
@@ -720,7 +722,7 @@ class ObserwatorAdapter:
         if codes & _MARKER_REFUSED:
             text = message(
                 "source.obserwator_unsupported_marker",
-                found=info.schema or message("source.schema_unknown"),
+                found=info.store_schema or message("source.schema_unknown"),
                 expected=SCHEMAS[0],
             )
             detail = with_detail(text, "; ".join(info.problems))
@@ -1071,11 +1073,11 @@ def _failure(
     """Return the Archiwista error for a producer's own.
 
     A file the system cannot read (``io_error``) is an unavailable store;
-    anything else is the producer's error with its message unchanged.
+    anything else is the producer's error with its message and hint unchanged.
     """
     if error.code == "io_error":
         return _unavailable(where, str(error))
-    return ProducerError(PACKAGE, type(error).__name__, str(error))
+    return ProducerError(PACKAGE, type(error).__name__, str(error), hint=error.hint)
 
 
 def _unavailable(where: str, detail: str) -> SourceUnavailableError:
