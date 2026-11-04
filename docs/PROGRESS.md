@@ -35,6 +35,7 @@ https://archiwista-test.debever.pl) runs `4027755` (in `develop`) since 2026-11-
 | Release 0.2.0 "Previews" | done | released on `develop`, not tagged and not merged into `main` (author's decision) |
 | Nogat standard 2.1 | done | structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry; skipped items below |
 | Deploy on the test server (A3) | done 2026-11-03 about 00:00 | `4027755` on :8090, `Environment=TMPDIR=<data-dir>/tmp` in the unit (Kartograf unpacks BDOT10k there; `/tmp` is a small tmpfs). The index was rebuilt from schema 16 to 17, which dropped the sessions (everyone signs in again), the job history and the 18 drawn rectangles of the map. Copies taken before the restart (index 16, state 4, the old unit) and the rollback to `dd4268c`: `/home/claude-agent/data/archiwista-public/backup-2026-11-02/` and its `ROLLBACK.txt` |
+| Deploy on the test server (Obserwator, feedback, release-set pins) | done 2026-11-04 11:08 | `b2307ee` on :8090 (`uv sync --locked`; Kartograf `9deaa314` instead of the pre-rewrite `26ee459`); about 2 s down. The index was rebuilt from schema 17 to 18 (735 versions refilled at once; sessions and the job history of 710 jobs dropped, the 2 drawn areas kept); the state database went from schema 4 to 5 (table `feedback`); the server's settings name only a Kartograf store, so nothing else changed. Checked: `/` 200 locally, the public host behind Cloudflare Access, `POST /api/v1/feedback` and `/api/v1/admin/feedback` refuse an anonymous call with 401. Copies (index 17, state 4, settings, the unit) and the rollback to `34e83f4`: `/home/claude-agent/data/archiwista-public/backup-2026-11-04/` and its `ROLLBACK.txt` |
 | Gate | green on the A2 tree (2026-11-02, about 23:30) | full run: 2749 passed, `TMPDIR` on a local disk, the author's test server holding port 8090. `develop` after the merge has the tree of `10dd702`, which differs from the gated one in `docs/PROGRESS.md` only. The Firefox run of `tests/e2e/test_guide.py` no longer stalls it (`8d16cef`): the test resized the app's tab behind the guide's tab, and `set_viewport_size` waits without a timeout for a size Firefox may never give a covered tab. A full run takes about 50 to 60 minutes; start it without other test suites running |
 | CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; no run of either workflow is known |
 
@@ -48,22 +49,19 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 | `Approved:` lines of the executed plans v0.1 and v0.2 (DEV-17.4) | approval is the author's statement |
 | Tags, releases, replacing the producers' commit pins by tags, PyPI name `nogat-archiwista` (phases 5 and 6) | need the producers' tags and the author's approval |
 
-On 2026-11-04 `feature/feedback` (from `feature/obserwator`; Nogat plan
-`2026-11-03-feedback-in-archiwista-and-hydrolog`, decisions D1, D2, D4–D6) adds
+On 2026-11-04 `feature/feedback` (Nogat plan
+`2026-11-03-feedback-in-archiwista-and-hydrolog`, decisions D1, D2, D4–D6) added
 Hydrograf's "Zgłoś uwagę": the top bar's window with its diagnostics, `POST /feedback`,
 the administrators' `/admin/feedback` routes and view "Zgłoszenia", and the state
-database's schema version 5 (table `feedback`). Its targeted unit, integration and e2e
-tests pass; the full gate has not run on it yet.
+database's schema version 5 (table `feedback`); merged into `develop` after a green gate
+(2,782 passed) and deployed on :8090 the same day.
 
 ## Next
 
-1. The author: sign in again on :8090 (the rebuild dropped the sessions). Optionally
-   restore the 18 drawn rectangles from the backup's `index.sqlite` (schema 16).
-   Merging and deploying `feature/obserwator` rebuilds the index again (schema 18: the
-   sessions, the job history and the drawn rectangles go); the server's settings name no
-   Obserwator directory, so nothing else changes there. An instance with one renames
-   `imgw` to `obserwator` in the stores of its `config.toml` and downloads the data again
-   into an Obserwator store (CHANGELOG).
+1. The author: sign in again on :8090 (the deploy of 2026-11-04 dropped the sessions).
+   An instance with an Obserwator store renames `imgw` to `obserwator` in the stores of
+   its `config.toml` and downloads the data again into an Obserwator store (CHANGELOG);
+   :8090 has none.
 2. A welcome dialog for a first visit and its slide in the guide `/instrukcja`.
 3. Release preparation (the author): `archiwista-state/2` back to `/1` (a format
    identifier not yet released on `main` stays at `/1`), then the release below.
