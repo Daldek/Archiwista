@@ -1198,3 +1198,26 @@ def test_command_for_version_of_no_version_is_obserwator_refusal_with_its_code(
     # Assert
     assert raised.value.code == produced.value.code
     assert raised.value.code != "unsupported"
+
+
+def test_command_for_version_outside_a_store_keeps_obserwator_hint(
+    adapter: ObserwatorAdapter, tmp_path: Path
+) -> None:
+    """A root that is no store: Obserwator's code, text and hint unchanged."""
+    # Arrange
+    root = tmp_path / "missing"
+    version = "archives/versions/nic/2026-01-01_00000000/nic.zip"
+    with pytest.raises(ObserwatorError) as produced:
+        obserwator.command_for_version(version, root=root)
+
+    # Act
+    with pytest.raises(ProducerError) as raised:
+        adapter.command_for_version(version, root=root)
+
+    # Assert
+    assert produced.value.hint
+    assert (raised.value.code, raised.value.message, raised.value.hint) == (
+        produced.value.code,
+        str(produced.value),
+        produced.value.hint,
+    )
