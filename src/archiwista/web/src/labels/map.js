@@ -299,6 +299,9 @@ export const map = {
       circle: "posterunek opadowy",
       fills: "Kolor punktów: pokrycie {variable} w zakresie lat",
       no_variable: "Bez szeregów stacji: punkty bez koloru pokrycia (nieznane).",
+      all_products:
+        "Stacje wszystkich typów, bez koloru pokrycia: wybierz „Stacje hydrologiczne” albo " +
+        "„Stacje meteorologiczne”, aby zobaczyć pokrycie szeregów.",
       states: {
         continuous: "ciągły — wartość w każdej znanej jednostce",
         gaps: "luki — braki w znanych latach",

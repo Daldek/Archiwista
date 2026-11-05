@@ -1559,16 +1559,25 @@ class Product(BaseModel):
     product: str | None = Field(
         description="Product, e.g. `nmt`; null for segments not recognised."
     )
+    name: str | None = Field(
+        default=None,
+        description=(
+            "The producer's name of the product (Obserwator: `Stacje"
+            " hydrologiczne` for `hydro`); null when it names none, and the"
+            " product is named after its biggest segment."
+        ),
+    )
     countries: list[str]
     slots: int
     versions: int
     segments: list[ProductSegment]
 
     @classmethod
-    def of(cls, product: ProductSummary) -> Self:
-        """Return the model of an indexed product."""
+    def of(cls, product: ProductSummary, name: str | None = None) -> Self:
+        """Return the model of an indexed product with the producer's name."""
         return cls(
             product=product.product,
+            name=name,
             countries=list(product.countries),
             slots=product.slots,
             versions=product.versions,

@@ -29,7 +29,7 @@ import { LocalState } from "./coverage.js";
 import { bboxText } from "./geo.js";
 import { productTitle } from "./products.js";
 import { scaleLabel, SHEET_GRIDS } from "./sheets.js";
-import { BOUNDARY_PARAM, METEO_KINDS } from "./stations.js";
+import { BOUNDARY_PARAM, isMapProduct, METEO_KINDS } from "./stations.js";
 import { ProjectAreaSelect, projectsOfArea } from "../views/project-areas.js";
 import { SourceStep } from "./source.js";
 
@@ -342,16 +342,18 @@ function ProductStep({ products, productsError, filters, onFilters, stores, stat
   const items = products?.items ?? [];
   const known = items.filter((item) => item.product);
   const unknown = items.filter((item) => !item.product);
-  const chosen = known.find((item) => item.product === filters.product);
+  // The map's products: a station product only as a station kind (stations.js `isMapProduct`).
+  const mapped = known.filter(isMapProduct);
+  const chosen = mapped.find((item) => item.product === filters.product);
   const open = listOpen || !chosen;
   const needle = search.trim().toLowerCase();
   const shown = needle
-    ? known.filter((item) =>
+    ? mapped.filter((item) =>
         [item.product, productTitle(item), ...item.segments.map((s) => s.segment.label)].some((text) =>
           text.toLowerCase().includes(needle),
         ),
       )
-    : known;
+    : mapped;
   const pick = (product) => {
     setListOpen(!product);
     onFilters({ product });

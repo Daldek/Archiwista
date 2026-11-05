@@ -1145,6 +1145,18 @@ command-line interface may change.
 
 ### Changed
 
+- The map's products of IMGW-PIB data are its stations: the family `hydro`, which holds
+  daily, monthly and half-year data and the station list, is „Stacje hydrologiczne”
+  (it was named after its biggest dataset, „Dane hydrologiczne dobowe”), `meteo` is
+  „Stacje meteorologiczne”, and the station catalog („Katalog stacji IMGW-PIB”), which
+  holds the stations of both, is no longer a product of the map (it stays in the
+  Catalog). A producer names a product through the new optional capability
+  `ProductNameAdapter`; `GET /products` gives it as `name`.
+- „Wszystkie produkty” on the map draws the store's stations of every kind beside the
+  outlines of its files, without a coverage colour (it drew Kartograf's outlines only).
+- A station's tooltip on the map names it only: name, type and river, code and provider;
+  the labels of its variables, which covered the map, are on its card.
+
 - The Obserwator pin is Obserwator `1ee5457` (release set candidate-1, its results, errors
   and catalog after the Nogat standard 1.0). The supported range is `>=3.0.0.dev0,<4`, as
   that build is `3.0.0.dev0`; the adapter reads the store marker's schema from
@@ -1481,6 +1493,11 @@ command-line interface may change.
   both once with `uv run playwright install chromium firefox`.
 
 ### Fixed
+
+- The map no longer twitches when the pointer enters or leaves a station: the map's
+  layer clips what overflows it (a tooltip near its edge could reach the scrolling view
+  and bring a scrollbar that resized the map), and the tooltip has no backdrop blur over
+  the WebGL canvas.
 
 - A notice a producer repeats, e.g. Obserwator's licence text after every archive it
   publishes (79 times in one `store sync` of 26 years), is listed once in the download,

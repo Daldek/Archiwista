@@ -623,3 +623,21 @@ class ExportFolderAdapter(Protocol):
         Offline, no disk access.
         """
         ...
+
+
+@runtime_checkable
+class ProductNameAdapter(Protocol):
+    """Optional capability: the producer's name of a product for people.
+
+    A product groups segments (Kartograf's variants, Obserwator's datasets of
+    one family); without the capability, or without an answer, a product is
+    named after its biggest segment, which misnames a family of datasets of
+    different kinds (``hydro``: daily, monthly and half-year data).
+    """
+
+    def product_name(self, product: str) -> str | None:
+        """Return the Polish name of ``product``; ``None`` leaves the default.
+
+        Offline, no disk access.
+        """
+        ...

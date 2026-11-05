@@ -370,7 +370,9 @@ body.resizing .view-center, body.resizing .view-panel { pointer-events: none; }
 .filter-group { display: flex; align-items: center; gap: 5px; }
 .filter-label { font-size: 11.5px; color: var(--text-3); margin-right: 2px; }
 .center-body { position: relative; flex: 1; min-height: 0; }
-.map-canvas { position: absolute; inset: 0; }
+/* overflow: a tooltip or a pick list near the edge must never reach the scrolling
+   .content: a scrollbar that comes and goes resizes the map, which then jumps. */
+.map-canvas { position: absolute; inset: 0; overflow: hidden; }
 .maplibregl-ctrl-attrib { font-size: 10.5px; }
 .float-card { background: rgba(255, 255, 255, 0.96); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); backdrop-filter: blur(6px); }
 .map-hint { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 3; padding: 7px 8px 7px 12px; font-size: 12.5px; display: flex; align-items: center; gap: 12px; max-width: calc(100% - 24px); }

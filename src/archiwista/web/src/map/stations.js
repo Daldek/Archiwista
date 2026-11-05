@@ -86,6 +86,18 @@ export function isStationProduct(product) {
 }
 
 /**
+ * Whether the map offers a product: a station product only as a station kind
+ * (`hydro`, `meteo`); the station catalog and PMAXTP have nothing to draw, and
+ * the catalog's stations are those of the two kinds.
+ *
+ * @param {import("../types.js").Product} product
+ * @returns {boolean}
+ */
+export function isMapProduct(product) {
+  return !isStationProduct(product) || STATION_KINDS.includes(product.product);
+}
+
+/**
  * The station card's value of the address for a station (`STATION_PARAM`).
  *
  * @param {{store: string, provider: string, code: string}} station
@@ -463,13 +475,13 @@ export function closeSpread(map) {
 }
 
 /**
- * The tooltip of a station, a cluster or a grid cell.
+ * The tooltip of a station, a cluster or a grid cell: little enough to keep
+ * the map in view; a station's variables and their coverage are on its card.
  *
- * @param {{tip: {kind: string, item: *}, variable: string|null}} props -
- *   `kind` is `station`, `station-cluster` or `station-cells`; `variable`
- *   the "Kolor punktów" one, marked in the labels.
+ * @param {{tip: {kind: string, item: *}}} props - `kind` is `station`,
+ *   `station-cluster` or `station-cells`.
  */
-export function StationTip({ tip, variable }) {
+export function StationTip({ tip }) {
   const { kind, item } = tip;
   if (kind === "station-cluster") {
     return html`<b>${t(L.stations.cluster, { count: count(item.count, L.units.stations) })}</b>
@@ -479,19 +491,9 @@ export function StationTip({ tip, variable }) {
     return html`<b>${t(L.stations.cell, { count: count(item.count, L.units.stations) })}</b>
       <div class="muted">${L.stations.cell_zoom}</div>`;
   }
-  const entries = Object.entries(item.coverage ?? {});
   return html`<b>${item.name ?? item.code}</b>
     <div>${[stationType(item), item.river].filter(Boolean).join(" · ")}</div>
     ${item.on_boundary ? html`<div class="station-tip-boundary">${L.stations.on_boundary}</div>` : null}
-    ${entries.length
-      ? html`<ul class="station-tip-labels">
-          ${entries.map(
-            ([key, value]) => html`<li key=${key} class=${key === variable ? "chosen" : ""}>
-              <${StationSymbol} shape=${stationShape(item)} state=${value.state} size=${12} />
-              <span class="mono">${key}</span> <span>${value.label}</span></li>`,
-          )}
-        </ul>`
-      : null}
     <div class="faint mono">${item.code} · ${item.provider}</div>
     <div class="muted">${L.stations.open}</div>`;
 }
