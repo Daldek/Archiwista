@@ -43,7 +43,14 @@ import {
   useRef,
   useState,
 } from "./ui.js";
-import { downloadSummary, FINAL_STATES, JobStatus, loadCardStyles, storeName } from "./views/cards.js";
+import {
+  distinctNotices,
+  downloadSummary,
+  FINAL_STATES,
+  JobStatus,
+  loadCardStyles,
+  storeName,
+} from "./views/cards.js";
 
 /** The kind of the session's jobs followed here: runs that write a store over the network. */
 const DOWNLOAD_KIND = "download";
@@ -205,7 +212,8 @@ function createDownloads(label) {
       id,
       watchJob(id, {
         onProgress: (data) => patch(id, { progress: data }),
-        onNotice: (data) => patch(id, (item) => ({ notices: [...item.notices, data] })),
+        onNotice: (data) =>
+          patch(id, (item) => ({ notices: distinctNotices([...item.notices, data]) })),
         onState: (data) => {
           patch(id, { state: data.state, result: data.result ?? null, error: data.error ?? null, restored: false });
           if (FINAL_STATES.has(data.state)) end(id);

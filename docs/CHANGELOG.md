@@ -1467,6 +1467,11 @@ command-line interface may change.
 
 ### Fixed
 
+- A notice a producer repeats, e.g. Obserwator's licence text after every archive it
+  publishes (79 times in one `store sync` of 26 years), is listed once in the download,
+  job and plan views: each distinct notice (the same level, code and message) in the
+  order of its first occurrence, as Obserwator's own CLI and API list them. The job's
+  events (`GET /jobs/{job}/events`) and its log keep every notice.
 - A version stored as a ZIP that holds exactly one raster GDAL reads (GUGiK's NMT of
   2020, `pl.gugik.nmt_xyz_5m`: one XYZ grid per sheet; also one ASC or GeoTIFF) had no
   preview, only the list of its members, and the Wachlarz and the Katalog called it
