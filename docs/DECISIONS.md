@@ -76,6 +76,7 @@ ECO-057); the decisions keep the names of their time, and ADR-032 erratum 2 maps
 | [ADR-047](decisions/0047-team-shared-work.md) | The team's shared work: the action log, the shared queue, limits per person, file download, preferences | 2026-10-26 | accepted (delegated approval 2026-10-26; plan `docs/plans/2026-10-26-plan-v0.4.md`, steps T6 to T11 built; amends ADR-012, ADR-037 and ADR-038); erratum 1: `GET`/`PUT /preferences`, an old `year_types` in `config.toml` ignored with a doctor note, `basemap` `""` for none; erratum 2: bounded audit of request-rule and token/proxy refusals (D7) |
 | [ADR-048](decisions/0048-the-user-guide.md) | The user guide: a page of its own at `/instrukcja`, readable without a session | 2026-10-31 | proposed (accepted when the author approves and merges `feature/instrukcja`) |
 | [ADR-049](decisions/0049-projects-in-archiwista.md) | Projects are Archiwista's own: the file `archiwista-project/1`, groups of pins, and the jobs over them | 2026-10-31 | accepted (the author's decision of 2026-10-31, ECO-054, D1 to D7 of the Nogat plan; built in the phases of `docs/plans/2026-10-31-archiwista-projects.md`); supersedes ADR-039, ADR-040, ADR-032 decision 14 and the IMGWTools manifest of ADR-023; partly supersedes ADR-042 |
+| [ADR-050](decisions/0050-obserwator-commands.md) | Obserwator's commands in Archiwista: the store-writing catalog, national archives, the whole-store rescan | 2026-11-05 | accepted (plan `docs/plans/2026-11-05-obserwator-actions.md`, approved 2026-11-05, A1 to A5); amends ADR-024 and ADR-049 D5 |
 
 ---
 

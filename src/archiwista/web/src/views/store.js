@@ -12,7 +12,10 @@
  * reason. Below: disk usage per product with each
  * version counted once, the versions neither current, nor in `full_sheet/`,
  * nor pinned (a report for a decision — Archiwista deletes nothing), the
- * store's problems with their fixes and the visible projects naming it. The
+ * store's problems with their fixes and the visible projects naming it, and
+ * „Polecenia producenta” (views/store-commands.js): the commands of a
+ * producer whose data no area chooses (Obserwator), planned in the plan
+ * window. The
  * disconnected-share banner is the shell's index banner (banner.js).
  */
 
@@ -25,6 +28,7 @@ import { T, t } from "../labels/index.js";
 import { Link, setParams } from "../router.js";
 import { html, Icon, ProblemView, Seg, Spinner, Tech, useEffect, useState } from "../ui.js";
 import { actorName, Badge, IssueList, JobStatus, loadCardStyles, seconds, useJob } from "./cards.js";
+import { CommandsSection } from "./store-commands.js";
 
 await loadCardStyles();
 
@@ -148,6 +152,7 @@ function StoreDetail({ item }) {
           : detail.error ? null : html`<${Spinner} />`}
       </div>
       <div class="store-column">
+        <${CommandsSection} item=${item} />
         ${detail.data
           ? html`
               <section class="card store-section" aria-labelledby="store-problems">

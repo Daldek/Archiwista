@@ -677,6 +677,7 @@ def _run_calls(
                 _scopes_of(adapter, reader, root, own),
                 emit,
                 timeout_s=timeout_s,
+                geo=_geo(job.registry),
             )
         return read
 
@@ -705,7 +706,7 @@ def _scopes_of(
     reader: SourceAdapter,
     root: Path,
     runs: Sequence[_CallRun],
-) -> Callable[[], Mapping[str | None, Sequence[str]]]:
+) -> Callable[[], Mapping[str | None, Sequence[str] | None]]:
     return lambda: _run_scopes(adapter, reader, root, runs)
 
 

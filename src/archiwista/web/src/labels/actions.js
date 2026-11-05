@@ -46,7 +46,9 @@ export const actions = {
     download_offline: "Pobieranie potrzebuje sieci: tryb offline jest włączony",
     no_commands: "Producent nie podał polecenia, które pobiera ten wariant",
     paste: "Wklej polecenie producenta",
-    paste_placeholder: "np. kartograf elevation download --product nmt --sheet N-34-130-D-d-2-4",
+    paste_placeholder:
+      "np. kartograf elevation download --product nmt --sheet N-34-130-D-d-2-4 " +
+      "albo obserwator store sync --datasets pl.imgw.hydro_daily --years 2024",
     paste_hint:
       "Polecenie jak w wierszu poleceń; Archiwista zapisze do magazynu „{store}” zamiast katalogu z -o albo --root. Najpierw pokaże plan.",
     paste_submit: "Zaplanuj…",

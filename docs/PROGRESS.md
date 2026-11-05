@@ -18,6 +18,7 @@ https://archiwista-test.debever.pl) runs `4027755` (in `develop`) since 2026-11-
 
 | Component | State | Note |
 |---|---|---|
+| Obserwator's commands (plan `docs/plans/2026-11-05-obserwator-actions.md` P1 to P4, A-ADR-050; Nogat plan `2026-11-05-obserwator-in-archiwista.md` steps 1 and 2) | built on `feature/obserwator-actions`, not merged, not deployed | The adapter offers `store sync`, `store catalog` and `series build` (`adapter/obserwator/actions.py`); plan, run with a kept plan, cancel, `stale_plan`, narrow; no area (`no_area_option`), no availability; the rescan reads a whole-store producer again (`jobs/worker.py` `reads_whole`); project check, re-pin and restore of IMGW pins; „Polecenia producenta” of the Store view and the map's pasted line. P4 on 2026-11-05 on a throwaway instance with the real IMGW-PIB: `store catalog` and `store sync pl.imgw.hydro_daily 2024` through `archiwista jobs`; `stations series 149180010 --variable Q`: Krzyżanowice, Odra, 366 of 366 days |
 | IMGWTools is called Obserwator (Nogat ECO-057; Nogat plan `2026-11-03-imgwtools-to-obserwator.md` step 3) | done on `develop`, not deployed | Obserwator `ea158dc6` and Kartograf `9deaa314`, the commits of Nogat's release set `candidate-1` (`ecosystem.py set apply`) (it knows `obserwator-store.json`); the extra, plugin, producer and settings field `obserwator`, the reason `obserwator_error`, the ids `obserwator-*`, the adapter `archiwista.adapter.obserwator`; index schema 18 (a rebuild); A-ADR-032 erratum 2 |
 | Projects in Archiwista's own file (A-ADR-049 and its errata 1 to 4; Nogat plan `2026-10-31-archiwista-projects.md` step 5, ECO-054; plan `docs/plans/2026-10-31-archiwista-projects.md`) | done, in `develop`, deployed on the test server | A project is a directory holding `archiwista-project.json` (`archiwista-project/1`; lock and atomic write; discovery by that file alone; index schema 16, state schema 4), its area files in `obszary/`. Groups, shown as „Zestaw”, hold pins: from the store (Katalog, map, store view: "Dodaj do projektu…"; a filter or a map layer pins the versions it shows) and from the plan window (a plan group keeps the producer's calls). Jobs verify, check, re-pin and restore over `POST /projects/{project}/jobs` (`PROTOCOL_VERSION` 13), rebuilt from Kartograf's `command_for_file` and Obserwator's `command_for_version`; a pin without a rebuildable command stays pinnable with check and restore disabled with the reason (D5). The card shows the activity from the action log. "Usuń projekt…" removes a project from Archiwista, never data (erratum 2). The export is flat: `eksport/<name>/` with one folder per category (`NMT`, `BDOT`, `ORTO`, …), copies of the files and `README.txt`, optionally `eksport/<name>.zip` (erratum 1); a ZIP holding exactly one raster is exported unpacked, an XYZ file with the coordinate system to set in QGIS (erratum 4). The producers' project manifests and ADR-039/ADR-040 are gone. Pins: Kartograf `9deaa314` (its `develop`), Obserwator `651d4d73` (its `feature/obserwator`; both pushed) |
 | Katalog: the variant of a row | done, in `develop`, deployed on the test server | Each row, the file card and the map's "Warianty (segmenty)" name the variant (resolution and height system, `web/src/variant.js`); the „Wariant” filter is `segment` of `GET /slots`; file rows wrap their text and grow (`7252df5`, `96c72eb`) |
@@ -58,14 +59,21 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
 
 ## Next
 
-1. The author: sign in again on :8090 (the deploy of 2026-11-04 dropped the sessions).
+1. Obserwator's commands (plan `docs/plans/2026-11-05-obserwator-actions.md`): the author reviews and merges
+   `feature/obserwator-actions`; then P5 (deploy on :8090 with the store `obserwator =
+   "/data/nmt/archiwista-obserwator"`, backup and rollback as on 2026-11-04,
+   `uv sync --locked --all-extras`, the first fetch through Archiwista's jobs) and P6 (Nogat's
+   registry: the edge Archiwista → Obserwator `active`), and a browser test (GPT) of the Store
+   view's „Polecenia producenta” and the plan window. Run the Firefox part of `tests/e2e` on a
+   machine with Playwright's Firefox (the cloud session could not download it).
+2. The author: sign in again on :8090 (the deploy of 2026-11-04 dropped the sessions).
    An instance with an Obserwator store renames `imgw` to `obserwator` in the stores of
    its `config.toml` and downloads the data again into an Obserwator store (CHANGELOG);
    :8090 has none.
-2. A welcome dialog for a first visit and its slide in the guide `/instrukcja`.
-3. Release preparation (the author): `archiwista-state/2` back to `/1` (a format
+3. A welcome dialog for a first visit and its slide in the guide `/instrukcja`.
+4. Release preparation (the author): `archiwista-state/2` back to `/1` (a format
    identifier not yet released on `main` stays at `/1`), then the release below.
-4. Release, per decisions D2 and D3 of Nogat's plan
+5. Release, per decisions D2 and D3 of Nogat's plan
    `2026-10-31-archiwista-projects.md`: one Archiwista release holds v0.3, v0.4 and the
    projects (all in `develop` since 2026-11-03), outside the first release set
    (Archiwista follows the producers' tags in its own session, REL-5.4). Then: replace
@@ -75,19 +83,23 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
    --offline` resolves a commit only from uv's git database
    (`~/.cache/uv/git-v1/db/`), so fetch the producer's branch into it, change the commit
    in `pyproject.toml`, `uv lock --offline`, `uv sync --locked --all-extras`.
-5. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
+6. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
    in three browsers, the store on the share); a full `scripts/gate.sh` on the Mac; the
    live run of `tests/integration/test_live_actions.py` (`ARCHIWISTA_LIVE_ACTIONS=1`)
    and the SMB run of v0.3 criterion 8.
-6. CI proof after the push: the Chromium step of `ci.yml` and the weekly `live.yml`.
-7. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
+7. CI proof after the push: the Chromium step of `ci.yml` and the weekly `live.yml`.
+8. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
    it covers the case (DEV-10.6).
-8. Adopt the ecosystem's visual identity (Nogat `design/`, plan
+9. Adopt the ecosystem's visual identity (Nogat `design/`, plan
    `docs/plans/2026-11-01-visual-identity.md` in Nogat) once the author approves it, by
    an Archiwista plan.
 
 Known gaps:
 
+- Obserwator: a plan of `store catalog` has nothing to download once a catalog exists (the
+  public API gives no freshness signal), so its refresh runs without a plan; Obserwator has
+  no run mode that keeps the stored versions (a restore takes the source's current file);
+  `pmaxtp sync` is not in Archiwista's catalog (A-ADR-050 option C).
 - „U źródła” offers only NMT, NMPT and LAZ until Kartograf KD-3/KD-4 (availability of
   orthophoto, BDOT10k and unit products); meanwhile paste the producer's command
   („Wklej polecenie producenta”), which „Obszar polecenia” now runs on a project's area.
