@@ -109,6 +109,13 @@ export const station = {
     summary_gaps: "{gaps} ({units})",
     summary_no_gaps: "bez luk",
     handoff: {
+      title: "Do Hydrologa",
+      kind: "Dane",
+      kind_daily: "wartości dobowe",
+      kind_annual: "maksima roczne (pełne lata hydrologiczne)",
+      variable: "Zmienna",
+      summary: "przekazanie: {what} {variable} [{unit}]",
+      range_shown: " w zakresie wykresu",
       copy: "Kopiuj do Hydrologa",
       copy_title:
         "Skopiuj {what} {variable} jako przekazanie dla Hydrologa (Statystyka przepływów → " +
