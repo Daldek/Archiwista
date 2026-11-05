@@ -1,6 +1,6 @@
 # Plan: Obserwator's commands in Archiwista (fetch and refresh IMGW data), v0.5 „IMGW stations”
 
-Not approved for implementation. Written on 2026-11-05 at the author's request („przygotuj nową gałąź dla tej współpracy i napisz plan, ale nie wdrażaj go”); work starts after the author approves this plan. Parent plan: Nogat `docs/plans/2026-11-05-obserwator-in-archiwista.md` (branch `plan/obserwator-in-archiwista`), its step 1 and step 2.
+Approved: 2026-11-05, the author (implementation in a cloud session); P5 (deploy on :8090) and P6 (Nogat's registry) stay for a local session. Written on 2026-11-05 at the author's request („przygotuj nową gałąź dla tej współpracy i napisz plan, ale nie wdrażaj go”). Parent plan: Nogat `docs/plans/2026-11-05-obserwator-in-archiwista.md` (branch `plan/obserwator-in-archiwista`), its step 1 and step 2.
 
 Requirements: SPEC 12.2 (KB-1 to KB-5, the model for a producer's commands), 12.7 (IMGW-1 to IMGW-13, IMGW-21), 14 (v0.5 „IMGW stations”); A-ADR-024 (Obserwator as an optional plugin), A-ADR-049 D5 (check, re-pin and restore of a pin by its version's command); ECO-054, ECO-057, HUB-5.2, REL-5.3, DEV-17.4. Branch `feature/obserwator-actions` (from `develop` `4ac2933`).
 
