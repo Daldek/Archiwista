@@ -227,12 +227,10 @@ function SeriesChart({ station, charts, chosen, params, names, actions }) {
         options=${chosen.variables.map((item) => ({ value: item.key, label: item.key }))} />
       <${SecondVariable} choice=${chosen} keys=${keys} onChange=${chooseKeys} />
       <span class="sch-spacer"></span>
-      ${chosen.time_unit === "day" || chosen.resolution === "annual"
-        ? html`<${HandoffButtons} station=${station} chosen=${chosen} variable=${keys[0]}
-            from=${from} to=${to} />`
-        : null}
       ${actions && chosen.time_unit === "day" ? actions({ dataset: chosen.dataset, keys }) : null}
     </div>
+    <${HandoffPanel} station=${station} charts=${charts} chosen=${chosen} variable=${keys[0]}
+      names=${names} from=${from} to=${to} />
     <div class="sch-range">
       ${data?.from
         ? html`<span class="faint">${t(C.range, { from: day(data.from), to: day(data.to) })}</span>`
@@ -256,35 +254,73 @@ function SeriesChart({ station, charts, chosen, params, names, actions }) {
 }
 
 /**
- * „Kopiuj do Hydrologa” and „Plik przekazania” (A-ADR-052): the chart's first variable as a
- * hand-off to Hydrolog's „Statystyka przepływów”, its daily values over the chart's range or,
- * of an annual chart, its annual maxima of complete hydrological years; what happened shows
- * beside them, with the years an annual chart leaves out.
+ * The kinds of data a station hands to Hydrolog (A-ADR-052): the daily values of each
+ * series of days and the annual maxima of the annual chart, each with its variables.
+ *
+ * @param {import("../types.js").StationChartChoice[]} charts - The card's charts.
+ * @returns {{key: string, chart: import("../types.js").StationChartChoice,
+ *   annual: boolean}[]}
+ */
+export function handoffKinds(charts) {
+  return charts
+    .filter((chart) => chart.time_unit === "day" || chart.resolution === "annual")
+    .map((chart) => ({
+      key: `${chart.resolution}:${chart.dataset}`,
+      chart,
+      annual: chart.resolution === "annual",
+    }));
+}
+
+/**
+ * „Do Hydrologa” (A-ADR-052): what Hydrolog's „Statystyka przepływów” gets, chosen
+ * here — the daily values of a series of days or the annual maxima of complete
+ * hydrological years, and the variable — then „Kopiuj do Hydrologa” or „Plik
+ * przekazania”. It starts at the chart shown and its first variable; the chart's range
+ * goes with its own kind only. What happened shows beside them, with the years an annual
+ * hand-off leaves out.
  *
  * @param {{station: import("../types.js").StationItem,
+ *   charts: import("../types.js").StationChartChoice[],
  *   chosen: import("../types.js").StationChartChoice, variable: string,
- *   from: string|null, to: string|null}} props
+ *   names: Map<string, string>, from: string|null, to: string|null}} props - `names`: the
+ *   datasets' names, which tell two series of days apart.
  */
-function HandoffButtons({ station, chosen, variable, from, to }) {
+function HandoffPanel({ station, charts, chosen, variable, names, from, to }) {
   const H = C.handoff;
+  const id = useId();
+  const kinds = handoffKinds(charts);
+  const [picked, setPicked] = useState({ kind: null, variable: null });
   const [state, setState] = useState({ busy: false, note: null, problem: null });
-  const annual = chosen.resolution === "annual";
-  const what = annual ? H.what_annual : H.what_daily;
-  const act = async (kind) => {
+  if (!kinds.length) return null;
+  const shown = `${chosen.resolution}:${chosen.dataset}`;
+  const kind =
+    kinds.find((item) => item.key === picked.kind) ??
+    kinds.find((item) => item.key === shown) ??
+    kinds[0];
+  const keys = kind.chart.variables.map((item) => item.key);
+  const key = [picked.variable, variable].find((item) => keys.includes(item)) ?? keys[0];
+  const unit = kind.chart.variables.find((item) => item.key === key)?.unit;
+  const ranged = kind.key === shown;
+  const what = kind.annual ? H.what_annual : H.what_daily;
+  const choose = (patch) => {
+    setPicked({ ...picked, ...patch });
+    setState({ busy: false, note: null, problem: null });
+  };
+  const act = async (way) => {
     setState({ busy: true, note: null, problem: null });
     try {
       const doc = await getStationHandoff(station.code, {
         store: station.store,
         provider: station.provider,
-        dataset: chosen.dataset,
-        resolution: annual ? "annual" : null,
-        variable,
-        from,
-        to,
+        dataset: kind.chart.dataset,
+        resolution: kind.annual ? "annual" : null,
+        variable: key,
+        from: ranged ? from : null,
+        to: ranged ? to : null,
       });
       const text = JSON.stringify(doc, null, 2);
       let note;
-      if (kind === "copy") {
+      if (way === "copy") {
         await navigator.clipboard.writeText(text);
         note = t(H.copied, { subject: doc.subject });
       } else {
@@ -300,16 +336,43 @@ function HandoffButtons({ station, chosen, variable, from, to }) {
       setState({ busy: false, note: null, problem: error.problem });
     }
   };
-  return html`<span class="sch-handoff">
+  return html`<div class="sch-handoff" role="group" aria-label=${H.title}>
+    <span class="sch-handoff-title">${H.title}</span>
+    <label class="sch-second" for=${`${id}-kind`}>
+      <span class="sch-second-label">${H.kind}</span>
+      <select id=${`${id}-kind`} value=${kind.key}
+        onChange=${(event) => choose({ kind: event.currentTarget.value })}>
+        ${kinds.map((item) => {
+          const daily = kinds.filter((other) => !other.annual).length > 1
+            ? `${H.kind_daily} · ${names.get(item.chart.dataset) ?? item.chart.dataset}`
+            : H.kind_daily;
+          return html`<option value=${item.key} key=${item.key}>
+            ${item.annual ? H.kind_annual : daily}</option>`;
+        })}
+      </select>
+    </label>
+    <label class="sch-second" for=${`${id}-variable`}>
+      <span class="sch-second-label">${H.variable}</span>
+      <select id=${`${id}-variable`} value=${key}
+        onChange=${(event) => choose({ variable: event.currentTarget.value })}>
+        ${kind.chart.variables.map(
+          (item) => html`<option value=${item.key} key=${item.key}>
+            ${`${item.key} (${unitText(item.unit)})`}</option>`,
+        )}
+      </select>
+    </label>
     <button type="button" class="btn ghost sm" disabled=${state.busy}
-      title=${t(H.copy_title, { what, variable })} onClick=${() => act("copy")}>
+      title=${t(H.copy_title, { what, variable: key })} onClick=${() => act("copy")}>
       <${Icon} name="copy" size=${13} />${H.copy}</button>
     <button type="button" class="btn ghost sm" disabled=${state.busy}
-      title=${t(H.file_title, { what, variable })} onClick=${() => act("file")}>
+      title=${t(H.file_title, { what, variable: key })} onClick=${() => act("file")}>
       <${Icon} name="download" size=${13} />${H.file}</button>
+    <span class="faint sch-handoff-what">
+      ${t(H.summary, { what, variable: key, unit: unitText(unit) })}
+      ${ranged && (from || to) ? H.range_shown : ""}</span>
     ${state.note ? html`<span class="faint sch-handoff-note" role="status">${state.note}</span>` : null}
     ${state.problem ? html`<${ProblemView} problem=${state.problem} compact />` : null}
-  </span>`;
+  </div>`;
 }
 
 /** Save a text as a download named `name`. */

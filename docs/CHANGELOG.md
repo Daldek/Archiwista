@@ -10,11 +10,14 @@ command-line interface may change.
 ### Added
 
 - A station's series handed to Hydrolog (A-ADR-052; Nogat plan
-  `2026-11-05-archiwista-series-to-hydrolog`): „Kopiuj do Hydrologa” and „Plik
-  przekazania” beside a daily or annual chart of the station card write Nogat's
+  `2026-11-05-archiwista-series-to-hydrolog`): „Do Hydrologa” under the chart of the
+  station card chooses the data („wartości dobowe” of a series of days, or „maksima
+  roczne (pełne lata hydrologiczne)”) and the variable, whatever chart is shown, and its
+  „Kopiuj do Hydrologa” and „Plik przekazania” write Nogat's
   `nogat-handoff/1` around Hydrolog's `hydrolog-series/1`, which Hydrolog's „Statystyka
   przepływów” opens with „Wczytaj z Archiwisty”: every day of the variable's daily
-  series over the chart's range (`null` without a value), or the annual maxima of
+  series (over the chart's range when the chart shows that series; `null` without a
+  value), or the annual maxima of
   complete hydrological years, the years missing a half left out and named beside the
   buttons and in `provenance.series.left_out`. `GET /stations/{code}/handoff` and
   `archiwista stations handoff KOD --variable Q [--resolution annual]` write the same

@@ -41,8 +41,13 @@
 .sch { display: grid; gap: 8px; min-width: 0; }
 .sch-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .sch-spacer { flex: 1; }
-.sch-handoff { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.sch-handoff-note { font-size: 11.5px; flex-basis: 100%; text-align: right; }
+.sch-handoff {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 8px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2);
+}
+.sch-handoff-title { font-weight: 600; font-size: 12.5px; }
+.sch-handoff-what { font-size: 11.5px; }
+.sch-handoff-note { font-size: 11.5px; flex-basis: 100%; }
 .sch-second { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-3); }
 .sch-second select {
   height: 28px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 8px; background: #fff;

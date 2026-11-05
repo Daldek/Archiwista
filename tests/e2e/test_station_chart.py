@@ -422,6 +422,39 @@ def test_the_annual_chart_saves_its_complete_years_maxima_as_a_hand_off_to_hydro
     engine_tab.assert_clean()
 
 
+def test_the_hand_off_takes_the_kind_and_variable_chosen_beside_any_chart(
+    serve: Serve, engine_tab: Tab, statistics_store: Path, tmp_path: Path
+) -> None:
+    """On the monthly chart: „wartości dobowe” of H go, not the chart's monthly Q."""
+    # Arrange
+    served = serve(station_settings(statistics_store, tmp_path))
+    page = open_session(engine_tab, served)
+    page.goto(card_address(served, RABA, chart_dataset=MONTHLY, chart_variable="Q"))
+    card = page.get_by_role("dialog", name="Raba Górna")
+    panel = card.get_by_role("group", name="Do Hydrologa")
+    expect(panel.get_by_label("Dane")).to_have_value(
+        re.compile(r"^unit:pl\.imgw\.hydro_daily$")
+    )
+
+    # Act
+    panel.get_by_label("Zmienna").select_option("H")
+    with page.expect_download() as started:
+        panel.get_by_role("button", name="Plik przekazania").click()
+    doc = json.loads(Path(started.value.path()).read_text(encoding="utf-8"))
+    panel.get_by_label("Dane").select_option(
+        label="maksima roczne (pełne lata hydrologiczne)"
+    )
+
+    # Assert
+    payload = doc["payload"]
+    assert (payload["step"], payload["variable"]) == ("day", "H")
+    assert doc["provenance"]["series"]["dataset"] == "pl.imgw.hydro_daily"
+    expect(panel.locator(".sch-handoff-what")).to_have_text(
+        "przekazanie: maksima roczne pełnych lat hydrologicznych H [cm]"
+    )
+    engine_tab.assert_clean()
+
+
 def test_an_incomplete_year_is_a_hollow_dot_whose_tooltip_names_the_missing_half(
     serve: Serve, engine_tab: Tab, statistics_store: Path, tmp_path: Path
 ) -> None:
