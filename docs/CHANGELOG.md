@@ -9,6 +9,23 @@ command-line interface may change.
 
 ### Added
 
+- Obserwator's commands (A-ADR-050, plan `docs/plans/2026-11-05-obserwator-actions.md`):
+  IMGW-PIB and ČHMÚ data are fetched and refreshed from Archiwista as Kartograf's are.
+  The Obserwator source offers the commands that write its store, `store sync` (the
+  archives of datasets and years, then their series), `store catalog` (a provider's
+  station catalog) and `series build`, with Obserwator's Polish texts, in `GET
+  /commands`, `archiwista commands list|parse|validate|format`, the plan window, a line
+  pasted in the map's step „U źródła” (it ignores the area it was only offered: the
+  archives are files of the whole country) and the new section „Polecenia producenta”
+  of the Store view, a form of those commands that opens the plan window. A `check`
+  job plans a run (`obserwator-plan/1`: each archive with its size, the series), a
+  `download` job runs the plan with progress and can be cancelled, a source changed
+  since the plan fails its position as `stale_plan`, and the index reads the
+  Obserwator directory again when the job ends, so the stations and series are there.
+  A project's IMGW pins are checked, re-pinned and restored ("Sprawdź aktualizacje",
+  "Przepnij", "Przywróć brakujące"). A pasted Obserwator line given an area chosen in
+  the field is refused with `no_area_option`; `POST /availability` refuses Obserwator
+  (`no_availability`).
 - "Zgłoś uwagę" (Hydrograf's feedback): a button of the top bar opens a window where
   anyone signed in describes a fault or an idea (up to 5,000 characters, with a
   counter), may leave a name or an e-mail address (up to 200) and attaches the

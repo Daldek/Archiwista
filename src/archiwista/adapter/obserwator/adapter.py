@@ -28,7 +28,9 @@ producer surface as ``ProducerError`` with the message unchanged.
 
 import os
 import shlex
-from collections.abc import Iterator, Mapping, Sequence
+import tempfile
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -61,7 +63,7 @@ from obserwator import (
 from obserwator import current_version as current_of_slot
 from obserwator import read_meta as read_sidecar
 
-from archiwista.adapter.obserwator import PACKAGE, PRODUCER, SCHEMAS
+from archiwista.adapter.obserwator import PACKAGE, PRODUCER, SCHEMAS, actions
 from archiwista.errors import (
     NotFoundError,
     ProducerError,
@@ -70,13 +72,21 @@ from archiwista.errors import (
 )
 from archiwista.messages import message, with_detail
 from archiwista.sources import (
+    ActionPlan,
+    ActionProgress,
+    ActionResult,
+    AreaCommand,
+    AvailabilityNotice,
+    AvailabilityReport,
     CommandCall,
+    CommandInfo,
     DefaultRoot,
     DefaultRootSource,
     EntryKind,
     EntryMeta,
     Extreme,
     Footprint,
+    GeoJSONGeometry,
     ScanScope,
     SeriesListing,
     SeriesValues,
@@ -152,9 +162,13 @@ class ObserwatorAdapter:
     (a slot has no link), ``StationCatalogAdapter`` (each provider's station
     catalog), ``SeriesIndexAdapter`` (the index of each dataset's series),
     ``SeriesValuesAdapter`` (a station's values), ``DefaultRootAdapter``
-    (``store_root()``), ``VersionCommandAdapter`` (``command_for_version``) and
-    ``ExportFolderAdapter`` (every version under ``IMGW``); no other optional
-    capability.
+    (``store_root()``), ``VersionCommandAdapter`` (``command_for_version``),
+    ``ExportFolderAdapter`` (every version under ``IMGW``), ``ActionAdapter``
+    (the commands that write the store, ``actions.py``) and
+    ``AreaCommandAdapter`` (which refuses every area: the archives are
+    national files); no other optional capability. ``cache_dir`` is the
+    plugin's local directory (``SourceContext.cache_dir``): a run of a kept
+    plan hands Obserwator its plan file there, outside every store.
     All methods may run in several threads at once; one iterator of
     ``iter_entries`` belongs to one thread.
     """
@@ -163,8 +177,11 @@ class ObserwatorAdapter:
     package = PACKAGE
     schemas: tuple[str, ...] = SCHEMAS
 
-    def __init__(self, *, supported_versions: str) -> None:
+    def __init__(
+        self, *, supported_versions: str, cache_dir: Path | None = None
+    ) -> None:
         self.supported_versions = supported_versions
+        self._cache_dir = cache_dir
 
     def probe(self, root: Path) -> SourceState:
         """Report whether ``root`` is a readable Obserwator store.
@@ -643,6 +660,106 @@ class ObserwatorAdapter:
     def export_folder(self, product: str | None, dataset_key: str | None) -> str:
         """Return the export folder of every IMGW version: ``IMGW``."""
         return "IMGW"
+
+    def commands(self) -> tuple[CommandInfo, ...]:
+        """Return the commands that write the store (``command_schema``)."""
+        return actions.catalog()
+
+    def parse(self, line: str) -> CommandCall:
+        """Read an ``obserwator …`` line with ``parse_command``."""
+        return actions.parse(line)
+
+    def validate(
+        self, command: str, options: Mapping[str, object], *, root: Path | None
+    ) -> Mapping[str, object]:
+        """Check a call with ``validate_command``, naming the store's root."""
+        return actions.validate(command, options, root=root)
+
+    def format(self, call: CommandCall) -> str:
+        """Return the canonical ``obserwator …`` line of a call (``format_command``)."""
+        return actions.format_line(call)
+
+    def availability_products(self) -> tuple[str, ...]:
+        """Return no product: Obserwator has no availability report of an area."""
+        return ()
+
+    def availability(
+        self,
+        product: str,
+        *,
+        area_file: Path,
+        countries: tuple[str, ...],
+        force: bool = False,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> AvailabilityReport:
+        """Refuse a report of an area (``no_availability``)."""
+        return actions.availability(product)
+
+    def check(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionPlan:
+        """Plan a run in the store at ``root`` (``check_command``)."""
+        return actions.check(command, options, root=root, on_notice=on_notice)
+
+    def run(
+        self,
+        command: str,
+        options: Mapping[str, object],
+        *,
+        root: Path,
+        plan: ActionPlan | None = None,
+        upgrade: bool = False,
+        on_progress: Callable[[ActionProgress], None] | None = None,
+        on_notice: Callable[[AvailabilityNotice], None] | None = None,
+    ) -> ActionResult:
+        """Run a command in the store at ``root`` (``run_command``).
+
+        A run without a plan always takes the source's newer versions: that is
+        Obserwator's only mode, so ``upgrade`` changes nothing.
+        """
+        with self._plans() as directory:
+            return actions.run(
+                command,
+                options,
+                root=root,
+                cache_dir=directory,
+                plan=plan,
+                on_progress=on_progress,
+                on_notice=on_notice,
+            )
+
+    def scope(self, path: str) -> ScanScope:
+        """Return the scope of a slot's path: the whole store."""
+        return actions.scope(path)
+
+    def narrow(self, plan: ActionPlan, paths: Collection[str]) -> ActionPlan:
+        """Return the plan keeping only the archives to download at ``paths``."""
+        return actions.narrow(plan, paths)
+
+    def with_area(
+        self,
+        call: CommandCall,
+        *,
+        area_file: Path,
+        geometry: GeoJSONGeometry,
+        countries: tuple[str, ...],
+    ) -> AreaCommand:
+        """Refuse an area: no command that writes the store takes one."""
+        return actions.with_area(call)
+
+    @contextmanager
+    def _plans(self) -> Iterator[Path]:
+        """Yield the directory of a run's plan file: the plugin's cache directory."""
+        if self._cache_dir is not None:
+            yield self._cache_dir
+            return
+        with tempfile.TemporaryDirectory(prefix="archiwista-obserwator-") as name:
+            yield Path(name)
 
     def command_for_version(self, version: str, *, root: Path) -> CommandCall:
         """Return the call that selects a stored version again (Obserwator's).

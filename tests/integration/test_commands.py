@@ -19,6 +19,7 @@ import httpx
 import kartograf
 import pytest
 
+from archiwista.adapter.obserwator.actions import STORE_COMMANDS
 from archiwista.auth import LOCAL_OWNER
 from archiwista.cli import main
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
@@ -239,7 +240,7 @@ def test_validate_takes_as_a_path_only_an_area_file_archiwista_wrote(
 def test_a_missing_producer_refuses_only_its_own_commands(
     tmp_path: Path, standin: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Without Kartograf the stand-in's catalog and calls still answer."""
+    """Without Kartograf the catalogs of Obserwator and the stand-in still answer."""
     hide_packages(monkeypatch, "kartograf")
     registry = load_registry(cache_dir=tmp_path / "cache")
 
@@ -251,6 +252,9 @@ def test_a_missing_producer_refuses_only_its_own_commands(
         list_commands(registry, producer="external")
 
     assert [(info.producer, info.command) for info in listed] == [
+        ("obserwator", "store sync"),
+        ("obserwator", "store catalog"),
+        ("obserwator", "series build"),
         ("standin", "series fetch"),
         ("standin", "stations list"),
     ]
@@ -272,6 +276,10 @@ def _kartograf_paths(tmp_path: Path) -> AppPaths:
     return paths
 
 
+# A call of Obserwator's national archives, which no area narrows.
+SYNC = {"datasets": ["pl.imgw.hydro_daily"], "years": [2024]}
+
+
 def _answer(response: httpx.Response) -> Any:
     """Return the JSON of a successful answer."""
     assert response.status_code == 200, response.text
@@ -287,7 +295,11 @@ def _parse(owner: Caller, producer: str, line: str) -> Any:
 def test_commands_api_lists_kartograf_and_reads_every_example_back_offline(
     tmp_path: Path,
 ) -> None:
-    """The ids are ``kartograf commands list``'s; a line's call survives JSON."""
+    """The ids are the producers' own lists; a line's call survives JSON.
+
+    Kartograf's catalog is ``kartograf commands list``'s, Obserwator's the
+    commands that write its store; each example reads back with its producer.
+    """
     # Arrange
     paths = _kartograf_paths(tmp_path)
     listed = [row.name for row in kartograf.list_commands().commands]
@@ -297,18 +309,34 @@ def test_commands_api_lists_kartograf_and_reads_every_example_back_offline(
         with no_network() as attempts:
             # Act
             catalog = _answer(owner.request("GET", "/commands"))
-            examples = [line for item in catalog["items"] for line in item["examples"]]
-            calls = [_parse(owner, "kartograf", line) for line in examples]
+            examples = [
+                (item["producer"], line)
+                for item in catalog["items"]
+                for line in item["examples"]
+            ]
+            calls = [_parse(owner, producer, line) for producer, line in examples]
             lines = [
                 _answer(owner.request("POST", "/commands/format", json=call))["line"]
                 for call in calls
             ]
-            read_back = [_parse(owner, "kartograf", line) for line in lines]
+            read_back = [
+                _parse(owner, call["producer"], line)
+                for call, line in zip(calls, lines, strict=True)
+            ]
 
     # Assert
-    assert [item["command"] for item in catalog["items"]] == listed
-    assert {item["producer"] for item in catalog["items"]} == {"kartograf"}
-    assert {call["command"] for call in calls} == set(listed)
+    by_producer = {
+        producer: [
+            item["command"] for item in catalog["items"] if item["producer"] == producer
+        ]
+        for producer in ("kartograf", "obserwator")
+    }
+    assert by_producer == {"kartograf": listed, "obserwator": list(STORE_COMMANDS)}
+    assert {item["producer"] for item in catalog["items"]} == {
+        "kartograf",
+        "obserwator",
+    }
+    assert {call["command"] for call in calls} == {*listed, *STORE_COMMANDS}
     assert read_back == calls
     assert attempts == []
 
@@ -394,6 +422,7 @@ def test_commands_api_without_kartograf_refuses_only_its_commands(
 
     # Assert
     assert [(item["producer"], item["command"]) for item in listed["items"]] == [
+        *(("obserwator", command) for command in STORE_COMMANDS),
         ("standin", "series fetch"),
         ("standin", "stations list"),
     ]
@@ -618,8 +647,26 @@ def test_commands_cli_json_equals_http(
                     ),
                 ),
                 (
-                    cli("list", "--producer", "obserwator", status=15),
-                    http("GET", "/commands?producer=obserwator"),
+                    cli(
+                        "area",
+                        "obserwator",
+                        "store sync",
+                        "--options",
+                        json.dumps(SYNC),
+                        "--area-id",
+                        area,
+                        status=15,
+                    ),
+                    http(
+                        "POST",
+                        "/commands/area",
+                        {
+                            "producer": "obserwator",
+                            "command": "store sync",
+                            "options": SYNC,
+                            "area_id": area,
+                        },
+                    ),
                 ),
                 (
                     cli("area", *imagery, unknown, status=3),

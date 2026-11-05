@@ -32,13 +32,15 @@ def load(context: SourceContext) -> SourceAdapter:
     Parameters
     ----------
     context : SourceContext
-        Local resources of the plugin; the adapter keeps no cache.
+        Local resources of the plugin: a run of a kept plan writes its plan
+        file in ``cache_dir`` (the adapter keeps no other cache).
 
     Returns
     -------
     SourceAdapter
         The adapter; it implements the source interface, the description of
-        the segments its entries name and the current version of a slot.
+        the segments its entries name, the current version of a slot and the
+        commands that write the store.
 
     Raises
     ------
@@ -52,4 +54,6 @@ def load(context: SourceContext) -> SourceAdapter:
         raise source_error(state)
     from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
 
-    return ObserwatorAdapter(supported_versions=SUPPORTED_VERSIONS)
+    return ObserwatorAdapter(
+        supported_versions=SUPPORTED_VERSIONS, cache_dir=context.cache_dir
+    )
