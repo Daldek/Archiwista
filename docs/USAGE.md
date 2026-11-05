@@ -794,7 +794,12 @@ than one series has them): the range with its days, each unit's value up to
 `--max-points` units (2000 by default) or else the least, mean and greatest value
 of intervals ("uproszczony, min./śr./maks. z 14 dni"), each variable's points with a
 value, the gaps its label counts in `--year-type` and its markers (an accumulated
-sum, an extreme IMGW published). `stations compare` compares one variable of 2 to 5
+sum, an extreme IMGW published). A series of months gives per variable the month's
+minimum, mean and maximum as published. `stations series KOD --resolution annual`
+prints a line a hydrological year with the annual maximum and minimum Archiwista
+finds in the half-year characteristics (the greater of the winter and summer
+maxima, the lesser of their minima), their days, half and occurrences, and
+„niepełny rok: brak półrocza …” when one half has no value. `stations compare` compares one variable of 2 to 5
 stations (`--station MAGAZYN/DOSTAWCA/KOD`, repeated) in one dataset over one range
 (by default every known day of the variable at those stations): the range once, then
 each station with the variable's label and full years and its chart as `stations

@@ -105,7 +105,7 @@ with a difference model come **after the MVP** (v1.1 to v1.3).
 | Direct sign-in through LDAP, groups from LDAP/AD | later | the MVP has local accounts or a reverse proxy (a path to SSO and AD); groups from LDAP/AD are deferred from v0.4 (A-ADR-046): they need a directory client and its credentials on the server, while a team keeps a few groups by hand |
 | macOS | no guarantee | priority is Linux and Windows (SPEC 15 P10) |
 | GIS analyses | out of scope | analyses belong to QGIS |
-| Hydrological calculations and statistics of series | out of scope | Hydrolog and Retman |
+| Hydrological calculations and statistics of series | out of scope | Hydrolog and Retman; for display only, Archiwista finds the annual maximum and minimum of a hydrological year in IMGW's half-year characteristics (A-ADR-051) |
 | Current IMGW and ČHMÚ data (states, warnings) | out of scope | only archives and series from the store |
 | Own downloading or processing of data | out of scope | only the producers' APIs; a missing function is a requirement for the producer |
 | QGIS plugin | out of scope | subproject 4 of the Kartograf roadmap |

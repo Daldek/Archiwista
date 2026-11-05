@@ -97,6 +97,7 @@ from archiwista.sources import (
     SourceStatus,
     Station,
     StationSeries,
+    Statistic,
     TimeUnit,
     VariableCoverage,
 )
@@ -134,9 +135,14 @@ _SERIES_UNITS: Mapping[str, TimeUnit] = {
 # its characteristics that are extremes, in the order of the registry.
 _HALF_YEAR = "half_year"
 _EXTREMES: tuple[Extreme, ...] = ("min", "max")
-# What a unit has when nothing is flagged or dated (shared, never changed).
+# The units of the datasets that hold statistics of a variable as variables of
+# their own, ``<variable>_<statistic>`` (``Q_min``, ``Q_mean``, ``Q_max``).
+_STATISTIC_UNITS = frozenset({"month", "half_year"})
+_STATISTICS: Mapping[str, Statistic] = {"min": "min", "mean": "mean", "max": "max"}
+# What a unit has when nothing is flagged, dated or counted (shared, never changed).
 _NO_FLAGS: frozenset[str] = frozenset()
 _NO_DATES: Mapping[str, tuple[datetime | None, datetime | None]] = MappingProxyType({})
+_NO_COUNTS: Mapping[str, int] = MappingProxyType({})
 # Trees whose files cover a whole country; the others have no place.
 _COUNTRY_TREES = frozenset({"archives", "series"})
 # The codes of an Obserwator error that say a slot has no current version, not that
@@ -632,6 +638,48 @@ class ObserwatorAdapter:
             extreme: f"{variable}_{extreme}"
             for extreme in _EXTREMES
             if unit is not None and held.get(f"{variable}_{extreme}") == unit
+        }
+
+    def statistics_of(self, dataset: str) -> Mapping[str, Mapping[Statistic, str]]:
+        """Return the variables whose statistics a dataset holds, with their names.
+
+        A dataset of months or half-years (``pl.imgw.hydro_monthly``,
+        ``pl.imgw.hydro_semiannual``) holds each variable's least, mean and
+        greatest value of a unit as variables of their own, which Obserwator
+        names after the variable and the statistic (``Q_min``, ``Q_mean``,
+        ``Q_max``: the variables of its registry). A variable is given when
+        the registry holds all three, in one unit. No disk access.
+
+        Parameters
+        ----------
+        dataset : str
+            A dataset key.
+
+        Returns
+        -------
+        Mapping[str, Mapping[str, str]]
+            The name of each statistic (``min``, ``mean``, ``max``) of each
+            variable (``Q``), in the registry's order; empty for a dataset of
+            days and for one Obserwator does not know.
+        """
+        try:
+            descriptor = get_dataset(dataset)
+        except ObserwatorError:
+            return {}
+        if descriptor.time_unit not in _STATISTIC_UNITS:
+            return {}
+        units: dict[str, set[str]] = {}
+        found: dict[str, dict[Statistic, str]] = {}
+        for name, unit in descriptor.variables.items():
+            variable, _, suffix = name.rpartition("_")
+            statistic = _STATISTICS.get(suffix)
+            if variable and statistic is not None:
+                found.setdefault(variable, {})[statistic] = name
+                units.setdefault(variable, set()).add(unit)
+        return {
+            variable: held
+            for variable, held in found.items()
+            if len(held) == len(_STATISTICS) and len(units[variable]) == 1
         }
 
     def footprint(self, entry: SourceEntry, *, network: bool = False) -> Footprint:
@@ -1175,12 +1223,14 @@ def _series_values(record: NormalizedRecord) -> SeriesValues:
         for name, dates in record.extrema_dates.items()
         if dates[0] is not None or dates[1] is not None
     }
+    counted = record.extrema_occurrences
     return SeriesValues(
         start=record.date,
         period=record.period,
         values={name: measured.value for name, measured in measurements.items()},
         accumulated=frozenset(accumulated) if accumulated else _NO_FLAGS,
         extremes=dated or _NO_DATES,
+        occurrences=dict(counted) if counted else _NO_COUNTS,
     )
 
 

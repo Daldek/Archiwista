@@ -14,6 +14,14 @@ Mlýn has 731 days of H, more than the plot's pixels: simplified until a drag
 selection narrows the range to daily values, writing ``from`` and ``to``; a
 selection of one month gives its 31 daily vertices. The keys zoom, move and
 reset the range.
+
+The statistics store (``tests/fixtures/obserwator_statistics.py``, A-ADR-051)
+adds IMGW-PIB's monthly series and half-year characteristics: the monthly Q
+of Raba Górna is the mean line inside the band of each month's published
+minimum and maximum, broken at the gap of March 2024; Stacja Bez Miejsca
+(``149190312``), with half-year characteristics only, opens on the annual
+chart of its Q, whose 2023 has no summer maximum: a hollow dot and a tooltip
+naming the missing half.
 """
 
 import re
@@ -25,6 +33,7 @@ from urllib.parse import urlencode
 from playwright.sync_api import Locator, Route, expect
 
 from tests.fixtures.browser import Served, Tab
+from tests.fixtures.obserwator_statistics import HALF_YEARS_ONLY, MONTHLY
 from tests.fixtures.station_browser import (
     STORE,
     address,
@@ -41,6 +50,7 @@ Stores = Callable[[str], Path]
 
 RABA = "IMGW-PIB/149190310"
 SPINDLER = "CHMI/0-203-1-900001"
+HALF_YEARS = f"IMGW-PIB/{HALF_YEARS_ONLY}"
 VERTEX = re.compile(r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)")
 MAX_POINTS = re.compile(r"[?&]max_points=(\d+)")
 
@@ -57,6 +67,16 @@ def subpaths(line: Locator) -> list[list[float]]:
     path = line.get_attribute("d") or ""
     return [
         [float(x) for x, _ in VERTEX.findall(part)] for part in path.split("M") if part
+    ]
+
+
+def vertices(path: Locator) -> list[list[tuple[float, float]]]:
+    """Return each vertex (x, y) of each subpath of a path (``M`` starts one)."""
+    drawn = path.get_attribute("d") or ""
+    return [
+        [(float(x), float(y)) for x, y in VERTEX.findall(part)]
+        for part in drawn.split("M")
+        if part
     ]
 
 
@@ -257,4 +277,156 @@ def test_the_keys_zoom_move_and_give_back_the_whole_series(
     assert abs((later - first).days - 73) <= 1
     assert "from" not in reset and "to" not in reset
     expect(card.locator(".sch-note")).to_contain_text("cały okres")
+    engine_tab.assert_clean()
+
+
+def test_a_monthly_chart_draws_the_mean_inside_the_band_of_the_minimum_and_maximum(
+    serve: Serve, engine_tab: Tab, statistics_store: Path, tmp_path: Path
+) -> None:
+    """Q of Raba Górna, 24 months: lines of 16 and 7 months, March 2024 a band."""
+    # Arrange
+    served = serve(station_settings(statistics_store, tmp_path))
+    page = open_session(engine_tab, served)
+    months = [date(2022 + (10 + n) // 12, (10 + n) % 12 + 1, 1) for n in range(24)]
+
+    # Act
+    page.goto(card_address(served, RABA, chart_dataset=MONTHLY, chart_variable="Q"))
+    card = page.get_by_role("dialog", name="Raba Górna")
+    line = card.locator(".sch-line[data-key=Q]")
+    expect(line).to_have_attribute("d", re.compile(r"^M"))
+    runs = vertices(line)
+    shapes = vertices(card.locator(".sch-band"))
+    gaps = [
+        (band.get_attribute("data-from"), band.get_attribute("data-to"))
+        for band in card.locator(".sch-gap[data-key=Q]").all()
+    ]
+    chips = card.get_by_role("group", name="Szereg").get_by_role("button")
+    plot = card.locator(".sch-plot")
+    plot.scroll_into_view_if_needed()
+    frame = frame_of(plot)
+    page.mouse.move(frame.screen_x(date(2023, 1, 16)), frame.y)
+    tip = card.locator(".sch-tip")
+
+    # Assert
+    assert [len(run) for run in runs] == [16, 7]
+    shown = [frame.day_at(x).replace(day=1) for run in runs for x, _ in run]
+    assert shown == [month for month in months if month != date(2024, 3, 1)]
+    assert gaps == [("2024-03-01", "2024-03-31")]
+    assert len(shapes) == len(runs)
+    for run, shape in zip(runs, shapes, strict=True):
+        upper, lower = shape[: len(run)], shape[len(run) :][::-1]
+        assert [x for x, _ in upper] == [x for x, _ in run] == [x for x, _ in lower]
+        assert all(
+            top < y < low
+            for (_, top), (_, y), (_, low) in zip(upper, run, lower, strict=True)
+        )
+    expect(chips).to_have_text(
+        ["dobowe", "miesięczne", "Roczne (z charakterystyk półrocznych)"]
+    )
+    expect(chips.filter(has_text="miesięczne")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    expect(tip).to_have_text(
+        re.compile(r"^2023\.01\s*Q: śr\. 2,5 \(min\. 1,5 – maks\. 3,5\) m³/s$")
+    )
+    expect(card.locator(".sch-note")).to_have_text("wartości miesięczne")
+    expect(card.locator(".sch-summary")).to_have_text(
+        "2022.11.01–2024.10.31 (24 miesiące) · Q: 23 z 24 punktów z wartością,"
+        " 1 luka (1 miesiąc)"
+    )
+    engine_tab.assert_clean()
+
+
+def test_a_station_with_half_year_characteristics_only_opens_on_the_annual_chart(
+    serve: Serve, engine_tab: Tab, statistics_store: Path, tmp_path: Path
+) -> None:
+    """Stacja Bez Miejsca: each year's Q maximum and minimum, hydrological years."""
+    # Arrange
+    served = serve(station_settings(statistics_store, tmp_path))
+    page = open_session(engine_tab, served)
+    years = [str(year) for year in range(2020, 2025)]
+
+    # Act
+    page.goto(card_address(served, HALF_YEARS))
+    card = page.get_by_role("dialog", name="Stacja Bez Miejsca")
+    dots = card.locator(".sch-year[data-key=Q]")
+    expect(dots).to_have_count(10)
+    drawn = [
+        (dot.get_attribute("data-kind"), dot.get_attribute("data-year"))
+        for dot in dots.all()
+    ]
+    lines = {
+        kind: vertices(card.locator(f".sch-line.{kind}[data-key=Q]"))
+        for kind in ("max", "min")
+    }
+    asked = [url for url in engine_tab.requests if "/series?" in url]
+
+    # Assert
+    assert drawn == [("max", year) for year in years] + [
+        ("min", year) for year in years
+    ]
+    assert {kind: [len(run) for run in runs] for kind, runs in lines.items()} == {
+        "max": [5],
+        "min": [5],
+    }
+    assert asked and all(
+        "resolution=annual" in url and "year_type" not in url for url in asked
+    )
+    expect(card.get_by_role("tab", name="Wykres")).to_have_attribute(
+        "aria-selected", "true"
+    )
+    expect(card.locator(".sch-time .sch-tick")).to_have_text(years)
+    expect(card.locator(".sch-note")).to_have_text(
+        "roczne maksimum i minimum wyznaczone przez Archiwistę z charakterystyk"
+        " półrocznych IMGW-PIB"
+    )
+    expect(card.locator(".sc-years-note")).to_have_text(
+        "Wykres roczny: zawsze lata hydrologiczne"
+    )
+    expect(card.locator(".sch-summary")).to_have_text(
+        "2019.11.01–2024.10.31 (5 lat) · Q: 5 z 5 lat z wartością, bez luk"
+    )
+    engine_tab.assert_clean()
+
+
+def test_an_incomplete_year_is_a_hollow_dot_whose_tooltip_names_the_missing_half(
+    serve: Serve, engine_tab: Tab, statistics_store: Path, tmp_path: Path
+) -> None:
+    """2023 of Stacja Bez Miejsca: the winter maximum alone, the summer missing."""
+    # Arrange
+    served = serve(station_settings(statistics_store, tmp_path))
+    page = open_session(engine_tab, served)
+    page.goto(card_address(served, HALF_YEARS))
+    card = page.get_by_role("dialog", name="Stacja Bez Miejsca")
+    hollow = card.locator(".sch-year.partial")
+    expect(hollow).to_have_count(1)
+    plot = card.locator(".sch-plot")
+    plot.scroll_into_view_if_needed()
+    frame_of(plot)
+    box = hollow.bounding_box()
+    assert box is not None
+
+    # Act
+    page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    tip = card.locator(".sch-tip")
+    expect(tip).to_be_visible()
+
+    # Assert
+    assert (hollow.get_attribute("data-kind"), hollow.get_attribute("data-year")) == (
+        "max",
+        "2023",
+    )
+    fills = card.locator(".sch-year.max").evaluate_all(
+        "(dots) => dots.map((dot) => getComputedStyle(dot).fill)"
+    )
+    assert fills[3] == "rgb(255, 255, 255)"
+    assert "rgb(255, 255, 255)" not in fills[:3] + fills[4:]
+    expect(tip.locator("b")).to_have_text("rok hydrologiczny 2023")
+    expect(tip.locator(".sch-tip-row")).to_have_text(
+        [
+            "Q maks.: 63 m³/s · 2023.02.01 (półrocze zimowe)"
+            " · niepełny rok: brak półrocza letniego",
+            "Q min.: 7 m³/s · 2023.07.01 (półrocze letnie)",
+        ]
+    )
     engine_tab.assert_clean()

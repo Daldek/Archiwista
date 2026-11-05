@@ -26,12 +26,15 @@ state database, which is created when missing.
 import argparse
 from collections.abc import Callable, Mapping
 from datetime import date, datetime
-from typing import TextIO, get_origin
+from typing import TextIO, cast, get_origin
 
 from pydantic import BaseModel, ValidationError
 
 from archiwista.api.models import IndexAnswer, Preferences
 from archiwista.api.models_stations import (
+    AnnualExtreme,
+    AnnualPoint,
+    ChartPoint,
     ChartVariable,
     ComparedStation,
     StationCard,
@@ -538,12 +541,17 @@ def _chart_text(chart: StationChart) -> str:
             year_type=label("series.year_type", chart.year_type),
             file=chart.file,
         ),
-        _range_line(
-            chart.first, chart.last, chart.units, chart.interval, chart.time_unit
-        ),
     ]
-    for variable in chart.variables:
-        lines.extend(_chart_variable_lines(variable, chart.time_unit))
+    if chart.resolution == "annual":
+        lines.extend(_annual_lines(chart))
+    else:
+        lines.append(
+            _range_line(
+                chart.first, chart.last, chart.units, chart.interval, chart.time_unit
+            )
+        )
+        for variable in chart.variables:
+            lines.extend(_chart_variable_lines(variable, chart.time_unit))
     if chart.attribution is not None:
         lines.append(
             message(
@@ -553,6 +561,91 @@ def _chart_text(chart: StationChart) -> str:
             )
         )
     return _with_stale(chart, lines)
+
+
+def _annual_lines(chart: StationChart) -> list[str]:
+    """Write an annual chart: its years, then each variable's years and gaps."""
+    if chart.first is None or chart.last is None:
+        return [message("cli.station_chart_empty")]
+    lines: list[str] = [
+        message(
+            "cli.station_chart_annual",
+            provider=chart.provider,
+            first=chart.first.year + 1,
+            last=chart.last.year,
+            years=_years_count(chart.units),
+        )
+    ]
+    for variable in chart.variables:
+        points = cast("list[AnnualPoint]", variable.points)
+        lines.append(
+            message(
+                "cli.station_chart_annual_variable",
+                key=variable.key,
+                unit=variable.unit,
+                valued=sum(
+                    point["max"] is not None or point["min"] is not None
+                    for point in points
+                ),
+                years=len(points),
+                gaps=len(variable.gaps),
+            )
+        )
+        for point in points:
+            found = [
+                _annual_extreme(kind, extreme)
+                for kind, extreme in (("max", point["max"]), ("min", point["min"]))
+                if extreme is not None
+            ]
+            lines.append(
+                f"    {point['year']}: {'; '.join(found)}"
+                if found
+                else message("cli.station_chart_year_none", year=point["year"])
+            )
+        lines.extend(
+            message(
+                "cli.station_chart_gap",
+                start=gap.first,
+                end=gap.last,
+                units=_years_count(gap.units),
+            )
+            for gap in variable.gaps
+        )
+    return lines
+
+
+def _annual_extreme(kind: str, extreme: AnnualExtreme) -> str:
+    """Write a year's maximum or minimum with its days, halves and occurrences."""
+    start, end = extreme["start"], extreme["end"]
+    when: str
+    if start is None or end is None:
+        when = message("cli.station_chart_undated")
+    else:
+        when = str(start) if start == end else f"{start} – {end}"
+    halves = extreme["halves"]
+    parts: list[str] = [
+        when,
+        message("cli.station_halves_both")
+        if len(halves) > 1
+        else label("cli.station_period", halves[0]),
+    ]
+    count = extreme["occurrences"]
+    if count is not None and count > 1:
+        parts.append(
+            message(f"cli.station_occurrences_{plural_form(count)}", count=count)
+        )
+    if extreme["partial"] is not None:
+        parts.append(label("cli.station_partial", extreme["partial"]))
+    return message(
+        f"cli.station_chart_annual_{kind}",
+        value=extreme["value"],
+        details=", ".join(parts),
+    )
+
+
+def _years_count(count: int) -> str:
+    """Return a count of years for a person ("5 lat")."""
+    return message(f"series.years_{plural_form(count)}", count=count)
 
 
 def _comparison_text(comparison: StationComparison) -> str:
@@ -624,13 +717,14 @@ def _range_line(
 
 def _chart_variable_lines(variable: ChartVariable, time_unit: str) -> list[str]:
     """Write a variable's count of points with a value, its gaps and markers."""
+    points = cast("list[ChartPoint]", variable.points)
     lines: list[str] = [
         message(
             "cli.station_chart_variable",
             key=variable.key,
             unit=variable.unit,
-            valued=sum(point["mean"] is not None for point in variable.points),
-            points=len(variable.points),
+            valued=sum(point["mean"] is not None for point in points),
+            points=len(points),
             gaps=len(variable.gaps),
             markers=len(variable.markers),
         )

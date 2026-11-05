@@ -9,6 +9,21 @@ command-line interface may change.
 
 ### Added
 
+- Charts of monthly series and of annual extremes on the station card (A-ADR-051, plan
+  `docs/plans/2026-11-05-monthly-annual-charts.md`): a series of months
+  (`pl.imgw.hydro_monthly`) is drawn per quantity, H, Q or T, the monthly mean as the line
+  inside the band from the monthly minimum to the maximum, as IMGW-PIB publishes them;
+  „Roczne (z charakterystyk półrocznych)” draws, per hydrological year, the annual maximum
+  (solid) and minimum (dashed) Archiwista finds in the half-year characteristics, the
+  greater of the winter and summer maxima and the lesser of their minima, with their days,
+  half and occurrences in the tooltip; a year with one half only is a hollow point
+  „niepełny rok: brak półrocza zimowego/letniego”. A station with half-year
+  characteristics only opens on the annual chart instead of „Stacja nie ma szeregu…”.
+  `GET /stations/{code}/series?resolution=annual` and `archiwista stations series KOD
+  --resolution annual` give the same values, marked `derived: "annual_extremes"`; the
+  station card's answer names its charts (`charts`). The source interface gains
+  `SeriesValuesAdapter.statistics_of`, `SeriesValues.occurrences` and `Statistic`.
+
 - Obserwator's commands (A-ADR-050, plan `docs/plans/2026-11-05-obserwator-actions.md`):
   IMGW-PIB and ČHMÚ data are fetched and refreshed from Archiwista as Kartograf's are.
   The Obserwator source offers the commands that write its store, `store sync` (the

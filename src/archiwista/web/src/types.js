@@ -1063,6 +1063,27 @@
  */
 
 /**
+ * A variable a chart of a station's series draws (a „Zmienna” choice).
+ *
+ * @typedef {object} ChartChoiceVariable
+ * @property {string} key - The `variable` of the chart (`Q`).
+ * @property {string} unit
+ * @property {string|null} first - Its first day with a value.
+ * @property {string|null} last - Its last day with a value.
+ */
+
+/**
+ * A chart the station's series give: a series, its resolution and variables.
+ *
+ * @typedef {object} StationChartChoice
+ * @property {string} dataset
+ * @property {string} time_unit - `day`, `month` or `half_year`.
+ * @property {"unit"|"annual"} resolution - `annual` for half-year characteristics.
+ * @property {ChartChoiceVariable[]} variables - Of days all, of statistics those
+ *   with a value.
+ */
+
+/**
  * A station's card (`GET /stations/{code}`).
  *
  * @typedef {object} StationCard
@@ -1071,6 +1092,8 @@
  * @property {StationItem} station
  * @property {Object<string, CopyPath>} paths - Each series file by dataset key, on
  *   this computer and as aliased elsewhere; none for an unconfigured directory.
+ * @property {StationChartChoice[]} charts - Days first, then months, then the
+ *   annual charts of half-year characteristics.
  */
 
 /**
@@ -1081,19 +1104,45 @@
  * @property {string} [store]
  * @property {string} [provider]
  * @property {string} [dataset] - Default: the one series with every variable.
+ * @property {"unit"|"annual"} [resolution] - `annual`: each hydrological year's
+ *   maximum and minimum found in the half-year characteristics.
  * @property {string[]} variable - One or two variables of the series.
  * @property {string} [from] - First day; default the variables' first known day.
  * @property {string} [to] - Last day; default the variables' last known day.
  * @property {string} [year_type] - `hydrological` or `calendar`: the labels whose
- *   gaps the chart gives; default the remembered type, as on the card.
+ *   gaps the chart gives; default the remembered type, as on the card. An
+ *   annual chart takes hydrological years only.
  * @property {number} [max_points] - The most points of a variable (≤ 2,000).
  */
 
 /**
  * A point of a chart: a unit, or an interval of units, and its values; `null`
- * without a value (the line breaks).
+ * without a value (the line breaks). A month's are the minimum, mean and
+ * maximum the provider published.
  *
  * @typedef {{t: string, min: number|null, mean: number|null, max: number|null}} ChartPoint
+ */
+
+/**
+ * The maximum or minimum of a hydrological year found in its half-years.
+ *
+ * @typedef {object} AnnualExtreme
+ * @property {number} value
+ * @property {string|null} start - The day of its first occurrence.
+ * @property {string|null} end - The day of its last occurrence.
+ * @property {number|null} occurrences - How many times it was published.
+ * @property {Array<"winter"|"summer">} halves - The halves that hold it.
+ * @property {"winter"|"summer"|null} partial - The half without a value.
+ */
+
+/**
+ * A hydrological year of an annual chart.
+ *
+ * @typedef {object} AnnualPoint
+ * @property {string} t - Its first day (1 XI).
+ * @property {number} year - The hydrological year.
+ * @property {AnnualExtreme|null} max
+ * @property {AnnualExtreme|null} min
  */
 
 /**
@@ -1116,7 +1165,8 @@
  * @property {string} key
  * @property {string} variable
  * @property {string} unit
- * @property {ChartPoint[]} points - One a unit, or one an interval.
+ * @property {ChartPoint[]|AnnualPoint[]} points - One a unit, or one an interval;
+ *   of an annual chart one a hydrological year.
  * @property {GapSpan[]} gaps - A grey band each, also one shorter than an interval.
  * @property {ChartMarker[]} markers
  */
@@ -1131,15 +1181,17 @@
  * @property {string} provider
  * @property {string} code
  * @property {string} dataset
- * @property {string} time_unit - `day` or `month`.
+ * @property {string} time_unit - `day` or `month`; `half_year` of an annual chart.
  * @property {string} year_type - `hydrological` or `calendar`: of the labels whose
  *   gaps it gives.
+ * @property {"unit"|"annual"} resolution
+ * @property {"annual_extremes"|null} derived - Values Archiwista found, not read.
  * @property {string|null} series - Label of the series version.
  * @property {string} series_version
  * @property {string} file
  * @property {string|null} from - First day of the range; `null`: an empty series.
  * @property {string|null} to - Last day of the range.
- * @property {number} units - Units of the range.
+ * @property {number} units - Units of the range (years of an annual chart).
  * @property {number} interval - Units of a point: more than 1, a simplified chart.
  * @property {ChartVariable[]} variables
  * @property {string|null} license

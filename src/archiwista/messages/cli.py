@@ -2460,13 +2460,16 @@ MESSAGES = {
         (
             "Shows one or two variables of a station's series as a chart: each"
             " unit's value, or the least, mean and greatest value of intervals, with"
-            " the gaps and markers (like GET /api/v1/stations/CODE/series)."
+            " the gaps and markers; or the maximum and minimum of each"
+            " hydrological year found in its half-year characteristics (like GET"
+            " /api/v1/stations/CODE/series)."
         ),
         (
             "Pokazuje jedną lub dwie zmienne szeregu stacji jako wykres: wartość"
             " każdej jednostki albo najmniejszą, średnią i największą wartość"
-            " przedziałów, z lukami i znacznikami (jak GET"
-            " /api/v1/stations/KOD/series)."
+            " przedziałów, z lukami i znacznikami; albo maksimum i minimum każdego"
+            " roku hydrologicznego wyznaczone z jej charakterystyk półrocznych (jak"
+            " GET /api/v1/stations/KOD/series)."
         ),
     ),
     "stations_compare_help": Text(
@@ -2571,8 +2574,26 @@ MESSAGES = {
         "stacje z wartością zmiennej, np. Q (powtarzalna)",
     ),
     "stations_chart_variable_help": Text(
-        "variable of the series to draw, e.g. Q (once or twice)",
-        "zmienna szeregu do narysowania, np. Q (raz albo dwa razy)",
+        (
+            "variable of the series to draw, e.g. Q (once or twice; of an annual"
+            " chart by default each with a value)"
+        ),
+        (
+            "zmienna szeregu do narysowania, np. Q (raz albo dwa razy; wykresu"
+            " rocznego domyślnie każda z wartością)"
+        ),
+    ),
+    "stations_resolution_help": Text(
+        (
+            "unit (the series' own days or months, default) or annual (the maximum"
+            " and minimum of each hydrological year found in the station's"
+            " half-year characteristics)"
+        ),
+        (
+            "unit (własne dni albo miesiące szeregu, domyślnie) albo annual"
+            " (maksimum i minimum każdego roku hydrologicznego wyznaczone z"
+            " charakterystyk półrocznych stacji)"
+        ),
     ),
     "stations_chart_dataset_help": Text(
         (
@@ -2825,6 +2846,61 @@ MESSAGES = {
     "station_chart_extreme": Text(
         "    {kind} of the {period} {day}: {value}",
         "    {kind} – {period} {day}: {value}",
+    ),
+    "station_chart_annual": Text(
+        (
+            "Annual maximum and minimum found by Archiwista in the half-year"
+            " characteristics of {provider}: hydrological years {first} to {last}"
+            " ({years})"
+        ),
+        (
+            "Roczne maksimum i minimum wyznaczone przez Archiwistę z charakterystyk"
+            " półrocznych {provider}: lata hydrologiczne {first}–{last} ({years})"
+        ),
+    ),
+    "station_chart_annual_variable": Text(
+        "  {key} ({unit}): {valued} of {years} years with a value, {gaps} gaps",
+        "  {key} ({unit}): {valued} z {years} lat z wartością, luki: {gaps}",
+    ),
+    "station_chart_year_none": Text(
+        "    {year}: no value",
+        "    {year}: brak wartości",
+    ),
+    "station_chart_annual_max": Text(
+        "max. {value} ({details})",
+        "maks. {value} ({details})",
+    ),
+    "station_chart_annual_min": Text(
+        "min. {value} ({details})",
+        "min. {value} ({details})",
+    ),
+    "station_chart_undated": Text(
+        "undated",
+        "bez daty",
+    ),
+    "station_halves_both": Text(
+        "both half-years",
+        "oba półrocza",
+    ),
+    "station_occurrences_one": Text(
+        "{count} occurrence",
+        "{count} wystąpienie",
+    ),
+    "station_occurrences_few": Text(
+        "{count} occurrences",
+        "{count} wystąpienia",
+    ),
+    "station_occurrences_many": Text(
+        "{count} occurrences",
+        "{count} wystąpień",
+    ),
+    "station_partial_winter": Text(
+        "incomplete year: no winter half-year",
+        "niepełny rok: brak półrocza zimowego",
+    ),
+    "station_partial_summer": Text(
+        "incomplete year: no summer half-year",
+        "niepełny rok: brak półrocza letniego",
     ),
     "station_compare_title": Text(
         "Comparison of {variable} of {dataset}, {year_type} years",

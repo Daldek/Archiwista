@@ -20,6 +20,7 @@ export const station = {
   year_type_hint:
     "Rok hydrologiczny trwa od 1 XI do 31 X. Wybór trafia do adresu i jest zapamiętywany " +
     "dla danych {family}.",
+  year_type_annual: "Wykres roczny: zawsze lata hydrologiczne",
   year_type_failed: "Nie udało się zapamiętać wyboru lat.",
   families: { hydro: "hydrologicznych", meteo: "meteorologicznych" },
   location: {
@@ -55,6 +56,7 @@ export const station = {
     day: ["dzień", "dni", "dni"],
     month: ["miesiąc", "miesiące", "miesięcy"],
     half_year: ["półrocze", "półrocza", "półroczy"],
+    year: ["rok", "lata", "lat"],
   },
   tabs: {
     label: "Widoki karty stacji",
@@ -66,6 +68,7 @@ export const station = {
   chart: {
     series: "Szereg",
     series_units: { day: "dobowe", month: "miesięczne" },
+    series_annual: "Roczne (z charakterystyk półrocznych)",
     variable: "Zmienna",
     second: "Druga zmienna",
     second_none: "brak",
@@ -84,13 +87,24 @@ export const station = {
       day: ["dnia", "dni", "dni"],
       month: ["miesiąca", "miesięcy", "miesięcy"],
     },
+    annual_note:
+      "roczne maksimum i minimum wyznaczone przez Archiwistę z charakterystyk półrocznych " +
+      "{provider}",
+    annual_legend:
+      "● maksimum (linia ciągła) i minimum (przerywana) roku hydrologicznego, większe " +
+      "i mniejsze z obu półroczy · ○ niepełny rok: wartość jedynego półrocza",
+    monthly_legend:
+      "linia: średnia miesięczna, pasmo: minimum i maksimum miesiąca, " +
+      "jak je opublikował dostawca",
     gap_note: "luka etykiety = brak danych: linia przerwana i szare pasmo, bez interpolacji",
+    annual_gap_note: "luka = rok bez wartości w obu półroczach: linia przerwana i szare pasmo",
     unknown_note: "brak wartości poza luką etykiety (nieznany albo poza jej latami): bez pasma",
     extremes_note: "○ min. i maks. opublikowane przez dostawcę (z datą w podpowiedzi)",
     accumulated_note: "◇ suma zbiorcza: suma dni przed nią, nie wartość dnia",
     summary_range: "{from}–{to} ({units})",
     summary_variable: "{key}: {valued} z {points} z wartością",
     points: ["punktu", "punktów", "punktów"],
+    years_of: ["roku", "lat", "lat"],
     gaps: ["luka", "luki", "luk"],
     summary_gaps: "{gaps} ({units})",
     summary_no_gaps: "bez luk",
@@ -98,6 +112,16 @@ export const station = {
     tip_simplified: "{key}: śr. {mean} (min. {min} – maks. {max}) {unit}",
     tip_gap: "{key}: luka (brak danych)",
     tip_unknown: "{key}: brak wartości, nie luka etykiety",
+    tip_year: "rok hydrologiczny {year}",
+    tip_annual: "{key} {kind}: {value} {unit} · {when} ({half})",
+    halves: { winter: "półrocze zimowe", summer: "półrocze letnie" },
+    halves_both: "oba półrocza",
+    occurrences: ["wystąpienie", "wystąpienia", "wystąpień"],
+    partial: {
+      winter: "niepełny rok: brak półrocza zimowego",
+      summer: "niepełny rok: brak półrocza letniego",
+    },
+    undated: "bez daty",
     marker: { min: "min.", max: "maks." },
     periods: { winter: "półrocza zimowego", summer: "półrocza letniego", annual: "roku" },
     extreme: "{kind} {period}: {value} {unit} · {when} (wartość opublikowana przez dostawcę)",

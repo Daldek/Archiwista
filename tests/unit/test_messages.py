@@ -60,6 +60,7 @@ _SAME_WORDS = frozenset(
     {
         "cli.own_problem",
         "cli.problem_line",
+        "cli.station_chart_annual_min",
         "cli.version_title",
         "compare.field_sha256",
         "doctor.level_ok",

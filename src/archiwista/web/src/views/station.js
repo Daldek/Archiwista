@@ -60,7 +60,7 @@ import {
   useRef,
 } from "../ui.js";
 import { CopyAction, loadCardStyles, pathToCopy, ServerPath, StaleNote, storeName } from "./cards.js";
-import { CHART_PARAMS, StationChartTab } from "./station-chart.js";
+import { CHART_PARAMS, chosenChart, StationChartTab } from "./station-chart.js";
 import { useYearType, YEAR_TYPES } from "./year-type.js";
 
 await Promise.all([loadCardStyles(), loadStylesheet(new URL("./station.css", import.meta.url))]);
@@ -160,8 +160,9 @@ function CardBody({ card, params, error, loading }) {
   const names = useDatasetNames(station.store);
   const tab = TABS.includes(params[TAB_PARAM]) ? params[TAB_PARAM] : TABS[0];
   const panel = useId();
+  const annual = tab === "chart" && chosenChart(card.charts, params)?.resolution === "annual";
   return html`
-    <${Heading} station=${station} params=${params} />
+    <${Heading} station=${station} params=${params} annual=${annual} />
     ${error ? html`<${ProblemView} problem=${error.problem} compact />` : null}
     <${StaleNote} stores=${card.stale_stores} />
     <${Actions} card=${card} params=${params} />
@@ -175,8 +176,8 @@ function CardBody({ card, params, error, loading }) {
             ? html`<${Technical} card=${card} params=${params} />`
             : tab === "meta"
               ? html`<${Metadata} station=${station} />`
-              : html`<${StationChartTab} station=${station} params=${params} names=${names}
-                  actions=${compareAction(station, params)} />`}
+              : html`<${StationChartTab} station=${station} charts=${card.charts} params=${params}
+                  names=${names} actions=${compareAction(station, params)} />`}
       </div>
     </section>
     <${Attribution} items=${station.series} />
@@ -213,7 +214,7 @@ function compareAction(station, params) {
   };
 }
 
-function Heading({ station, params }) {
+function Heading({ station, params, annual = false }) {
   const { health } = useApp();
   const river = station.river
     ? station.hydrographic_code
@@ -235,6 +236,7 @@ function Heading({ station, params }) {
         <${Tech} value=${[["store", station.store]]}>${storeName(health, station.store)}</${Tech}>
       </span>
       <${YearSwitch} asked=${params.year_type ?? null} family=${familyOf(station)} />
+      ${annual ? html`<span class="sc-years-note faint">${L.year_type_annual}</span>` : null}
     </div>
     <${Location} station=${station} />
   </div>`;
