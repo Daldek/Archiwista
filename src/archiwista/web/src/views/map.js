@@ -213,6 +213,9 @@ export default function MapScreen({ route, embedded = false }) {
     [stationMode, filters.store ?? "", indexKey],
   );
   const station = stationChoice(params, filters.product ?? null, datasets.data);
+  // „Wszystkie produkty”: the stations of every kind beside the outlines, without a
+  // coverage fill, when the store holds a station product.
+  const allStations = !filters.product && (products.data?.items ?? []).some(isStationProduct);
   // The stations wait for the datasets: their first is the default.
   const stationQuery =
     stationMode && !datasets.loading && datasets.data
@@ -226,7 +229,9 @@ export default function MapScreen({ route, embedded = false }) {
           area_id: areaId,
           boundary: station.boundary ? null : false,
         }
-      : null;
+      : allStations
+        ? { store: filters.store, area_id: areaId }
+        : null;
   const stationView = useMapData(move, listMapStations, stationQuery, JSON.stringify(stationQuery), dataKey);
   const layerStore =
     filters.store ?? (product ? (productStores(product, stores.map((item) => item.id))[0] ?? null) : null);
@@ -425,7 +430,7 @@ export default function MapScreen({ route, embedded = false }) {
   const notes = [];
   if (!tool && grid.on) notes.push(html`<${GridNote} key="grid" grid=${grid} sheets=${sheets}
     onOff=${() => setGrid((previous) => ({ ...previous, on: false }))} />`);
-  const viewError = stationMode ? stationView.error : view.error;
+  const viewError = stationMode ? stationView.error : (view.error ?? (allStations ? stationView.error : null));
   if (!tool && viewError) notes.push(html`<div key="error" class="float-card map-problem"><${ProblemView} problem=${viewError.problem} compact /></div>`);
   if (!tool && layers.error) notes.push(html`<div key="layers" class="float-card map-problem"><${ProblemView} problem=${layers.error.problem} compact /></div>`);
   if (basemapUnsaved) notes.push(html`<div key="basemap" class="float-card map-problem" role="alert">${L.legend.basemap_unsaved}</div>`);
@@ -489,7 +494,8 @@ export default function MapScreen({ route, embedded = false }) {
     <div class=${`center-body map-body${fanMode ? (split ? " split" : " fan-only") : ""}`}>
       <div class="map-pane">
         <${MapCanvas} basemap=${basemap} start=${start} area=${currentArea} footprints=${footprints}
-          stations=${stationMode ? stationView.data : undefined} stationColor=${station.color}
+          stations=${stationMode || allStations ? stationView.data : undefined}
+          stationColor=${stationMode ? station.color : null}
           onStation=${(item) => setParams({ [STATION_PARAM]: stationAddress(item) })}
           layerTiles=${layerSource} versionTiles=${versionSource}
           previewOutline=${previewRef ? preview.outline : null} previewFeatures=${features.data}
@@ -519,7 +525,9 @@ export default function MapScreen({ route, embedded = false }) {
                   shape: station.kind === "hydro" ? "triangle" : "square",
                   aggregated: Boolean(stationView.data?.aggregated),
                 }
-              : null}
+              : allStations && stationView.data
+                ? { variable: null, shape: "triangle", aggregated: Boolean(stationView.data.aggregated), all: true }
+                : null}
             onBasemap=${(name) => {
               setBasemapName(name);
               setBasemapUnsaved(false);

@@ -8,7 +8,8 @@
 import { map as L } from "../labels/map.js";
 
 /**
- * The name of a product: its biggest segment's name up to the variant
+ * The name of a product: the producer's name of it (`name`, Obserwator's
+ * „Stacje hydrologiczne”), else its biggest segment's name up to the variant
  * details (` · PL-1992 · EVRF2007`), e.g. „Numeryczny Model Terenu 1 m
  * (siatka ASC)” for `nmt`.
  *
@@ -17,6 +18,7 @@ import { map as L } from "../labels/map.js";
  */
 export function productTitle(product) {
   if (!product.product) return L.product.unknown;
+  if (product.name) return product.name;
   const main = [...product.segments].sort((a, b) => b.slots - a.slots)[0];
   return (main?.segment.label ?? product.product).split(" · ")[0];
 }

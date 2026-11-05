@@ -170,9 +170,10 @@ class ObserwatorAdapter:
     ``SeriesValuesAdapter`` (a station's values), ``DefaultRootAdapter``
     (``store_root()``), ``VersionCommandAdapter`` (``command_for_version``),
     ``ExportFolderAdapter`` (every version under ``IMGW``), ``ActionAdapter``
-    (the commands that write the store, ``actions.py``) and
+    (the commands that write the store, ``actions.py``),
     ``AreaCommandAdapter`` (which refuses every area: the archives are
-    national files); no other optional capability. ``cache_dir`` is the
+    national files) and ``ProductNameAdapter`` (a family is named after its
+    stations); no other optional capability. ``cache_dir`` is the
     plugin's local directory (``SourceContext.cache_dir``): a run of a kept
     plan hands Obserwator its plan file there, outside every store.
     All methods may run in several threads at once; one iterator of
@@ -329,6 +330,19 @@ class ObserwatorAdapter:
             datasets, and the key itself is not read (SPEC 4.2.1).
         """
         return _describe(segment)
+
+    def product_name(self, product: str) -> str | None:
+        """Name a family of datasets after its stations, the map's product.
+
+        A family (``hydro``, ``meteo``) holds datasets of several kinds
+        (daily, monthly, half-year data, the station list), and the map draws
+        it as its stations; any other product keeps the default name.
+        """
+        if product == "hydro":
+            return str(message("source.obserwator_product_hydro", "pl"))
+        if product == "meteo":
+            return str(message("source.obserwator_product_meteo", "pl"))
+        return None
 
     def current_version(self, root: Path, slot_key: str) -> Path | None:
         """Return the current version of a slot, as Obserwator chooses it.

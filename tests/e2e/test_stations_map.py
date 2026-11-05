@@ -85,10 +85,10 @@ def between(first: dict[str, Any], second: dict[str, Any]) -> tuple[float, float
     return lon, mercator_lat(float(first["lat"]), float(second["lat"]))
 
 
-def test_the_tooltip_of_a_water_gauge_labels_each_variable(
+def test_the_tooltip_of_a_water_gauge_names_it_and_leaves_its_variables_to_the_card(
     serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
-    """Centred on the water gauge: its name, type, river and H, Q, T (Chromium)."""
+    """Centred on the water gauge: its name, type, river and code, no labels."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
@@ -102,16 +102,36 @@ def test_the_tooltip_of_a_water_gauge_labels_each_variable(
 
     # Assert
     expect(counter(page)).to_have_text("1 stacja w widoku")
-    shown = tooltip(page)
-    expect(shown).to_contain_text("Raba Górna")
-    expect(shown).to_contain_text("wodowskaz · Raba")
-    labels = shown.locator(".station-tip-labels li")
-    expect(labels).to_have_count(3)
-    coverage = gauge["coverage"].items()
-    for row, (key, value) in zip(labels.all(), coverage, strict=True):
-        expect(row).to_have_text(f"{key} {value['label']}")
-    expect(labels.first).to_have_class("chosen")
-    assert list(gauge["coverage"]) == ["H", "Q", "T"]
+    expect(tooltip(page)).to_have_text(
+        "Raba Górna"
+        "wodowskaz · Raba"
+        f"{gauge['code']} · IMGW-PIB"
+        "Kliknij, aby otworzyć kartę stacji"
+    )
+    tab.assert_clean()
+
+
+def test_all_products_draw_the_stations_of_every_kind_without_a_fill(
+    serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
+) -> None:
+    """„Wszystkie produkty” shows the stations beside the outlines (Chromium)."""
+    # Arrange
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
+    page = open_session(tab, served)
+    query = f"/map/stations?bbox={WORLD}&dataset={DAILY}&kind=hydro"
+    (gauge,) = api(page, query)["items"]
+    centre = f"{gauge['lon']},{gauge['lat']}"
+
+    # Act
+    with page.expect_response(lambda response: bool(STATIONS.search(response.url))):
+        page.goto(address(served, view="map", center=centre, zoom="9"))
+    hover_until(page, screen_point(page, gauge["lon"], gauge["lat"]), tooltip(page))
+
+    # Assert
+    expect(tooltip(page)).to_contain_text("Raba Górna")
+    expect(page.locator(".map-legend")).to_contain_text(
+        "Stacje wszystkich typów, bez koloru pokrycia"
+    )
     tab.assert_clean()
 
 

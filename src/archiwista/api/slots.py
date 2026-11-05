@@ -51,14 +51,20 @@ from archiwista.errors import (
     SourceStateError,
     SourceUnavailableError,
 )
-from archiwista.index import AreaFilter, BBox, IndexQueries, StoreFreshness
+from archiwista.index import (
+    AreaFilter,
+    BBox,
+    IndexQueries,
+    ProductSummary,
+    StoreFreshness,
+)
 from archiwista.index.geometry import box_geometry, require_wgs84_bbox
 from archiwista.messages import message
 from archiwista.paths import indexed_path
 from archiwista.security import current_principal
 from archiwista.services import commands as command_service
 from archiwista.services import issue_problem
-from archiwista.sources import GeoAdapter, SourceState
+from archiwista.sources import GeoAdapter, ProductNameAdapter, SourceState
 from archiwista.sources.registry import PluginRegistry
 
 router = APIRouter(tags=["catalog"])
@@ -130,16 +136,43 @@ def search_slots(
 
 
 def read_products(
-    queries: IndexQueries, settings: AppSettings, store: str | None
+    queries: IndexQueries,
+    settings: AppSettings,
+    store: str | None,
+    registry: PluginRegistry,
 ) -> ProductList:
-    """Return the indexed products with their segments, of all stores or one."""
+    """Return the indexed products with their segments, of all stores or one.
+
+    A product's name is its producer's (``ProductNameAdapter``) when the
+    producer of its segments names it; else the web names it after its
+    biggest segment.
+    """
     freshness = queries.freshness()
     stores = checked_store(store, settings, freshness)
     products = queries.products(store=store)
     return ProductList(
-        items=[Product.of(product) for product in products],
+        items=[
+            Product.of(product, _product_name(registry, product))
+            for product in products
+        ],
         **staleness(freshness, stores),
     )
+
+
+def _product_name(registry: PluginRegistry, product: ProductSummary) -> str | None:
+    """Return the name the producer of a product's segments gives it, if any."""
+    if product.product is None:
+        return None
+    for producer in sorted({item.segment.producer for item in product.segments}):
+        try:
+            adapter = registry.adapter(producer)
+        except SourceStateError:
+            continue
+        if isinstance(adapter, ProductNameAdapter):
+            named = adapter.product_name(product.product)
+            if named:
+                return named
+    return None
 
 
 def slot_card(
@@ -371,16 +404,18 @@ def list_products(
     principal: _Principal,
     settings: _Settings,
     queries: _Queries,
+    registry: _Registry,
     store: Annotated[
         str | None, Query(description="Only this store's segments.")
     ] = None,
 ) -> ProductList:
-    """List indexed products with the producer's segment names and counts.
+    """List indexed products with the producer's names and counts.
 
     Only what scans found; a segment the producer does not recognise is
-    listed under the product `null`.
+    listed under the product `null`. `name` is the producer's name of a
+    product when it gives one.
     """
-    return read_products(queries, settings.get(), store)
+    return read_products(queries, settings.get(), store, registry)
 
 
 @router.get(

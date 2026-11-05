@@ -189,6 +189,21 @@ def test_the_route_and_the_command_line_give_the_same_datasets(
     assert "H (cm), Q (m3/s), T (degC)" in text
 
 
+def test_a_family_of_datasets_is_named_after_its_stations_and_the_catalog_keeps_its_own(
+    served: Served,
+) -> None:
+    """``hydro`` holds daily, monthly and half-year data: not its biggest dataset."""
+    # Act
+    products = {item["product"]: item for item in served.json("/products")["items"]}
+
+    # Assert
+    hydro = products["hydro"]
+    assert hydro["name"] == "Stacje hydrologiczne"
+    assert {item["segment"]["dataset_key"] for item in hydro["segments"]} >= {DAILY}
+    assert products["meteo"]["name"] == "Stacje meteorologiczne"
+    assert products["stations"]["name"] is None
+
+
 def test_an_unknown_store_or_parameter_is_refused(served: Served) -> None:
     """A store that is not configured and a misspelt parameter are problems."""
     # Act

@@ -60,14 +60,15 @@ export function Legend({
     </button>
     <div id=${`${id}-rows`} class="legend-rows" hidden=${!open}>
       ${children}
-      ${stations
-        ? html`<${StationLegend} ...${stations} />`
+      ${stations && !stations.all
+        ? null
         : view?.aggregated
           ? html`<div class="legend-row"><span class="sw sw-cells" aria-hidden="true"></span>${L.legend.cells}</div>`
           : html`<div class="legend-row"><span class="sw sw-footprint" aria-hidden="true"></span>
               ${layer === null
                 ? t(L.legend.footprints, { versions: L.filters.versions_options[versions] ?? versions })
                 : t(L.legend.layer_outlines, { title: layer })}</div>`}
+      ${stations ? html`<${StationLegend} ...${stations} />` : null}
       ${area ? html`<div class="legend-row"><span class="sw sw-area" aria-hidden="true"></span>${L.legend.area}</div>` : null}
       ${grid.on
         ? html`<div class="legend-row"><span class="sw sw-sheet" aria-hidden="true"></span>
@@ -86,8 +87,11 @@ export function Legend({
   </section>`;
 }
 
-/** The stations' rows: shapes, the fills of the "Kolor punktów" variable, the cluster. */
-function StationLegend({ variable, shape, aggregated }) {
+/**
+ * The stations' rows: shapes, the fills of the "Kolor punktów" variable, the
+ * cluster; with `all` („Wszystkie produkty”) the points have no fill.
+ */
+function StationLegend({ variable, shape, aggregated, all = false }) {
   const S = L.stations.legend;
   return html`<div class="legend-sub">${S.shapes}</div>
     ${STATION_SHAPES.map(
@@ -99,7 +103,8 @@ function StationLegend({ variable, shape, aggregated }) {
             (state) => html`<div class="legend-row" key=${state}>
               <${StationSymbol} shape=${shape} state=${state} />${S.states[state]}</div>`,
           )}`
-      : html`<div class="legend-row"><${StationSymbol} shape=${shape} state="unknown" />${S.no_variable}</div>`}
+      : html`<div class="legend-row"><${StationSymbol} shape=${shape} state="unknown" />
+          ${all ? S.all_products : S.no_variable}</div>`}
     <div class="legend-row"><${ClusterSymbol} label="12" />${S.cluster}</div>
     ${aggregated ? html`<div class="legend-row"><${ClusterSymbol} label="40" />${S.cells}</div>` : null}`;
 }

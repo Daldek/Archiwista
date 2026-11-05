@@ -583,7 +583,7 @@ export function MapCanvas({
     ${tool ? html`<${DrawHint} tool=${tool} vertices=${vertices} drawing=${drawing}
       onCancel=${onCancel} />` : null}
     ${tip && !tool
-      ? html`<${Tooltip} tip=${tip} describe=${describe} variable=${stationColor} box=${tipBox} at=${tipAt} />`
+      ? html`<${Tooltip} tip=${tip} describe=${describe} box=${tipBox} at=${tipAt} />`
       : null}
     ${pick && !tool
       ? html`<${PickList} pick=${pick} describe=${describe} onClose=${() => setPick(null)}
@@ -834,12 +834,12 @@ export function slotName(slot) {
   return slot.slice(slot.lastIndexOf("/") + 1);
 }
 
-function Tooltip({ tip, describe, variable, box, at }) {
+function Tooltip({ tip, describe, box, at }) {
   useLayoutEffect(() => place(box.current, at.current), [tip]);
   const { kind, item } = tip;
   let content;
   if (kind.startsWith("station")) {
-    content = html`<${StationTip} tip=${tip} variable=${variable} />`;
+    content = html`<${StationTip} tip=${tip} />`;
   } else if (kind === "cells") {
     content = html`<b>${t(L.tooltip.cell, { count: count(item.count, L.units.outlines) })}</b>
       <div class="muted">${L.tooltip.cell_zoom}</div>`;

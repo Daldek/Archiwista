@@ -763,6 +763,8 @@
  * @typedef {object} Product
  * @property {string|null} product - Product, e.g. `nmt`; null for segments not
  *   recognised.
+ * @property {string|null} [name] - The producer's name of the product, e.g.
+ *   „Stacje hydrologiczne”; null: named after its biggest segment.
  * @property {string[]} countries
  * @property {number} slots
  * @property {number} versions

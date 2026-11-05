@@ -79,6 +79,10 @@ MESSAGES = {
         "Station catalog of {provider}",
         "Katalog stacji {provider}",
     ),
+    "obserwator_product_hydro": Text("Hydrological stations", "Stacje hydrologiczne"),
+    "obserwator_product_meteo": Text(
+        "Meteorological stations", "Stacje meteorologiczne"
+    ),
     "obserwator_series_unit": Text(
         (
             "The series of {dataset} are kept by the unit {unit}, which Archiwista"

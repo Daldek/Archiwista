@@ -1451,6 +1451,7 @@ which producer wrote the file:
 | `with_area(call, *, area_file, geometry, countries)` | optional (`AreaCommandAdapter`): a call of the catalog with an area of Archiwista in place of the options that choose its own (`AreaCommand`: the call, `way` `geometry` or `bbox`, the `replaced` options), offline, no disk access; a command that takes no area is `unsupported` / `no_area_option` (A-ADR-049 erratum 5) | the schema's `one_of` group `area` replaced by `geometry` (the area's GeoJSON), else by `bbox` with `bbox_crs`; the area's `country` when the call gives none (`command_schema`, `pinned_transform`) | every command refused with `no_area_option`: IMGW-PIB's archives are files of the whole country (A-ADR-050) |
 | `command_for_version(version, *, root)` | optional (`VersionCommandAdapter`): the call that selects a stored version, from its metadata, offline; the producer's coded refusal is `unsupported` / `command_not_rebuildable` (4.7, A-ADR-049) | `command_for_file(sidecar)` (KB-6) | `command_for_version(version, root=…)` (IMGW-21) |
 | `export_folder(product, dataset_key)` | optional (`ExportFolderAdapter`): the category folder of a version in a project's export (`NMT`, `BDOT`, `ORTO`…), a table in the adapter; without it the upper-cased product id (8.4, A-ADR-049 erratum 1) | a table of Kartograf's products in the adapter | `IMGW` |
+| `product_name(product)` | optional (`ProductNameAdapter`): the Polish name of a product for people, offline; without it, or `None`, the product is named after its biggest segment (6.3) | — | „Stacje hydrologiczne” (`hydro`), „Stacje meteorologiczne” (`meteo`) |
 | `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-033) | `store_root()` | `store_root()` of `obserwator.config` (`OBSERWATOR_ROOT`, else `<data_dir>/obserwator`) |
 
 The Obserwator adapter also has the "stations and series" capabilities, which the Kartograf
@@ -1939,7 +1940,14 @@ the state of the sources and how to install the missing ones (`archiwista[obserw
    and the group "Pomiary IMGW" (IMGW measurements; datasets from 4.8: "Stany i przepływy dobowe", 
    "Charakterystyki miesięczne", "Charakterystyki półroczne i roczne",
    "Opad dobowy", "Temperatura powietrza dobowa"), with a short description
-   and countries. The item "Wszystkie produkty" (All products) shows only the store (UC-02).
+   and countries. A product is named by its producer when the producer names it
+   (`ProductNameAdapter`; Obserwator's families: „Stacje hydrologiczne” for `hydro`,
+   whose datasets are daily, monthly and half-year data, „Stacje meteorologiczne” for
+   `meteo`), else after its biggest segment. The map offers a product of the station
+   producer only as a station kind (`hydro`, `meteo`): the station catalog holds the
+   stations of both and is listed in the Catalog. The item "Wszystkie produkty" (All
+   products) shows only the store (UC-02): the outlines of its files and its stations of
+   every kind, without a coverage colour.
 3. **Check.** The local part (index, after refreshing the area's slots,
    4.4) appears immediately; the check at the source runs as a background
    job with progress in the panel ("Sprawdzam skorowidz GUGiK: 3/7 warstw
@@ -2560,9 +2568,11 @@ confirmed by the user on 2026-10-26, M11):
   or spreads a few stations that cannot be told apart at the deepest zoom (M11). The
   station type and the colour variable ("Kolor punktów" (Point colour))
   are chosen with chips above the panel; "Opad dobowy" (Daily precipitation) combines climatological stations
-  and precipitation posts. A point has one colour, but the point tooltip and the station
-  panel give the labels of all its variables separately (H, Q, T or
-  precipitation, temperature and other variables of the dataset; P16) — a station has no single
+  and precipitation posts. A point has one colour; its tooltip only names the station
+  (name, type and river, code and provider; the author's decision of 2026-11-05: the
+  labels covered the map, and they are on the card), and the station panel and card
+  give the labels of all its variables separately (H, Q, T or precipitation,
+  temperature and other variables of the dataset; P16) — a station has no single
   coverage label.
 - **A station in the area** is a point inside the area polygon (WGS84 points
   converted to the area's system with the pinned transformation, KA-6). A station
@@ -3462,7 +3472,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /stores/{store}/scan` | scan (`mode`: `incremental` or `full`, optionally `segment`) → background job; from v0.4 administrators only (`store.scan`; the scheduler scans by itself); `409 conflict` when a job writing the store index is running |
 | `POST /stores/{store}/footprints` | footprints of units (TERYT, KU, SM5) with the network for versions without a footprint → background job (5.6); administrators only (`store.scan`); in offline mode `409 offline_mode` |
 | `POST /stores/{store}/link-check` | confirmation of the slot link target by content (`slot`; KA-5) → background job; administrators only (`store.scan`) |
-| `GET /products` | products with descriptions, countries and counters in stores (KB-1, IMGW-11 + index) |
+| `GET /products` | products with descriptions, countries and counters in stores (KB-1, IMGW-11 + index); `name` is the producer's name of a product (`ProductNameAdapter`), else `null` |
 | `GET /slots` | search and filters: slots with the current version; `location` (`any`, `with`, `none`), `unit` and `project` (only pins in the visible project) |
 | `GET /stores/{store}/slots/{slot}` | file card: versions, current and full, pins |
 | `GET /stores/{store}/versions/{version}` | version: metadata in human-readable form and sidecar |
