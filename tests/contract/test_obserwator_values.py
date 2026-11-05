@@ -2,11 +2,13 @@
 
 The Obserwator adapter reads a station's values of a series version with
 ``obserwator.read_series``: what it gives must be what the producer itself reads
-in its offline fixture stores (``obserwator.testing``), a missing unit as
-``None``, an accumulated sum flagged; a station outside the series is not
-found and a version the producer refuses is its error. The dataset of the
-half-year characteristics and their extremes come from the producer's
-registry, never from the text of a key.
+in its offline fixture stores (``obserwator.testing``, and IMGW-PIB's half-year
+characteristics Obserwator built in the statistics store), a missing unit as
+``None``, an accumulated sum flagged, an extreme with its dates and
+occurrences; a station outside the series is not found and a version the
+producer refuses is its error. The dataset of the half-year characteristics,
+their extremes and the statistics of monthly and half-year datasets come from
+the producer's registry.
 """
 
 import shutil
@@ -221,3 +223,72 @@ def test_the_extremes_of_a_variable_are_its_characteristics_in_its_unit(
     assert adapter.extremes_of(DAILY, "P") == {}
     assert adapter.extremes_of("pl.imgw.meteo_precip_daily", "P") == {}
     assert adapter.extremes_of("cz.chmi.hydro_daily", "Q") == {}
+
+
+def test_the_statistics_of_monthly_and_half_year_data_come_from_the_registry(
+    adapter: ObserwatorAdapter,
+) -> None:
+    """H, Q and T each with its minimum, mean and maximum; none for days."""
+    expected = {
+        name: {
+            "min": f"{name}_min",
+            "mean": f"{name}_mean",
+            "max": f"{name}_max",
+        }
+        for name in ("H", "Q", "T")
+    }
+
+    found = {
+        dataset: {
+            name: dict(held) for name, held in adapter.statistics_of(dataset).items()
+        }
+        for dataset in ("pl.imgw.hydro_monthly", "pl.imgw.hydro_semiannual")
+    }
+
+    assert found == {
+        "pl.imgw.hydro_monthly": expected,
+        "pl.imgw.hydro_semiannual": expected,
+    }
+    assert all(
+        set(names.values()) <= set(get_dataset(dataset).variables)
+        for dataset, held in found.items()
+        for names in held.values()
+    )
+    assert adapter.statistics_of(DAILY) == {}
+    assert adapter.statistics_of("pl.imgw.meteo_climate_daily") == {}
+    assert adapter.statistics_of("pl.imgw.no_such_dataset") == {}
+
+
+def test_half_year_extremes_carry_the_producers_dates_and_occurrences(
+    statistics_store: Path, adapter: ObserwatorAdapter
+) -> None:
+    """Q of the Raba gauge: each half's extremes as ``read_series`` gives them."""
+    root = statistics_store
+    version = _version(adapter, root, "pl.imgw.hydro_semiannual")
+    names = ["Q_min", "Q_max"]
+    produced = list(read_series(root / version, station=RABA, variables=names))
+
+    values = list(adapter.read_values(root, version, station=RABA, variables=names))
+
+    assert [
+        (item.start, item.period, dict(item.values), dict(item.occurrences))
+        for item in values
+    ] == [
+        (
+            record.date,
+            record.period,
+            {name: record.measurements[name].value for name in names},
+            dict(record.extrema_occurrences),
+        )
+        for record in produced
+    ]
+    summer_2020 = next(
+        item
+        for item in values
+        if (item.start, item.period) == (date(2020, 5, 1), "summer")
+    )
+    assert (summer_2020.values["Q_min"], summer_2020.occurrences["Q_min"]) == (32.7, 2)
+    assert [moment.date() for moment in summer_2020.extremes["Q_min"] if moment] == [
+        date(2020, 8, 18),
+        date(2020, 8, 19),
+    ]

@@ -14,7 +14,14 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import date
 from typing import Annotated, Any, Literal, Self, TypedDict, cast
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, with_config
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+    with_config,
+)
 
 from archiwista.api.models import (
     WGS84,
@@ -69,6 +76,14 @@ type YearCell = Literal["full", "fraction", "none", "unknown"]
 # What a marker of a chart is (SPEC 6.7): an accumulated sum of the days before
 # it, or the least or greatest value of a half-year period as published.
 type MarkerKind = Literal["accumulated", "min", "max"]
+# What a chart draws (SPEC 6.7, A-ADR-051): the units of its series, or the
+# annual maximum and minimum of each hydrological year that Archiwista finds
+# in the half-year characteristics.
+type ChartResolution = Literal["unit", "annual"]
+# Values of a chart that Archiwista found, not read: the annual extremes.
+type ChartDerivation = Literal["annual_extremes"]
+# A half of a hydrological year: winter (1 XI to 30 IV) or summer (1 V to 31 X).
+type HalfYear = Literal["winter", "summer"]
 # The most points of each variable of a chart (SPEC 6.7, 9.2).
 MAX_CHART_POINTS = 2000
 # A station of a comparison: ``<store>/<provider>/<code>``; codes hold no ``/``.
@@ -255,6 +270,40 @@ _CHART_VARIABLE_EXAMPLE = {
             "end": "1997-07-10",
         }
     ],
+}
+_HALF_YEAR_DIR = "series/versions/hydro_semiannual/2026-08-31_cd34ef56"
+_ANNUAL_EXTREME_EXAMPLE = {
+    "value": 223.0,
+    "start": "2024-03-02",
+    "end": "2024-03-02",
+    "occurrences": 1,
+    "halves": ["winter"],
+    "partial": None,
+}
+_ANNUAL_POINT_EXAMPLE = {
+    "t": "2023-11-01",
+    "year": 2024,
+    "max": _ANNUAL_EXTREME_EXAMPLE,
+    "min": {
+        "value": 32.7,
+        "start": "2024-08-18",
+        "end": "2024-08-19",
+        "occurrences": 2,
+        "halves": ["summer"],
+        "partial": None,
+    },
+}
+_CHART_CHOICE_VARIABLE_EXAMPLE = {
+    "key": "Q",
+    "unit": "m3/s",
+    "first": "1950-11-01",
+    "last": "2025-10-31",
+}
+_CHART_CHOICE_EXAMPLE = {
+    "dataset": "pl.imgw.hydro_daily",
+    "time_unit": "day",
+    "resolution": "unit",
+    "variables": [_CHART_CHOICE_VARIABLE_EXAMPLE],
 }
 _COMPARED_EXAMPLE = {
     "store": "zespol",
@@ -674,7 +723,8 @@ class StationChartQuery(BaseModel):
     """The station, series, variables and range of ``GET /stations/{code}/series``.
 
     ``from`` and ``to`` are read by these names (the fields ``start`` and
-    ``end``); unknown parameters are refused.
+    ``end``); unknown parameters are refused. ``variable`` may be left out of
+    an annual chart only.
     """
 
     model_config = ConfigDict(
@@ -693,16 +743,33 @@ class StationChartQuery(BaseModel):
         default=None,
         description=(
             "Dataset key (`pl.imgw.hydro_daily`); by default the one dataset whose"
-            " series of the station has every variable."
+            " series of the station has every variable as its own (days), else"
+            " the one of monthly statistics of every variable. With"
+            " `resolution=annual` a dataset of half-year characteristics, by"
+            " default the station's one."
         ),
         examples=["pl.imgw.hydro_daily"],
     )
+    resolution: ChartResolution = Field(
+        default="unit",
+        description=(
+            "`unit`: the series' own units, a day or a month (a monthly series"
+            " gives each month's minimum, mean and maximum as published); half-year"
+            " characteristics are refused (`half_year_chart`). `annual`: per"
+            " hydrological year the maximum and minimum Archiwista finds in the"
+            " station's half-year characteristics (the greater of the winter and"
+            " summer maxima, the lesser of their minima: `derived`), never stored."
+        ),
+    )
     variable: list[str] = Field(
-        min_length=1,
+        default_factory=list,
         max_length=2,
         description=(
             "Repeatable, once or twice: a variable of the series (`Q`, `H`), each"
-            " with its points, gaps and markers."
+            " with its points, gaps and markers; of a series of monthly or"
+            " half-year statistics the variable they describe (`Q`, not `Q_max`)."
+            " Required but with `resolution=annual`, whose default is each"
+            " variable with a value."
         ),
         examples=[["Q"]],
     )
@@ -730,7 +797,8 @@ class StationChartQuery(BaseModel):
         description=(
             "Numbering of the years of the variables' labels, whose gaps are the"
             " chart's: `hydrological` (1 XI to 31 X) or `calendar`; by default the"
-            " type remembered for the data's family, as on the card."
+            " type remembered for the data's family, as on the card. An annual"
+            " chart numbers hydrological years only (`annual_year_type`)."
         ),
     )
     max_points: int = Field(
@@ -739,7 +807,8 @@ class StationChartQuery(BaseModel):
         le=MAX_CHART_POINTS,
         description=(
             "The most points of a variable: a range of more units is given as the"
-            " least, mean and greatest value of intervals of equal length."
+            " least, mean and greatest value of intervals of equal length. An"
+            " annual chart has a point a year whatever it says."
         ),
     )
     version: str | None = Field(
@@ -755,6 +824,12 @@ class StationChartQuery(BaseModel):
     @classmethod
     def _once_each(cls, value: list[str]) -> list[str]:
         return list(dict.fromkeys(value))
+
+    @model_validator(mode="after")
+    def _variable_asked(self) -> Self:
+        if self.resolution == "unit" and not self.variable:
+            raise ValueError(message("api.chart_variable_required"))
+        return self
 
 
 class StationCompareQuery(BaseModel):
@@ -1201,6 +1276,45 @@ class StationList(IndexAnswer):
         )
 
 
+class ChartChoiceVariable(BaseModel):
+    """A variable a chart of a station's series draws (a "Zmienna" choice)."""
+
+    model_config = _examples(_CHART_CHOICE_VARIABLE_EXAMPLE)
+
+    key: str = Field(
+        description="The `variable` of `GET /stations/{code}/series` (`Q`)."
+    )
+    unit: str = Field(description="Unit of its values, e.g. `m3/s`.")
+    first: date | None = Field(
+        description="Its first day with a value (of any statistic of it)."
+    )
+    last: date | None = Field(description="Its last day with a value.")
+
+
+class StationChartChoice(BaseModel):
+    """A chart the station's series give: a series, its resolution and variables."""
+
+    model_config = _examples(_CHART_CHOICE_EXAMPLE)
+
+    dataset: str = Field(description="Dataset key of the series (`dataset`).")
+    time_unit: TimeUnit = Field(description="Unit of the series.")
+    resolution: ChartResolution = Field(
+        description=(
+            "`unit` for a series of days or months, `annual` for half-year"
+            " characteristics (the `resolution` of the chart)."
+        )
+    )
+    variables: list[ChartChoiceVariable] = Field(
+        description=(
+            "The variables the chart takes, in the order of the series index: a"
+            " series of days its own; one of monthly statistics the variables with"
+            " a value whose monthly minimum, mean and maximum it holds; half-year"
+            " characteristics the variables with a value of a winter or summer"
+            " maximum or minimum."
+        )
+    )
+
+
 class StationCard(IndexAnswer):
     """A station's card: its catalog entry and every series labelled (SPEC 6.7)."""
 
@@ -1219,6 +1333,7 @@ class StationCard(IndexAnswer):
                     "personal": None,
                 }
             },
+            "charts": [_CHART_CHOICE_EXAMPLE],
             **_FRESH,
         }
     )
@@ -1230,6 +1345,14 @@ class StationCard(IndexAnswer):
             " computer, as mounted on others (path aliases, SPEC 4.6) and through"
             " the person's own (`personal`), by dataset key; none for a store whose"
             " Obserwator directory is no longer configured."
+        )
+    )
+    charts: list[StationChartChoice] = Field(
+        description=(
+            "The charts of `GET /stations/{code}/series` its series give, series of"
+            " days first, then of months, then the annual charts of half-year"
+            " characteristics; a series without a variable to draw gives none,"
+            " and so does a producer that reads no values."
         )
     )
 
@@ -1672,13 +1795,83 @@ class ChartPoint(TypedDict):
         Field(
             description=(
                 "The least value; `null` without one (the line breaks, never"
-                " interpolated). A unit's own value is its least, mean and"
-                " greatest."
+                " interpolated). A day's own value is its least, mean and"
+                " greatest; a month's are the minimum, mean and maximum the"
+                " provider published, and an interval's the least minimum, the"
+                " mean of the means and the greatest maximum of its months."
             )
         ),
     ]
     mean: Annotated[float | None, Field(description="The mean of the values.")]
     max: Annotated[float | None, Field(description="The greatest value.")]
+
+
+@with_config(_examples(_ANNUAL_EXTREME_EXAMPLE))
+class AnnualExtreme(TypedDict):
+    """The maximum or minimum of a hydrological year, found in its half-years.
+
+    Of the winter and summer values the provider published, the greater
+    maximum or the lesser minimum, with the dates and occurrences of the half
+    that holds it (A-ADR-051). Found for display, never stored.
+    """
+
+    value: float
+    start: Annotated[
+        date | None,
+        Field(
+            description=(
+                "The day of its first occurrence as the producer stores it (a"
+                " date published without a day is its month's first); `null`:"
+                " undated."
+            )
+        ),
+    ]
+    end: Annotated[date | None, Field(description="The day of its last occurrence.")]
+    occurrences: Annotated[
+        int | None,
+        Field(
+            description=(
+                "How many times the provider published it (its repeated rows of"
+                " one value); `null`: not given."
+            )
+        ),
+    ]
+    halves: Annotated[
+        list[HalfYear],
+        Field(
+            description=(
+                "The half-years that hold it: one, or both when they published"
+                " the same value (then `start` to `end` spans both and the"
+                " occurrences are added)."
+            )
+        ),
+    ]
+    partial: Annotated[
+        HalfYear | None,
+        Field(
+            description=(
+                "The half-year without a value (missing or absent): the year is"
+                " incomplete and its value the other half's; `null`: both halves"
+                " have one."
+            )
+        ),
+    ]
+
+
+@with_config(_examples(_ANNUAL_POINT_EXAMPLE))
+class AnnualPoint(TypedDict):
+    """A hydrological year of an annual chart: its maximum and its minimum."""
+
+    t: Annotated[date, Field(description="First day of the year (1 XI).")]
+    year: Annotated[int, Field(description="The hydrological year (1 XI to 31 X).")]
+    max: Annotated[
+        AnnualExtreme | None,
+        Field(description="The year's maximum; `null`: neither half has one."),
+    ]
+    min: Annotated[
+        AnnualExtreme | None,
+        Field(description="The year's minimum; `null`: neither half has one."),
+    ]
 
 
 @with_config(
@@ -1722,11 +1915,19 @@ class ChartMarker(TypedDict):
 class ChartVariable(BaseModel):
     """A variable of a chart: its points, its label's gaps and its markers."""
 
-    key: str = Field(description="Key in the series index (`Q`).")
+    key: str = Field(
+        description=(
+            "Key in the series index (`Q`); of monthly or half-year statistics the"
+            " variable they describe."
+        )
+    )
     variable: str
     unit: str = Field(description="Unit of its values, e.g. `m3/s`.")
-    points: list[ChartPoint] = Field(
-        description="One a unit, or one an interval of `interval` units, in order."
+    points: list[ChartPoint] | list[AnnualPoint] = Field(
+        description=(
+            "One a unit, or one an interval of `interval` units, in order; of an"
+            " annual chart one a hydrological year (`AnnualPoint`)."
+        )
     )
     gaps: list[GapSpan] = Field(
         description=(
@@ -1734,11 +1935,15 @@ class ChartVariable(BaseModel):
             " without a value, SPEC 4.8.4) within the range, cut at its ends: a"
             " band each, also a gap shorter than an interval. A unit without a"
             " value outside them is no gap of the label: not known, or outside"
-            " y1–y2."
+            " y1–y2. Of an annual chart, the years that are gaps of the labels of"
+            " the maximum and minimum of both half-years."
         )
     )
     markers: list[ChartMarker] = Field(
-        description="Accumulated sums and published extremes of the range, by day."
+        description=(
+            "Accumulated sums and published extremes of the range, by day; none"
+            " on an annual or a monthly chart."
+        )
     )
 
 
@@ -1754,6 +1959,8 @@ class StationChart(IndexAnswer):
             "kind": "hydro",
             "time_unit": "day",
             "year_type": "hydrological",
+            "resolution": "unit",
+            "derived": None,
             "series": "2026-08-31",
             "series_version": f"{_SERIES_DIR}/series.json",
             "file": f"{_SERIES_DIR}/stations/149190310.parquet",
@@ -1767,6 +1974,38 @@ class StationChart(IndexAnswer):
             "attribution": _SERIES_EXAMPLE["attribution"],
             **_FRESH,
         },
+        {
+            "store": "zespol",
+            "provider": "IMGW-PIB",
+            "code": "152160140",
+            "dataset": "pl.imgw.hydro_semiannual",
+            "kind": "hydro",
+            "time_unit": "half_year",
+            "year_type": "hydrological",
+            "resolution": "annual",
+            "derived": "annual_extremes",
+            "series": "2026-08-31",
+            "series_version": f"{_HALF_YEAR_DIR}/series.json",
+            "file": f"{_HALF_YEAR_DIR}/stations/152160140.parquet",
+            "sha256": _SHA256,
+            "from": "2023-11-01",
+            "to": "2024-10-31",
+            "units": 1,
+            "interval": 1,
+            "variables": [
+                {
+                    "key": "Q",
+                    "variable": "Q",
+                    "unit": "m3/s",
+                    "points": [_ANNUAL_POINT_EXAMPLE],
+                    "gaps": [],
+                    "markers": [],
+                }
+            ],
+            "license": "IMGW-PIB",
+            "attribution": _SERIES_EXAMPLE["attribution"],
+            **_FRESH,
+        },
         aliased=True,
     )
 
@@ -1775,9 +2014,30 @@ class StationChart(IndexAnswer):
     code: str = Field(description="Station code, as text.")
     dataset: str = Field(description="Dataset key of the series.")
     kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
-    time_unit: TimeUnit = Field(description="Unit of the series: `day` or `month`.")
+    time_unit: TimeUnit = Field(
+        description=(
+            "Unit of the series: `day` or `month`; `half_year` for the half-year"
+            " characteristics of an annual chart."
+        )
+    )
     year_type: YearType = Field(
         description="Numbering of the years of the labels whose gaps it gives."
+    )
+    resolution: ChartResolution = Field(
+        description=(
+            "`unit`: a point a unit of the series (or an interval of them);"
+            " `annual`: a point a hydrological year with its maximum and minimum."
+        )
+    )
+    derived: ChartDerivation | None = Field(
+        description=(
+            "`annual_extremes`: the points are found by Archiwista, not read: per"
+            " hydrological year the greater of the maxima and the lesser of the"
+            " minima the provider published for the winter and summer half-years,"
+            " with the dates and occurrences of the half that holds each; nothing"
+            " else is computed, and nothing is stored (A-ADR-051). `null`: the"
+            " values as the provider published them."
+        )
     )
     series: str | None = Field(description="Label of the series version.")
     series_version: str = Field(
@@ -1789,12 +2049,14 @@ class StationChart(IndexAnswer):
         alias="from", description="First day of the range; `null`: an empty series."
     )
     last: date | None = Field(alias="to", description="Last day of the range.")
-    units: int = Field(description="Units of the range (days or months).")
+    units: int = Field(
+        description="Units of the range (days or months; years of an annual chart)."
+    )
     interval: int = Field(
         description=(
             "Units of a point: 1, each unit's value; more, the least, mean and"
             " greatest value of each interval (a simplified chart, its note"
-            " naming the interval's length)."
+            " naming the interval's length). Always 1 on an annual chart."
         )
     )
     variables: list[ChartVariable]

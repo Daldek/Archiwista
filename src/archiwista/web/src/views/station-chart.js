@@ -1,22 +1,31 @@
 /**
  * The chart of a station's series: the tab „Wykres” of the station card
  * (docs/SPEC.md 6.7 „Wykres” and sketch 6.5 k; plan I8.5, ADR-045 decision
- * 11), an SVG drawn by this module (no chart library: the interface has no
- * build step, A-ADR-028).
+ * 11, A-ADR-051), an SVG drawn by this module (no chart library: the
+ * interface has no build step, A-ADR-028).
  *
- * It reads `GET /stations/{code}/series` of one series of the station (the
- * address's `chart_dataset`, else its `dataset`, else the station's first
- * series that is not of half-year characteristics) for one variable or two
- * (`chart_variable`, `H` or `H,Q`; by default the address's „Kolor punktów”
- * `color`, else the series' first), in the address's `year_type` as the card,
- * with `max_points` the plot's width in pixels (at most 2,000). Without `from`
- * and `to` it shows the variables' known span, the whole period their labels
- * count: one of more days than the plot has pixels comes as the least, mean
- * and greatest value of intervals, drawn as a band with the mean line and the
- * note „wykres uproszczony: min./śr./maks. z N dni”; a range of at most as
- * many days as pixels comes as each day's value. A drag selection, the wheel
- * and the keys `+`, `-` and the arrows change `from` and `to` in the address;
- * `Home` and „Cały okres” remove them.
+ * It draws one of the charts the card names (`charts` of `GET
+ * /stations/{code}`: the address's `chart_dataset`, else its `dataset`, else
+ * the first: a series of days, else of months, else the annual chart of the
+ * half-year characteristics) from `GET /stations/{code}/series` for one
+ * variable or two (`chart_variable`, `H` or `H,Q`; by default the address's
+ * „Kolor punktów” `color`, else the chart's first), in the address's
+ * `year_type` as the card, with `max_points` the plot's width in pixels (at
+ * most 2,000). Without `from` and `to` it shows the variables' known span,
+ * the whole period their labels count: one of more units than the plot has
+ * pixels comes as the least, mean and greatest value of intervals, drawn as
+ * a band with the mean line and the note „wykres uproszczony: min./śr./maks.
+ * z N dni”; a range of at most as many units as pixels comes as each unit's
+ * value. A monthly series is drawn per variable: the monthly mean as the line
+ * and the band from the monthly minimum to the maximum, as IMGW-PIB published
+ * them. The annual chart („Roczne (z charakterystyk półrocznych)”) draws per
+ * hydrological year the maximum and the minimum Archiwista found in the
+ * half-year characteristics, each a dot on its line, hollow for an incomplete
+ * year (one half without a value), with the dates, the half and the
+ * occurrences in the tooltip; it numbers hydrological years whatever the
+ * card's year type, and the card says so beside the switch. A drag
+ * selection, the wheel and the keys `+`, `-` and the arrows change `from`
+ * and `to` in the address; `Home` and „Cały okres” remove them.
  *
  * A point without a value breaks the line (a new subpath, never a line across
  * it), and so does a gap between two points; each gap (`gaps`, the gaps the
@@ -114,15 +123,19 @@ export function unitText(unit) {
 }
 
 /**
- * The station's series a chart can draw: half-year characteristics are
- * markers of a daily chart, never a line (SPEC 6.7, `400 half_year_chart`).
+ * The chart the address chooses among the card's: its `chart_dataset`, else
+ * its `dataset`, else the first (days, then months, then annual).
  *
- * @param {import("../types.js").StationItem} station
- * @returns {import("../types.js").StationSeries[]}
+ * @param {import("../types.js").StationChartChoice[]} charts - Of the card.
+ * @param {Object<string, string>} params
+ * @returns {import("../types.js").StationChartChoice|null}
  */
-export function chartSeries(station) {
-  return station.series.filter(
-    (series) => series.time_unit !== "half_year" && Object.keys(series.coverage).length > 0,
+export function chosenChart(charts, params) {
+  return (
+    charts.find((item) => item.dataset === params.chart_dataset) ??
+    charts.find((item) => item.dataset === params.dataset) ??
+    charts[0] ??
+    null
   );
 }
 
@@ -130,53 +143,53 @@ export function chartSeries(station) {
  * The tab „Wykres” of the station card: the series and variables, the chart
  * of the address's range and the line summing it.
  *
- * @param {{station: import("../types.js").StationItem, params: Object<string, string>,
+ * @param {{station: import("../types.js").StationItem,
+ *   charts: import("../types.js").StationChartChoice[], params: Object<string, string>,
  *   names: Map<string, string>, actions?: ((shown: {dataset: string, keys: string[]}) => *)|null}} props
- *   - `names`: the datasets' names; `actions`: more buttons of its toolbar for
- *   the series and variables it shows („Porównaj z…”).
+ *   - `charts`: those of the card; `names`: the datasets' names; `actions`: more
+ *   buttons of its toolbar for the series and variables it shows („Porównaj z…”),
+ *   of a daily series only.
  */
-export function StationChartTab({ station, params, names, actions = null }) {
-  const series = chartSeries(station);
-  const chosen =
-    series.find((item) => item.dataset === params.chart_dataset) ??
-    series.find((item) => item.dataset === params.dataset) ??
-    series[0] ??
-    null;
+export function StationChartTab({ station, charts, params, names, actions = null }) {
+  const chosen = chosenChart(charts, params);
   if (!chosen) return html`<p class="faint">${C.none}</p>`;
-  return html`<${SeriesChart} key=${chosen.dataset} station=${station} series=${series}
+  return html`<${SeriesChart} key=${chosen.dataset} station=${station} charts=${charts}
     chosen=${chosen} params=${params} names=${names} actions=${actions} />`;
 }
 
 /**
- * The chart's variables: those of the address the series has (one or two),
- * else its „Kolor punktów”, else the series' first.
+ * The chart's variables: those of the address the chart has (one or two),
+ * else its „Kolor punktów”, else the chart's first.
  *
- * @param {import("../types.js").StationSeries} series
+ * @param {import("../types.js").StationChartChoice} choice
  * @param {Object<string, string>} params
  * @returns {string[]}
  */
-export function chartKeys(series, params) {
-  const keys = Object.keys(series.coverage);
+export function chartKeys(choice, params) {
+  const keys = choice.variables.map((item) => item.key);
   const asked = [...new Set((params.chart_variable ?? "").split(","))].filter((key) => keys.includes(key));
   if (asked.length) return asked.slice(0, 2);
   return [keys.includes(params.color) ? params.color : keys[0]];
 }
 
-function SeriesChart({ station, series, chosen, params, names, actions }) {
+function SeriesChart({ station, charts, chosen, params, names, actions }) {
   const keys = chartKeys(chosen, params);
   const [box, setBox] = useState(null);
   const { width } = useSize(box);
-  const units = keys.map((key) => chosen.coverage[key].unit);
+  const annual = chosen.resolution === "annual";
+  const units = keys.map((key) => variableOf(chosen, key).unit);
   const right = units.length > 1 && units[0] !== units[1] ? MARGIN.axis : MARGIN.right;
   const plot = Math.floor(width - MARGIN.left - right);
   const maxPoints = Math.min(MAX_POINTS, plot);
   const from = params.from ?? null;
   const to = params.to ?? null;
-  const yearType = params.year_type ?? null;
+  // An annual chart numbers hydrological years whatever the card's switch says.
+  const yearType = annual ? null : (params.year_type ?? null);
   const query = {
     store: station.store,
     provider: station.provider,
     dataset: chosen.dataset,
+    resolution: annual ? "annual" : null,
     variable: keys,
     from,
     to,
@@ -201,17 +214,20 @@ function SeriesChart({ station, series, chosen, params, names, actions }) {
   const api = `/api/v1/stations/${encodeURIComponent(station.code)}/series?${seriesSearch(query)}`;
   return html`<div class="sch">
     <div class="sch-tools">
-      ${series.length > 1
+      ${charts.length > 1
         ? html`<${Seg} small label=${C.series} value=${chosen.dataset}
             onChange=${(value) => setParams({ chart_dataset: value, chart_variable: null, from: null, to: null })}
-            options=${series.map((item) => ({ value: item.dataset, label: seriesName(item, series, names) }))} />`
+            options=${charts.map((item) => ({
+              value: item.dataset,
+              label: chartName(item, charts, names),
+            }))} />`
         : null}
       <${Seg} small label=${C.variable} value=${keys[0]}
         onChange=${(value) => chooseKeys(keys[1] && keys[1] !== value ? [value, keys[1]] : [value])}
-        options=${Object.keys(chosen.coverage).map((key) => ({ value: key, label: key }))} />
-      <${SecondVariable} series=${chosen} keys=${keys} onChange=${chooseKeys} />
+        options=${chosen.variables.map((item) => ({ value: item.key, label: item.key }))} />
+      <${SecondVariable} choice=${chosen} keys=${keys} onChange=${chooseKeys} />
       <span class="sch-spacer"></span>
-      ${actions ? actions({ dataset: chosen.dataset, keys }) : null}
+      ${actions && chosen.time_unit === "day" ? actions({ dataset: chosen.dataset, keys }) : null}
     </div>
     <div class="sch-range">
       ${data?.from
@@ -235,25 +251,38 @@ function SeriesChart({ station, series, chosen, params, names, actions }) {
   </div>`;
 }
 
-/** „Druga zmienna”: none, or another variable of the series (its unit's axis). */
-function SecondVariable({ series, keys, onChange }) {
+/** A variable of a chart choice by its key. */
+function variableOf(choice, key) {
+  return choice.variables.find((item) => item.key === key);
+}
+
+/** „Druga zmienna”: none, or another variable of the chart (its unit's axis). */
+function SecondVariable({ choice, keys, onChange }) {
   const id = useId();
-  const others = Object.keys(series.coverage).filter((key) => key !== keys[0]);
+  const others = choice.variables.filter((item) => item.key !== keys[0]);
   if (!others.length) return null;
   return html`<label class="sch-second" for=${id} title=${C.second_title}>
     <span class="sch-second-label">${C.second}</span>
     <select id=${id} value=${keys[1] ?? ""}
       onChange=${(event) => onChange(event.currentTarget.value ? [keys[0], event.currentTarget.value] : [keys[0]])}>
       <option value="">${C.second_none}</option>
-      ${others.map((key) => html`<option value=${key} key=${key}>${key} (${unitText(series.coverage[key].unit)})</option>`)}
+      ${others.map((item) => {
+        const text = `${item.key} (${unitText(item.unit)})`;
+        return html`<option value=${item.key} key=${item.key}>${text}</option>`;
+      })}
     </select>
   </label>`;
 }
 
-/** A series' chip: its time unit when no other series has it, else its dataset's name. */
-function seriesName(series, all, names) {
-  const shared = all.filter((item) => item.time_unit === series.time_unit).length > 1;
-  return shared ? (names.get(series.dataset) ?? series.dataset) : (C.series_units[series.time_unit] ?? series.dataset);
+/**
+ * A chart's chip: „Roczne (z charakterystyk półrocznych)” for the annual one,
+ * else its time unit when no other series has it, else its dataset's name.
+ */
+function chartName(choice, all, names) {
+  if (choice.resolution === "annual") return C.series_annual;
+  const shared = all.filter((item) => item.time_unit === choice.time_unit).length > 1;
+  if (shared) return names.get(choice.dataset) ?? choice.dataset;
+  return C.series_units[choice.time_unit] ?? choice.dataset;
 }
 
 /** The query of the chart as the API's search string (repeatable `variable`). */
@@ -273,13 +302,13 @@ function seriesSearch(query) {
  *
  * @returns {{start: number, end: number}|null} Times, the end excluded.
  */
-function extentOf(series, keys, whole) {
+function extentOf(choice, keys, whole) {
   let start = whole?.start ?? Infinity;
   let end = whole?.end ?? -Infinity;
   for (const key of keys) {
-    const { first, last } = series.coverage[key];
-    if (first) start = Math.min(start, msOf(first));
-    if (last) end = Math.max(end, msOf(last) + DAY);
+    const variable = variableOf(choice, key);
+    if (variable?.first) start = Math.min(start, msOf(variable.first));
+    if (variable?.last) end = Math.max(end, msOf(variable.last) + DAY);
   }
   return start < end ? { start, end } : null;
 }
@@ -291,23 +320,28 @@ function extentOf(series, keys, whole) {
 function ChartFigure({ chart, width, extent, onRange, loading, whole }) {
   const summary = useId();
   if (!chart.from) return html`<p class="faint">${C.empty}</p>`;
+  const annual = chart.resolution === "annual";
   const domain = { start: msOf(chart.from), end: msOf(chart.to) + DAY };
   const lines = chart.variables.map((variable, index) => ({ variable, color: index }));
   const axes = axesOf(lines);
   const right = axes.length > 1 ? MARGIN.axis : MARGIN.right;
-  const ticks = timeTicks(domain.start, domain.end, width - MARGIN.left - right);
+  const plot = width - MARGIN.left - right;
+  const ticks = (annual ? yearTicks : timeTicks)(domain.start, domain.end, plot);
   const markers = chart.variables.flatMap((variable) => variable.markers);
   const gaps = chart.variables.some((variable) => variable.gaps.length);
   const keys = chart.variables.map((variable) => variable.key).join(", ");
   return html`<figure class=${`sch-figure${loading ? " busy" : ""}`}>
     <${ChartPlot} lines=${lines} timeUnit=${chart.time_unit} interval=${chart.interval}
-      domain=${domain} width=${width} ticks=${ticks} timeAxis extent=${extent} onRange=${onRange}
+      annual=${annual} domain=${domain} width=${width} ticks=${ticks} timeAxis
+      extent=${extent} onRange=${onRange}
       label=${t(C.plot_label, { variables: keys, from: day(chart.from), to: day(chart.to) })}
       describedBy=${summary} />
     <figcaption class="sch-caption">
       <p class="sch-note">${chartNote(chart, whole)}</p>
       <p class="sch-legend faint">
-        ${gaps ? html`<span>${C.gap_note}</span>` : null}
+        ${annual ? html`<span>${C.annual_legend}</span>` : null}
+        ${chart.time_unit === "month" ? html`<span>${C.monthly_legend}</span>` : null}
+        ${gaps ? html`<span>${annual ? C.annual_gap_note : C.gap_note}</span>` : null}
         <span>${C.unknown_note}</span>
         ${markers.some((marker) => marker.kind !== "accumulated") ? html`<span>${C.extremes_note}</span>` : null}
         ${markers.some((marker) => marker.kind === "accumulated") ? html`<span>${C.accumulated_note}</span>` : null}
@@ -321,13 +355,15 @@ function ChartFigure({ chart, width, extent, onRange, loading, whole }) {
 
 /**
  * The note of a chart: „wykres uproszczony: min./śr./maks. z N dni” with
- * what zooming gives, or the values it shows.
+ * what zooming gives, or the values it shows; of an annual chart, who found
+ * its values and in what (A-ADR-051).
  *
- * @param {{time_unit: string, interval: number}} chart
+ * @param {{time_unit: string, interval: number, resolution?: string, provider?: string}} chart
  * @param {boolean} whole - The whole series is shown (no range asked).
  * @returns {string}
  */
 export function chartNote(chart, whole) {
+  if (chart.resolution === "annual") return t(C.annual_note, { provider: chart.provider });
   const unit = chart.time_unit === "month" ? "month" : "day";
   if (chart.interval <= 1) return C.values[unit];
   const interval = count(chart.interval, C.interval_units[unit]);
@@ -337,15 +373,16 @@ export function chartNote(chart, whole) {
 
 /**
  * The line summing a chart: its range, and each variable's points with a
- * value and its gaps.
+ * value and its gaps; of an annual chart its years.
  *
  * @param {import("../types.js").StationChart} chart
  * @returns {string}
  */
 export function chartSummary(chart) {
-  const forms = L.units[chart.time_unit] ?? L.units.day;
+  const annual = chart.resolution === "annual";
+  const forms = annual ? L.units.year : (L.units[chart.time_unit] ?? L.units.day);
   const parts = [t(C.summary_range, { from: day(chart.from), to: day(chart.to), units: count(chart.units, forms) })];
-  for (const variable of chart.variables) parts.push(variableSummary(variable, forms));
+  for (const variable of chart.variables) parts.push(variableSummary(variable, forms, annual));
   return parts.join(" · ");
 }
 
@@ -353,12 +390,15 @@ export function chartSummary(chart) {
  * A variable's part of the summary: its points with a value, its gaps.
  *
  * @param {import("../types.js").ChartVariable} variable
- * @param {string[]} forms - The forms of the series' unit (`dni`).
+ * @param {string[]} forms - The forms of the chart's unit (`dni`, `lat`).
+ * @param {boolean} [annual] - Its points are years with a maximum and a minimum.
  * @returns {string}
  */
-export function variableSummary(variable, forms) {
-  const valued = variable.points.filter((point) => point.mean !== null).length;
-  const points = count(variable.points.length, C.points);
+export function variableSummary(variable, forms, annual = false) {
+  const valued = variable.points.filter((point) =>
+    annual ? point.max !== null || point.min !== null : point.mean !== null,
+  ).length;
+  const points = count(variable.points.length, annual ? C.years_of : C.points);
   const units = variable.gaps.reduce((sum, gap) => sum + gap.units, 0);
   const gaps = variable.gaps.length
     ? t(C.summary_gaps, { gaps: count(variable.gaps.length, C.gaps), units: count(units, forms) })
@@ -380,16 +420,20 @@ function axesOf(lines) {
 /**
  * A plot of one or two variables over a range of time (`domain`): the grey
  * bands of the gaps, the band of the least and greatest values of a
- * simplified chart, the line of the values or means broken at each point
- * without a value and at each gap, the markers, the value axes (a second
- * unit on the right) and, with `timeAxis`, the time axis. A drag selects a
- * range, the wheel and the keys `+`, `-`, arrows and `Home` zoom and move:
- * `onRange` gets the days (`{from, to}`) or `null` for the whole series.
+ * simplified chart or of a month's published minimum and maximum, the line of
+ * the values or means broken at each point without a value and at each gap,
+ * the markers, the value axes (a second unit on the right) and, with
+ * `timeAxis`, the time axis. An annual chart (`annual`) draws instead each
+ * year's maximum and minimum as dots on their lines (`AnnualSeries`). A drag
+ * selects a range, the wheel and the keys `+`, `-`, arrows and `Home` zoom
+ * and move: `onRange` gets the days (`{from, to}`) or `null` for the whole
+ * series.
  *
  * @param {object} props
  * @param {Array<{variable: import("../types.js").ChartVariable, color: number}>} props.lines
- * @param {string} props.timeUnit - `day` or `month`.
+ * @param {string} props.timeUnit - `day` or `month` (`half_year` of an annual chart).
  * @param {number} props.interval - Units of a point.
+ * @param {boolean} [props.annual] - The points are hydrological years (`AnnualPoint`).
  * @param {{start: number, end: number}} props.domain - Times of the range, end excluded.
  * @param {number} props.width - Of the whole figure, px.
  * @param {Array<{t: number, label: string}>} props.ticks - Of `timeTicks`.
@@ -402,6 +446,7 @@ function axesOf(lines) {
  */
 export function ChartPlot(props) {
   const { lines, timeUnit, interval, domain, width, ticks, timeAxis = false, extent, onRange } = props;
+  const annual = props.annual ?? false;
   const axes = axesOf(lines);
   const left = MARGIN.left;
   const right = width - (axes.length > 1 ? MARGIN.axis : MARGIN.right);
@@ -416,9 +461,16 @@ export function ChartPlot(props) {
   const [drag, setDrag] = useState(null);
   const [hover, setHover] = useState(null);
   const first = lines[0]?.variable;
-  const spans = first ? pointSpans(first.points, timeUnit, interval, domain.end) : [];
-  for (const axis of axes) Object.assign(axis, niceTicks(...valueRange(axis.lines)));
+  // A hydrological year spans twelve months from 1 XI.
+  const spans = first
+    ? annual
+      ? pointSpans(first.points, "month", 12, domain.end)
+      : pointSpans(first.points, timeUnit, interval, domain.end)
+    : [];
+  for (const axis of axes) Object.assign(axis, niceTicks(...valueRange(axis.lines, annual)));
   const y = (axis) => (value) => top + (1 - (value - axis.lo) / (axis.hi - axis.lo)) * PLOT_HEIGHT;
+  // A month's minimum and maximum are a band even when each point is a month.
+  const banded = interval > 1 || timeUnit === "month";
 
   const localX = (event) => event.clientX - svg.current.getBoundingClientRect().left;
   const within = (px) => Math.max(left, Math.min(right, px));
@@ -509,10 +561,15 @@ export function ChartPlot(props) {
       )}
       ${axes.flatMap((axis) =>
         axis.lines.map(({ variable, color }) => {
-          const runs = runsOf(variable.points, spans, variable.gaps);
           const scaleY = y(axis);
+          if (annual) {
+            return html`<${AnnualSeries} key=${variable.key} variable=${variable} color=${color}
+              spans=${spans} x=${x} y=${scaleY} />`;
+          }
+          const runs = runsOf(variable.points, spans, variable.gaps);
+          const band = banded ? bandPath(runs, variable.points, spans, x, scaleY) : null;
           return html`<g key=${variable.key} class=${`sch-series sch-v${color}`} data-key=${variable.key}>
-            ${interval > 1 ? html`<path class="sch-band" d=${bandPath(runs, variable.points, spans, x, scaleY)} />` : null}
+            ${band === null ? null : html`<path class="sch-band" d=${band} />`}
             <path class="sch-line" data-key=${variable.key} d=${linePath(runs, variable.points, spans, x, scaleY)} />
             ${runs
               .filter((run) => run.length === 1)
@@ -536,8 +593,12 @@ export function ChartPlot(props) {
         onWheel=${wheel} />
     </svg>
     ${shown
-      ? html`<${HoverTip} lines=${lines} index=${shown.index} span=${spans[shown.index]} interval=${interval}
-          at=${x(spans[shown.index].center)} width=${width} />`
+      ? annual
+        ? html`<${AnnualTip} lines=${lines} index=${shown.index} span=${spans[shown.index]}
+            at=${x(spans[shown.index].center)} width=${width} />`
+        : html`<${HoverTip} lines=${lines} index=${shown.index} span=${spans[shown.index]}
+            interval=${interval} statistics=${banded} monthly=${timeUnit === "month"}
+            at=${x(spans[shown.index].center)} width=${width} />`
       : null}
   </div>`;
 }
@@ -610,25 +671,29 @@ function Marker({ marker, x, y, unit }) {
   return html`<circle class=${`sch-marker ${marker.kind}`} cx=${x} cy=${y} r="4"><title>${title}</title></circle>`;
 }
 
-/** The tooltip of the point under the pointer: its days and each variable's value. */
-function HoverTip({ lines, index, span, interval, at, width }) {
+/**
+ * The tooltip of the point under the pointer: its days and each variable's
+ * value, or its least, mean and greatest (`statistics`: a simplified chart, or
+ * a month's published minimum, mean and maximum).
+ */
+function HoverTip({ lines, index, span, interval, statistics, monthly, at, width }) {
   const first = isoOf(span.start);
   const last = isoOf(span.end - DAY);
-  const when = interval > 1 && first !== last ? `${day(first)}–${day(last)}` : day(first);
+  const one = monthly ? day(first).slice(0, 7) : day(first);
+  const when = interval > 1 && first !== last ? `${day(first)}–${day(last)}` : one;
   const number = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 3 });
   const rows = lines.map(({ variable, color }) => {
     const point = variable.points[index];
     const unit = unitText(variable.unit);
     let text;
     if (!point || point.mean === null) {
-      const gap = variable.gaps.some((item) => msOf(item.from) < span.end && msOf(item.to) + DAY > span.start);
-      text = t(gap ? C.tip_gap : C.tip_unknown, { key: variable.key });
-    } else if (interval > 1) {
+      text = t(inGap(variable, span) ? C.tip_gap : C.tip_unknown, { key: variable.key });
+    } else if (statistics) {
       text = t(C.tip_simplified, {
         key: variable.key,
         mean: number.format(point.mean),
-        min: number.format(point.min),
-        max: number.format(point.max),
+        min: point.min === null ? "–" : number.format(point.min),
+        max: point.max === null ? "–" : number.format(point.max),
         unit,
       });
     } else text = t(C.tip_value, { key: variable.key, value: number.format(point.mean), unit });
@@ -638,6 +703,90 @@ function HoverTip({ lines, index, span, interval, at, width }) {
   return html`<div class="sch-tip" role="presentation" style=${style}>
     <b>${when}</b>${rows}
   </div>`;
+}
+
+/** Whether a gap of a variable covers any of a point's time. */
+function inGap(variable, span) {
+  return variable.gaps.some((gap) => msOf(gap.from) < span.end && msOf(gap.to) + DAY > span.start);
+}
+
+/** The two extremes of an annual chart: each year's maximum and minimum. */
+const ANNUAL_EXTREMES = ["max", "min"];
+
+/**
+ * A variable of an annual chart: the line of its yearly maxima and that of its
+ * minima (dashed), broken at a year without one and at each gap, and a dot
+ * at each value, hollow for an incomplete year (one half without a value).
+ */
+function AnnualSeries({ variable, color, spans, x, y }) {
+  return html`<g class=${`sch-series sch-v${color}`} data-key=${variable.key}>
+    ${ANNUAL_EXTREMES.map((kind) => {
+      const value = (point) => point[kind]?.value ?? null;
+      const runs = runsOf(variable.points, spans, variable.gaps, value);
+      return html`<g key=${kind}>
+        <path class=${`sch-line ${kind}`} data-key=${variable.key} data-kind=${kind}
+          d=${linePath(runs, variable.points, spans, x, y, value)} />
+        ${variable.points.map((point, index) => {
+          const extreme = point[kind];
+          if (!extreme) return null;
+          const name = `sch-year ${kind}${extreme.partial ? " partial" : ""}`;
+          return html`<circle key=${point.year} class=${name} data-key=${variable.key}
+            data-year=${point.year} data-kind=${kind} cx=${x(spans[index].center)}
+            cy=${y(extreme.value)} r="3.4" />`;
+        })}
+      </g>`;
+    })}
+  </g>`;
+}
+
+/**
+ * The tooltip of a year of an annual chart: each variable's maximum and
+ * minimum with its days, half-year and occurrences, and „niepełny rok” when
+ * a half has no value.
+ */
+function AnnualTip({ lines, index, span, at, width }) {
+  const year = lines[0]?.variable.points[index]?.year;
+  const rows = lines.flatMap(({ variable, color }) => {
+    const point = variable.points[index];
+    const found = ANNUAL_EXTREMES.filter((kind) => point?.[kind]);
+    if (!found.length) {
+      const text = t(inGap(variable, span) ? C.tip_gap : C.tip_unknown, { key: variable.key });
+      return [html`<span key=${variable.key} class=${`sch-tip-row sch-v${color}`}>${text}</span>`];
+    }
+    return found.map(
+      (kind) => html`<span key=${`${variable.key}:${kind}`} class=${`sch-tip-row sch-v${color}`}>
+        ${annualText(variable.key, kind, point[kind], unitText(variable.unit))}</span>`,
+    );
+  });
+  const style = at > width / 2 ? { right: `${width - at + 8}px` } : { left: `${at + 8}px` };
+  return html`<div class="sch-tip" role="presentation" style=${style}>
+    <b>${t(C.tip_year, { year })}</b>${rows}
+  </div>`;
+}
+
+/**
+ * A year's maximum or minimum for a person: „Q maks.: 223 m³/s · 2024.03.02
+ * (półrocze zimowe)”, its occurrences when more than one, and „niepełny rok:
+ * brak półrocza letniego” when the other half has no value.
+ *
+ * @param {string} key
+ * @param {"max"|"min"} kind
+ * @param {import("../types.js").AnnualExtreme} extreme
+ * @param {string} unit - As people write it.
+ * @returns {string}
+ */
+export function annualText(key, kind, extreme, unit) {
+  const number = new Intl.NumberFormat("pl-PL", { maximumFractionDigits: 3 });
+  const { start, end } = extreme;
+  let when = C.undated;
+  if (start) when = !end || end === start ? day(start) : `${day(start)}–${day(end)}`;
+  const half = extreme.halves.length > 1 ? C.halves_both : C.halves[extreme.halves[0]];
+  const value = number.format(extreme.value);
+  const parts = [t(C.tip_annual, { key, kind: C.marker[kind], value, unit, when, half })];
+  const times = extreme.occurrences;
+  if (times !== null && times > 1) parts.push(count(times, C.occurrences));
+  if (extreme.partial) parts.push(C.partial[extreme.partial]);
+  return parts.join(" · ");
 }
 
 /**
@@ -679,19 +828,21 @@ function spanAt(spans, ms) {
  * The runs of points the line joins: a point without a value ends a run, and
  * so does a gap between two points (never a line across it).
  *
- * @param {import("../types.js").ChartPoint[]} points
+ * @param {Array<import("../types.js").ChartPoint|import("../types.js").AnnualPoint>} points
  * @param {Array<{center: number}>} spans - Of `pointSpans`.
  * @param {import("../types.js").GapSpan[]} gaps - In order.
+ * @param {(point: *) => number|null} [value] - The value of a point the line
+ *   joins: its mean by default.
  * @returns {number[][]} The indexes of the points of each run.
  */
-export function runsOf(points, spans, gaps) {
+export function runsOf(points, spans, gaps, value = (point) => point.mean) {
   const bands = gaps.map((gap) => ({ start: msOf(gap.from), end: msOf(gap.to) + DAY }));
   const runs = [];
   let run = null;
   let previous = null;
   let next = 0;
   points.forEach((point, index) => {
-    if (point.mean === null) {
+    if (value(point) === null) {
       run = null;
       return;
     }
@@ -712,40 +863,54 @@ export function runsOf(points, spans, gaps) {
 
 const px = (value) => Math.round(value * 10) / 10;
 
-/** The line of the values (means): a subpath a run, a run of one point a dot. */
-function linePath(runs, points, spans, x, y) {
+/** The line of the values (means, by default): a subpath a run, a run of one point a dot. */
+function linePath(runs, points, spans, x, y, value = (point) => point.mean) {
+  const vertex = (index) => `${px(x(spans[index].center))},${px(y(value(points[index])))}`;
   return runs
     .map((run) => {
-      const vertices = run.map((index) => `${px(x(spans[index].center))},${px(y(points[index].mean))}`);
+      const vertices = run.map(vertex);
       return vertices.length === 1 ? `M${vertices[0]}h0` : `M${vertices.join("L")}`;
     })
     .join("");
 }
 
-/** The band of the least and greatest values of a simplified chart, a shape a run. */
+/**
+ * The band of the least and greatest values of a simplified chart, or of a
+ * month's minimum and maximum, a shape a run (the mean where one is missing).
+ */
 function bandPath(runs, points, spans, x, y) {
+  const middle = (index) => px(x(spans[index].center));
+  const top = (index) => px(y(points[index].max ?? points[index].mean));
+  const low = (index) => px(y(points[index].min ?? points[index].mean));
   return runs
     .map((run) => {
       if (run.length === 1) {
         const [index] = run;
-        const at = px(x(spans[index].center));
-        return `M${at - 1},${px(y(points[index].max))}H${at + 1}V${px(y(points[index].min))}H${at - 1}Z`;
+        const at = middle(index);
+        return `M${at - 1},${top(index)}H${at + 1}V${low(index)}H${at - 1}Z`;
       }
-      const upper = run.map((index) => `${px(x(spans[index].center))},${px(y(points[index].max))}`);
-      const lower = [...run].reverse().map((index) => `${px(x(spans[index].center))},${px(y(points[index].min))}`);
+      const upper = run.map((index) => `${middle(index)},${top(index)}`);
+      const lower = [...run].reverse().map((index) => `${middle(index)},${low(index)}`);
       return `M${upper.join("L")}L${lower.join("L")}Z`;
     })
     .join("");
 }
 
-/** The least and greatest value of the lines of an axis with their markers', a little apart. */
-function valueRange(lines) {
+/**
+ * The least and greatest value of the lines of an axis with their markers',
+ * a little apart; of an annual chart its years' maxima and minima.
+ */
+function valueRange(lines, annual = false) {
   let low = Infinity;
   let high = -Infinity;
   for (const { variable } of lines) {
     for (const point of variable.points) {
-      if (point.min !== null && point.min < low) low = point.min;
-      if (point.max !== null && point.max > high) high = point.max;
+      const values = annual ? [point.min?.value, point.max?.value] : [point.min, point.max];
+      for (const value of values) {
+        if (value === null || value === undefined) continue;
+        low = Math.min(low, value);
+        high = Math.max(high, value);
+      }
     }
     for (const marker of variable.markers) {
       low = Math.min(low, marker.value);
@@ -824,6 +989,32 @@ export function timeTicks(start, end, width) {
     }
   }
   return ticks;
+}
+
+/** Steps of the axis of an annual chart, in years. */
+const YEAR_STEPS = [1, 2, 5, 10, 20, 50, 100];
+
+/**
+ * The ticks of an annual chart's time axis: hydrological years at the middle
+ * of each (where its dots lie), labelled with their numbers, as many as fit
+ * `width`.
+ *
+ * @param {number} start - The range's first time (1 XI), ms.
+ * @param {number} end - Its end (excluded, 1 XI), ms.
+ * @param {number} width - Of the plot, px.
+ * @returns {Array<{t: number, label: string}>}
+ */
+export function yearTicks(start, end, width) {
+  const first = new Date(start).getUTCFullYear() + 1;
+  const last = new Date(end - DAY).getUTCFullYear();
+  const years = last - first + 1;
+  const step = YEAR_STEPS.find((size) => years / size <= width / TICK_PX.year) ?? YEAR_STEPS.at(-1);
+  const middle = (year) => (Date.UTC(year - 1, 10, 1) + Date.UTC(year, 10, 1)) / 2;
+  const ticks = [];
+  for (let year = Math.ceil(first / step) * step; year <= last; year += step) {
+    ticks.push({ t: middle(year), label: String(year) });
+  }
+  return ticks.length ? ticks : [{ t: middle(first), label: String(first) }];
 }
 
 /**

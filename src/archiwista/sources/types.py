@@ -34,6 +34,9 @@ type YearType = Literal["hydrological", "calendar"]
 type TimeUnit = Literal["day", "month", "half_year"]
 # A statistic of a half-year characteristic that is an extreme of its variable.
 type Extreme = Literal["min", "max"]
+# A statistic of a variable over a month or a half-year that a dataset of such
+# statistics holds as a variable of its own (``Q_min``, ``Q_mean``, ``Q_max``).
+type Statistic = Literal["min", "mean", "max"]
 type DateRange = tuple[date, date]
 # How an area of Archiwista reaches a command (``AreaCommand.way``): as the
 # producer's geometry file, or as the box that encloses it.
@@ -384,9 +387,11 @@ class SeriesValues:
     known alike (the gap lists of the series index tell them apart, SPEC
     4.8.4); a phenomenon that did not occur is ``0``. ``accumulated`` names
     the variables whose value is an accumulated sum of the days before it,
-    and ``extremes`` the first and last time of each extreme of a half-year
+    ``extremes`` the first and last time of each extreme of a half-year
     characteristic the producer dates, by variable (``None``: a bound it does
-    not publish).
+    not publish), and ``occurrences`` how many times the source published
+    each extreme (its repeated rows of one value, which the producer merged),
+    by variable (absent: not given).
     """
 
     start: date
@@ -396,6 +401,7 @@ class SeriesValues:
     extremes: Mapping[str, tuple[datetime | None, datetime | None]] = field(
         default_factory=dict
     )
+    occurrences: Mapping[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,24 +6,31 @@ units with the least, mean and greatest value of each, ``null`` without one
 (never interpolated). The runs of gaps of the variable's label are cut at the
 range's ends, the range is by default the variables' known span, an
 accumulated sum is a marker and no value, and the extremes of the half-year
-characteristics are markers at the day the provider published.
+characteristics are markers at the day the provider published. The annual
+extremes of half-year characteristics keep what the producer did not give:
+no date, no count of occurrences (A-ADR-051).
 """
 
 from collections.abc import Iterator, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from typing import cast
 
-from archiwista.api.models_stations import StationChart
+from archiwista.api.models_stations import ChartPoint, StationChart
 from archiwista.index import CoverageVariable, StationCoverage
 from archiwista.index.series import GapRun, Interval, SeriesLabel
 from archiwista.services.series_chart import (
+    AnnualSource,
+    ChartRange,
+    ChartSource,
+    annual_points,
     chart_gaps,
     chart_range,
     chart_values,
     extreme_markers,
     station_chart,
 )
-from archiwista.sources import Extreme, SeriesValues
+from archiwista.sources import Extreme, SeriesValues, Statistic
 
 START = date(1950, 11, 1)
 
@@ -269,6 +276,9 @@ class _Producer:
     def extremes_of(self, dataset: str, variable: str) -> dict[Extreme, str]:
         return {"min": "Q_min", "max": "Q_max"} if variable == "Q" else {}
 
+    def statistics_of(self, dataset: str) -> dict[str, dict[Statistic, str]]:
+        return {}
+
 
 def test_a_chart_has_the_extremes_and_sums_of_its_range_by_day() -> None:
     """The characteristics are read once; markers of the range, by day."""
@@ -287,7 +297,7 @@ def test_a_chart_has_the_extremes_and_sums_of_its_range_by_day() -> None:
         producer,
         Path("store"),
         _series(variable, "pl.daily"),
-        [variable],
+        [ChartSource.own(variable)],
         start=None,
         end=None,
         max_points=2000,
@@ -318,7 +328,7 @@ def _chart_of(
         producer,
         Path("store"),
         _series(variable, "pl.daily"),
-        [variable],
+        [ChartSource.own(variable)],
         start=start,
         end=None,
         max_points=2000,
@@ -342,10 +352,63 @@ def test_the_default_range_is_the_known_span_widened_to_a_value() -> None:
         date(2024, 3, 10),
         39,
     )
-    assert [p["mean"] for p in chart.variables[0].points[28:30]] == [None, 5.0]
+    points = cast("list[ChartPoint]", chart.variables[0].points)
+    assert [p["mean"] for p in points[28:30]] == [None, 5.0]
     assert (empty.first, empty.units, empty.variables[0].points, late.read) == (
         None,
         0,
         [],
         {},
     )
+
+
+def _half(
+    period: str,
+    value: float | None,
+    dates: tuple[datetime | None, datetime | None] | None = None,
+    occurrences: int | None = None,
+) -> SeriesValues:
+    """Return a half of the hydrological year 2024 with its ``Q_max``."""
+    return SeriesValues(
+        start=date(2023, 11, 1) if period == "winter" else date(2024, 5, 1),
+        period=period,
+        values={"Q_max": value},
+        extremes={} if dates is None else {"Q_max": dates},
+        occurrences={} if occurrences is None else {"Q_max": occurrences},
+    )
+
+
+def _annual_maximum(*records: SeriesValues) -> object:
+    source = AnnualSource("Q", "m3/s", "Q_max", "Q_min", ())
+    (point,) = annual_points(records, source, ChartRange("half_year", 2024, 2024, 1))
+    return point["max"]
+
+
+def test_an_annual_extreme_keeps_dates_and_counts_the_producer_did_not_give() -> None:
+    """Undated halves give no days; a half without a count, no sum of them."""
+    # Arrange
+    dated = (datetime(2024, 3, 2, 6, 0), None)
+
+    # Act
+    undated = _annual_maximum(_half("winter", 80.0), _half("summer", 50.0, None, 1))
+    uncounted = _annual_maximum(
+        _half("winter", 80.0, dated, 2), _half("summer", 80.0, None, None)
+    )
+
+    # Assert
+    assert undated == {
+        "value": 80.0,
+        "start": None,
+        "end": None,
+        "occurrences": None,
+        "halves": ["winter"],
+        "partial": None,
+    }
+    assert uncounted == {
+        "value": 80.0,
+        "start": date(2024, 3, 2),
+        "end": date(2024, 3, 2),
+        "occurrences": None,
+        "halves": ["winter", "summer"],
+        "partial": None,
+    }

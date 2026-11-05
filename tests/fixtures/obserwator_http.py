@@ -2,15 +2,16 @@
 
 Obserwator's own tests answer ``httpx`` from recordings by patching
 ``httpx.HTTPTransport.handle_request``; this does the same for any file of
-``obserwator.testing.fixture_files()`` under ``archives/``: a ``HEAD`` or
-``GET`` of ``<base>/<server path>`` answers the file with an ``ETag`` of its
-bytes (or one a test sets, ``etags``), a ``GET`` of a directory of them its
-listing (links to its files, as IMGW-PIB's server lists a directory), a
-``GET`` of IMGW-PIB's public API (the station catalog's source) the answer
-recorded in ``recordings.json``, anything else is ``404``. No request
-leaves the process. Every request is recorded (``requests``), and a test may
-stop a ``GET`` of a file after a number of them (``interrupt_after``) to stand for a
-person who stopped the job.
+``obserwator.testing.fixture_files()`` under ``archives/`` and any archive a
+test adds (``archives``, by server path): a ``HEAD`` or ``GET`` of
+``<base>/<server path>`` answers the file with an ``ETag`` of its bytes (or
+one a test sets, ``etags``), a ``GET`` of a directory of them its listing
+(links to its files, as IMGW-PIB's server lists a directory), a ``GET`` of
+IMGW-PIB's public API (the station catalog's source) the answer recorded in
+``recordings.json``, anything else is ``404``. No request leaves the
+process. Every request is recorded (``requests``), and a test may stop a
+``GET`` of a file after a number of them (``interrupt_after``) to stand for
+a person who stopped the job.
 """
 
 import hashlib
@@ -37,6 +38,7 @@ class StandinSource:
     etags: dict[str, str] = field(default_factory=dict)
     requests: list[tuple[str, str]] = field(default_factory=list)
     interrupt_after: int | None = None
+    archives: dict[str, bytes] = field(default_factory=dict)
 
     def gets(self) -> list[str]:
         """Return the server paths fetched with ``GET``, in their order."""
@@ -57,11 +59,22 @@ def _api_answers() -> dict[str, object]:
     }
 
 
-def _listing(path: str) -> str:
-    """Return a directory listing of the fixtures' files under ``path``."""
+def _listing(source: StandinSource, path: str) -> str | None:
+    """Return a directory listing of the archives under ``path``; ``None``: none."""
     directory = fixture_files().joinpath("archives", path.rstrip("/"))
-    names = sorted(item.name for item in directory.iterdir() if item.is_file())
-    return "".join(f'<a href="{name}">{name}</a>' for name in names)
+    names = (
+        {item.name for item in directory.iterdir() if item.is_file()}
+        if directory.is_dir()
+        else set()
+    )
+    names |= {
+        name.removeprefix(path)
+        for name in source.archives
+        if name.startswith(path) and "/" not in name.removeprefix(path)
+    }
+    if not names and not directory.is_dir():
+        return None
+    return "".join(f'<a href="{name}">{name}</a>' for name in sorted(names))
 
 
 def _answer(source: StandinSource, request: httpx.Request) -> httpx.Response:
@@ -74,16 +87,19 @@ def _answer(source: StandinSource, request: httpx.Request) -> httpx.Response:
             return httpx.Response(200, json=api[url], request=request)
         return httpx.Response(404, request=request)
     if path.endswith("/"):
-        if not fixture_files().joinpath("archives", path.rstrip("/")).is_dir():
+        listing = _listing(source, path)
+        if listing is None:
             return httpx.Response(404, request=request)
-        return httpx.Response(200, text=_listing(path), request=request)
+        return httpx.Response(200, text=listing, request=request)
     resource = fixture_files().joinpath("archives", path)
-    if not resource.is_file():
+    data = source.archives.get(path)
+    if data is None and not resource.is_file():
         return httpx.Response(404, request=request)
     stop = source.interrupt_after
     if request.method == "GET" and stop is not None and len(source.files()) > stop:
         raise KeyboardInterrupt
-    data = resource.read_bytes()
+    if data is None:
+        data = resource.read_bytes()
     etag = source.etags.get(path, f'"{hashlib.sha256(data).hexdigest()[:16]}"')
     headers = {
         "ETag": etag,

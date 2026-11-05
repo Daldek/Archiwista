@@ -140,3 +140,19 @@ def obserwator_store(
         return built[variant]
 
     return store
+
+
+@pytest.fixture(scope="session")
+def statistics_store(
+    obserwator_store: Callable[[str], Path], tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    """Return ``complete`` with IMGW-PIB's half-year and monthly series, built once.
+
+    Obserwator's ``sync_store`` builds them from archives of IMGW-PIB's layout
+    through the stood-in source (``tests/fixtures/obserwator_statistics.py``).
+    Tests share the store read-only and copy it to change it.
+    """
+    from tests.fixtures.obserwator_statistics import build_statistics_store
+
+    root = tmp_path_factory.mktemp("obserwator-statistics") / "store"
+    return build_statistics_store(root, obserwator_store("complete"))

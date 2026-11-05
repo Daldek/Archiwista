@@ -11,6 +11,7 @@
 .sc-subline .station-symbol { flex: none; margin-right: 2px; }
 .sc-years { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .sc-years-label { font-size: 12px; color: var(--text-3); }
+.sc-years-note { font-size: 12px; }
 .sc-location { display: grid; gap: 4px; justify-items: start; font-size: 12.5px; }
 .sc-location p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
 .sc-location.none > p:first-child { color: var(--warn-ink); font-weight: 500; }
@@ -67,6 +68,9 @@
 .sch-dot { fill: var(--series); }
 .sch-marker { stroke: var(--series); stroke-width: 1.6; fill: #fff; }
 .sch-marker.max { fill: var(--series); }
+.sch-line.min { stroke-dasharray: 4 3; }
+.sch-year { fill: var(--series); stroke: var(--series); stroke-width: 1.6; }
+.sch-year.partial { fill: #fff; }
 .sch-cursor { stroke: var(--text-3); stroke-dasharray: 3 3; }
 .sch-selection { fill: var(--accent-2); fill-opacity: 0.14; stroke: var(--accent-2); stroke-width: 1; }
 .sch-hit { fill: transparent; pointer-events: all; cursor: crosshair; touch-action: none; }

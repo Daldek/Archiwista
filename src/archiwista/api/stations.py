@@ -204,7 +204,8 @@ def station_card(
 
     Each series file is also given on this computer, as mounted on others
     and on the person's own (``paths``), as the file card gives a version's
-    (SPEC 4.6).
+    (SPEC 4.6); ``charts`` are the charts of ``station_chart`` its series
+    give, when the producer reads their values.
 
     Raises
     ------
@@ -237,9 +238,16 @@ def station_card(
         )
         if copied is not None:
             paths[series.dataset] = copied
+    adapter = registry.adapter(STATION_PRODUCER)
+    charts = (
+        series_chart.chart_choices(found, adapter.statistics_of)
+        if isinstance(adapter, SeriesValuesAdapter)
+        else []
+    )
     return StationCard(
         station=StationItem.of(row, found),
         paths=paths,
+        charts=charts,
         **staleness(freshness, {row.store}),
     )
 
@@ -288,12 +296,17 @@ def station_chart(
     """Return one or two variables of a station's series as a chart (SPEC 6.7).
 
     The series is the station's in ``query.dataset``, or else the one whose
-    series has every variable; its current version in the index is read
-    through the producer, the version and each variable's label, in the year
-    type of ``query.year_type``, come from the index: the label's runs of
-    gaps are the bands and its known span the default range (ADR-045
-    erratum 1). The extremes come from the station's series of the dataset's
-    half-year characteristics when the index holds one.
+    series has every variable (a series of days before one of monthly
+    statistics); its current version in the index is read through the
+    producer, the version and each variable's label, in the year type of
+    ``query.year_type``, come from the index: the label's runs of gaps are
+    the bands and its known span the default range (ADR-045 erratum 1). A
+    variable of monthly statistics is drawn from its minimum, mean and
+    maximum. The extremes come from the station's series of the dataset's
+    half-year characteristics when the index holds one. An annual chart
+    (``resolution=annual``) reads the station's half-year characteristics
+    and gives each hydrological year's maximum and minimum found in them
+    (A-ADR-051).
 
     Raises
     ------
@@ -305,7 +318,9 @@ def station_chart(
         An unknown store, a code of several stations, a variable the series
         lacks (reason ``unknown_variable``), variables in several series
         without ``dataset`` (``ambiguous_dataset``), half-year
-        characteristics (``half_year_chart``) or a reversed range.
+        characteristics at their units (``half_year_chart``), an annual chart
+        of a station without them (``no_annual_source``) or in calendar years
+        (``annual_year_type``), or a reversed range.
     ConflictError
         ``version`` is not the series' current version in the index (reason
         ``series_version_not_current``).
@@ -316,6 +331,13 @@ def station_chart(
     """
     adapter = _values_adapter(registry)
     _check_range(query.start, query.end)
+    annual = query.resolution == "annual"
+    if annual and query.year_type == "calendar":
+        raise IndexQueryError(
+            message("api.chart_annual_year_type"),
+            reason="annual_year_type",
+            details={"option": "year_type", "allowed": ["hydrological"]},
+        )
     freshness = queries.freshness()
     checked_store(query.store, settings, freshness)
     row = find_station(queries, code, store=query.store, provider=query.provider)
@@ -327,19 +349,21 @@ def station_chart(
         year_type=query.year_type,
         year_types=preferences.year_types,
     )
-    series, variables = _chart_series(row, found, query)
-    if query.version is not None and query.version != series.series_version:
-        raise ConflictError(
-            message(
-                "api.chart_version_not_current",
-                version=query.version,
-                dataset=series.dataset,
-                current=series.series_version,
-            ),
-            reason="series_version_not_current",
-            details={"current": series.series_version},
-            hint=message("api.chart_version_hint"),
+    fresh = staleness(freshness, {row.store})
+    if annual:
+        halves, sources = _annual_series(row, found, query, adapter)
+        _check_version(query.version, halves)
+        return series_chart.annual_chart(
+            adapter,
+            _producer_root(settings, halves),
+            halves,
+            sources,
+            start=query.start,
+            end=query.end,
+            freshness=fresh,
         )
+    series, variables = _chart_series(row, found, query, adapter)
+    _check_version(query.version, series)
     return _read_chart(
         queries,
         settings,
@@ -349,7 +373,7 @@ def station_chart(
         variables,
         span=(query.start, query.end),
         max_points=query.max_points,
-        freshness=staleness(freshness, {row.store}),
+        freshness=fresh,
     )
 
 
@@ -463,7 +487,7 @@ def station_comparison(
                     preferences,
                     adapter,
                     item,
-                    [variable],
+                    [series_chart.ChartSource.own(variable)],
                     span=span,
                     max_points=query.max_points,
                     freshness=fresh,
@@ -535,13 +559,51 @@ def _compared_range(
     return start, end
 
 
+def _check_version(version: str | None, series: StationCoverage) -> None:
+    """Refuse a chart of another version than the series' current one.
+
+    Raises
+    ------
+    ConflictError
+        ``version`` is not the series' current version in the index (reason
+        ``series_version_not_current``).
+    """
+    if version is not None and version != series.series_version:
+        raise ConflictError(
+            message(
+                "api.chart_version_not_current",
+                version=version,
+                dataset=series.dataset,
+                current=series.series_version,
+            ),
+            reason="series_version_not_current",
+            details={"current": series.series_version},
+            hint=message("api.chart_version_hint"),
+        )
+
+
+def _producer_root(settings: AppSettings, series: StationCoverage) -> FilePath:
+    """Return the Obserwator directory of a series' store.
+
+    Raises
+    ------
+    NotFoundError
+        The station's store has no Obserwator directory configured.
+    """
+    config = settings.store(series.store)
+    root = None if config is None else config.roots().get(STATION_PRODUCER)
+    if root is None:
+        raise NotFoundError(message("api.store_not_configured", store=series.store))
+    return FilePath(root)
+
+
 def _read_chart(
     queries: IndexQueries,
     settings: AppSettings,
     preferences: Preferences,
     adapter: SeriesValuesAdapter,
     series: StationCoverage,
-    variables: Sequence[CoverageVariable],
+    variables: Sequence[series_chart.ChartSource],
     *,
     span: tuple[date | None, date | None],
     max_points: int,
@@ -549,8 +611,8 @@ def _read_chart(
 ) -> StationChart:
     """Read a station's series through the producer and return its chart.
 
-    The extremes come from the station's series of the dataset's half-year
-    characteristics when the index holds one.
+    The extremes of a variable of days come from the station's series of the
+    dataset's half-year characteristics when the index holds one.
 
     Raises
     ------
@@ -559,11 +621,12 @@ def _read_chart(
     SourceUnavailableError, ProducerError
         The producer could not read the series.
     """
-    config = settings.store(series.store)
-    root = None if config is None else config.roots().get(STATION_PRODUCER)
-    if root is None:
-        raise NotFoundError(message("api.store_not_configured", store=series.store))
-    characteristics = adapter.characteristics_dataset(series.dataset)
+    root = _producer_root(settings, series)
+    characteristics = (
+        adapter.characteristics_dataset(series.dataset)
+        if any(item.own_value for item in variables)
+        else None
+    )
     held = (
         ()
         if characteristics is None
@@ -578,7 +641,7 @@ def _read_chart(
     start, end = span
     return series_chart.station_chart(
         adapter,
-        FilePath(root),
+        root,
         series,
         variables,
         start=start,
@@ -656,9 +719,18 @@ def find_station(
 
 
 def _chart_series(
-    row: StationRow, found: Sequence[StationCoverage], query: StationChartQuery
-) -> tuple[StationCoverage, list[CoverageVariable]]:
+    row: StationRow,
+    found: Sequence[StationCoverage],
+    query: StationChartQuery,
+    adapter: SeriesValuesAdapter,
+) -> tuple[StationCoverage, list[series_chart.ChartSource]]:
     """Return the series a chart reads and its variables, in the order asked.
+
+    A series offers its variables as a chart takes them: a series of days
+    its own, one of monthly statistics the variables they describe;
+    half-year characteristics offer both their keys and the variables they
+    describe, only to be refused. Without ``dataset`` a series of days with
+    every variable comes before one of monthly statistics.
 
     Raises
     ------
@@ -671,28 +743,22 @@ def _chart_series(
         raise NotFoundError(
             message("api.station_series_none", code=row.code, dataset=query.dataset)
         )
-    keyed = [
-        (series, {item.key: item for item in series.variables}) for series in found
-    ]
-    held = [
-        (series, variables)
-        for series, variables in keyed
-        if all(name in variables for name in query.variable)
-    ]
+    offered = [_offered(series, adapter) for series in found]
+    held = [item for item in offered if all(name in item[2] for name in query.variable)]
     names = ", ".join(query.variable)
     if query.dataset is not None and not held:
-        series, variables = keyed[0]
-        missing = next(name for name in query.variable if name not in variables)
+        series, _, allowed = offered[0]
+        missing = next(name for name in query.variable if name not in allowed)
         raise IndexQueryError(
             message(
                 "api.chart_variable_unknown",
                 dataset=series.dataset,
                 code=row.code,
                 variable=missing,
-                allowed=", ".join(variables),
+                allowed=", ".join(allowed),
             ),
             reason="unknown_variable",
-            details={"option": "variable", "allowed": list(variables)},
+            details={"option": "variable", "allowed": allowed},
         )
     if not held:
         raise IndexQueryError(
@@ -700,11 +766,17 @@ def _chart_series(
             reason="unknown_variable",
             details={
                 "option": "variable",
-                "allowed": sorted({key for _, variables in keyed for key in variables}),
+                "allowed": sorted(
+                    {name for _, _, allowed in offered for name in allowed}
+                ),
             },
         )
+    first = min(series_chart.CHART_ORDER[series.time_unit] for series, _, _ in held)
+    held = [
+        item for item in held if series_chart.CHART_ORDER[item[0].time_unit] == first
+    ]
     if len(held) > 1:
-        datasets = [series.dataset for series, _ in held]
+        datasets = [series.dataset for series, _, _ in held]
         raise IndexQueryError(
             message(
                 "api.chart_dataset_ambiguous",
@@ -716,14 +788,112 @@ def _chart_series(
             details={"option": "dataset", "allowed": datasets},
             hint=message("api.chart_dataset_hint"),
         )
-    series, variables = held[0]
+    series, sources, _ = held[0]
     if series.time_unit == "half_year":
         raise IndexQueryError(
             message("api.chart_half_year", dataset=series.dataset),
             reason="half_year_chart",
             details={"option": "dataset"},
+            hint=message("api.chart_half_year_hint"),
         )
-    return series, [variables[name] for name in query.variable]
+    return series, [sources[name] for name in query.variable]
+
+
+def _offered(
+    series: StationCoverage, adapter: SeriesValuesAdapter
+) -> tuple[StationCoverage, dict[str, series_chart.ChartSource], list[str]]:
+    """Return a series, the variables a chart of its units draws and their names.
+
+    The names of half-year characteristics are their keys and the variables
+    they describe, none of which a chart of their units draws.
+    """
+    statistics = adapter.statistics_of(series.dataset)
+    sources = series_chart.unit_sources(series, statistics)
+    names = list(sources)
+    if series.time_unit == "half_year":
+        described = series_chart.annual_sources(series, statistics)
+        names = list(
+            dict.fromkeys([*described, *(item.key for item in series.variables)])
+        )
+    return series, sources, names
+
+
+def _annual_series(
+    row: StationRow,
+    found: Sequence[StationCoverage],
+    query: StationChartQuery,
+    adapter: SeriesValuesAdapter,
+) -> tuple[StationCoverage, list[series_chart.AnnualSource]]:
+    """Return the half-year characteristics of an annual chart and its variables.
+
+    The station's series of half-year characteristics (of ``query.dataset``)
+    with every variable asked; by default each variable with a value, in
+    the order of the series index.
+
+    Raises
+    ------
+    IndexQueryError
+        The station has no half-year characteristics (of ``query.dataset``;
+        reason ``no_annual_source``), they do not describe a variable
+        (``unknown_variable``) or several series of them do
+        (``ambiguous_dataset``).
+    """
+    offered = [
+        (
+            series,
+            series_chart.annual_sources(series, adapter.statistics_of(series.dataset)),
+        )
+        for series in found
+        if series.time_unit == "half_year"
+    ]
+    if not offered:
+        raise IndexQueryError(
+            message(
+                "api.chart_no_annual_source",
+                code=row.code,
+                datasets=", ".join(series.dataset for series in found) or "—",
+            ),
+            reason="no_annual_source",
+            details={
+                "option": "resolution" if query.dataset is None else "dataset",
+                "allowed": [series.dataset for series in found],
+            },
+        )
+    held = [item for item in offered if all(name in item[1] for name in query.variable)]
+    if not held:
+        series, sources = offered[0]
+        missing = next(name for name in query.variable if name not in sources)
+        raise IndexQueryError(
+            message(
+                "api.chart_variable_unknown",
+                dataset=series.dataset,
+                code=row.code,
+                variable=missing,
+                allowed=", ".join(sources),
+            ),
+            reason="unknown_variable",
+            details={"option": "variable", "allowed": list(sources)},
+        )
+    if len(held) > 1:
+        datasets = [series.dataset for series, _ in held]
+        raise IndexQueryError(
+            message(
+                "api.chart_dataset_ambiguous",
+                code=row.code,
+                variables=", ".join(query.variable or held[0][1]),
+                datasets=", ".join(datasets),
+            ),
+            reason="ambiguous_dataset",
+            details={"option": "dataset", "allowed": datasets},
+            hint=message("api.chart_dataset_hint"),
+        )
+    series, sources = held[0]
+    names = query.variable or [
+        name
+        for name, source in sources.items()
+        if any(label.first is not None for label in source.labels)
+    ]
+    return series, [sources[name] for name in names]
 
 
 def _station_page(

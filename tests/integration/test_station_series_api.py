@@ -38,8 +38,8 @@ from archiwista.index import (
     scan_store,
 )
 from archiwista.index.series import SeriesLabel
-from archiwista.services.series_chart import station_chart
-from archiwista.sources import Extreme, SeriesValues
+from archiwista.services.series_chart import ChartSource, station_chart
+from archiwista.sources import Extreme, SeriesValues, Statistic
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
@@ -518,6 +518,9 @@ class _Values:
     def extremes_of(self, dataset: str, variable: str) -> dict[Extreme, str]:
         return {}
 
+    def statistics_of(self, dataset: str) -> dict[str, dict[Statistic, str]]:
+        return {}
+
 
 @pytest.mark.perf
 def test_a_chart_of_27393_days_within_500_ms() -> None:
@@ -558,7 +561,7 @@ def test_a_chart_of_27393_days_within_500_ms() -> None:
             adapter,
             Path("store"),
             series,
-            [variable],
+            [ChartSource.own(variable)],
             start=None,
             end=None,
             max_points=2000,

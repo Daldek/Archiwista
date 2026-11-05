@@ -41,6 +41,7 @@ from archiwista.sources.types import (
     SourceSegment,
     SourceState,
     Station,
+    Statistic,
 )
 
 if TYPE_CHECKING:
@@ -214,7 +215,8 @@ class SeriesValuesAdapter(Protocol):
     station; this reads one station's values from it for display (a chart),
     never for the index. The half-year characteristics of a dataset, whose
     extremes the producer publishes with their dates, are a dataset of their
-    own, named by the producer's registry.
+    own, named by the producer's registry; so are the statistics of a month
+    or a half-year, each a variable of its own (``statistics_of``).
     """
 
     def read_values(
@@ -263,6 +265,18 @@ class SeriesValuesAdapter(Protocol):
         value of each half-year period, by statistic: ``{"min": "Q_min",
         "max": "Q_max"}``. Empty when there is no characteristics dataset or
         it holds no extreme of the variable. No disk access.
+        """
+        ...
+
+    def statistics_of(self, dataset: str) -> Mapping[str, Mapping[Statistic, str]]:
+        """Return the variables whose statistics a dataset holds, with their names.
+
+        A dataset of monthly or half-year statistics holds a variable's least,
+        mean and greatest value of each unit as variables of its own; this
+        names them by variable, from the producer's registry: ``{"Q": {"min":
+        "Q_min", "mean": "Q_mean", "max": "Q_max"}}``, in the registry's
+        order. Empty for a dataset of values (days) and for one the producer
+        does not know. No disk access.
         """
         ...
 

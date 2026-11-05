@@ -262,6 +262,49 @@ MESSAGES = {
             " ekstrema na wykresie szeregu dobowego."
         ),
     ),
+    "chart_half_year_hint": Text(
+        (
+            "resolution=annual draws the maximum and minimum of each hydrological"
+            " year found in them."
+        ),
+        (
+            "resolution=annual rysuje maksimum i minimum każdego roku"
+            " hydrologicznego wyznaczone z nich."
+        ),
+    ),
+    "chart_variable_required": Text(
+        (
+            "Name a variable of the series (variable): only an annual chart"
+            " (resolution=annual) takes each variable with a value by default."
+        ),
+        (
+            "Podaj zmienną szeregu (variable): tylko wykres roczny"
+            " (resolution=annual) bierze domyślnie każdą zmienną z wartością."
+        ),
+    ),
+    "chart_no_annual_source": Text(
+        (
+            'The station "{code}" has no half-year characteristics in the index'
+            " (its series: {datasets}): an annual chart finds the maximum and"
+            " minimum of a hydrological year in them."
+        ),
+        (
+            "Stacja „{code}” nie ma w indeksie charakterystyk półrocznych (jej"
+            " szeregi: {datasets}): wykres roczny wyznacza z nich maksimum i"
+            " minimum roku hydrologicznego."
+        ),
+    ),
+    "chart_annual_year_type": Text(
+        (
+            "An annual chart numbers hydrological years only (year_type=hydrological):"
+            " half-year characteristics have no calendar year."
+        ),
+        (
+            "Wykres roczny numeruje tylko lata hydrologiczne"
+            " (year_type=hydrological): charakterystyki półroczne nie mają roku"
+            " kalendarzowego."
+        ),
+    ),
     "chart_range_reversed": Text(
         "The range ends ({end}) before it starts ({start}).",
         "Zakres kończy się ({end}) przed początkiem ({start}).",
