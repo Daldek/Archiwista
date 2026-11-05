@@ -7,6 +7,23 @@
 
 export const store = {
   title: "Magazyn",
+  commands: {
+    title: "Polecenia producenta",
+    // Obserwator's registry: IMGW-PIB's archives are files of the whole
+    // country, a year or a month each (`archive_scope` "country").
+    intro:
+      "Pobieranie i odświeżanie danych producenta, którego dane nie są wybierane obszarem " +
+      "(Obserwator: archiwa IMGW-PIB to pliki całego kraju, po roku albo miesiącu). " +
+      "Najpierw zobaczysz plan: co i ile zostanie pobrane do tego magazynu.",
+    command: "Polecenie",
+    command_value: "{producer} · {command}",
+    required: "(wymagane)",
+    default: "Domyślnie: {value}.",
+    choose: "— domyślne —",
+    list_placeholder: "np. 2023, 2024 albo 2020-2022",
+    submit: "Zaplanuj…",
+    plan_title: "{producer} · {command}",
+  },
   stores_label: "Magazyny",
   no_store: "Nie skonfigurowano jeszcze żadnego magazynu.",
   unknown: "Nie ma magazynu „{store}” w ustawieniach.",

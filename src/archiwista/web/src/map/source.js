@@ -23,7 +23,10 @@
  * without an area (UC-15). The line is parsed, optionally given the map's
  * area or another project's area (`POST /commands/area`), checked without
  * the network against the target store (`POST /commands/validate`), and
- * opened in the plan window with that area's name and substitution.
+ * opened in the plan window with that area's name and substitution. A
+ * command that takes no area (`no_area_option`: Obserwator's IMGW-PIB
+ * archives are files of the whole country) goes as written while the area
+ * was only the default of the field; one chosen in the field is refused there.
  */
 
 import {
@@ -213,8 +216,8 @@ function PasteCommand({ store, producers, fallback, area, areaLabel, projectArea
   const [problem, setProblem] = useState(null);
   const [areaChoice, setAreaChoice] = useState(null);
   const [problemField, setProblemField] = useState("line");
-  const selected = areaChoice && areaChoice.forArea === (area?.id ?? null)
-    ? areaChoice.value : area ? "current" : "original";
+  const explicit = Boolean(areaChoice) && areaChoice.forArea === (area?.id ?? null);
+  const selected = explicit ? areaChoice.value : area ? "current" : "original";
   const otherProjects = projectAreas.items.filter((item) => item.area_id !== area?.id);
   const chosen = selected === "current"
     ? area && { id: area.id, name: areaLabel }
@@ -245,10 +248,16 @@ function PasteCommand({ store, producers, fallback, area, areaLabel, projectArea
       let applied = null;
       if (chosen) {
         stage = "area";
-        applied = await applyCommandArea({
-          producer, command: call.command, options: call.options,
-          area_id: chosen.id ?? chosen.area_id,
-        });
+        try {
+          applied = await applyCommandArea({
+            producer, command: call.command, options: call.options,
+            area_id: chosen.id ?? chosen.area_id,
+          });
+        } catch (error) {
+          // A command that takes no area (Obserwator's national archives) runs
+          // as written when the area was only the default, not a choice.
+          if (explicit || error.problem?.details?.reason !== "no_area_option") throw error;
+        }
       }
       stage = "validate";
       await validateCommand({
