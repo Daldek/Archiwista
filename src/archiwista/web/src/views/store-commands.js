@@ -106,20 +106,24 @@ function CommandForm({ item, commands }) {
           setProblem(null);
         }}>
         ${commands.map(
-          (entry, index) => html`<option key=${`${entry.producer} ${entry.command}`} value=${String(index)}>
+          (entry, index) => html`<option key=${`${entry.producer} ${entry.command}`}
+            value=${String(index)}>
             ${t(L.command_value, { producer: entry.producer, command: entry.command })}</option>`,
         )}
       </select>
       <span class="field-hint">${command.summary}</span>
     </div>
     ${fields.map(
-      (option) => html`<${OptionField} key=${`${command.command} ${option.name}`} id=${`${id}-${option.name}`}
+      (option) => html`<${OptionField} key=${`${command.command} ${option.name}`}
+        id=${`${id}-${option.name}`}
         option=${option} value=${values[option.name]} invalid=${invalid === option.name}
         onChange=${(value) => set(option.name, value)} />`,
     )}
     ${problem ? html`<${ProblemView} problem=${problem} compact />` : null}
     <button type="submit" class="btn sm primary" disabled=${reading}>
-      ${reading ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="search" size=${14} />`}
+      ${reading
+        ? html`<span class="spinner" aria-hidden="true"></span>`
+        : html`<${Icon} name="search" size=${14} />`}
       ${L.submit}</button>
   </form>`;
 }
@@ -145,11 +149,13 @@ function OptionField({ id, option, value, invalid, onChange }) {
     return html`<div class=${`field${invalid ? " invalid" : ""}`}>
       <label class="check"><input id=${id} type="checkbox" checked=${checked}
         aria-describedby=${`${id}-hint`}
-        onChange=${(event) => onChange(event.currentTarget.checked)} /> ${label}</label>${hint}</div>`;
+        onChange=${(event) => onChange(event.currentTarget.checked)} /> ${label}</label>
+      ${hint}</div>`;
   }
   if (option.type === "array" && option.choices.length) {
     const chosen = new Set(value ?? []);
-    return html`<fieldset class=${`field${invalid ? " invalid" : ""}`} aria-describedby=${`${id}-hint`}>
+    return html`<fieldset class=${`field${invalid ? " invalid" : ""}`}
+      aria-describedby=${`${id}-hint`}>
       <legend>${label}</legend>
       ${option.choices.map(
         (choice) => html`<label class="check" key=${String(choice.value)}>
@@ -160,11 +166,13 @@ function OptionField({ id, option, value, invalid, onChange }) {
               else next.delete(choice.value);
               onChange(option.choices.map((item) => item.value).filter((item) => next.has(item)));
             }} />
-          <span>${choice.meaning || choice.value}</span> <code class="faint">${choice.value}</code></label>`,
+          <span>${choice.meaning || choice.value}</span>
+          <code class="faint">${choice.value}</code></label>`,
       )}${hint}</fieldset>`;
   }
   if (option.choices.length) {
-    return field(html`<select id=${id} class="select-sm" value=${value ?? ""} aria-describedby=${`${id}-hint`}
+    return field(html`<select id=${id} class="select-sm" value=${value ?? ""}
+      aria-describedby=${`${id}-hint`}
       onChange=${(event) => onChange(event.currentTarget.value || undefined)}>
       <option value="">${L.choose}</option>
       ${option.choices.map(
@@ -174,7 +182,8 @@ function OptionField({ id, option, value, invalid, onChange }) {
     </select>`);
   }
   const placeholder = option.type === "array" ? L.list_placeholder : "";
-  return field(html`<input id=${id} class="mono" type=${option.type === "integer" || option.type === "number" ? "number" : "text"}
+  const numeric = option.type === "integer" || option.type === "number";
+  return field(html`<input id=${id} class="mono" type=${numeric ? "number" : "text"}
     value=${value ?? ""} placeholder=${placeholder} autocomplete="off" spellcheck="false"
     aria-invalid=${invalid ? "true" : null} aria-describedby=${`${id}-hint`}
     onInput=${(event) => onChange(event.currentTarget.value)} />`);
