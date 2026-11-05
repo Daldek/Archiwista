@@ -16,8 +16,9 @@ from tests.fixtures.isolation import Canary, isolated_producers
 if TYPE_CHECKING:
     from obserwator.testing import FixtureVariant
 
-# The tests of the Obserwator adapter and of the index of its stores import
-# Obserwator at module level. Without the extra `obserwator` (the second CI
+# The tests of the Obserwator adapter, of the index of its stores, of its stations
+# and commands, and of the team projects (their share holds an Obserwator store)
+# import Obserwator at module level. Without the extra `obserwator` (the second CI
 # configuration, A-ADR-024) they are not collected; the rest of the suite passes
 # without it.
 collect_ignore = (
@@ -25,21 +26,29 @@ collect_ignore = (
     if importlib.util.find_spec("obserwator")
     else [
         "contract/test_obserwator.py",
+        "contract/test_obserwator_actions.py",
         "contract/test_obserwator_default_root.py",
         "contract/test_obserwator_series.py",
         "contract/test_obserwator_stations.py",
         "contract/test_obserwator_values.py",
+        "e2e/test_station_chart.py",
         "e2e/test_stations_map.py",
+        "e2e/test_store_commands.py",
+        "integration/test_commands.py",
         "integration/test_obserwator_index.py",
+        "integration/test_obserwator_jobs.py",
         "integration/test_obserwator_series.py",
         "integration/test_obserwator_stations.py",
         "integration/test_series_labels.py",
         "integration/test_station_compare_api.py",
         "integration/test_station_datasets_api.py",
         "integration/test_station_series_api.py",
+        "integration/test_station_statistics_api.py",
         "integration/test_station_timeline_api.py",
         "integration/test_stations_api.py",
         "integration/test_stations_cli.py",
+        "integration/test_team_permissions.py",
+        "integration/test_team_projects.py",
         "integration/test_year_types.py",
     ]
 )
