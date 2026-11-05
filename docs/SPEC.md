@@ -438,7 +438,10 @@ series.
 6. "Dodaj do projektu…" (Add to project…) pins the versions the store holds for the selection
    (the dataset's series version and its archives) in a pin group of the project, with the
    selection (stations as a list of codes, variable, years and their kind) recorded in the group
-   (A-ADR-049; the station views offer it with the Obserwator actions of v0.5).
+   (A-ADR-049; the station views offer it with the Obserwator actions of v0.5). The data
+   themselves are fetched and refreshed by Obserwator's commands, from „Polecenia
+   producenta” of the Store view or a line pasted in the map's step „U źródła”, through
+   the same plan window (A-ADR-050).
 
 **Success:** labels consistent with a manual calculation from the archives, and the Obserwator
 directory byte-identical to the one produced by the same `obserwator` command from the CLI.
@@ -969,8 +972,11 @@ IMGW-21). Decisions: A-ADR-049 (D1 to D7 of the author's decision of 2026-10-31)
   producer's reason (D5). In a set of calls and hand pins each run pin goes by the set's
   calls and each hand pin by its own command; the calls run with their options as written
   (`year` too), never dropped or changed. A closed set is not re-pinned (`409 set_closed`,
-  before the job and again under the lock). The check, re-pin and restore of IMGW pins
-  wait for the Obserwator actions of v0.5.
+  before the job and again under the lock). IMGW pins are checked, re-pinned and restored
+  by the calls Obserwator rebuilds of their versions (`store sync`, `store catalog`,
+  `series build`; A-ADR-050); Obserwator has no mode that keeps the stored versions, so a
+  restore fetches the source's current file and reports `not_restored` when its bytes
+  differ.
 - **Activity:** the project card lists the action log's entries of the project (A-ADR-047;
   D7): who created, changed, pinned, unpinned and exported it and which of its jobs ran,
   without the client addresses.
@@ -1435,10 +1441,10 @@ which producer wrote the file:
 | `iter_entries(root, *, scope)` | scan: versions, current versions, problems (4.4) | `list_segments`, `list_partitions`, `iter_store` (KA-1; on a share of segment parts in parallel; current version from the link sidecar, without `link_target`) | `iter_store`, `current_version` (IMGW-10) |
 | `read_meta(entry)` | metadata in a shared envelope: dataset, label and its source, dates, `sha256`, size, license, inputs (`source_files`) | `read_sidecar` (KA-2), `describe_segment` (KA-3) | `read_meta` (IMGW-10) — `obserwator-meta/1` (IMGW-3) |
 | `footprint(entry)` | geometry on the map or no location with a reason (4.3, A-ADR-022) | footprint `file_footprint` (KA-4; network only in the `footprints` job); without a source — `no_source` | country for archives and series; station points from the catalog or the reason for absence (IMGW-9) |
-| `commands()`, `validate(…)`, `format_command(…)` | forms and a command to copy | KB-1, KB-3, KB-4 | IMGW-11 |
-| `plan(command, options)` | "Okno planu" (Plan window) without downloading | `check_command` (KB-5) | `check_store` (IMGW-5) |
-| `run(command, options, *, on_progress, on_notice, cancel)` | action — only in the worker process (5.6) | `run_command` (KB-5) | `run_command` → `sync_store`, `build_series` (IMGW-5, IMGW-7, IMGW-11) |
-| `with_area(call, *, area_file, geometry, countries)` | optional (`AreaCommandAdapter`): a call of the catalog with an area of Archiwista in place of the options that choose its own (`AreaCommand`: the call, `way` `geometry` or `bbox`, the `replaced` options), offline, no disk access; a command that takes no area is `unsupported` / `no_area_option` (A-ADR-049 erratum 5) | the schema's `one_of` group `area` replaced by `geometry` (the area's GeoJSON), else by `bbox` with `bbox_crs`; the area's `country` when the call gives none (`command_schema`, `pinned_transform`) | — (no actions yet, v0.5) |
+| `commands()`, `validate(…)`, `format_command(…)` | forms and a command to copy | KB-1, KB-3, KB-4 | IMGW-11: `data_commands` and `command_schema` (Polish or English texts); the catalog is the commands that write the store, `store sync`, `store catalog` and `series build` (A-ADR-050) |
+| `plan(command, options)` | "Okno planu" (Plan window) without downloading | `check_command` (KB-5) | `check_command` → `check_store`, `check_catalog`, `check_series`: `obserwator-plan/1` as the producer-neutral plan, each position named by its slot's directory (IMGW-5, A-ADR-050) |
+| `run(command, options, *, on_progress, on_notice, cancel)` | action — only in the worker process (5.6) | `run_command` (KB-5) | `run_command` → `sync_store` (a kept plan as its plan file), `build_catalog`, `build_series` (IMGW-5, IMGW-7, IMGW-11); an interrupt goes through and leaves whole versions only; without a plan it always takes the source's newer versions (A-ADR-050) |
+| `with_area(call, *, area_file, geometry, countries)` | optional (`AreaCommandAdapter`): a call of the catalog with an area of Archiwista in place of the options that choose its own (`AreaCommand`: the call, `way` `geometry` or `bbox`, the `replaced` options), offline, no disk access; a command that takes no area is `unsupported` / `no_area_option` (A-ADR-049 erratum 5) | the schema's `one_of` group `area` replaced by `geometry` (the area's GeoJSON), else by `bbox` with `bbox_crs`; the area's `country` when the call gives none (`command_schema`, `pinned_transform`) | every command refused with `no_area_option`: IMGW-PIB's archives are files of the whole country (A-ADR-050) |
 | `command_for_version(version, *, root)` | optional (`VersionCommandAdapter`): the call that selects a stored version, from its metadata, offline; the producer's coded refusal is `unsupported` / `command_not_rebuildable` (4.7, A-ADR-049) | `command_for_file(sidecar)` (KB-6) | `command_for_version(version, root=…)` (IMGW-21) |
 | `export_folder(product, dataset_key)` | optional (`ExportFolderAdapter`): the category folder of a version in a project's export (`NMT`, `BDOT`, `ORTO`…), a table in the adapter; without it the upper-cased product id (8.4, A-ADR-049 erratum 1) | a table of Kartograf's products in the adapter | `IMGW` |
 | `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-033) | `store_root()` | `store_root()` of `obserwator.config` (`OBSERWATOR_ROOT`, else `<data_dir>/obserwator`) |
@@ -4835,7 +4841,7 @@ category folders with `README.txt` in `eksport/<name>/`, also as a ZIP (the QGIS
 v1.1); the guide's slide on projects; sets in the making, closed with the digest of their
 pins and reopened (A-ADR-049 erratum 6, the author's request of 2026-11-02).
 The producers' manifests are not read and none is migrated (D4). The check, re-pin and
-restore of IMGW pins come with the Obserwator actions of v0.5.
+restore of IMGW pins go through Obserwator's commands (A-ADR-050, plan 2026-11-05).
 
 Criteria:
 
