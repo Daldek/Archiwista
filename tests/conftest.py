@@ -135,8 +135,10 @@ def obserwator_store(
 
     The producer's own builder (``obserwator.testing.build_fixture_store``) writes it
     with its public writers and recorded answers, so no request leaves the process.
-    Tests share a store read-only and copy it to change it.
+    Tests share a store read-only and copy it to change it. Without the extra
+    `obserwator` every test that asks for it is skipped.
     """
+    pytest.importorskip("obserwator")
     built: dict[str, Path] = {}
 
     def store(variant: str = "complete") -> Path:

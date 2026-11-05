@@ -35,9 +35,8 @@ jobs:
     name: gate (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.experimental }}
-    # The suite takes about two and a half hours on a hosted runner, most of it the
-    # interface and job tests; 30 minutes stopped it at a fifth.
-    timeout-minutes: 240
+    # The suite takes about 40 minutes on a hosted runner, which 30 minutes cut short.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -84,7 +83,7 @@ jobs:
     if: github.event_name != 'schedule'
     name: tests without the extra obserwator (ubuntu-latest, Python 3.12)
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884  # v10.3.0
