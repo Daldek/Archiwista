@@ -9,10 +9,14 @@ stood in for by Obserwator's own fixture archives
 (``tests.fixtures.obserwator_worker``). A store of only Kartograf has no such
 section: Kartograf's downloads start from an area on the map. Pasted into
 „Wklej polecenie producenta” of the map, the same line ignores the area of
-step 1 it was only offered.
+step 1 it was only offered. Obserwator's licence notice, sent after every
+version it publishes, is listed once by the plan window and „Szczegóły” of
+„Zadania”, as Obserwator's own CLI and API list it.
 """
 
+import json
 import re
+import sqlite3
 from collections.abc import Callable
 from pathlib import Path
 
@@ -22,6 +26,7 @@ from playwright.sync_api import expect
 
 from archiwista.config import AppSettings, StoreConfig
 from archiwista.jobs import JobSupervisor
+from tests.e2e.test_jobs_view import row
 from tests.e2e.test_pasted_command import action_jobs, open_step, paste
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.jobs import worker_path
@@ -119,3 +124,44 @@ def test_pasted_obserwator_line_ignores_the_offered_area(
     dialog = page.get_by_role("dialog")
     expect(dialog).to_have_accessible_name("Pobrać? obserwator · store sync")
     expect(dialog).to_contain_text("brak w magazynie 3")
+
+
+def test_a_licence_repeated_by_obserwator_is_listed_once(
+    serve: Serve, tab: Tab, tmp_path: Path, observed: None
+) -> None:
+    """The job keeps the licence notice of each version; the interface lists it once."""
+    # Arrange
+    served = serve_imgw(serve, tmp_path)
+    page = tab.page
+    paste(open_step(page, served, served.token_url()), LINE)
+    dialog = page.get_by_role("dialog")
+
+    # Act
+    dialog.get_by_role("button", name="Pobierz 3 pozycje").click()
+    expect(dialog).to_contain_text("Pliki: 3 (nowe 3")
+    (download,) = (job for job in action_jobs(page) if job["kind"] == "download")
+    with sqlite3.connect(served.paths.index_file) as db:
+        sent = [
+            json.loads(data)["message"]
+            for (data,) in db.execute(
+                "SELECT data FROM job_events WHERE job_id = ? AND type = 'notice'"
+                " ORDER BY seq",
+                (download["id"],),
+            )
+        ]
+    distinct = list(dict.fromkeys(sent))
+
+    # Assert: the events keep the licence of each archive; the window lists each once.
+    assert len(sent) > len(distinct)
+    expect(dialog.locator(".job-notices li")).to_have_text(distinct)
+
+    # Act
+    page.goto(f"{served.base}/?view=jobs#{served.token_url().split('#', 1)[1]}")
+    listed = row(page, download["id"])
+    listed.get_by_role("button", name="Szczegóły").click()
+
+    # Assert
+    details = listed.locator(".jobs-details")
+    expect(details).to_contain_text("Pliki: 3 (nowe 3")
+    expect(details.locator(".job-notices li")).to_have_text(distinct)
+    tab.assert_clean()

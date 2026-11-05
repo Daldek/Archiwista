@@ -279,6 +279,25 @@ function issueValues(issue) {
 }
 
 /**
+ * Each distinct notice once (the same `level`, `code` and `message`), in the
+ * order of its first occurrence, as Obserwator's CLI and API list them: a
+ * producer may repeat one, e.g. Obserwator its licence text after every
+ * published version.
+ *
+ * @param {Array<{level: string, code: string, message: string}>} notices
+ * @returns {Array<{level: string, code: string, message: string}>}
+ */
+export function distinctNotices(notices) {
+  const seen = new Set();
+  return notices.filter((notice) => {
+    const key = JSON.stringify([notice.level, notice.code, notice.message]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * The live state of a followed job.
  *
  * @typedef {object} JobEvents
@@ -325,7 +344,8 @@ export function useJob({ onEnd } = {}) {
       setEvents((current) => (current?.id === id ? { ...current, ...patch(current) } : current));
     return watchJob(id, {
       onProgress: (data) => update(() => ({ progress: data })),
-      onNotice: (data) => update((current) => ({ notices: [...current.notices, data] })),
+      onNotice: (data) =>
+        update((current) => ({ notices: distinctNotices([...current.notices, data]) })),
       onState: (data) => {
         update(() => ({ state: data.state, result: data.result ?? null, error: data.error ?? null }));
         if (FINAL_STATES.has(data.state)) ended.current?.(data);

@@ -69,7 +69,7 @@ import {
   useRef,
   useState,
 } from "../ui.js";
-import { Badge, FINAL_STATES, loadCardStyles, SUMMARY_STATES } from "./cards.js";
+import { Badge, distinctNotices, FINAL_STATES, loadCardStyles, SUMMARY_STATES } from "./cards.js";
 import { FieldNote, MAX_GROUP_NAME, pinRefusalField, useWritableProjects } from "./pin-dialog.js";
 
 await loadCardStyles();
@@ -676,7 +676,7 @@ function PlanSummary({ sum }) {
     (status) => `${L.status[status]} ${int(sum.counts[status])}`,
   );
   const conflicts = sum.entries.filter((entry) => entry.conflict);
-  const notices = sum.plans.flatMap((plan) => plan.notices);
+  const notices = distinctNotices(sum.plans.flatMap((plan) => plan.notices));
   return html`<div class="plan-summary">
     <p class="plan-counts">
       <b>${count(sum.positions, L.positions)}</b>${named.length ? `: ${named.join(", ")}` : null}
