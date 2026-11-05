@@ -29,6 +29,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
 | stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the Obserwator source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
+| a variable of a station's series as a hand-off to Hydrolog's statistics (`nogat-handoff/1` with `hydrolog-series/1`, A-ADR-052): every day of a daily series, or the annual maxima of complete hydrological years | `archiwista stations handoff KOD --variable … [--dataset …] [--resolution annual] [--from …] [--to …]` (the document itself on standard output; save it as `NAZWA.handoff.json`) | `GET /stations/{code}/handoff` |
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
 | a project's exports from its pins: copies in category folders with `README.txt` in `eksport/NAZWA/`, optionally a ZIP (A-ADR-049), their list and the ZIP | `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports`, `GET /projects/{project}/exports/{name}/zip` |
 | a project's activity from the action log: its changes and its jobs, newest first, without the client address (A-ADR-049) | `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
@@ -769,7 +770,13 @@ summer maxima, the lesser of their minima), each with `value`, `start`, `end`,
 `occurrences` and `halves`, and `partial` naming a half without a value; `derived`
 is `annual_extremes`, `variable` may be left out (each variable with a value), a
 calendar `year_type` is `400 annual_year_type` and a station without half-year
-characteristics `400 no_annual_source`.
+characteristics `400 no_annual_source`. `GET /stations/{code}/handoff`
+(`archiwista stations handoff`, A-ADR-052) takes the station, `dataset`, one
+`variable`, `resolution` and the range of the chart and answers `nogat-handoff/1`
+around Hydrolog's `hydrolog-series/1`: every day of a daily series (`null` without a
+value; a series not of days is `400 no_daily_series`), or the annual maxima of
+complete hydrological years, a year missing a half `null` and named in
+`provenance.series.left_out`; Hydrolog's „Statystyka przepływów” opens it.
 `version` must be the current one in the index (`409` otherwise; read the card
 again); half-year characteristics are not drawn as a line of units (`400`, reason
 `half_year_chart`; ask `resolution=annual`). `GET /stations/compare` (`archiwista stations compare`) is one

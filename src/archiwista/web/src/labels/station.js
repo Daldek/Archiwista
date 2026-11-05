@@ -108,6 +108,19 @@ export const station = {
     gaps: ["luka", "luki", "luk"],
     summary_gaps: "{gaps} ({units})",
     summary_no_gaps: "bez luk",
+    handoff: {
+      copy: "Kopiuj do Hydrologa",
+      copy_title:
+        "Skopiuj {what} {variable} jako przekazanie dla Hydrologa (Statystyka przepływów → " +
+        "„Wczytaj z Archiwisty” → „Wklej ze schowka”)",
+      file: "Plik przekazania",
+      file_title: "Zapisz {what} {variable} jako plik .handoff.json do wczytania w Hydrologu",
+      copied: "Skopiowano przekazanie: {subject}",
+      saved: "Zapisano {name}",
+      what_daily: "wartości dobowe",
+      what_annual: "maksima roczne pełnych lat hydrologicznych",
+      left_out: "pominięte lata bez jednego z półroczy: {years}",
+    },
     tip_value: "{key}: {value} {unit}",
     tip_simplified: "{key}: śr. {mean} (min. {min} – maks. {max}) {unit}",
     tip_gap: "{key}: luka (brak danych)",

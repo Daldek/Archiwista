@@ -31,6 +31,7 @@ from typing import TextIO, cast, get_origin
 from pydantic import BaseModel, ValidationError
 
 from archiwista.api.models import IndexAnswer, Preferences
+from archiwista.api.models_handoff import StationHandoffQuery
 from archiwista.api.models_stations import (
     AnnualExtreme,
     AnnualPoint,
@@ -61,6 +62,7 @@ from archiwista.api.stations import (
     station_chart,
     station_comparison,
     station_datasets,
+    station_handoff,
     station_list,
     station_timeline_page,
 )
@@ -151,6 +153,11 @@ def add_commands(commands: Commands) -> None:
         "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
     )
     _options(series, StationChartQuery, _SERIES_HELP)
+    handoff = add_parser(actions, "handoff", "cli.stations_handoff_help")
+    handoff.add_argument(
+        "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
+    )
+    _options(handoff, StationHandoffQuery)
     compare = add_parser(actions, "compare", "cli.stations_compare_help")
     _options(compare, StationCompareQuery, _COMPARE_HELP)
     datasets = add_parser(actions, "datasets", "cli.stations_datasets_help")
@@ -333,6 +340,25 @@ def _series(
     return chart, _chart_text(chart)
 
 
+def _handoff(
+    args: argparse.Namespace,
+    settings: AppSettings,
+    preferences: Preferences,
+    registry: PluginRegistry,
+    queries: IndexQueries,
+) -> _Output:
+    # The document itself is the text: a person saves it as NAME.handoff.json.
+    found = station_handoff(
+        queries,
+        settings,
+        preferences,
+        registry,
+        args.code,
+        query_of(StationHandoffQuery, args),
+    )
+    return found, found.model_dump_json(by_alias=True, indent=2)
+
+
 def _compare(
     args: argparse.Namespace,
     settings: AppSettings,
@@ -369,6 +395,7 @@ _ACTIONS: dict[str, _Action] = {
     "series": _series,
     "compare": _compare,
     "datasets": _datasets,
+    "handoff": _handoff,
 }
 
 

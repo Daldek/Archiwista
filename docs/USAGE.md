@@ -763,6 +763,7 @@ archiwista stations timeline --dataset pl.imgw.hydro_daily --river-code 2138 --r
 archiwista stations series 149190310 --variable Q --from 1981-01-01 --to 1983-12-31
 archiwista stations compare --station zespol/IMGW-PIB/149190310 --station zespol/IMGW-PIB/149200090 --dataset pl.imgw.hydro_daily --variable Q
 archiwista stations datasets
+archiwista stations handoff 149190310 --variable Q --resolution annual > raba.handoff.json
 ```
 
 `stations list` prints each station with the label of every variable of its series
@@ -799,7 +800,12 @@ minimum, mean and maximum as published. `stations series KOD --resolution annual
 prints a line a hydrological year with the annual maximum and minimum Archiwista
 finds in the half-year characteristics (the greater of the winter and summer
 maxima, the lesser of their minima), their days, half and occurrences, and
-„niepełny rok: brak półrocza …” when one half has no value. `stations compare` compares one variable of 2 to 5
+„niepełny rok: brak półrocza …” when one half has no value. `stations handoff KOD
+--variable Q` writes the variable's daily values, and with `--resolution annual` its
+annual maxima of complete hydrological years, as a hand-off to Hydrolog
+(`nogat-handoff/1`, A-ADR-052); the same document comes from „Kopiuj do Hydrologa” and
+„Plik przekazania” beside a daily or annual chart of the station card, and Hydrolog's
+„Statystyka przepływów” opens it with „Wczytaj z Archiwisty”. `stations compare` compares one variable of 2 to 5
 stations (`--station MAGAZYN/DOSTAWCA/KOD`, repeated) in one dataset over one range
 (by default every known day of the variable at those stations): the range once, then
 each station with the variable's label and full years and its chart as `stations

@@ -9,20 +9,24 @@ each hydrological year's maximum and minimum found in the half-year
 characteristics: the greater of the winter and summer maxima, the lesser of
 their minima, an incomplete year marked, a year without either half a gap.
 ``archiwista stations series`` prints the same, and the station's card names
-the charts its series give.
+the charts its series give. ``GET /stations/{code}/handoff`` (A-ADR-052) hands
+a series to Hydrolog as ``nogat-handoff/1`` around ``hydrolog-series/1``, both
+checked against their owners' schemas: the annual maxima of complete years, or
+every day of a daily series as the chart reads it.
 """
 
 import json
 import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 import httpx
 import pytest
+from jsonschema import Draft202012Validator
 
 from archiwista.auth import LOCAL_OWNER
 from archiwista.cli import main
@@ -552,3 +556,120 @@ def test_station_chart_command_line_writes_each_year_for_a_person(
         lines[9],
     ]
     assert lines[9].startswith("  Licencja IMGW-PIB: Źródłem pochodzenia danych")
+
+
+# Hand-off to Hydrolog (A-ADR-052) ---------------------------------------------------
+
+SCHEMAS = Path(__file__).resolve().parents[2] / "schemas"
+HANDOFF_CHECK = Draft202012Validator(
+    json.loads((SCHEMAS / "nogat" / "handoff-1.schema.json").read_text("utf-8"))
+)
+SERIES_CHECK = Draft202012Validator(
+    json.loads(
+        (SCHEMAS / "hydrolog" / "hydrolog-series-1.schema.json").read_text("utf-8")
+    )
+)
+
+
+def _valid(doc: dict[str, Any]) -> None:
+    """Check the envelope against Nogat's schema and the payload against Hydrolog's."""
+    assert [error.message for error in HANDOFF_CHECK.iter_errors(doc)] == []
+    assert [error.message for error in SERIES_CHECK.iter_errors(doc["payload"])] == []
+
+
+def test_station_handoff_annual_gives_the_maxima_of_complete_years_only(
+    served: Served,
+) -> None:
+    """A year missing a half is no annual maximum for a flood frequency analysis."""
+    # Act
+    doc = served.json(
+        f"/stations/{RABA}/handoff", {"resolution": "annual", "variable": "Q"}
+    )
+
+    # Assert
+    _valid(doc)
+    payload = doc["payload"]
+    assert (payload["step"], payload["statistic"], payload["year_type"]) == (
+        "year",
+        "max",
+        "hydrological",
+    )
+    assert dict(zip(payload["years"], payload["values"], strict=True)) == {
+        2020: 223.0,
+        2021: None,
+        2022: 150.0,
+        2023: None,
+        2024: None,
+    }
+    origin = doc["provenance"]["series"]
+    assert (origin["dataset"], origin["station"], origin["left_out"]) == (
+        HALF_YEAR,
+        RABA,
+        [2023, 2024],
+    )
+    assert doc["subject"].endswith("— Q, maksima roczne")
+
+
+def test_station_handoff_daily_gives_every_day_of_the_range_as_the_chart_reads_it(
+    served: Served,
+) -> None:
+    """The values of each day, ``null`` without one, the chart's values unsimplified."""
+    # Arrange
+    whole = served.json(f"/stations/{RABA}/series", {"variable": "Q", "dataset": DAILY})
+    (variable,) = whole["variables"]
+    valued = next(point for point in variable["points"] if point["mean"] is not None)
+    first = date.fromisoformat(valued["t"]) - timedelta(days=5)
+    span = {"from": first.isoformat(), "to": (first + timedelta(days=59)).isoformat()}
+
+    # Act
+    doc = served.json(
+        f"/stations/{RABA}/handoff", {"variable": "Q", "dataset": DAILY, **span}
+    )
+    chart = served.json(
+        f"/stations/{RABA}/series",
+        {"variable": "Q", "dataset": DAILY, "max_points": "2000", **span},
+    )
+
+    # Assert
+    _valid(doc)
+    payload = doc["payload"]
+    assert payload["dates"] == [
+        (first + timedelta(days=offset)).isoformat() for offset in range(60)
+    ]
+    assert payload["values"] == [
+        point["mean"] for point in chart["variables"][0]["points"]
+    ]
+    assert any(value is not None for value in payload["values"])
+    assert doc["provenance"]["series"]["dataset"] == DAILY
+
+
+def test_station_handoff_refuses_a_monthly_series(served: Served) -> None:
+    """Hydrolog takes daily values or annual maxima: ``no_daily_series``."""
+    # Act
+    response = served.get(
+        f"/stations/{RABA}/handoff", {"variable": "Q", "dataset": MONTHLY}
+    )
+
+    # Assert
+    assert_problem(response, 400, "validation_error")
+    assert response.json()["details"]["reason"] == "no_daily_series"
+
+
+def test_station_handoff_route_and_command_line_give_the_same_document(
+    served: Served, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``archiwista stations handoff CODE`` prints the route's document."""
+    # Act
+    capsys.readouterr()
+    status = main(
+        ["stations", "handoff", RABA, "--variable=Q", "--resolution=annual"],
+        paths=served.paths,
+    )
+    from_cli = json.loads(capsys.readouterr().out)
+    route = served.json(
+        f"/stations/{RABA}/handoff", {"resolution": "annual", "variable": "Q"}
+    )
+
+    # Assert
+    assert status == 0
+    assert {**from_cli, "created_at": None} == {**route, "created_at": None}

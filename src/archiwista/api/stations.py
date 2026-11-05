@@ -30,7 +30,7 @@ local owner's preferences.
 from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path as FilePath
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Path, Query
 
@@ -42,7 +42,9 @@ from archiwista.api.dependencies import (
 )
 from archiwista.api.errors import problem_responses
 from archiwista.api.models import AreaRef, CopyPath, Preferences, staleness
+from archiwista.api.models_handoff import StationHandoff, StationHandoffQuery
 from archiwista.api.models_stations import (
+    AnnualPoint,
     ChartVariable,
     ComparedStation,
     StationCard,
@@ -85,6 +87,7 @@ from archiwista.index import (
 from archiwista.index.geometry import box_geometry, is_wgs84, require_wgs84_bbox
 from archiwista.messages import message
 from archiwista.services import series_chart
+from archiwista.services import station_handoff as station_handoff_service
 from archiwista.sources import GeoJSONGeometry, SeriesValuesAdapter
 from archiwista.sources.registry import PluginRegistry
 
@@ -375,6 +378,89 @@ def station_chart(
         max_points=query.max_points,
         freshness=fresh,
     )
+
+
+def station_handoff(
+    queries: IndexQueries,
+    settings: AppSettings,
+    preferences: Preferences,
+    registry: PluginRegistry,
+    code: str,
+    query: StationHandoffQuery,
+) -> StationHandoff:
+    """Return a variable of a station's series as a hand-off to Hydrolog (A-ADR-052).
+
+    ``resolution=annual``: the annual maxima of the station's annual chart
+    (A-ADR-051), a year missing one of its halves left out. Otherwise every
+    day of the variable's series of days over the range (by default its known
+    span), read through the producer as the chart reads it, without the
+    chart's simplification.
+
+    Raises
+    ------
+    IndexQueryError
+        As ``station_chart``, and a series that is not of days
+        (``no_daily_series``).
+    NotFoundError, ConflictError, UnsupportedError, SourceStateError
+        As ``station_chart``.
+    SourceUnavailableError, ProducerError
+        The producer could not read the series.
+    """
+    chart_query = query.chart_query()
+    if query.resolution == "annual":
+        chart = station_chart(
+            queries, settings, preferences, registry, code, chart_query
+        )
+        row = find_station(queries, code, store=query.store, provider=query.provider)
+        (variable,) = chart.variables
+        payload, left_out = station_handoff_service.annual_payload(
+            row, query.variable, variable.unit, cast(list[AnnualPoint], variable.points)
+        )
+        halves = queries.station_coverage(
+            row.store, row.provider, row.code, dataset=chart.dataset
+        )
+        return station_handoff_service.handoff(
+            row, halves[0], payload, annual=True, left_out=left_out
+        )
+    adapter = _values_adapter(registry)
+    _check_range(query.start, query.end)
+    checked_store(query.store, settings, queries.freshness())
+    row = find_station(queries, code, store=query.store, provider=query.provider)
+    found = queries.station_coverage(
+        row.store,
+        row.provider,
+        row.code,
+        dataset=query.dataset,
+        year_types=preferences.year_types,
+    )
+    series, (source,) = _chart_series(row, found, chart_query, adapter)
+    if series.time_unit != "day":
+        raise IndexQueryError(
+            message(
+                "api.handoff_no_daily_series", dataset=series.dataset, code=row.code
+            ),
+            reason="no_daily_series",
+            details={"option": "resolution", "allowed": ["unit", "annual"]},
+        )
+    known = series_chart.known_span([source.line])
+    start = query.start or (known[0] if known else None)
+    end = query.end or (known[1] if known else None)
+    if start is None or end is None:
+        raise NotFoundError(
+            message("api.station_series_none", code=row.code, dataset=series.dataset)
+        )
+    values = adapter.read_values(
+        _producer_root(settings, series),
+        FilePath(series.series_version),
+        station=series.code,
+        variables=[source.line.variable],
+        start=start,
+        end=end,
+    )
+    payload = station_handoff_service.daily_payload(
+        row, source.line.variable, source.line.unit, values, start, end
+    )
+    return station_handoff_service.handoff(row, series, payload, annual=False)
 
 
 def station_comparison(
@@ -1153,6 +1239,31 @@ def get_station_series(
     current one in the index (`409` otherwise).
     """
     return station_chart(queries, settings.get(), preferences, registry, code, query)
+
+
+@router.get(
+    "/stations/{code}/handoff",
+    response_model=StationHandoff,
+    responses=problem_responses(400, 404, 409, 503),
+)
+def get_station_handoff(
+    code: _Code,
+    query: Annotated[StationHandoffQuery, Query()],
+    preferences: _Preferences,
+    settings: _Settings,
+    registry: _Registry,
+    queries: _Queries,
+) -> StationHandoff:
+    """Return a variable of a station's series as a hand-off to Hydrolog (A-ADR-052).
+
+    A `nogat-handoff/1` document around a `hydrolog-series/1` payload, which
+    Hydrolog's „Statystyka przepływów” opens with „Wczytaj z Archiwisty”: every
+    day of the variable's series of days over the range (`null` for a day
+    without a value), or with `resolution=annual` the annual maxima Archiwista
+    finds in the half-year characteristics, the years missing a half left out
+    and named in `provenance.series.left_out`.
+    """
+    return station_handoff(queries, settings.get(), preferences, registry, code, query)
 
 
 @router.get(

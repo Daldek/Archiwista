@@ -753,6 +753,23 @@ export function getStationSeries(code, query, { signal } = {}) {
 }
 
 /**
+ * A variable of a station's series as a hand-off to Hydrolog (`get_station_handoff`,
+ * A-ADR-052): `nogat-handoff/1` around `hydrolog-series/1`, the daily values or, with
+ * `resolution=annual`, the annual maxima of complete hydrological years.
+ *
+ * @param {string} code - The station's code as its provider gives it.
+ * @param {{store?: string, provider?: string, dataset?: string, resolution?: string|null,
+ *   variable: string, from?: string|null, to?: string|null}} query
+ * @param {RequestOptions} [options]
+ * @returns {Promise<object>} the hand-off document
+ * @throws {ApiError} `400` (a series that is not of days, `no_daily_series`; a
+ *   variable the series lacks), `404`, `503 missing_dependency` without Obserwator.
+ */
+export function getStationHandoff(code, query, { signal } = {}) {
+  return request("GET", `/stations/${one(code)}/handoff`, { query, signal });
+}
+
+/**
  * One variable of 2 to 5 stations over one range (`compare_stations`): each
  * station's chart with the same interval, the variable's label and facts as on
  * its card; `null` for a station without the series or the variable.

@@ -39,7 +39,7 @@
  * `ChartPlot` and `TimeAxis` of this module.
  */
 
-import { getStationSeries } from "../api.js";
+import { getStationHandoff, getStationSeries } from "../api.js";
 import { count, day } from "../format.js";
 import { useResource, useSize } from "../hooks.js";
 import { t } from "../labels/index.js";
@@ -227,6 +227,10 @@ function SeriesChart({ station, charts, chosen, params, names, actions }) {
         options=${chosen.variables.map((item) => ({ value: item.key, label: item.key }))} />
       <${SecondVariable} choice=${chosen} keys=${keys} onChange=${chooseKeys} />
       <span class="sch-spacer"></span>
+      ${chosen.time_unit === "day" || chosen.resolution === "annual"
+        ? html`<${HandoffButtons} station=${station} chosen=${chosen} variable=${keys[0]}
+            from=${from} to=${to} />`
+        : null}
       ${actions && chosen.time_unit === "day" ? actions({ dataset: chosen.dataset, keys }) : null}
     </div>
     <div class="sch-range">
@@ -249,6 +253,75 @@ function SeriesChart({ station, charts, chosen, params, names, actions }) {
     </div>
     <p class="sch-api faint"><${Tech} value=${[[C.api, api]]}>${C.api}</${Tech}></p>
   </div>`;
+}
+
+/**
+ * „Kopiuj do Hydrologa” and „Plik przekazania” (A-ADR-052): the chart's first variable as a
+ * hand-off to Hydrolog's „Statystyka przepływów”, its daily values over the chart's range or,
+ * of an annual chart, its annual maxima of complete hydrological years; what happened shows
+ * beside them, with the years an annual chart leaves out.
+ *
+ * @param {{station: import("../types.js").StationItem,
+ *   chosen: import("../types.js").StationChartChoice, variable: string,
+ *   from: string|null, to: string|null}} props
+ */
+function HandoffButtons({ station, chosen, variable, from, to }) {
+  const H = C.handoff;
+  const [state, setState] = useState({ busy: false, note: null, problem: null });
+  const annual = chosen.resolution === "annual";
+  const what = annual ? H.what_annual : H.what_daily;
+  const act = async (kind) => {
+    setState({ busy: true, note: null, problem: null });
+    try {
+      const doc = await getStationHandoff(station.code, {
+        store: station.store,
+        provider: station.provider,
+        dataset: chosen.dataset,
+        resolution: annual ? "annual" : null,
+        variable,
+        from,
+        to,
+      });
+      const text = JSON.stringify(doc, null, 2);
+      let note;
+      if (kind === "copy") {
+        await navigator.clipboard.writeText(text);
+        note = t(H.copied, { subject: doc.subject });
+      } else {
+        const name = `${doc.subject.replace(/[\\/:*?"<>|]+/g, "-")}.handoff.json`;
+        saveText(text, name);
+        note = t(H.saved, { name });
+      }
+      const left = doc.provenance?.series?.left_out ?? [];
+      if (left.length) note = `${note} · ${t(H.left_out, { years: left.join(", ") })}`;
+      setState({ busy: false, note, problem: null });
+    } catch (error) {
+      if (!error.problem) throw error;
+      setState({ busy: false, note: null, problem: error.problem });
+    }
+  };
+  return html`<span class="sch-handoff">
+    <button type="button" class="btn ghost sm" disabled=${state.busy}
+      title=${t(H.copy_title, { what, variable })} onClick=${() => act("copy")}>
+      <${Icon} name="copy" size=${13} />${H.copy}</button>
+    <button type="button" class="btn ghost sm" disabled=${state.busy}
+      title=${t(H.file_title, { what, variable })} onClick=${() => act("file")}>
+      <${Icon} name="download" size=${13} />${H.file}</button>
+    ${state.note ? html`<span class="faint sch-handoff-note" role="status">${state.note}</span>` : null}
+    ${state.problem ? html`<${ProblemView} problem=${state.problem} compact />` : null}
+  </span>`;
+}
+
+/** Save a text as a download named `name`. */
+function saveText(text, name) {
+  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** A variable of a chart choice by its key. */
