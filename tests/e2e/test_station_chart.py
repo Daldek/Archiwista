@@ -24,6 +24,7 @@ chart of its Q, whose 2023 has no summer maximum: a hollow dot and a tooltip
 naming the missing half.
 """
 
+import json
 import re
 from collections.abc import Callable
 from datetime import date
@@ -385,6 +386,38 @@ def test_a_station_with_half_year_characteristics_only_opens_on_the_annual_chart
     )
     expect(card.locator(".sch-summary")).to_have_text(
         "2019.11.01–2024.10.31 (5 lat) · Q: 5 z 5 lat z wartością, bez luk"
+    )
+    engine_tab.assert_clean()
+
+
+def test_the_annual_chart_saves_its_complete_years_maxima_as_a_hand_off_to_hydrolog(
+    serve: Serve, engine_tab: Tab, statistics_store: Path, tmp_path: Path
+) -> None:
+    """„Plik przekazania”: nogat-handoff/1 around the maxima, 2023 left out and said."""
+    # Arrange
+    served = serve(station_settings(statistics_store, tmp_path))
+    page = open_session(engine_tab, served)
+    page.goto(card_address(served, HALF_YEARS))
+    card = page.get_by_role("dialog", name="Stacja Bez Miejsca")
+    expect(card.locator(".sch-year[data-key=Q]")).to_have_count(10)
+
+    # Act
+    with page.expect_download() as started:
+        card.get_by_role("button", name="Plik przekazania").click()
+    saved = started.value
+    doc = json.loads(Path(saved.path()).read_text(encoding="utf-8"))
+
+    # Assert
+    assert saved.suggested_filename.endswith("— Q, maksima roczne.handoff.json")
+    assert (doc["schema"], doc["payload"]["schema"]) == (
+        "nogat-handoff/1",
+        "hydrolog-series/1",
+    )
+    years = dict(zip(doc["payload"]["years"], doc["payload"]["values"], strict=True))
+    assert years[2023] is None and all(years[year] is not None for year in (2020, 2024))
+    assert doc["provenance"]["series"]["left_out"] == [2023]
+    expect(card.locator(".sch-handoff-note")).to_contain_text(
+        "pominięte lata bez jednego z półroczy: 2023"
     )
     engine_tab.assert_clean()
 

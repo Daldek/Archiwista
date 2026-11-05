@@ -78,6 +78,7 @@ ECO-057); the decisions keep the names of their time, and ADR-032 erratum 2 maps
 | [ADR-049](decisions/0049-projects-in-archiwista.md) | Projects are Archiwista's own: the file `archiwista-project/1`, groups of pins, and the jobs over them | 2026-10-31 | accepted (the author's decision of 2026-10-31, ECO-054, D1 to D7 of the Nogat plan; built in the phases of `docs/plans/2026-10-31-archiwista-projects.md`); supersedes ADR-039, ADR-040, ADR-032 decision 14 and the IMGWTools manifest of ADR-023; partly supersedes ADR-042 |
 | [ADR-050](decisions/0050-obserwator-commands.md) | Obserwator's commands in Archiwista: the store-writing catalog, national archives, the whole-store rescan | 2026-11-05 | accepted (plan `docs/plans/2026-11-05-obserwator-actions.md`, approved 2026-11-05, A1 to A5); amends ADR-024 and ADR-049 D5 |
 | [ADR-051](decisions/0051-monthly-and-annual-charts.md) | Charts of monthly series and of annual extremes: Archiwista finds a year's maximum and minimum for display | 2026-11-05 | accepted (plan `docs/plans/2026-11-05-monthly-annual-charts.md`, approved 2026-11-05, D1 to D8); amends ADR-045 decisions 9 and 11 and the boundary of SPEC 1.3 and section 15, P17 |
+| [ADR-052](decisions/0052-station-series-to-hydrolog.md) | A station's series handed to Hydrolog: `nogat-handoff/1` with `hydrolog-series/1` | 2026-11-05 | accepted (the author's request of 2026-11-05 with delegated authority; Nogat plan `2026-11-05-archiwista-series-to-hydrolog`, D4); amends ADR-051 decision 5 |
 
 ---
 

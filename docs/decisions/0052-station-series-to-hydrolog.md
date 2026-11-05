@@ -1,0 +1,21 @@
+# ADR-052: A station's series handed to Hydrolog: `nogat-handoff/1` with `hydrolog-series/1`
+
+**Date:** 2026-11-05
+**Status:** accepted (the author's request of 2026-11-05 with delegated authority, „Hydrolog ma możliwość liczenia statystyk z szeregów rocznych maksimów lub dobowych. Trzeba zrobić mechanizm przekazywania danych z Archiwisty do Hydrologa analogiczny do tego, który jest pomiędzy Hydrografem a Hydrologiem. Daję ci autonomię w działaniu”; Nogat plan `docs/plans/2026-11-05-archiwista-series-to-hydrolog.md`, decision D4); amends ADR-051 decision 5 (the annual maxima, found for display, may also leave Archiwista in this hand-off, marked derived)
+
+**Context:** Hydrolog computes flood quantiles from annual maxima or from a daily series („Statystyka przepływów”, `stats flood-frequency`), and Hydrograf hands a watershed to Hydrolog as Nogat's envelope `nogat-handoff/1` around Hydrolog's `hydrolog-network/1` („Kopiuj do Hydrologa”, „Plik przekazania”). A person who looked at a station's series in Archiwista had to export it through Obserwator's command line and upload a CSV. Hydrolog now takes a series payload, `hydrolog-series/1` (its ADR-0020): daily values with their dates, or an annual extreme of each year.
+
+**Options:**
+- What is handed off: A) the series of the chart the person looks at: every day of a daily series over its range, or the annual maxima of the annual chart (ADR-051); B) a file export of the series (CSV), uploaded by hand. Rejected: the hand-off is the ecosystem's way between GUIs and keeps where the data came from.
+- Annual maxima of an incomplete year: C) left out (`null`), and named in the provenance; D) the one half's maximum, as the chart shows it. Rejected: a flood frequency analysis would take a half-year's maximum for its year's.
+- Where it is written: E) a route of Archiwista, `GET /stations/{code}/handoff`, with its command line and two buttons beside the chart; F) in the browser from the chart's points. Rejected: the chart is simplified over long ranges, and the command line and agents could not write it.
+
+**Decision:** A, C and E.
+
+1. **The route.** `GET /stations/{code}/handoff` (`archiwista stations handoff CODE`) takes the station, `dataset`, `variable`, `resolution` and the range of `GET /stations/{code}/series` and answers `nogat-handoff/1` (`StationHandoff`): `producer` `archiwista` with its version, `subject` „<station> (<river>) — <variable>, wartości dobowe” or „…, maksima roczne”, `provenance.series` (`source` the provider in lower case, provider, store, dataset, station, series version) and the payload `hydrolog-series/1`.
+2. **Daily values** (`resolution=unit`): every day from the range's first to its last (by default the variable's known span), the value the producer reads for it or `null` (no row, a missing or an accumulated value), unsimplified. A series that is not of days is `400 no_daily_series`.
+3. **Annual maxima** (`resolution=annual`): the maximum of each hydrological year of the annual chart (ADR-051), `statistic` `max`, `year_type` `hydrological`; a year without a value, or whose maximum lacks one half, is `null`, and the latter years are `provenance.series.left_out`, with the rule in `provenance.series.rule`.
+4. **The card.** Beside a daily or annual chart, „Kopiuj do Hydrologa” copies the document and „Plik przekazania” saves `<subject>.handoff.json`; a note says what happened and which years an annual chart left out. A monthly chart offers neither.
+5. **Schemas.** `schemas/nogat/handoff-1.schema.json` (Nogat) and `schemas/hydrolog/hydrolog-series-1.schema.json` (Hydrolog) are copied unchanged; the integration tests validate the route's documents against both.
+
+**Consequences:** `api/models_handoff.py`, `services/station_handoff.py`, the route and the action `stations handoff`; `tests/integration/test_station_statistics_api.py` (the maxima of complete years, every day as the chart reads it, the refusal of a monthly series, the command line equal to the route) and `tests/e2e/test_station_chart.py` (the file of an annual chart). Hydrolog's „Wczytaj z Archiwisty” opens it (Hydrolog ADR-0020). The derived annual maxima leave Archiwista only in this document, marked by its provenance; they are still never stored, indexed, pinned or exported in a project.

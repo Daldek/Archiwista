@@ -305,6 +305,26 @@ MESSAGES = {
             " kalendarzowego."
         ),
     ),
+    "handoff_no_daily_series": Text(
+        (
+            "The series of {dataset} at {code} is not of days: Hydrolog takes daily"
+            " values (resolution=unit of a series of days) or annual maxima"
+            " (resolution=annual)."
+        ),
+        (
+            "Szereg {dataset} stacji {code} nie jest dobowy: Hydrolog przyjmuje"
+            " wartości dobowe (resolution=unit szeregu dobowego) albo maksima roczne"
+            " (resolution=annual)."
+        ),
+    ),
+    "handoff_subject_daily": Text(
+        "{station}{river} — {variable}, daily values",
+        "{station}{river} — {variable}, wartości dobowe",
+    ),
+    "handoff_subject_annual": Text(
+        "{station}{river} — {variable}, annual maxima",
+        "{station}{river} — {variable}, maksima roczne",
+    ),
     "chart_range_reversed": Text(
         "The range ends ({end}) before it starts ({start}).",
         "Zakres kończy się ({end}) przed początkiem ({start}).",

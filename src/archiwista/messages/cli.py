@@ -2472,6 +2472,20 @@ MESSAGES = {
             " GET /api/v1/stations/KOD/series)."
         ),
     ),
+    "stations_handoff_help": Text(
+        (
+            "Writes a variable of a station's series as a hand-off to Hydrolog's"
+            " statistics (nogat-handoff/1 with hydrolog-series/1): its daily values,"
+            " or with --resolution annual its annual maxima (like GET"
+            " /api/v1/stations/CODE/handoff); save it as NAME.handoff.json."
+        ),
+        (
+            "Wypisuje zmienną szeregu stacji jako przekazanie do statystyk Hydrologa"
+            " (nogat-handoff/1 z hydrolog-series/1): jej wartości dobowe albo z"
+            " --resolution annual maksima roczne (jak GET"
+            " /api/v1/stations/KOD/handoff); zapisz je jako NAZWA.handoff.json."
+        ),
+    ),
     "stations_compare_help": Text(
         (
             "Compares one variable of 2 to 5 stations over one range: each"
