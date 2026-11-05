@@ -817,6 +817,7 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
             lambda: _run_scopes(adapter, reader, root, runs),
             emit,
             timeout_s=RESCAN_STOP_S,
+            geo=_geo(registry),
         )
         raise
     rescanned = _rescan(
@@ -826,6 +827,7 @@ def run_download(spec: JobSpec, emit: Emitter) -> JsonObject | PartialResult:
         lambda: _run_scopes(adapter, reader, root, runs),
         emit,
         timeout_s=None,
+        geo=_geo(registry),
     )
     errors = [run.error for run in runs if run.error is not None]
     if runs and len(errors) == len(runs):
@@ -1207,19 +1209,37 @@ def _unit_scopes(
     return {None: named}
 
 
+def reads_whole(reader: SourceAdapter) -> bool:
+    """Whether a producer reads only its whole directory, never a part of it.
+
+    Its entries name segments it describes (``SegmentDescriptionAdapter``),
+    but it cannot read one segment, nor a unit of one (no ``SegmentedAdapter``):
+    Obserwator, whose store a scan reads whole, skipping the versions the
+    index knows.
+    """
+    return isinstance(reader, SegmentDescriptionAdapter) and not isinstance(
+        reader, SegmentedAdapter
+    )
+
+
 def _run_scopes(
     adapter: ActionAdapter,
     reader: SourceAdapter,
     root: Path,
     runs: Iterable[_CallRun],
-) -> dict[str | None, tuple[str, ...]]:
+) -> dict[str | None, tuple[str, ...] | None]:
     """Return the scopes that read again what a download's calls wrote or named.
 
     The files of each call the producer reported; of a call that failed or
-    was stopped, the units its progress named (``_unit_scopes``).
+    was stopped, the units its progress named (``_unit_scopes``). A producer
+    that reads only its whole directory (``reads_whole``) is read whole after
+    any run, whatever it wrote or named: ``{None: None}``.
     """
+    ran = list(runs)
+    if reads_whole(reader):
+        return {None: None} if ran else {}
     found: dict[str | None, dict[str, None]] = {}
-    for run in runs:
+    for run in ran:
         scopes = (
             _unit_scopes(adapter, reader, root, run.plan, run.units)
             if run.result is None
@@ -1234,17 +1254,23 @@ def _rescan(
     spec: JobSpec,
     reader: SourceAdapter,
     store: str,
-    scopes: Callable[[], Mapping[str | None, Sequence[str]]],
+    scopes: Callable[[], Mapping[str | None, Sequence[str] | None]],
     emit: Emitter,
     *,
     timeout_s: float | None,
+    geo: GeoAdapter | None = None,
 ) -> int:
     """Read the slots of a run's units again into the index; return the units read.
 
     ``refresh_view`` of the units of each segment, in batches, the segments
     described first (a run may have made one). A store found unavailable, a
     failure or the end of ``timeout_s`` stops it with the notice
-    ``rescan_failed``: the next scan of the store reads the rest.
+    ``rescan_failed``: the next scan of the store reads the rest. A scope
+    without units (``None``) is an incremental scan of that segment, or of
+    the producer's whole directory for ``None`` (``scan_store``, with the
+    projects' areas through ``geo``; the versions the index knows are not
+    read again), counting the entries it met: a producer that reads only its
+    whole directory (``reads_whole``) has no smaller scope.
     """
     deadline = None if timeout_s is None else time.monotonic() + timeout_s
     read = 0
@@ -1252,13 +1278,32 @@ def _rescan(
         found = scopes()
         if not found:
             return 0
+        whole = [segment for segment, units in found.items() if units is None]
+        if whole:
+            with IndexWriter(spec.index_path) as writer:
+                for segment in whole:
+                    summary = scan_store(
+                        reader,
+                        writer,
+                        spec.settings,
+                        store,
+                        mode="incremental",
+                        segment=segment,
+                        geo=geo,
+                    )
+                    read += summary.entries
+        parts = {
+            segment: units for segment, units in found.items() if units is not None
+        }
+        if not parts:
+            return read
         with IndexWriter(spec.index_path) as writer:
             if isinstance(reader, SegmentDescriptionAdapter):
-                named = [segment for segment in found if segment is not None]
+                named = [segment for segment in parts if segment is not None]
                 described = [reader.describe_segment(name) for name in named]
                 writer.write_segments(store, reader.producer, described)
             with IndexQueries(spec.index_path) as queries:
-                for segment, units in found.items():
+                for segment, units in parts.items():
                     for batch in _batches(units, REFRESH_VIEW_MAX_UNITS):
                         left = None if deadline is None else deadline - time.monotonic()
                         status = refresh_view(
