@@ -169,7 +169,7 @@ each requirement: the SPEC section named.
 
 - F11.1 Stations on the map, in the "Catalog" (also without location, with a river and hydrographic code filter) and in the "summary". (v0.5)
 - F11.2 Coverage labels of series for each variable separately, in hydrological and calendar years with a switch; all stations, also with gaps. (v0.5)
-- F11.3 The "Station card" with a chart (gaps as breaks, no interpolation), versions and IMGW formulas; station comparison. No statistical calculations. (v0.5)
+- F11.3 The "Station card" with a chart (gaps as breaks, no interpolation) of daily and monthly series and of the annual maximum and minimum found in the half-year characteristics, versions and IMGW formulas; station comparison. No other statistical calculations (A-ADR-051). (v0.5)
 - F11.4 Freshness of archives (a new publication, a new year), synchronisation and series as Obserwator background jobs with the plan window and an `obserwator …` command. (v0.5)
 - F11.5 IMGW archive and series versions pinned in projects (projects); their check, re-pin and restore through the Obserwator actions. (v0.5)
 

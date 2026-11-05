@@ -760,10 +760,19 @@ interpolated). `gaps` are the gaps each variable's label counts in `year_type`
 (the card's, by default the remembered one; named in the answer) cut at the
 range's ends: over the default range their units are the label's known units
 without a value and its longest gap is one of them. `markers` are the accumulated
-sums and the extremes IMGW published with their dates.
+sums and the extremes IMGW published with their dates. A series of months is drawn
+per variable (`variable=Q` reads `Q_min`, `Q_mean` and `Q_max`): a point's `min`,
+`mean` and `max` are the month's as IMGW published them. `resolution=annual`
+(A-ADR-051) answers, per hydrological year, the annual maximum and minimum
+Archiwista finds in the half-year characteristics (the greater of the winter and
+summer maxima, the lesser of their minima), each with `value`, `start`, `end`,
+`occurrences` and `halves`, and `partial` naming a half without a value; `derived`
+is `annual_extremes`, `variable` may be left out (each variable with a value), a
+calendar `year_type` is `400 annual_year_type` and a station without half-year
+characteristics `400 no_annual_source`.
 `version` must be the current one in the index (`409` otherwise; read the card
-again); half-year characteristics are not drawn as a line (`400`, reason
-`half_year_chart`). `GET /stations/compare` (`archiwista stations compare`) is one
+again); half-year characteristics are not drawn as a line of units (`400`, reason
+`half_year_chart`; ask `resolution=annual`). `GET /stations/compare` (`archiwista stations compare`) is one
 variable of 2 to 5 stations' series of one `dataset` over one range: `station`
 repeated, each `<store>/<provider>/<code>` in the order of the panels; `from` and
 `to` by default the variable's known spans at the stations together. Every

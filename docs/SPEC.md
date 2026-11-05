@@ -143,7 +143,11 @@ understandable and convenient for people.** In practice:
   series (coverage, gaps, values and extremes published by IMGW), but
   does not compute characteristic flows, frequency analyses or statistics;
   Hydrolog and Retman do that, and Archiwista prepares data for them
-  (user decision 2026-10-17; section 15, P17).
+  (user decision 2026-10-17; section 15, P17). For display only, it finds the
+  annual maximum and minimum of a hydrological year in the half-year
+  characteristics IMGW publishes (the greater of the winter and summer maxima, the
+  lesser of their minima); it computes no other statistic (the author's decision
+  of 2026-11-05, A-ADR-051).
 - **It does not show current IMGW data** (water levels, warnings) — only
   archives and series from the store (user decision 2026-10-17).
 
@@ -1455,9 +1459,11 @@ adapter does not implement: `StationCatalogAdapter` (`station_catalog(slot_key)`
 `SeriesIndexAdapter` (`series_dataset(slot_key)`, `read_series_index(root, version)`:
 the `series.json` listing with the coverage, IMGW-8) and `SeriesValuesAdapter`
 (`read_values(root, version, *, station, variables, start, end)`: a station's values
-from `read_series`, IMGW-10, the chart; `characteristics_dataset(dataset)` and
-`extremes_of(dataset, variable)`: the half-year characteristics with the extremes of a
-variable, from the registry), and from v1.1 `export_series(…)` (IMGW-12). Adapters are registered as plugins (5.8): from v0.1 the interface has
+from `read_series`, IMGW-10, the chart, with the occurrences of a half-year extreme;
+`characteristics_dataset(dataset)` and `extremes_of(dataset, variable)`: the half-year
+characteristics with the extremes of a variable, and `statistics_of(dataset)`: the
+variables whose monthly or half-year minimum, mean and maximum a dataset holds, A-ADR-051;
+all from the registry), and from v1.1 `export_series(…)` (IMGW-12). Adapters are registered as plugins (5.8): from v0.1 the interface has
 the Kartograf adapter and a plugin mechanism with a stub of a second adapter, and a test
 ensures that the layers above do not depend on Kartograf (sections 11 and 13).
 
@@ -1674,7 +1680,7 @@ proxy_autocreate = false                        # create a missing account on it
 | ZIP (SHP, GML, CityGML, XLS, PDF, OBJ) | list of members with sizes and recognised format | SHP and GML preview via `/vsizip/` later |
 | LAZ | header (extent, point count, classes, density) and a 2D image from a sample | 3D view after v1.0 (section 15, P5) |
 | TXT, PDF | metadata and the reason `document_no_preview` | never shown in the browser, a PDF neither: "Pobierz plik" downloads it (v0.4, A-ADR-047 decision 5); XYZ grids like ASC |
-| IMGW series (Parquet in the dataset's series version) | variable chart (up to 2,000 points per series: min./avg./max. in intervals), first and last rows | read through `read_series` (IMGW-10); cache keyed by the `sha256` of the station file (6.7) |
+| IMGW series (Parquet in the dataset's series version) | variable chart (up to 2,000 points per series: min./avg./max. in intervals; a monthly series as each month's published minimum, mean and maximum; of half-year characteristics the annual maximum and minimum of each hydrological year, found for display, A-ADR-051), first and last rows | read through `read_series` (IMGW-10); cache keyed by the `sha256` of the station file (6.7) |
 | IMGW archives (ZIP), station catalog (GeoJSON) | list of members with sizes; points and attribute table | the contents of the archives are read only by Obserwator |
 
 Rules: `nodata` is transparent; conversions and resampling are only for
@@ -2309,7 +2315,8 @@ Położenie: 49,7963° N, 19,9247° E · API IMGW (danepubliczne), 2026.10.17
            · niepewność ±150 m                          [Strona stacji IMGW]
 -----------------------------------------------------------------------------
 [Wykres] [Metadane] [Pochodzenie] [Szczegóły techniczne]
-(Dobowe) Miesięczne  Półroczne i roczne      Zmienna: (Q) H T  [Porównaj z...]
+(Dobowe) Miesięczne  Roczne (z charakterystyk półrocznych)    [Porównaj z...]
+Zmienna: (Q) H T
  m³/s                                          zakres: 1950.11.01–2025.10.31
   300 |       o                            o
   200 |  o    |      o                     |     o           o
@@ -2617,6 +2624,24 @@ confirmed by the user on 2026-10-26, M11):
   are points with a date — values published by IMGW, not calculated by
   Archiwista. Aggregation serves only display (like previews, 5.7)
   and never goes into a set or the store.
+- **Monthly and annual charts (A-ADR-051).** The card names the charts its series give
+  (`charts` of `GET /stations/{code}`): days first, then months, then the annual
+  chart of the half-year characteristics, chosen by the series chips ("dobowe",
+  "miesięczne", "Roczne (z charakterystyk półrocznych)"); the tab opens on the first. A
+  monthly series is drawn per quantity (H, Q, T): the monthly mean as the line and the
+  band from the monthly minimum to the maximum, all three as IMGW published them; a
+  longer range takes per interval the least minimum, the mean of the means and the
+  greatest maximum. The annual chart draws per hydrological year the maximum (the
+  greater of the winter and summer maxima, a solid line) and the minimum (the lesser
+  of their minima, a dashed line) with the dates, half and occurrences of the half that
+  holds each in the tooltip; a year with one half only shows that half's value as a
+  hollow point with "niepełny rok: brak półrocza zimowego" (or "letniego"), a year
+  with neither half is a gap. Archiwista finds these two values for display, says so
+  in the chart's note ("roczne maksimum i minimum wyznaczone przez Archiwistę z
+  charakterystyk półrocznych IMGW-PIB") and stores none of them; the chart numbers
+  hydrological years only, which the card says beside its year-type switch. A station
+  with none of the three charts shows "Stacja nie ma szeregu, który można narysować na
+  wykresie".
 - **Station comparison.** 2–5 stations, one variable, a common time axis
   and year type: one chart panel per station, stacked one above another with a shared
   time axis (not lines overlaid in one chart; M11), each with its gaps as in the chart; below them
@@ -3458,9 +3483,9 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `meteo_kind` (repeatable: `synoptic`, `climate`, `precipitation`, the station types of the map's chips; the counts follow it, ADR 0045 decision 1), `years`, `year_type` (by default the type remembered for the data's family, `year_types` of `GET /settings`, and for a list of both families, without `dataset`, `kind` or `meteo_kind`, hydro's; P15, ADR 0045 decision 3), `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `q` (a station whose name or river contains the text, case-folded, or whose code begins with it; no character is a wildcard), `sort` (`river`, the default: along rivers, by the hydrographic code, then the provider's order on the river, then the name, 6.8; or `name`; both bound to `cursor`, ADR 0045 decision 4), `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while Obserwator is not available |
 | `GET /stations/datasets` | the datasets with station series in the index (`store` optional): each with its key, the producer's name of its segment, provider, family, time unit, the year type of its labels (the one remembered for its family; hydrological for half-year characteristics), R by default in it (`years`), the label of its current series version and its variables (key, variable, unit, half-year period: the distinct keys of its stations' series, the first the default "Kolor punktów"); `503` without Obserwator (ADR 0045 decision 1) |
 | `GET /stations/timeline` | a page of the stations of one dataset year by year, the "Oś czasu" (Timeline) tab of the Catalog (6.5 j): the filters, order and cursor of `GET /stations` with `dataset` required; each item the station (code, name, kind, river with its hydrographic code, active, location) and its series as `GET /stations/{code}/coverage` gives it for the same `variable`, `years` and `year_type`; `variable` (repeatable) keeps the stations with a value of each variable and only their rows; the years of the whole page are read from the index at once; `503` without Obserwator (ADR 0045 decision 6) |
-| `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the IMGW formula (the input archives are not built yet), and `paths`: each series file by dataset on this computer and as mounted on others (path aliases, 4.6); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
+| `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the IMGW formula (the input archives are not built yet), `paths`: each series file by dataset on this computer and as mounted on others (path aliases, 4.6), and `charts`: the charts of `GET /stations/{code}/series` its series give (`dataset`, `time_unit`, `resolution`, `variables` with their unit and first and last day; days, then months, then the annual charts of half-year characteristics; A-ADR-051); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
 | `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `dataset`, `year_type`, `years`) — the Timeline: every year of R with its units, the known ones and those with a value, and its cell (`full`, `fraction`, `none`, `unknown`) |
-| `GET /stations/{code}/series` | chart data, for display only (`variable` once or twice, `store`, `provider`, `dataset` — by default the one series of the station with every variable —, `from`, `to` — by default the variables' known span —, `year_type`, `max_points` ≤ 2,000, `version` — the index's current one, else `409`): the current series version read through the producer; each unit's value up to `max_points` units, else the least, mean and greatest value of each interval of `ceil(units / max_points)` units (`null` without a value, never interpolated); `gaps` the gaps each variable's label counts in `year_type` (4.8.4) cut at the range's ends; `markers` the accumulated sums and the extremes IMGW published in the half-year characteristics (with their dates); half-year characteristics are not drawn as a line (`400`) |
+| `GET /stations/{code}/series` | chart data, for display only (`variable` once or twice, `store`, `provider`, `dataset` — by default the one series of the station with every variable, one of days before one of months —, `resolution`, `from`, `to` — by default the variables' known span —, `year_type`, `max_points` ≤ 2,000, `version` — the index's current one, else `409`): the current series version read through the producer; each unit's value up to `max_points` units, else the least, mean and greatest value of each interval of `ceil(units / max_points)` units (`null` without a value, never interpolated); a variable of a monthly series (`Q`, not `Q_max`) gives each month's published minimum, mean and maximum, an interval the least minimum, the mean of the means and the greatest maximum; `gaps` the gaps each variable's label counts in `year_type` (4.8.4) cut at the range's ends; `markers` the accumulated sums and the extremes IMGW published in the half-year characteristics (with their dates); half-year characteristics are not drawn as a line (`400 half_year_chart`). `resolution=annual` (A-ADR-051) reads the station's half-year characteristics instead (`400 no_annual_source` without them; `variable` optional, by default each variable with a value; hydrological years only, else `400 annual_year_type`): a point a hydrological year with `max` and `min`, the greater of the winter and summer maxima and the lesser of their minima, each with `value`, `start`, `end`, `occurrences`, `halves` and `partial` (the half without a value), `null` when neither half has one; `derived` `annual_extremes`, found for display and never stored |
 | `GET /stations/compare` | 2–5 stations of one variable on a common time axis (`station` repeatable as `<store>/<provider>/<code>`, `dataset`, `variable`, `from`, `to` — by default the variable's known spans at the stations together —, `year_type`, `max_points` ≤ 2,000): one range and one interval for every station; each station with its location, its series version, the variable's label and facts as on its card (`coverage`) and its chart as `GET /stations/{code}/series` gives it for that range (`chart`); a station without the series or the variable keeps its place with `null` ("brak danych", P14); `400` (reason `unknown_variable`) when no station's series has the variable, `404` when none has a series of the dataset |
 | `POST /areas` | area from GeoJSON or from a geometry file → `id`, surface area, countries (limits: 10.1) |
 | `GET /areas/{id}` | area: geometry (WGS84), surface area, countries |
@@ -5105,7 +5130,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | P14 | Definition of series "continuity" | **Resolved 2026-10-17 (user decision, A-ADR-021 erratum 1):** "continuous" = **zero missing units** in the known years of the range, with no tolerance. We download and show **all** data, including data with gaps — with an appropriate label; nothing is filtered out because of gaps, and coverage filters ("≥ 30 full years") work only explicitly (4.8.4) |
 | P15 | Hydrological or calendar year in the UI? | **Resolved 2026-10-17 (user decision, A-ADR-021 erratum 1):** both kinds of year for **both** kinds of data (hydro and meteo) with a switch; by default hydro — hydrological, meteo — calendar; the choice is remembered separately for hydro and meteo in the user settings, `year_type` in the URL takes precedence; IMGW half-year and annual characteristics only in hydrological years, the switch does not apply to them — confirmed (4.8.2, 6.7) |
 | P16 | Q and H separately? | **Resolved 2026-10-17 (user decision, A-ADR-021 erratum 2):** coverage labels **separately for each quantity**, not one per station — hydro: H, Q, T; meteo: precipitation, temperature and other dataset variables. The station panel, the "Zestawienie" (Summary), the "Katalog" (Catalog) and the station card show them together; coverage filters apply to the indicated variable; the API returns `coverage` per variable (4.8.4, 6.7, 6.8, 9) |
-| P17 | Should the assistant only prepare data, while calculations (characteristic flows, frequency analysis, low flows) are done by Hydrolog and Retman? | **Resolved 2026-10-17 (user decision):** yes — the assistant only prepares data and commands, may point to a Hydrolog input (CSV: `daily_values`, `dates`), but calculates nothing; calculations in Hydrolog and Retman (1.3, 7.1, 7.11) |
+| P17 | Should the assistant only prepare data, while calculations (characteristic flows, frequency analysis, low flows) are done by Hydrolog and Retman? | **Resolved 2026-10-17 (user decision):** yes — the assistant only prepares data and commands, may point to a Hydrolog input (CSV: `daily_values`, `dates`), but calculates nothing; calculations in Hydrolog and Retman (1.3, 7.1, 7.11). **Amended 2026-11-05 (the author's decision, A-ADR-051):** for display, Archiwista finds the annual maximum and minimum of a hydrological year in the half-year characteristics (the greater of the winter and summer maxima, the lesser of their minima), never stored; it computes no other statistic (6.7) |
 | P18 | IMGW data in projects: the manifest `kartograf-project/1` accepts only Kartograf commands | ~~Not in v1.0: rebuildability through immutable versions and a set~~ ~~Resolved 2026-10-17 (user decision, A-ADR-023): IMGW data in the Obserwator manifest `imgw-project.json`~~ **Resolved anew 2026-10-31 (the author's decision, ECO-054, A-ADR-049):** IMGW data is in projects in v1.0 as pins of IMGW archive and series versions in Archiwista's own project file `archiwista-project/1`; Obserwator keeps no projects (IMGW-14 withdrawn) and gives the command of a stored version (IMGW-21) |
 | P19 | Hydrographic code as a "river basin" filter (prefix: Raba `2138`, Mszanka `21382`, Stradomka `21388`)? | **Resolved 2026-10-17 (user decision):** yes — as one of many filters: "exactly this river" or "with tributaries" (code prefix); it works on attributes, so it also covers stations without a location; the prefix rule is checked by a test on the IMGW list (6.6, 6.8, IMGW-9) |
 
