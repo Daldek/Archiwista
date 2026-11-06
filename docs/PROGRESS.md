@@ -12,15 +12,18 @@ which holds Nogat standard 2.1, the Obserwator source and station views, the dat
 v0.3, v0.4, the user guide and the projects) and `plan/next-version` were merged into it
 (`6f1caef`, `7b3eb79`; no pull request, the author's decision) and the merged branches
 deleted; `feat/mockup` stays (Open questions). The author's team test server (port 8090,
-https://archiwista-test.debever.pl) runs `4027755` (in `develop`) since 2026-11-03 about
-00:00 (step A3 of Nogat's plan `2026-11-02-archiwista-sets-for-hydrograf.md`), with
-`TMPDIR` on disk. Nothing after 0.2.0 is released.
+https://archiwista-test.debever.pl, user unit `archiwista-public.service`) runs `cd29b6f`
+(`develop`) since 2026-11-06; rollback steps in
+`/home/claude-agent/data/archiwista-public/backup-2026-11-05b/ROLLBACK.txt` (code only:
+`checkout --detach` and restart). Nothing after 0.2.0 is released.
 
 | Component | State | Note |
 |---|---|---|
 | Obserwator's commands (plan `docs/plans/2026-11-05-obserwator-actions.md` P1 to P5, A-ADR-050; Nogat plan `2026-11-05-obserwator-in-archiwista.md` steps 1 and 2) | merged into `develop` (`b253244`) and deployed on :8090 on 2026-11-05 | The adapter offers `store sync`, `store catalog` and `series build`; „Polecenia producenta” of the Store view. P5 on 2026-11-05: :8090 at `b253244` with `uv sync --locked --all-extras`, the store `zespol` moved to the SMB share `/mnt/magazyn/agent-tmp/archiwista-zespol/` (`kartograf/`, `obserwator/`, `kind = "share"`; backup and rollback in `backup-2026-11-05/`), its first IMGW-PIB data (station catalog, daily, monthly and half-year hydrological data) fetched by the author through Archiwista's jobs. |
-| Fixes and features of 2026-11-05 after P5 (stacked branches, not merged) | `fix/distinct-notices` → `feature/monthly-annual-charts` → `fix/map-station-products` → `feature/series-handoff`, one gate over the top | A repeated notice listed once; monthly charts and annual extremes (A-ADR-051); the map's station products named after their stations, „Wszystkie produkty” with the stations, a short station tooltip and no twitching map; a station's series handed to Hydrolog (A-ADR-052, with Hydrolog `feature/series-handoff` and Nogat `plan/archiwista-series-to-hydrolog`). |
-| IMGWTools is called Obserwator (Nogat ECO-057; Nogat plan `2026-11-03-imgwtools-to-obserwator.md` step 3) | done on `develop`, not deployed | Obserwator `ea158dc6` and Kartograf `9deaa314`, the commits of Nogat's release set `candidate-1` (`ecosystem.py set apply`) (it knows `obserwator-store.json`); the extra, plugin, producer and settings field `obserwator`, the reason `obserwator_error`, the ids `obserwator-*`, the adapter `archiwista.adapter.obserwator`; index schema 18 (a rebuild); A-ADR-032 erratum 2 |
+| Fixes and features of 2026-11-05 (`fix/distinct-notices` → `feature/monthly-annual-charts` → `fix/map-station-products` → `feature/series-handoff`) | merged into `develop` (`32d3ce4`), deployed on :8090; gate green on the top (`ec3e746`: 2852 passed, 71 min) | A repeated notice listed once; monthly charts and annual extremes (A-ADR-051); the map's station products named after their stations, „Wszystkie produkty” with the stations, a short station tooltip, no twitching map (the author confirmed it on 2026-11-06); a station's series handed to Hydrolog (A-ADR-052, with Hydrolog and Nogat). |
+| „Do Hydrologa” chooses the data and the variable (`fix/handoff-choices`) | merged (`77f7fbc`), deployed on :8090; the author checked it on 2026-11-06 | A group under the station chart: „Dane” (daily values of a series of days, or annual maxima of complete hydrological years) and „Zmienna”, whatever chart is shown; the chart's range goes with its own kind only. |
+| The map draws a station catalog without series (`fix/map-catalog-stations`) | merged (`cd29b6f`), deployed on :8090 on 2026-11-06 | ČHMÚ's `store catalogs` alone showed no station: the map always sends the kind's first dataset, which `GET /map/stations` used as a filter. Now `dataset` alone labels the points; a station without a series of it is „brak danych”; the „bez położenia” counter opens the Katalog without the dataset. Checked on the server's index: hydro 1751 stations (870 ČHMÚ), meteo 2389 (1602 ČHMÚ). |
+| IMGWTools is called Obserwator (Nogat ECO-057; Nogat plan `2026-11-03-imgwtools-to-obserwator.md` step 3) | done on `develop`, deployed with `b253244` | Obserwator `ea158dc6` and Kartograf `9deaa314`, the commits of Nogat's release set `candidate-1` (`ecosystem.py set apply`) (it knows `obserwator-store.json`); the extra, plugin, producer and settings field `obserwator`, the reason `obserwator_error`, the ids `obserwator-*`, the adapter `archiwista.adapter.obserwator`; index schema 18 (a rebuild); A-ADR-032 erratum 2 |
 | Projects in Archiwista's own file (A-ADR-049 and its errata 1 to 4; Nogat plan `2026-10-31-archiwista-projects.md` step 5, ECO-054; plan `docs/plans/2026-10-31-archiwista-projects.md`) | done, in `develop`, deployed on the test server | A project is a directory holding `archiwista-project.json` (`archiwista-project/1`; lock and atomic write; discovery by that file alone; index schema 16, state schema 4), its area files in `obszary/`. Groups, shown as „Zestaw”, hold pins: from the store (Katalog, map, store view: "Dodaj do projektu…"; a filter or a map layer pins the versions it shows) and from the plan window (a plan group keeps the producer's calls). Jobs verify, check, re-pin and restore over `POST /projects/{project}/jobs` (`PROTOCOL_VERSION` 13), rebuilt from Kartograf's `command_for_file` and Obserwator's `command_for_version`; a pin without a rebuildable command stays pinnable with check and restore disabled with the reason (D5). The card shows the activity from the action log. "Usuń projekt…" removes a project from Archiwista, never data (erratum 2). The export is flat: `eksport/<name>/` with one folder per category (`NMT`, `BDOT`, `ORTO`, …), copies of the files and `README.txt`, optionally `eksport/<name>.zip` (erratum 1); a ZIP holding exactly one raster is exported unpacked, an XYZ file with the coordinate system to set in QGIS (erratum 4). The producers' project manifests and ADR-039/ADR-040 are gone. Pins: Kartograf `9deaa314` (its `develop`), Obserwator `651d4d73` (its `feature/obserwator`; both pushed) |
 | Katalog: the variant of a row | done, in `develop`, deployed on the test server | Each row, the file card and the map's "Warianty (segmenty)" name the variant (resolution and height system, `web/src/variant.js`); the „Wariant” filter is `segment` of `GET /slots`; file rows wrap their text and grow (`7252df5`, `96c72eb`) |
 | Availability: a polygon area as GeoJSON | done, in `develop`, deployed on the test server | Areas reach Kartograf as WGS84 GeoJSON (`<data-dir>/areas/<id>.geojson`; a plan group's call names `obszary/<id>.geojson`, A-ADR-035 erratum 2, A-ADR-049 erratum 3), and Kartograf ADR-058 selects sheets by the shape, not its envelope (`9e26138`, `c5a3d8c`). The store badge „pobrane” matches by survey work (`0509143`) |
@@ -38,8 +41,8 @@ https://archiwista-test.debever.pl) runs `4027755` (in `develop`) since 2026-11-
 | Nogat standard 2.1 | done | structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry; skipped items below |
 | Deploy on the test server (A3) | done 2026-11-03 about 00:00 | `4027755` on :8090, `Environment=TMPDIR=<data-dir>/tmp` in the unit (Kartograf unpacks BDOT10k there; `/tmp` is a small tmpfs). The index was rebuilt from schema 16 to 17, which dropped the sessions (everyone signs in again), the job history and the 18 drawn rectangles of the map. Copies taken before the restart (index 16, state 4, the old unit) and the rollback to `dd4268c`: `/home/claude-agent/data/archiwista-public/backup-2026-11-02/` and its `ROLLBACK.txt` |
 | Deploy on the test server (Obserwator, feedback, release-set pins) | done 2026-11-04 11:08 | `b2307ee` on :8090 (`uv sync --locked`; Kartograf `9deaa314` instead of the pre-rewrite `26ee459`); about 2 s down. The index was rebuilt from schema 17 to 18 (735 versions refilled at once; sessions and the job history of 710 jobs dropped, the 2 drawn areas kept); the state database went from schema 4 to 5 (table `feedback`); the server's settings name only a Kartograf store, so nothing else changed. Checked: `/` 200 locally, the public host behind Cloudflare Access, `POST /api/v1/feedback` and `/api/v1/admin/feedback` refuse an anonymous call with 401. Copies (index 17, state 4, settings, the unit) and the rollback to `34e83f4`: `/home/claude-agent/data/archiwista-public/backup-2026-11-04/` and its `ROLLBACK.txt` |
-| Gate | green on the A2 tree (2026-11-02, about 23:30) | full run: 2749 passed, `TMPDIR` on a local disk, the author's test server holding port 8090. `develop` after the merge has the tree of `10dd702`, which differs from the gated one in `docs/PROGRESS.md` only. The Firefox run of `tests/e2e/test_guide.py` no longer stalls it (`8d16cef`): the test resized the app's tab behind the guide's tab, and `set_viewport_size` waits without a timeout for a size Firefox may never give a covered tab. A full run takes about 50 to 60 minutes; start it without other test suites running |
-| CI (Linux) | written, not run | `.github/workflows/ci.yml` and `live.yml`; no run of either workflow is known |
+| Gate | green on the stack of 2026-11-05 (`ec3e746`, 2026-11-05/06) | 2852 passed, coverage 93.7 %, 71 min with `TMPDIR` on a local disk. The later branches ran their own tests only (the hand-off e2e; 521 station, map and contract tests for the map fix); CI ran the full suite on `develop`. A full local run takes about 70 minutes; start it without other test suites running |
+| CI (Linux) | green on `develop` `8f34a4c` (2026-11-06) | First runs since the push of 2026-11-03 were red: the gate's 30 min cut the 40 min suite short (now 90), and the run without the extra `obserwator` failed at collection and on `obserwator_store` (now skipped there; `tests/conftest.py`). `test_project_card.py::test_the_activity_shows_the_newest_entries_and_a_change_made_on_the_card` failed once in two jobs and passed on the re-run (cause not found; Next). Python 3.15 (reported, not blocking) fails on an unraisable `sqlite3` finalizer warning in an e2e test. `live.yml` has not run |
 
 Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 
@@ -60,20 +63,20 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
 
 ## Next
 
-1. The author reviews and merges the stack of 2026-11-05 (`fix/distinct-notices`,
-   `feature/monthly-annual-charts`, `fix/map-station-products`, `feature/series-handoff`; one
-   gate ran over the top), with Hydrolog's `feature/series-handoff` (deploy on :8070 after its
-   merge) and Nogat's `plan/archiwista-series-to-hydrolog`; then the smoke of the monthly-annual
-   plan's P5 on :8090 (152160140 annual and monthly charts, the hand-off opened in Hydrolog).
-   The jitter of the map on a station's hover was not reproduced in headless Chromium: check it
-   on the author's browser after the deploy.
-2. A `request` to Obserwator: keep the precision of an occurrence date IMGW-PIB publishes
-   without a day (`2020-03`), which the store keeps as the month's first (plan
-   `2026-11-05-monthly-annual-charts.md`, Risks).
-3. A welcome dialog for a first visit and its slide in the guide `/instrukcja`.
-4. Release preparation (the author): `archiwista-state/2` back to `/1` (a format
+1. The author decides (next session): „Pobierz CSV” on the station card, through
+   Obserwator's `export_series` (CSV with the provider's attribution); today a series leaves
+   as the hand-off JSON, the parquet path, or a Python call of `obserwator.export_series`.
+2. The author decides (next session): a `request` to Obserwator to keep the precision of an
+   occurrence date IMGW-PIB publishes without a day (`2020-03`), which the store keeps as
+   the month's first (plan `2026-11-05-monthly-annual-charts.md`, Risks).
+3. The flaky activity test of the project card (CI, Status): after „Usuń zestaw” the list
+   kept its old first entry for 30 s. The activity re-reads on `card.scanned_at`, which has
+   one-second precision; whether the card was read again with the same stamp is not
+   established. Python 3.15: the unraisable `sqlite3` finalizer warning in e2e.
+4. A welcome dialog for a first visit and its slide in the guide `/instrukcja`.
+5. Release preparation (the author): `archiwista-state/2` back to `/1` (a format
    identifier not yet released on `main` stays at `/1`), then the release below.
-5. Release, per decisions D2 and D3 of Nogat's plan
+6. Release, per decisions D2 and D3 of Nogat's plan
    `2026-10-31-archiwista-projects.md`: one Archiwista release holds v0.3, v0.4 and the
    projects (all in `develop` since 2026-11-03), outside the first release set
    (Archiwista follows the producers' tags in its own session, REL-5.4). Then: replace
@@ -83,14 +86,14 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
    --offline` resolves a commit only from uv's git database
    (`~/.cache/uv/git-v1/db/`), so fetch the producer's branch into it, change the commit
    in `pyproject.toml`, `uv lock --offline`, `uv sync --locked --all-extras`.
-6. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
+7. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
    in three browsers, the store on the share); a full `scripts/gate.sh` on the Mac; the
    live run of `tests/integration/test_live_actions.py` (`ARCHIWISTA_LIVE_ACTIONS=1`)
    and the SMB run of v0.3 criterion 8.
-7. CI proof after the push: the Chromium step of `ci.yml` and the weekly `live.yml`.
-8. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
+8. CI: the weekly `live.yml` has not run yet.
+9. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
    it covers the case (DEV-10.6).
-9. Adopt the ecosystem's visual identity (Nogat `design/`, plan
+10. Adopt the ecosystem's visual identity (Nogat `design/`, plan
    `docs/plans/2026-11-01-visual-identity.md` in Nogat) once the author approves it, by
    an Archiwista plan.
 
