@@ -234,13 +234,13 @@ def test_the_map_counter_opens_the_group_expanded(
 ) -> None:
     """The map's "N stacji bez położenia" opens the Catalog's group, unfolded.
 
-    The map shows the product's first dataset, so the counter counts and the
-    Catalog lists the stations with its series.
+    The map's dataset only colours its points, so the counter counts and the
+    Catalog lists every station of the kind, with a series or from the catalog only.
     """
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
-    unlocated = stations(page, kind="hydro", dataset=DAILY, location="none")
+    unlocated = stations(page, kind="hydro", location="none")
     count = unlocated["counts"]["unlocated"]
     rows = [row_of(item) for item in unlocated["items"]]
     page.goto(address(served, view="map", product="hydro"))
@@ -255,7 +255,7 @@ def test_the_map_counter_opens_the_group_expanded(
 
     # Assert
     opened = query_of(page)
-    assert (opened["view"], opened["dataset"]) == ("catalog", DAILY)
+    assert (opened["view"], opened.get("dataset")) == ("catalog", None)
     assert counted == count
     assert found[0] == {"group": f"Bez położenia {count}", "expanded": None}
     assert stations_of(found) == rows

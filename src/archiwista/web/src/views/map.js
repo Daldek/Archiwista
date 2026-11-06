@@ -484,7 +484,8 @@ export default function MapScreen({ route, embedded = false }) {
               ...Object.fromEntries(STATION_FILTERS.map((name) => [name, filters[name]])),
               area_id: currentArea?.id,
               location: "none",
-              dataset: station.dataset?.dataset,
+              // The map's stations are those of the kind, its dataset only colours them.
+              dataset: null,
               meteo_kind: params.meteo_kind,
               year_type: station.yearType,
             }} />`

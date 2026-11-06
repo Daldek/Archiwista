@@ -1375,7 +1375,10 @@ class IndexQueries:
         ----------
         query : StationQuery
             ``bbox`` is the view (required); the filters, the area and the
-            labels apply as in ``stations``. A map holds located stations
+            labels apply as in ``stations``, except ``dataset`` alone: it
+            labels the points and leaves the stations without its series on
+            the map, which have no data of it (a catalog downloaded without
+            series shows its stations). A map holds located stations
             only, so ``location``, ``limit`` and ``cursor`` do not apply.
         limit : int
             Most stations drawn, 1 to ``MAP_FOOTPRINT_LIMIT``; above it the
@@ -1405,7 +1408,11 @@ class IndexQueries:
         _require_station_filters(query)
         with self._read() as connection:
             stores = _stores(connection)
-            found = _select_stations(connection, stores, query, box)
+            labelled_only = not (
+                query.variables or query.coverage or query.min_complete_years
+            )
+            selection = replace(query, dataset=None) if labelled_only else query
+            found = _select_stations(connection, stores, selection, box)
             rows = connection.execute(
                 f"SELECT {_STATION_COLUMNS} FROM {_STATION_SOURCE}"
                 f" WHERE {found.located.sql()} ORDER BY {_NAME_ORDER}",

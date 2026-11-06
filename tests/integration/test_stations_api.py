@@ -324,7 +324,7 @@ def test_station_routes_refuse_what_they_cannot_answer(
 
 
 def test_the_map_draws_located_stations_or_their_grid(served: Served) -> None:
-    """Above ``limit`` a grid; with ``dataset`` each point has its labels."""
+    """Above ``limit`` a grid; ``dataset`` labels the points and keeps the others."""
     # Act
     points = served.json("/map/stations?bbox=14,48,24,55")
     grid = served.json("/map/stations?bbox=14,48,24,55&limit=3&grid_columns=4")
@@ -349,13 +349,14 @@ def test_the_map_draws_located_stations_or_their_grid(served: Served) -> None:
             "hidden": 0,
         }
     )
-    (raba,) = labelled["items"]
-    assert raba["code"] == RABA
-    assert {key: value["state"] for key, value in raba["coverage"].items()} == {
+    assert (labelled["total"], labelled["counts"]) == (8, points["counts"])
+    labels = {item["code"]: item["coverage"] for item in labelled["items"]}
+    assert {key: value["state"] for key, value in labels.pop(RABA).items()} == {
         "H": "gaps",
         "Q": "gaps",
         "T": "gaps",
     }
+    assert list(labels.values()) == [{}] * 7  # no series of the dataset, no labels
 
 
 def test_a_code_of_two_stations_names_them_until_store_and_provider_choose(

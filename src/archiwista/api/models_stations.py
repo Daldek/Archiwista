@@ -640,6 +640,16 @@ class StationListFilters(StationFilters):
 class StationMapFilters(StationFilters):
     """A map view and the filters of ``GET /map/stations``."""
 
+    dataset: str | None = Field(
+        default=None,
+        description=(
+            "Dataset key (`pl.imgw.hydro_daily`): only its coverage labels the"
+            " points; the stations without a series of it stay, without data of"
+            " it, unless `variable`, `coverage` or `min_complete_years` ask for"
+            " its series (which they need)."
+        ),
+        examples=["pl.imgw.hydro_daily"],
+    )
     bbox: str = Field(
         description="The view `min_lon,min_lat,max_lon,max_lat` in WGS84.",
         examples=["19.0,49.5,20.6,50.3"],

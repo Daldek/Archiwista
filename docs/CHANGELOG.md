@@ -1510,6 +1510,12 @@ command-line interface may change.
 
 ### Fixed
 
+- The map shows the stations of a station catalog downloaded without series (ČHMÚ's
+  `store catalogs`, say): „Zbiór danych” of hydro or meteo stations labels the points,
+  and a station without a series of it is drawn with „brak danych” instead of left out;
+  `GET /map/stations` with `dataset` alone keeps it (with `variable`, `coverage` or
+  `min_complete_years`, only the stations with its series, as before).
+
 - The map no longer twitches when the pointer enters or leaves a station: the map's
   layer clips what overflows it (a tooltip near its edge could reach the scrolling view
   and bring a scrollbar that resized the map), and the tooltip has no backdrop blur over

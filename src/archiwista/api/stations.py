@@ -1283,6 +1283,8 @@ def list_map_stations(
 
     Above `limit` the answer is `aggregated`: `cells` count stations.
     Stations without a location are never drawn: `counts.unlocated` counts
-    them. With `dataset` each point has the state and label of each variable.
+    them. With `dataset` each point has the state and label of each variable;
+    a station without a series of it is drawn too, with no data of it, so a
+    station catalog downloaded alone shows its stations.
     """
     return station_map(queries, settings.get(), preferences, registry, filters)
