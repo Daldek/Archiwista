@@ -654,14 +654,16 @@ and `--until` with a time zone. An export is itself an entry of the log.
 
 ## IMGW stations
 
-A product of Obserwator chosen on the map (hydro, meteo, or the station catalogs
-themselves) shows its stations in place of outlines. The shape of a point is the
+A product of Obserwator chosen on the map („Stacje hydrologiczne” or „Stacje
+meteorologiczne”) shows its stations in place of outlines. The shape of a point is the
 station type: a triangle for a water gauge, a square for a climatological or synoptic
 station, a circle for a precipitation post. Its colour and fill are the coverage of
 the variable chosen in "Kolor punktów" in the bar (green solid "ciągły", orange solid
 "luki", orange half "częściowy", grey hollow "brak danych", grey dashed "nieznane");
 the legend names each, and the tooltip of a point gives the label of every variable.
-The panel chooses the dataset ("Zbiór danych"), the types of meteo stations and
+The panel chooses the dataset ("Zbiór danych"), whose coverage colours the points (a
+station without a series of it, from a catalog downloaded alone for instance, is "brak
+danych"), the types of meteo stations and
 whether the stations on an area's boundary count. Stations far apart at a low zoom
 form a neutral cluster with their count, which zooms in on a click; stations at one
 position spread around it until the next click or `Esc`. "N bez położenia" in the bar

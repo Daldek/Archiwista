@@ -491,7 +491,10 @@ def test_a_filter_that_cannot_apply_is_refused(
 def test_the_map_draws_the_located_stations_of_the_view_or_their_grid(
     index: IndexQueries,
 ) -> None:
-    """The counts are those of the list; the unlocated are counted, never drawn."""
+    """The counts are those of the list without the dataset, which only labels.
+
+    The unlocated are counted, never drawn.
+    """
     # Arrange
     view = (19.0, 49.0, 21.0, 51.0)
     query = StationQuery(bbox=view, area=AREA.geometry, dataset=DAILY, labels=True)
@@ -500,7 +503,7 @@ def test_the_map_draws_the_located_stations_of_the_view_or_their_grid(
     drawn = index.station_map(query, limit=10, grid_columns=4)
     grid = index.station_map(query, limit=4, grid_columns=4)
     plain = index.station_map(StationQuery(bbox=view), limit=10, grid_columns=4)
-    listed = index.stations(replace(query, bbox=None))
+    listed = index.stations(replace(query, bbox=None, dataset=None))
 
     # Assert
     assert (drawn.total, drawn.aggregated, drawn.cells) == (5, False, ())
