@@ -35,7 +35,7 @@ def _unmarked_store(directory: Path) -> Path:
 def test_unmarked_store_scan_job_fails_with_the_reason_and_the_fix(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The job ends ``store_unavailable`` and names the command; the index is empty."""
+    """The job ends ``store_unavailable`` and names the command, as does the banner."""
     with jobs_env(tmp_path, monkeypatch) as env:
         # Arrange
         root = env.store.root
@@ -53,9 +53,14 @@ def test_unmarked_store_scan_job_fails_with_the_reason_and_the_fix(
         "store_unavailable",
         "no_marker",
     )
-    assert message("source.no_marker", marker=MARKER) in record.error.detail
+    assert (
+        message("source.no_marker", marker=MARKER, path=str(root))
+        in record.error.detail
+    )
     assert record.error.hint == message("fix.store_init", path=str(root))
     assert (state.status, state.stale) == ("unavailable", True)
+    assert state.detail is not None
+    assert state.detail.endswith(f"kartograf store init --root {root}")
     assert indexed == []
 
 
@@ -81,7 +86,9 @@ def test_unmarked_store_in_the_settings_is_refused_with_the_same_text(
     assert [(p["code"], p["field"], p["reason"]) for p in problems] == [
         ("source_incompatible", "stores[0].kartograf", "no_marker")
     ]
-    assert problems[0]["message"].endswith(message("source.no_marker", marker=MARKER))
+    assert problems[0]["message"].endswith(
+        message("source.no_marker", marker=MARKER, path=str(unmarked))
+    )
     assert problems[0]["hint"] == message("fix.store_init", path=str(unmarked))
 
 

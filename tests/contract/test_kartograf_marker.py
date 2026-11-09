@@ -93,7 +93,7 @@ def test_marker_probe_refuses_a_store_without_marker_until_init_store_ran(
 
     # Assert
     assert _verdict(refused) == ("incompatible", "no_marker")
-    assert refused.detail == message("source.no_marker", marker=MARKER)
+    assert refused.detail == message("source.no_marker", marker=MARKER, path=str(root))
     assert refused.hint == message("fix.store_init", path=str(root))
     assert marked.created
     assert healed.status == "available"
@@ -102,13 +102,15 @@ def test_marker_probe_refuses_a_store_without_marker_until_init_store_ran(
 def test_marker_hint_is_a_command_that_marks_the_store(
     adapter: KartografAdapter, root: Path, tmp_path: Path
 ) -> None:
-    """The command of the hint, run as written, makes the store available."""
+    """The command of the hint and of the detail, run as written, marks the store."""
     # Arrange: a path that needs quoting
     spaced = root.rename(tmp_path / "my store")
     (spaced / MARKER).unlink()
-    hint = adapter.probe(spaced).hint
-    assert hint is not None
-    command = shlex.split(hint.removeprefix("run once: "))
+    refused = adapter.probe(spaced)
+    assert refused.hint is not None and refused.detail is not None
+    written = refused.hint.removeprefix("run once: ")
+    assert refused.detail.endswith(f": {written}")
+    command = shlex.split(written)
     assert command[:3] == ["kartograf", "store", "init"]
 
     # Act

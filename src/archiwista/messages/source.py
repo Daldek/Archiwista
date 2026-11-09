@@ -32,8 +32,14 @@ MESSAGES = {
         ),
     ),
     "no_marker": Text(
-        "the directory has the layout of a Kartograf store but no {marker}",
-        "katalog ma układ magazynu Kartografa, ale nie ma pliku {marker}",
+        (
+            "the directory has the layout of a Kartograf store but no {marker}"
+            " — mark the store with: kartograf store init --root {path}"
+        ),
+        (
+            "katalog ma układ magazynu Kartografa, ale nie ma pliku {marker}"
+            " — zaznacz magazyn poleceniem: kartograf store init --root {path}"
+        ),
     ),
     "obserwator_no_marker": Text(
         (

@@ -1161,6 +1161,11 @@ command-line interface may change.
 
 ### Changed
 
+- A Kartograf store without its marker `kartograf-store.json` names the command that
+  marks it in its status text too, so the banner and the Store view say „… nie ma pliku
+  kartograf-store.json — zaznacz magazyn poleceniem: kartograf store init --root
+  <path>”, as the job error's hint, the settings problem and `archiwista doctor` did;
+  an Obserwator store without its marker already did so.
 - The map's products of IMGW-PIB data are its stations: the family `hydro`, which holds
   daily, monthly and half-year data and the station list, is „Stacje hydrologiczne”
   (it was named after its biggest dataset, „Dane hydrologiczne dobowe”), `meteo` is
