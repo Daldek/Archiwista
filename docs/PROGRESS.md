@@ -11,7 +11,8 @@ The working branch is `develop`. On 2026-11-03 `feature/archiwista-projects` (`1
 which holds Nogat standard 2.1, the Obserwator source and station views, the data output,
 v0.3, v0.4, the user guide and the projects) and `plan/next-version` were merged into it
 (`6f1caef`, `7b3eb79`; no pull request, the author's decision) and the merged branches
-deleted; `feat/mockup` stays (Open questions). The author's team test server (port 8090,
+deleted; `feat/mockup` stayed and was deleted from `origin` on 2026-11-10 (Open questions,
+Decided). `main` is on GitHub since 2026-11-10. The author's team test server (port 8090,
 https://archiwista-test.debever.pl, user unit `archiwista-public.service`) runs `cd29b6f`
 (`develop`) since 2026-11-06; rollback steps in
 `/home/claude-agent/data/archiwista-public/backup-2026-11-05b/ROLLBACK.txt` (code only:
@@ -19,6 +20,7 @@ https://archiwista-test.debever.pl, user unit `archiwista-public.service`) runs 
 
 | Component | State | Note |
 |---|---|---|
+| The status text of a Kartograf store without its marker names `kartograf store init --root <path>` (`fix/no-marker-banner-command`) | merged into `develop` (`bf6813b`) on 2026-11-10, not deployed on :8090 | The banner and the Store view show the command, as the job error's hint, the settings problem and `archiwista doctor` did (`source.no_marker`); targeted tests only, the full gate has not run on it |
 | Obserwator's commands (plan `docs/plans/2026-11-05-obserwator-actions.md` P1 to P5, A-ADR-050; Nogat plan `2026-11-05-obserwator-in-archiwista.md` steps 1 and 2) | merged into `develop` (`b253244`) and deployed on :8090 on 2026-11-05 | The adapter offers `store sync`, `store catalog` and `series build`; „Polecenia producenta” of the Store view. P5 on 2026-11-05: :8090 at `b253244` with `uv sync --locked --all-extras`, the store `zespol` moved to the SMB share `/mnt/magazyn/agent-tmp/archiwista-zespol/` (`kartograf/`, `obserwator/`, `kind = "share"`; backup and rollback in `backup-2026-11-05/`), its first IMGW-PIB data (station catalog, daily, monthly and half-year hydrological data) fetched by the author through Archiwista's jobs. |
 | Fixes and features of 2026-11-05 (`fix/distinct-notices` → `feature/monthly-annual-charts` → `fix/map-station-products` → `feature/series-handoff`) | merged into `develop` (`32d3ce4`), deployed on :8090; gate green on the top (`ec3e746`: 2852 passed, 71 min) | A repeated notice listed once; monthly charts and annual extremes (A-ADR-051); the map's station products named after their stations, „Wszystkie produkty” with the stations, a short station tooltip, no twitching map (the author confirmed it on 2026-11-06); a station's series handed to Hydrolog (A-ADR-052, with Hydrolog and Nogat). |
 | „Do Hydrologa” chooses the data and the variable (`fix/handoff-choices`) | merged (`77f7fbc`), deployed on :8090; the author checked it on 2026-11-06 | A group under the station chart: „Dane” (daily values of a series of days, or annual maxima of complete hydrological years) and „Zmienna”, whatever chart is shown; the chart's range goes with its own kind only. |
@@ -49,7 +51,7 @@ Skipped adoption items, which need the author (DEV-3.3, ADOPTION_PLAN):
 | Item | Why |
 |---|---|
 | History rewrite (phase 1) | Archiwista needs only DEV-4.2: every commit is by `Daldek <git@debever.pl>` and has no AI trailer |
-| Rulesets for `main`, `develop` and `v*` tags, private vulnerability reporting, Dependabot security updates, `main` pushed and made the default branch (DEV-3.6, DEV-13.6, DEV-13.7, ECO-008) | GitHub settings. The required check is the one job `gate (ubuntu-latest, Python 3.12)` (CI runs on Linux only) |
+| Rulesets for `main`, `develop` and `v*` tags, private vulnerability reporting, Dependabot security updates, `main` made the default branch (DEV-3.6, DEV-13.6, DEV-13.7, ECO-008) | GitHub settings. `main` was pushed on 2026-11-10 at the root commit `5578983` (0.2.0 is not merged into it, the author's decision); the default branch is still `develop`. The required check is the one job `gate (ubuntu-latest, Python 3.12)` (CI runs on Linux only) |
 | `docs/CLA.md` text and signing mechanism | the author's legal text: it says "comment on the pull request", while DEV-16.5 says checkbox plus a line in `CONTRIBUTORS.md` in the same pull request |
 | `Approved:` lines of the executed plans v0.1 and v0.2 (DEV-17.4) | approval is the author's statement |
 | Tags, releases, replacing the producers' commit pins by tags, PyPI name `nogat-archiwista` (phases 5 and 6) | need the producers' tags and the author's approval |
@@ -96,6 +98,9 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
 10. Adopt the ecosystem's visual identity (Nogat `design/`, plan
    `docs/plans/2026-11-01-visual-identity.md` in Nogat) once the author approves it, by
    an Archiwista plan.
+11. AGI-4.1: a top-level `schema` (`archiwista-<kind>/1`) in every API response and
+   `--json` output, added with the catalog work (the author's decision of 2026-11-09);
+   until then the deviation of `CLAUDE.md` (AGI-3.2, AGI-4.1, AGI-4.2) stands.
 
 Known gaps:
 
@@ -108,7 +113,7 @@ Known gaps:
   („Wklej polecenie producenta”), which „Obszar polecenia” now runs on a project's area.
 - Plans show „rozmiar nieznany” until Kartograf KH (the size of a plan item).
 - The „pobrane” badge cannot match LAZ: Kartograf's LAZ sidecar records no survey work
-  (Open questions).
+  (request filed on 2026-11-10 as Kartograf `docs/PROGRESS.md` Next 30).
 - The white rectangle over the map that the author reported was not reproduced.
 - „Pokaż wynik na mapie” does not carry the Katalog's „Wariant” filter.
 - The project card follows a job it started or the one a `409` names, not a job of the
@@ -130,29 +135,13 @@ Known gaps:
 
 Decisions awaiting the author:
 
-- Kartograf's LAZ tile sidecar records no survey work (`extra` has `tile_sheet`, `year`,
-  `nominal_density`, `url`, no `campaign` or `source.survey_work_id`), while the
-  availability report names a LAZ combination's campaigns by `nr_zglosz`. A `request`
-  issue in Kartograf for `survey_work_id` in the LAZ sidecar is not filed (no `gh` on
-  this machine).
-- DEV-5.1 lets an `app` keep its layout: confirm the `src/` move of the ADOPTION_PLAN row.
-- AGI-6.2 names `/openapi.json`; Archiwista serves `/api/v1/openapi.json` behind the session
-  and names operations after route functions (no command catalog). Keep, or move?
-- AGI-4.1 asks a top-level `schema` in every machine-readable document; the API responses
-  and `--json` outputs have none. Add `archiwista-<kind>/1`, or leave it for the catalog work?
 - DEV §18 is profile `tool` only, but ECO-028 says all tools read `nogat.toml`
   (`lang`, `data_dir`, `cache_dir`). Should Archiwista, which uses its own `config.toml` and
   platform directories, read it too?
-- The command that marks a store (`kartograf store init --root <path>`) is the `hint` of
-  the job error, of the settings problem and of `archiwista doctor`; the status text kept
-  for the store (the banner) names the cause only. Should it carry the command too?
 - SPEC 13 v0.3 criterion 4 ("every action with the network or a write goes through the plan
   window"): the project card starts re-pin and restore at once, and the project's plan is
   its own action, "Sprawdź aktualizacje" (ADR-042 option I). Should a window built from
   that check stand before them as well (option H)?
-- `main` of this repository is not on GitHub: push and make it the default branch (ECO-008).
-- `feat/mockup` (pushed, six commits of 2026-10-17): the first clickable mockup, superseded
-  by `fb4268d` in `develop` (`mockup/`); its commits are in no other branch. Delete it?
 
 Open outside this repository:
 
@@ -168,4 +157,23 @@ Open outside this repository:
   products before v0.6, the ČHMÚ adapter) and the mockup questions M6 to M8 and M10
   (SPEC 16; the assistant proposal card for IMGW data is deferred after the MVP).
 - The mockup (`mockup/`) is a clickable prototype, not production code; its working data
-  directory is outside the repository and can be removed with the author's consent.
+  directory is outside the repository and stays: the author's consent of 2026-11-09 was
+  for the branch `feat/mockup` only.
+
+### Decided
+
+Author's decisions of 2026-11-09.
+
+- **Status text of a store without its marker.** It carries the command too: done on
+  2026-11-10 (`fix/no-marker-banner-command`; Status, CHANGELOG).
+- **`survey_work_id` in Kartograf's LAZ sidecar.** Filed the ecosystem way, as there is no
+  `gh` here: Kartograf `docs/PROGRESS.md` Next 30 (Kartograf `034023dc`, merged into its
+  `develop` as `2866fdcb` on 2026-11-10); Archiwista needs no change once it lands.
+- **DEV-5.1 layout.** Kept as it is (`src/archiwista`, A-ADR-030 item 2); nothing moves.
+- **AGI-6.2.** Kept: `/api/v1/openapi.json` behind the session, operations named after the
+  route functions (the deviation in `CLAUDE.md`).
+- **AGI-4.1 top-level `schema`.** Added with the catalog work later: planned work, Next 11.
+- **`main` on GitHub.** Pushed on 2026-11-10 (`5578983`, unchanged); making it the default
+  branch is the author's step on GitHub (Status, the adoption items above).
+- **`feat/mockup`.** Deleted from `origin` on 2026-11-10 (tip `e25e833`), superseded by
+  `fb4268d` in `develop` (`mockup/`).
