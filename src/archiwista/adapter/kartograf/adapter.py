@@ -164,9 +164,10 @@ class KartografAdapter:
             (missing, or no file yet: its first write marks it).
             ``incompatible`` with a ``reason`` when Kartograf's writer would not
             use it: ``no_marker`` (the layout of a store without its marker; the
-            hint is ``kartograf store init``), ``not_a_store`` (other files and
-            no layout, e.g. a file), ``foreign_store`` (it is, lies in or holds
-            another store, Kartograf's ``nested_store``) or
+            detail and the hint carry ``kartograf store init --root <path>``),
+            ``not_a_store`` (other files and no layout, e.g. a file),
+            ``foreign_store`` (it is, lies in or holds another store, Kartograf's
+            ``nested_store``) or
             ``unsupported_marker`` (a marker that is not ``kartograf-store/1``),
             the last two with Kartograf's own text. ``error`` when the directory
             cannot be listed (a detached share) or its marker cannot be read.
@@ -185,12 +186,13 @@ class KartografAdapter:
                 reason="foreign_store" if nested else "unsupported_marker",
             )
         if state == "layout":
+            path = shlex.quote(str(root))
             return self._state(
                 "incompatible",
                 root,
-                detail=message("source.no_marker", marker=_MARKER),
+                detail=message("source.no_marker", marker=_MARKER, path=path),
                 reason="no_marker",
-                hint=message("fix.store_init", path=shlex.quote(str(root))),
+                hint=message("fix.store_init", path=path),
             )
         if state == "foreign":
             detail = message("source.kartograf_not_store", marker=_MARKER)
