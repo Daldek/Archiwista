@@ -35,9 +35,11 @@
  * an administrator's (`project_write`); otherwise they are disabled with the
  * reason. The
  * project's „Weryfikuj” and „Sprawdź aktualizacje” and each group's „Sprawdź
- * aktualizacje”, „Przepnij” and „Przywróć brakujące” are its jobs
- * (views/project-jobs.js), each disabled with its reason; the card lists the
- * reasons in force once. Beside the
+ * aktualizacje” are its jobs (views/project-jobs.js); each group's „Przepnij”
+ * and „Przywróć brakujące” open the set's plan window (views/project-plan.js),
+ * which checks the set first and starts the job once its plan is confirmed.
+ * Each is disabled with its reason; the card lists the reasons in force once.
+ * Beside the
  * groups, „Dane własne” (SPEC 4.7.1): the project's data folder with its
  * state, files, sizes and problems, each file with its change since its last
  * snapshot leading to its card (views/own.js), „Odśwież” (an `own_scan` of
@@ -112,6 +114,7 @@ import {
 import { FieldNote, MAX_GROUP_NAME, pinRefusalField } from "./pin-dialog.js";
 import { ProjectActivity } from "./project-activity.js";
 import { ProjectExports } from "./project-exports.js";
+import { ProjectPlan } from "./project-plan.js";
 import {
   closeReasons,
   groupJobReason,
@@ -1120,11 +1123,15 @@ function SetState({ group }) {
 }
 
 /**
- * A set's jobs, „Zamknij zestaw” (`onCloseSet`, disabled with every reason
- * that holds, or while it closes) or „Otwórz do edycji” (`onReopen`), and
- * „Usuń zestaw” (`onRemove`); each null: not offered.
+ * A set's jobs — „Sprawdź aktualizacje” starts the check, „Przepnij” and
+ * „Przywróć brakujące” open the set's plan window (`ProjectPlan`) — „Zamknij
+ * zestaw” (`onCloseSet`, disabled with every reason that holds, or while it
+ * closes) or „Otwórz do edycji” (`onReopen`), and „Usuń zestaw” (`onRemove`);
+ * each null: not offered.
  */
 function GroupActions({ group, jobs, context, base, closing, onCloseSet, onReopen, onRemove }) {
+  // The plan window open: the kind it confirms, or null.
+  const [planning, setPlanning] = useState(null);
   const why = (kind) => groupJobReason(kind, group, context);
   const name = { group: group.name };
   return html`<div class="pc-actions pc-group-actions" role="group"
@@ -1134,10 +1141,10 @@ function GroupActions({ group, jobs, context, base, closing, onCloseSet, onReope
       onClick=${() => jobs.start("check", [group.name])} />
     <${JobButton} icon="pin" label=${JL.repin} ariaLabel=${t(JL.repin_label, name)}
       title=${JL.repin_title} why=${why("repin")} base=${base}
-      onClick=${() => jobs.start("repin", [group.name])} />
+      onClick=${() => setPlanning("repin")} />
     <${JobButton} icon="download" label=${JL.restore} ariaLabel=${t(JL.restore_label, name)}
       title=${JL.restore_title} why=${why("restore")} base=${base}
-      onClick=${() => jobs.start("restore", [group.name])} />
+      onClick=${() => setPlanning("restore")} />
     ${onCloseSet
       ? html`<${CloseButton} group=${group} reasons=${closeReasons(group, context)}
           busy=${closing} base=${base} onClick=${onCloseSet} />`
@@ -1151,6 +1158,10 @@ function GroupActions({ group, jobs, context, base, closing, onCloseSet, onReope
       ? html`<button type="button" class="btn ghost sm pc-group-remove"
           aria-label=${t(PIN.remove_group_label, name)} onClick=${onRemove}>
           <${Icon} name="trash" size=${13} />${PIN.remove_group}</button>`
+      : null}
+    ${planning
+      ? html`<${ProjectPlan} key=${planning} kind=${planning} group=${group} jobs=${jobs}
+          context=${context} onClose=${() => setPlanning(null)} />`
       : null}
   </div>`;
 }

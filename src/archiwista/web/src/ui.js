@@ -212,7 +212,7 @@ export function ProblemView({ problem, compact }) {
       ? html`<p class="problem-producer">${t(T.common.problem.producer, { package: producer[0] })}
           <code>${producer[1].message}</code></p>`
       : null}
-    ${details.job
+    ${details.job?.kind
       ? html`<p class="problem-job">${t(T.common.problem.running_job, {
           kind: T.common.job_kind[details.job.kind] ?? details.job.kind,
           state: T.common.job_state[details.job.state] ?? details.job.state,

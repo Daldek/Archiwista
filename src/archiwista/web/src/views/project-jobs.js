@@ -4,7 +4,10 @@
  * „Sprawdź aktualizacje”, „Przepnij” and „Przywróć brakujące” of each group,
  * all over `POST /projects/{project}/jobs` and one `useJob`: the server runs
  * one job of a project at a time and names a running one in its `409`, which
- * the card then follows.
+ * the card then follows. „Przepnij” and „Przywróć brakujące” start nothing at
+ * once: each opens the plan window of its set (views/project-plan.js; ADR-042
+ * erratum 2), which starts the set's check through this `useJob` and, once
+ * its plan is confirmed, the job with that check as its `plan_job`.
  *
  * Each action is disabled with the first reason that holds, in this order
  * (ADR-042 decision 4 as A-ADR-049 changes it): changing the project
@@ -89,8 +92,10 @@ const MARK_LEVEL = {
 
 /**
  * The jobs of a project's card: the followed job, `contextOf(card)` (the
- * state the reasons need), `start(kind, groups)`, the marks of the pins and
- * `reload()`, which reads the project's waiting and running jobs again.
+ * state the reasons need), `start(kind, groups, planJob)` (resolves to the
+ * started job, null when refused; `planJob`: the check whose plan a re-pin
+ * or a restore confirms), the marks of the pins and `reload()`, which reads
+ * the project's waiting and running jobs again.
  *
  * @param {string} project - Project id.
  * @param {() => void} onEnd - Called when a job ends (the card is read again).
@@ -117,8 +122,12 @@ export function useProjectJobs(project, onEnd) {
     active: active.data ?? [],
     busy,
   });
-  const start = (kind, groups = null) =>
-    job.run(() => startProjectJob(project, groups ? { kind, groups } : { kind }), KINDS[kind]);
+  const start = (kind, groups = null, planJob = null) => {
+    const body = { kind };
+    if (groups) body.groups = groups;
+    if (planJob) body.plan_job = planJob;
+    return job.run(() => startProjectJob(project, body), KINDS[kind]);
+  };
   return { job, busy, contextOf, start, marks: pinMarks(job), reload: active.reload };
 }
 
@@ -322,6 +331,11 @@ function pinMarks(job) {
   return { kind: job.kind, rows };
 }
 
+/** The badge level of what a job found at a pin (its `status`). */
+export function markLevel(status) {
+  return MARK_LEVEL[status] ?? "bad";
+}
+
 /**
  * What the last job of the project found at a pin, with the newer label, the
  * other version of the same content or the producer's reason.
@@ -345,7 +359,7 @@ export function PinMark({ marks, group, pin }) {
     if (row[name]) values.push([name, row[name]]);
   }
   return html`<span class="pc-pin-mark">
-    <${Badge} level=${MARK_LEVEL[row.status] ?? "bad"}>
+    <${Badge} level=${markLevel(row.status)}>
       <${Tech} value=${values}>${word}</${Tech}>
     </${Badge}>
     ${extra ? html`<span class="pc-pin-why">${extra}</span>` : null}

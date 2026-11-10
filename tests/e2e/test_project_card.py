@@ -8,8 +8,11 @@ re-pin and the restore are disabled with the offline reason; „Pokaż na
 mapie” opens the project's area. On the stand-in's store a project without
 sets (groups) cannot be verified, a derived file's pin shows the producer's reason
 (D5) and disables its set's jobs, a set with nothing missing cannot be
-restored, and the check of a set and its re-pin, once it is opened for
-editing („Otwórz do edycji”), mark its pins. The
+restored, and the check of a set marks its pins; once the set is opened for
+editing („Otwórz do edycji”), „Przepnij” opens its plan window, which checks
+the set and shows the newer year, and the re-pin confirmed there names that
+check (``plan_job``) and marks the pins; a plan confirmed after its set
+changed is refused on the card (``409 plan_mismatch``) and nothing re-pins. The
 computer's owner writes an export of a fixture project with „Eksportuj…” and
 finds its category folders and ``README.txt`` on the disk; once the project file
 changes, the list says „projekt zmieniony po eksporcie — wygeneruj ponownie”
@@ -45,6 +48,7 @@ from tests.e2e.test_acceptance_v03 import (
     FOLDER,
     call,
     card_group,
+    jobs_of,
     pin_files,
     pin_of,
     project_card,
@@ -430,7 +434,7 @@ def test_verify_runs_offline_and_marks_each_pin_while_network_jobs_say_why(
 def test_group_jobs_say_why_they_wait_check_and_repin_mark_the_pins(
     serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
 ) -> None:
-    """No sets; D5 at a derived pin; nothing missing; check; re-pin."""
+    """No sets; D5 at a derived pin; nothing missing; check; re-pin via its plan."""
     # Arrange: a station's two years and a derived file in the store.
     page = tab.page
     served, _, project = standin_project(
@@ -483,17 +487,79 @@ def test_group_jobs_say_why_they_wait_check_and_repin_mark_the_pins(
     expect(pin_of(local, "2024.csv")).to_contain_text("nowsza: 2024-12-31")
     shot(page, panel)
 
-    # Act: the set, closed when pinned, opened for editing and re-pinned.
+    # Act: the set, closed when pinned, opened for editing; „Przepnij” opens
+    # its plan window, which checks the set first.
     local.get_by_role("button", name=f"Otwórz do edycji zestaw {LOCAL}").click()
     page.get_by_role("dialog", name="Otwórz do edycji").get_by_role(
         "button", name="Otwórz do edycji"
     ).click()
     expect(local.locator(".pc-group-head")).to_contain_text("w budowie")
     local.get_by_role("button", name=f"Przepnij zestaw {LOCAL}").click()
+    dialog = page.get_by_role("dialog", name=f"Przepiąć zestaw „{LOCAL}”?")
 
-    # Assert: the newer year pinned, the other kept.
+    # Assert: the plan of the window's check: the newer year replaces its pin.
+    changes = dialog.get_by_role("list", name="Wersje, które przepięcie zmieni")
+    expect(changes.get_by_role("listitem")).to_have_count(1)
+    expect(changes).to_contain_text("2024.csv")
+    expect(changes).to_contain_text("2024-06-30 → 2024-12-31")
+
+    # Act: confirm the plan.
+    dialog.get_by_role("button", name="Przepnij", exact=True).click()
+
+    # Assert: the newer year pinned, the other kept; the re-pin confirmed the
+    # window's check, the newer of the project's two.
+    expect(dialog).to_have_count(0)
     expect(status).to_contain_text(
         f"Zestaw „{LOCAL}” przepięty: bez zmian 1, nowe 1, odpięte 0."
     )
     expect(pin_of(local, "2024.csv")).to_contain_text("2024-12-31")
+    planned, _ = jobs_of(page, "project_check")
+    (repin,) = jobs_of(page, "project_repin")
+    assert planned["params"]["groups"] == [LOCAL]
+    assert repin["params"]["plan_job"] == planned["id"]
+    tab.assert_clean()
+
+
+def test_a_plan_of_a_set_changed_since_its_check_is_refused_on_the_card(
+    serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """A year unpinned behind the plan window: the card shows why; no re-pin runs."""
+    # Arrange: an open set of the station's two years, planned in its window.
+    page = tab.page
+    served, _, project = standin_project(
+        serve,
+        tmp_path,
+        page,
+        {
+            f"{FOLDER}/2023.csv": station_line("2023.csv", "2023-12-31"),
+            f"{FOLDER}/2024.csv": station_line("2024.csv", "2024-06-30"),
+        },
+    )
+    pin_files(page, project, LOCAL, f"{FOLDER}/2023.csv", f"{FOLDER}/2024.csv")
+    reopened = call(page, "POST", f"/projects/{project}/groups/{LOCAL}/reopen")
+    assert reopened["status"] == 200, reopened
+    panel = project_card(page, served, project)
+    local = card_group(panel, LOCAL)
+    local.get_by_role("button", name=f"Przepnij zestaw {LOCAL}").click()
+    dialog = page.get_by_role("dialog", name=f"Przepiąć zestaw „{LOCAL}”?")
+    confirm = dialog.get_by_role("button", name="Przepnij", exact=True)
+    expect(confirm).to_be_enabled()
+
+    # Act: a year is unpinned elsewhere, then the plan is confirmed.
+    unpinned = call(
+        page,
+        "POST",
+        f"/projects/{project}/groups/{LOCAL}/unpin",
+        {"pins": [{"producer": "standin", "version": f"{FOLDER}/2023.csv"}]},
+    )
+    assert unpinned["status"] == 200, unpinned
+    confirm.click()
+
+    # Assert: the refusal names the changed set; the card keeps the check's
+    # summary (it follows no job the refusal does not name); nothing re-pinned.
+    status = panel.locator(".job-status")
+    expect(status).to_contain_text(f"Zestaw „{LOCAL}” zmienił się po sprawdzeniu")
+    expect(status).to_contain_text("Wersje: 2 — aktualna 1, jest nowsza 1.")
+    expect(status).not_to_contain_text("undefined")
+    assert jobs_of(page, "project_repin") == []
     tab.assert_clean()

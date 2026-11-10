@@ -315,9 +315,10 @@ export function distinctNotices(notices) {
  * Start a background job and follow its events (SSE, `watchJob`).
  *
  * `run(start, kind)` calls `start()`, an `api.js` POST answering
- * `JobDetail`; a `409 conflict` naming the running job (`details.job`) follows that job
- * instead, and any problem stays in `problem`. `follow(id, kind)` follows a
- * job started elsewhere (e.g. the scheduler's scan from `/health`).
+ * `JobDetail`, and resolves to that job; a refusal resolves to null and
+ * stays in `problem`, and a `409 conflict` naming the running job
+ * (`details.job` with its `id`) follows that job instead. `follow(id, kind)`
+ * follows a job started elsewhere (e.g. the scheduler's scan from `/health`).
  *
  * @param {{onEnd?: (state: {state: string, result?: Object<string, *>,
  *   error?: import("../types.js").JobFailure}) => void}} [options] - Called
@@ -326,7 +327,8 @@ export function distinctNotices(notices) {
  *   problem: import("../types.js").Problem|null, starting: boolean,
  *   running: boolean,
  *   run: (start: () => Promise<import("../types.js").JobDetail>, kind: string)
- *   => Promise<void>, follow: (id: string, kind: string) => void}}
+ *   => Promise<import("../types.js").JobDetail|null>,
+ *   follow: (id: string, kind: string) => void}}
  */
 export function useJob({ onEnd } = {}) {
   const [followed, setFollowed] = useState({ id: null, kind: null });
@@ -365,11 +367,14 @@ export function useJob({ onEnd } = {}) {
     try {
       const job = await start();
       follow(job.id, job.kind ?? kind);
+      return job;
     } catch (error) {
       if (!error.problem) throw error;
       setProblem(error.problem);
+      // A running job is named with its id; a `plan_mismatch` names only the plan's id.
       const running = error.problem.details?.job;
-      if (running) follow(running.id, running.kind);
+      if (running?.id) follow(running.id, running.kind);
+      return null;
     } finally {
       setStarting(false);
     }
@@ -405,9 +410,6 @@ function JobEventsView({ events, summary, kind }) {
   const progress = events.progress;
   const known = progress && progress.total > 0;
   const failure = events.error;
-  const reason = failure?.details?.reason;
-  const technical = failure ? [[T.common.technical.code, failure.code]] : [];
-  if (reason) technical.push([T.common.technical.reason, reason]);
   return html`<div class=${`job ${events.state}`} aria-live="polite">
     <div class="job-head">
       ${final
@@ -433,19 +435,32 @@ function JobEventsView({ events, summary, kind }) {
         </div>`
       : null}
     ${SUMMARY_STATES.has(events.state) ? summary(events) : null}
-    ${events.error
-      ? html`<p class="job-error">
-          <${Tech} value=${technical}>${t(L.job.failed, {
-            state: T.common.job_state[events.state] ?? events.state,
-            detail: events.error.detail,
-          })}</${Tech}>
-        </p>`
-      : null}
-    ${failure?.hint && !failure.detail.includes(failure.hint)
-      ? html`<p class="job-hint">${failure.hint}</p>`
-      : null}
+    ${failure ? html`<${JobFailure} state=${events.state} failure=${failure} />` : null}
     ${events.stream && !final ? html`<${ProblemView} problem=${events.stream} compact />` : null}
   </div>`;
+}
+
+/**
+ * Why a job ended without its summary, as the job status says it: the job's
+ * Polish detail with its code and reason one click away, then its hint unless
+ * the detail already says it.
+ *
+ * @param {{state: string, failure: import("../types.js").JobFailure}} props -
+ *   `state`: the job's final state.
+ */
+export function JobFailure({ state, failure }) {
+  const technical = [[T.common.technical.code, failure.code]];
+  const reason = failure.details?.reason;
+  if (reason) technical.push([T.common.technical.reason, reason]);
+  return html`<p class="job-error">
+      <${Tech} value=${technical}>${t(L.job.failed, {
+        state: T.common.job_state[state] ?? state,
+        detail: failure.detail,
+      })}</${Tech}>
+    </p>
+    ${failure.hint && !failure.detail.includes(failure.hint)
+      ? html`<p class="job-hint">${failure.hint}</p>`
+      : null}`;
 }
 
 function progressText(progress) {

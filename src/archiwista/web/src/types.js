@@ -1593,6 +1593,10 @@
  * @property {"verify"|"check"|"repin"|"restore"} kind
  * @property {string[]} [groups] - Only these groups; left out: every group (a re-pin
  *   names exactly one).
+ * @property {string} [plan_job] - `repin` and `restore` only: the `project_check` job
+ *   whose plan the person confirmed (the card's plan window, ADR-042 erratum 2): a
+ *   check of this project and of every group named that ended with its plan, the
+ *   groups' pins unchanged since; the worker plans again.
  */
 
 /**
@@ -1789,7 +1793,8 @@
  *   `options`, in their order; all the lines of a row, ADR-044) of a plan (`check`),
  *   those and `plan_job` of a `download`, `store`, `product`, `segment`, `project`,
  *   `area_id` and `since` (null: not given) of a `preview_warm`, `project` and
- *   `groups` (null: every group) of the `project_*` kinds.
+ *   `groups` (null: every group) of the `project_*` kinds, and `plan_job` (null: not
+ *   given) of a `project_repin` and a `project_restore`.
  * @property {string} created_at
  * @property {string|null} started_at
  * @property {string|null} finished_at
