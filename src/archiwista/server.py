@@ -573,6 +573,7 @@ def serve_main(
                 jobs=jobs,
                 previews=previews,
                 on_redeem=redeemed,
+                cache_home=paths.cache_home,
             )
             if origin is None:
                 issued = issue_one_time_token(

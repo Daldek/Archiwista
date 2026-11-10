@@ -1,8 +1,11 @@
 """Command-line entry point for Archiwista.
 
 The text for a person (help, usage errors, the output of a command and the
-line before an error document) is Polish; ``--json`` output and the error
-document on the last line of standard error are English (AGI-9.2).
+line before an error document) is in ``lang`` of ``nogat.toml``, Polish by
+default (A-ADR-053); ``--json`` output and the error document on the last line
+of standard error are English (AGI-9.2). ``nogat.toml`` also gives the data
+directory and the caches (``AppPaths.default``): every command but
+``archiwista doctor``, which reports it, refuses a file that cannot be used.
 """
 
 import argparse
@@ -31,7 +34,7 @@ from archiwista.commands import (
 )
 from archiwista.config import AppPaths
 from archiwista.doctor import doctor_main
-from archiwista.error_document import Problem, refuse
+from archiwista.error_document import Problem, person_language, refuse
 from archiwista.jobs.reindex import reindex_main
 from archiwista.logs import (
     ENV_LOG_LEVEL,
@@ -40,10 +43,11 @@ from archiwista.logs import (
     configure_logging,
     resolve_log_level,
 )
-from archiwista.messages import language, message
+from archiwista.messages import Message, language, message
 from archiwista.reader import READ_COMMANDS, add_read_commands, read_main
 from archiwista.security import LOOPBACK_HOST
 from archiwista.server import open_in_browser, serve_main, token_main
+from archiwista.shared_settings import CONFIG_ENV, SharedSettings
 from archiwista.sources.registry import PluginRegistry, load_registry
 
 # Modules of commands per function (contract "CLI"): one line each.
@@ -118,8 +122,8 @@ def main(
         Producer plugins; loaded from the ``archiwista.sources`` entry
         points when omitted.
     paths : AppPaths or None, optional
-        Configuration and local data locations; per-user platform
-        directories when omitted.
+        Configuration and local data locations; when omitted, the directories
+        of ``nogat.toml``, else the per-user platform ones (``AppPaths.default``).
 
     Returns
     -------
@@ -129,15 +133,19 @@ def main(
     if os.name == "posix":
         # Local data (index, state, logs, area copies) is the user's alone.
         os.umask(0o077)
-    with language("pl"):  # the help and the usage errors are for a person
+    shared = SharedSettings.read()
+    person = shared.language
+    # The help and the usage errors are for a person.
+    with person_language(person), language(person):
         parser = _parser()
         args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
         return 0
     # The model of a command is printed as JSON under --json: machine output.
-    with language("en" if getattr(args, "json", False) else "pl"):
-        return _run(parser, args, registry, paths)
+    output = "en" if getattr(args, "json", False) else person
+    with person_language(person), language(output):
+        return _run(parser, args, registry, paths, shared)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -206,6 +214,7 @@ def _run(
     args: argparse.Namespace,
     registry: PluginRegistry | None,
     paths: AppPaths | None,
+    shared: SharedSettings,
 ) -> int:
     """Run the parsed command and return its exit status."""
     # Given before and after the command, the options contradict each other.
@@ -217,9 +226,11 @@ def _run(
     except InvalidLogLevelError as error:
         return refuse(_invalid_log_level(error), sys.stderr)
     configure_logging(level)
-    paths = paths or AppPaths.default()
+    if shared.problem is not None and args.command != "doctor":
+        return refuse(_unusable_shared_settings(shared, shared.problem), sys.stderr)
+    paths = paths or AppPaths.default(shared)
     try:
-        return _dispatch(args, paths, registry, level)
+        return _dispatch(args, paths, registry, level, shared)
     except Exception:
         # A defect: the traceback for the maintainer, the document for agents.
         traceback.print_exc()
@@ -244,11 +255,21 @@ def _invalid_log_level(error: InvalidLogLevelError) -> Problem:
     return Problem("validation_error", text, message("cli.log_level_hint"), details)
 
 
+def _unusable_shared_settings(shared: SharedSettings, problem: Message) -> Problem:
+    """Return the refusal of a ``nogat.toml`` that cannot be used (A-ADR-053)."""
+    details: dict[str, object] = {"reason": "shared_settings", "path": str(shared.path)}
+    if shared.named:
+        details["option"] = CONFIG_ENV
+    hint = message("fix.shared_settings", path=shared.path, variable=CONFIG_ENV)
+    return Problem("validation_error", problem, hint, details)
+
+
 def _dispatch(
     args: argparse.Namespace,
     paths: AppPaths,
     registry: PluginRegistry | None,
     log_level: str,
+    shared: SharedSettings,
 ) -> int:
     """Run the command ``args`` names and return its exit status."""
     if args.command in ADMIN_COMMANDS:
@@ -284,7 +305,7 @@ def _dispatch(
     for module in COMMAND_MODULES:
         if args.command in module.COMMANDS:
             return module.main(args, paths, registry, sys.stdout, sys.stderr)
-    return doctor_main(paths, registry, sys.stdout)
+    return doctor_main(paths, registry, sys.stdout, shared=shared)
 
 
 def _port_type(minimum: int) -> Callable[[str], int]:

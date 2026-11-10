@@ -418,8 +418,13 @@ the source. `consistent_sqlite_read` handles three WAL/journal states.
 
 ## 4. Local data
 
-The local location is determined by `AppPaths.default()` through `platformdirs` (Linux:
-`~/.config/archiwista/` and `~/.local/share/archiwista/`). Apart from these,
+The local location is determined by `AppPaths.default()`: the configuration file in the
+user configuration directory of `archiwista` (`platformdirs`; Linux `~/.config/archiwista/`),
+the data in `<data_dir>/archiwista/` and the caches (`cache/`, `previews/`) in
+`<cache_dir>/archiwista/` when `nogat.toml` names those keys, else both in the user data
+directory (Linux `~/.local/share/archiwista/`; `archiwista.shared_settings`, A-ADR-053).
+A project's data folder may overlap none of these directories (`AppPaths.own_dirs`), and a
+job knows them from its index and its preview cache (`JobSpec.app_paths`). Apart from these,
 Archiwista writes **only** snapshots, the project file `archiwista-project.json`
 and its area files in the project directory, on the command of a person with
 `project.write` (A-ADR-049); the store remains unchanged.
@@ -429,11 +434,11 @@ and its area files in the project directory, on the command of a person with
 | `config_file` = `config.toml` | `AppSettings`: port, offline mode, store and project directories, `own_data_dirs` (an exception to `<project directory>/dane/`), `preview_cache_limit_gb` (20), `basemaps` (OpenFreeMap vector and OSM GUGiK by default) and permissions; a retired `year_types` is ignored | no (wizard or Settings) | `SettingsService.update` → `ConfigStore.save` |
 | `index_file` = `index.sqlite` (+ `-wal`, `-shm`) | index of stores, projects, own files, snapshots and areas, job history, token hashes | yes, schema 6 rebuilt with a full scan | `IndexWriter`, `JobSupervisor`, `security.py` |
 | `state_file` = `state.sqlite` | accounts, groups, roles, project access, passwords, each person's preferences, the action log | **no** — backup with `archiwista state export` | `StateStore` |
-| `cache_dir` = `cache/<producer>/` | plugin cache (`SourceContext.cache_dir`); Kartograf: `unit_bboxes.sqlite` (`UnitBBoxCache`) | yes, from the network | adapter |
+| `cache_dir` = `cache/<producer>/` (beside `previews/`, in `cache_home` when set) | plugin cache (`SourceContext.cache_dir`); Kartograf: `unit_bboxes.sqlite` (`UnitBBoxCache`) | yes, from the network | adapter |
 | `jobs_dir` = `jobs/` | `<id>.log` (stderr of the worker process), `owner-<pid>.lock` (job supervisor lock), `<id>.cancel` (a cancel request for the job's supervisor, ADR-038) | logs not needed for operation | `JobSupervisor`, worker processes |
 | `areas_dir` = `areas/` | `<id>/area.*` (copy of the area file), `.incoming/<random>/` (file being read) | load the file again | `AreaFiles` |
 | `open-<random>.html` in the data directory | start page with the token address for the browser (`LaunchFile`, `0600` file) | — | `serve_main`; disappears after the token is used, after 10 min and on shutdown |
-| `previews_dir` = `previews/` | `cache.sqlite`, `objects/<key>/<renderer>-r<version>/`: detection, thumbnails, tiles, COG, copies for consistent SQLite reads; local LRU | yes | `PreviewCache`, `RenderPool`, `preview` job |
+| `previews_dir` = `previews/` (in `cache_home` when set) | `cache.sqlite`, `objects/<key>/<renderer>-r<version>/`: detection, thumbnails, tiles, COG, copies for consistent SQLite reads; local LRU | yes | `PreviewCache`, `RenderPool`, `preview` job |
 | `work_dir` = `work/` | private working directories of processes; cleaned up after shutdown or a crash | yes | `sandbox.process_work_dir`, readers and renderers |
 | `<data folder>/.wersje/` (outside `AppPaths`) | full snapshots of files, `migawka.json` with `archiwista-snapshot/1` | **no** — moves with the project | `make_snapshot`, only on the command of an authorized person |
 

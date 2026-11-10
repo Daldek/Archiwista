@@ -177,3 +177,63 @@ def test_cli_refuses_verbose_and_quiet_together_in_any_place(
     document = refusal(captured.out, captured.err, 2)
     assert document["code"] == "validation_error"
     assert document["details"] == {"reason": "usage"}
+
+
+def test_cli_refuses_an_unusable_nogat_toml_that_only_doctor_reports(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken shared file must not start Archiwista on another data directory."""
+    # Arrange
+    settings = tmp_path / "nogat.toml"
+    settings.write_text("[nogat\n", encoding="utf-8")
+    monkeypatch.setenv("NOGAT_CONFIG", str(settings))
+    paths = local_paths(tmp_path)
+
+    # Act
+    status = main(["sources"], registry=NoSources(), paths=paths)
+    refused = capsys.readouterr()
+    doctor = main(["doctor"], registry=NoSources(), paths=paths)
+    report = capsys.readouterr().out
+
+    # Assert
+    document = refusal(refused.out, refused.err, status)
+    assert document["code"] == "validation_error"
+    assert document["details"] == {
+        "reason": "shared_settings",
+        "path": str(settings),
+        "option": "NOGAT_CONFIG",
+    }
+    assert refused.err.startswith(f"Plik ustawień narzędzi Nogat {settings} nie jest")
+    assert doctor == 10
+    assert f"[BŁĄD] Plik ustawień narzędzi Nogat {settings} nie jest" in report
+    assert "do tego czasu każde polecenie poza archiwista doctor odmawia" in report
+    assert not paths.data_dir.exists()
+
+
+def test_cli_speaks_to_a_person_in_the_language_of_nogat_toml(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``lang = "en"`` turns the help and the line of a refusal into English."""
+    # Arrange
+    settings = tmp_path / "nogat.toml"
+    settings.write_text('[nogat]\nlang = "en"\n', encoding="utf-8")
+    monkeypatch.setenv("NOGAT_CONFIG", str(settings))
+    monkeypatch.setenv(ENV_LOG_LEVEL, "loud")
+
+    # Act
+    with pytest.raises(SystemExit):
+        main(["--help"])
+    helped = capsys.readouterr().out
+    status = main(["sources"], registry=NoSources(), paths=local_paths(tmp_path))
+    refused = capsys.readouterr()
+
+    # Assert
+    assert "Archiwista — a browser for a local data store." in helped
+    refusal(refused.out, refused.err, status)
+    assert refused.err.startswith(
+        f'The variable {ENV_LOG_LEVEL} has the value "loud", which is not a log level'
+    )

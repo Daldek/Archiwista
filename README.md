@@ -30,7 +30,7 @@ uv run archiwista doctor              # checks the installation
 uv run archiwista serve               # starts the server and opens the browser
 ```
 
-`archiwista doctor` checks the settings file, the Kartograf plugin (version and the schemas `kartograf-meta/1` and `kartograf-store/1`), every store and project directory, the local data directory (write access, access of other accounts) and the free port. Every problem has a line telling how to fix it, for example the command that installs a missing package.
+`archiwista doctor` checks the settings file, `nogat.toml` (below), the Kartograf plugin (version and the schemas `kartograf-meta/1` and `kartograf-store/1`), every store and project directory, the local data directory (write access, access of other accounts) and the free port, and names where the data directory, the caches and the language of the command line come from. Every problem has a line telling how to fix it, for example the command that installs a missing package.
 
 The server listens on `127.0.0.1` only (port 8090, the setting `port`; `--port N` changes it for one run, `--port 0` picks a free one). It prints a one-time address `http://127.0.0.1:8090/#token=…` (valid for 10 minutes, works once) and opens it in the browser; `--no-browser` only prints it. On the first run a wizard asks for the Kartograf store root (the directory that holds `kartograf-store.json` and the product directories, usually called `data/`), optionally the project directories and the offline mode; after saving, the server indexes the store in the background and a bar above the views shows the progress. `Ctrl+C` stops the server. A browser session ends after 24 hours without use and with the server; `archiwista token` issues a new address. The views are described in [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md); "Instrukcja" in the top bar opens a short guide in Polish with pictures, `/instrukcja` of the running server, which needs no session.
 
@@ -47,11 +47,21 @@ Archiwista itself writes nothing in a store: from v0.3 a download goes through t
 | settings `config.toml` | `~/.config/archiwista/` | the wizard or the "Ustawienia" (Settings) view |
 | index `index.sqlite` | `~/.local/share/archiwista/` | yes: `archiwista reindex` |
 | state database `state.sqlite`: accounts and their password hashes, groups, project sharing, preferences, the action log, the feedback reports | `~/.local/share/archiwista/` | **no**: back up with `archiwista state export` (a secret, mode `0600`), restore with `state import`; the feedback reports are not in that export: copy the file with `sqlite3 ~/.local/share/archiwista/state.sqlite ".backup '<backup-dir>/state.sqlite'"` (a secret too: it holds the password hashes) |
-| `cache/`: unit boundaries (TERYT, KU) fetched by the plugin | `~/.local/share/archiwista/` | yes, from the network |
+| `cache/`: unit boundaries (TERYT, KU) fetched by the plugin | `~/.local/share/archiwista/`, or `<cache_dir>/archiwista/` | yes, from the network |
 | `jobs/`: logs of background jobs (90 days, 1 GB at most) | `~/.local/share/archiwista/` | not needed for work |
 | `areas/`: copies of the area files that were loaded | `~/.local/share/archiwista/` | load the file again |
-| `previews/`: thumbnails, tiles, local COGs and the LRU account `cache.sqlite` | `~/.local/share/archiwista/` | yes, a content-addressed cache, 20 GB by default |
+| `previews/`: thumbnails, tiles, local COGs and the LRU account `cache.sqlite` | `~/.local/share/archiwista/`, or `<cache_dir>/archiwista/` | yes, a content-addressed cache, 20 GB by default |
 | `<data folder>/.wersje/`: consistent snapshots with `migawka.json` | the project directory the user chose | **no**: copy with the project |
+
+**`nogat.toml`.** Archiwista reads three keys of the settings file the Nogat tools share (the path in `NOGAT_CONFIG`, else `~/.config/nogat/nogat.toml`; A-ADR-053), each from the table `[archiwista]` before `[nogat]`. A value comes from the first of: Archiwista's own setting, `nogat.toml`, the built-in default (the directories of the table above, Polish).
+
+| Key | What it changes |
+|---|---|
+| `data_dir` | the data of the table above (all but `config.toml`) lie in `<data_dir>/archiwista/`, as each tool keeps its data in `<data_dir>/<tool>`; the producers' default store roots `<data_dir>/kartograf` and `<data_dir>/obserwator`, which the wizard offers, come from the same file |
+| `cache_dir` | `cache/` and `previews/` lie in `<cache_dir>/archiwista/`; no project's data folder may overlap them |
+| `lang` | `pl` or `en`: the text for a person on the command line (help, a command's output, the line before an error document); `--json` output stays English and the API follows each request's `Accept-Language` |
+
+A path is absolute after `~` is expanded. The `NOGAT_<KEY>` variables are not read: the data directory holds the state database, which cannot be rebuilt. Without the file nothing moves. A file Archiwista cannot use (not TOML, a key with a value that is not valid, a file `NOGAT_CONFIG` names that does not exist) stops every command but `archiwista doctor`, which reports it. Setting `data_dir` later starts Archiwista on an empty directory: move the files of the old one there first, while the server is stopped.
 
 The local data directory has mode `0700` and the `archiwista` commands run with `umask 077`: other accounts of the computer cannot read the index or the state database.
 

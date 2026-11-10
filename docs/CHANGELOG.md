@@ -9,6 +9,24 @@ command-line interface may change.
 
 ### Added
 
+- Archiwista reads `nogat.toml`, the settings file the Nogat tools share (A-ADR-053; the
+  author's decision of 2026-11-09): the path in `NOGAT_CONFIG`, else
+  `~/.config/nogat/nogat.toml`, each key from `[archiwista]` before `[nogat]`. A value
+  comes from the first of: Archiwista's own setting, `nogat.toml`, the built-in default.
+  `data_dir` puts the index, the state database, `jobs/`, `areas/` and `work/` in
+  `<data_dir>/archiwista/`, as every tool keeps its data in `<data_dir>/<tool>`;
+  `cache_dir` puts `cache/` and `previews/` in `<cache_dir>/archiwista/`, and no project's
+  data folder may overlap them; `lang` (`pl` or `en`) is the language of the text for a
+  person on the command line (help, a command's output, the line before an error
+  document), Polish by default, while `--json` stays English and the API follows
+  `Accept-Language`. `config.toml` stays in `~/.config/archiwista/`, and the
+  `NOGAT_<KEY>` variables are not read. Without the file, or without these keys, nothing
+  moves. A file Archiwista cannot use (not TOML, a table that is not one, a relative
+  directory, a `lang` other than `pl` or `en`, a file `NOGAT_CONFIG` names that does not
+  exist) stops every command but `archiwista doctor` with `validation_error` (reason
+  `shared_settings`); `archiwista doctor` names the file and where the data directory,
+  the caches and the language come from.
+
 - A station's series handed to Hydrolog (A-ADR-052; Nogat plan
   `2026-11-05-archiwista-series-to-hydrolog`): „Do Hydrologa” under the chart of the
   station card chooses the data („wartości dobowe” of a series of days, or „maksima

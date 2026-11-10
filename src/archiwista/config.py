@@ -28,6 +28,7 @@ from pydantic import (
 
 from archiwista.errors import ArchiwistaError
 from archiwista.messages import join, message, with_detail
+from archiwista.shared_settings import SharedSettings
 from archiwista.sources import SourceState
 from archiwista.sources.markers import store_around, store_below
 
@@ -116,8 +117,9 @@ class SourceRegistryView(Protocol):
 class AppPaths:
     """Locate the configuration file and local application data.
 
-    The data directory holds the rebuildable index, caches, job logs and
-    areas, and the state database, which cannot be rebuilt (A-ADR-029).
+    The data directory holds the rebuildable index, job logs and areas, and
+    the state database, which cannot be rebuilt (A-ADR-029); the caches lie in
+    it too unless ``nogat.toml`` names a ``cache_dir`` (A-ADR-053).
 
     Parameters
     ----------
@@ -125,18 +127,47 @@ class AppPaths:
         TOML settings file in the user configuration directory.
     data_dir : Path
         Local user data directory holding the index, the state database,
-        caches, jobs, and areas.
+        jobs, and areas.
+    cache_home : Path or None, optional
+        Directory of the caches (``<cache_dir>/archiwista`` of ``nogat.toml``);
+        ``None`` keeps them in ``data_dir``.
     """
 
     config_file: Path
     data_dir: Path
+    cache_home: Path | None = None
 
     @classmethod
-    def default(cls) -> Self:
-        """Return the per-user platform locations."""
+    def default(cls, shared: SharedSettings | None = None) -> Self:
+        """Return the locations ``nogat.toml`` gives, else the per-user platform ones.
+
+        Parameters
+        ----------
+        shared : SharedSettings or None, optional
+            ``nogat.toml`` as read; read now when omitted. Its ``data_dir`` puts
+            the data in ``<data_dir>/archiwista`` and its ``cache_dir`` the
+            caches in ``<cache_dir>/archiwista`` (A-ADR-053); a file that cannot
+            be used gives no value.
+
+        Returns
+        -------
+        AppPaths
+            The settings file in the user configuration directory of
+            ``archiwista``, the data directory and the directory of the caches.
+        """
+        shared = SharedSettings.read() if shared is None else shared
         config_dir = platformdirs.user_config_path(APP_NAME, appauthor=False)
-        data_dir = platformdirs.user_data_path(APP_NAME, appauthor=False)
-        return cls(config_file=config_dir / CONFIG_FILE_NAME, data_dir=data_dir)
+        data = shared.value("data_dir")
+        cache = shared.value("cache_dir")
+        return cls(
+            config_file=config_dir / CONFIG_FILE_NAME,
+            data_dir=(
+                platformdirs.user_data_path(APP_NAME, appauthor=False)
+                if data is None
+                else Path(data.value) / APP_NAME
+            ),
+            cache_home=None if cache is None else Path(cache.value) / APP_NAME,
+        )
 
     @property
     def index_file(self) -> Path:
@@ -149,9 +180,14 @@ class AppPaths:
         return self.data_dir / "state.sqlite"
 
     @property
+    def caches(self) -> Path:
+        """Directory of the caches: ``cache_home``, else the data directory."""
+        return self.data_dir if self.cache_home is None else self.cache_home
+
+    @property
     def cache_dir(self) -> Path:
         """Local caches, one subdirectory per producer."""
-        return self.data_dir / "cache"
+        return self.caches / "cache"
 
     @property
     def jobs_dir(self) -> Path:
@@ -171,7 +207,17 @@ class AppPaths:
     @property
     def previews_dir(self) -> Path:
         """Preview cache: objects by content and their LRU accounting."""
-        return self.data_dir / "previews"
+        return self.caches / "previews"
+
+    @property
+    def own_dirs(self) -> tuple[Path, ...]:
+        """Archiwista's own directories, which no project's data folder may overlap.
+
+        The data directory, the producers' caches and the preview cache: the
+        caches lie apart from the data when ``nogat.toml`` names a
+        ``cache_dir`` (``own_folder_conflict``).
+        """
+        return (self.data_dir, self.cache_dir, self.previews_dir)
 
     def source_cache_dir(self, producer: str) -> Path:
         """Return the local cache directory owned by one producer plugin."""
@@ -1039,7 +1085,7 @@ def check_own_data_dirs(
             if key != project
         ]
         conflict = own_folder_conflict(
-            Path(folder), stores=stores, app_data=None, others=others
+            Path(folder), stores=stores, app_data=(), others=others
         )
         if conflict is not None:
             reason, directory = conflict
@@ -1055,7 +1101,7 @@ def own_folder_conflict(
     folder: Path,
     *,
     stores: Iterable[Path],
-    app_data: Path | None,
+    app_data: Iterable[Path],
     others: Iterable[Path],
 ) -> tuple[OwnFolderReason, Path] | None:
     """Return why a data folder may not be used, or ``None`` (decision 8).
@@ -1073,9 +1119,10 @@ def own_folder_conflict(
     stores : Iterable[Path]
         Producer directories of the stores: the folder must not be one of
         them or lie inside one.
-    app_data : Path or None
-        Archiwista's data directory (``AppPaths.data_dir``): the folder must
-        neither contain it nor lie in it.
+    app_data : Iterable[Path]
+        Archiwista's own directories (``AppPaths.own_dirs``: the data
+        directory and the caches): the folder must neither contain one of
+        them nor lie in one.
     others : Iterable[Path]
         Data folders of the other projects: the folder must neither contain
         one of them nor lie in one.
@@ -1090,8 +1137,9 @@ def own_folder_conflict(
     for store in stores:
         if real.is_relative_to(os.path.realpath(store)):
             return "inside_store", store
-    if app_data is not None and _overlap(real, Path(os.path.realpath(app_data))):
-        return "inside_app_data", app_data
+    for own in app_data:
+        if _overlap(real, Path(os.path.realpath(own))):
+            return "inside_app_data", own
     for other in others:
         if _overlap(real, Path(os.path.realpath(other))):
             return "overlaps_project", other

@@ -148,3 +148,33 @@ def test_doctor_cli_reports_team_mode_without_tls_as_an_error(tmp_path: Path) ->
         result.stdout
     )
     assert not (tmp_path / "data").exists()
+
+
+def test_doctor_cli_keeps_the_data_where_nogat_toml_puts_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``data_dir`` of the shared file in the user configuration directory wins."""
+    # Arrange
+    shared = tmp_path / "nogat-data"
+    settings = tmp_path / "config" / "nogat" / "nogat.toml"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(f'[nogat]\ndata_dir = "{shared}"\n', encoding="utf-8")
+    monkeypatch.delenv("NOGAT_CONFIG")
+
+    # Act
+    doctor = _doctor(tmp_path)
+    token = _archiwista(tmp_path, "token", "--port", "8090")
+
+    # Assert
+    assert doctor.returncode == 0, doctor.stdout + doctor.stderr
+    assert (
+        f"[OK] Ustawienia narzędzi Nogat: {settings}"
+        " (katalog konfiguracji użytkownika; odczytany)"
+    ) in doctor.stdout
+    assert (
+        f"[OK] Dane lokalne (indeks, stan, zadania): {shared / 'archiwista'}"
+        " ([nogat] data_dir w pliku nogat.toml)"
+    ) in doctor.stdout
+    assert token.returncode == 0, token.stdout + token.stderr
+    assert (shared / "archiwista" / "index.sqlite").is_file()
+    assert not (tmp_path / "data").exists()

@@ -12,6 +12,7 @@ import pytest
 from archiwista.cli import main
 from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig
 from archiwista.doctor import is_port_available, run_doctor
+from archiwista.shared_settings import SharedSettings
 from archiwista.sources import DefaultRoot, SourceAdapter, SourceState
 from archiwista.sources.registry import install_requirement, source_error
 
@@ -421,3 +422,46 @@ def test_doctor_shows_no_default_root_of_a_plugin_that_is_not_available(
     # Assert
     assert status == 10
     assert "domyślny katalog główny" not in out
+
+
+def test_doctor_names_nogat_toml_and_where_each_value_comes_from(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The shared file; the data, the caches and the language with their sources."""
+    # Arrange
+    settings = tmp_path / "nogat.toml"
+    shared_data = tmp_path / "shared-data"
+    settings.write_text(
+        f'[nogat]\ndata_dir = "{shared_data}"\n[archiwista]\nlang = "en"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("NOGAT_CONFIG", str(settings))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
+    shared = SharedSettings.read()
+    paths = AppPaths.default(shared)
+
+    # Act
+    report = run_doctor(
+        paths, FakeRegistry(), port_available=lambda port: True, shared=shared
+    )
+
+    # Assert
+    data = shared_data / "archiwista"
+    lines = [check.message for check in report.checks if check.level == "ok"]
+    assert (
+        f"Settings of the Nogat tools: {settings} (variable NOGAT_CONFIG; read)"
+        in lines
+    )
+    assert (
+        f"Local data (index, state, jobs): {data} ([nogat] data_dir of nogat.toml)"
+        in lines
+    )
+    assert (
+        f"Caches (previews, producers' caches): {data}"
+        " (in the local data directory, the built-in default)"
+    ) in lines
+    assert (
+        "Language of the command line for a person: en"
+        " ([archiwista] lang of nogat.toml)"
+    ) in lines
+    assert not data.exists()

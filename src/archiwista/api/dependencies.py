@@ -48,13 +48,16 @@ def settings_service(request: Request) -> SettingsService:
 
 
 def app_paths(request: Request) -> AppPaths:
-    """Return the server's data directory: the index's (``AppPaths.data_dir``).
+    """Return the server's directories: the index's and the caches'.
 
-    Only the data directory counts here (the folder rules, the process's
-    work directory); the settings come from the settings service.
+    Only these count here (the folder rules, the process's work directory);
+    the settings come from the settings service.
     """
     index_path: Path = request.app.state.index_path
-    return AppPaths(config_file=Path(os.devnull), data_dir=index_path.parent)
+    cache_home: Path | None = request.app.state.cache_home
+    return AppPaths(
+        config_file=Path(os.devnull), data_dir=index_path.parent, cache_home=cache_home
+    )
 
 
 def plugin_registry(request: Request) -> PluginRegistry:

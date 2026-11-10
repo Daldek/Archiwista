@@ -45,11 +45,9 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
-from archiwista.config import AppPaths
 from archiwista.errors import (
     InvalidRefError,
     NotFoundError,
@@ -283,12 +281,11 @@ def warm_previews(spec: JobSpec, emit: "Emitter") -> JsonObject:
             PreviewCache(spec.previews_dir, limit_bytes=limit) as cache,
             RenderPool(workers=1, cache=cache, work_dir=spec.work_dir) as pool,
         ):
-            data_dir = spec.index_path.parent
             resolver = ObjectResolver(
                 queries,
                 lambda: settings,
                 visible=lambda _: ALL_PROJECTS,
-                paths=AppPaths(config_file=Path(os.devnull), data_dir=data_dir),
+                paths=spec.app_paths,
             )
             warmer = Warmer(cache, pool, resolver)
             tally = warmer.run(refs, _reporter(emit))

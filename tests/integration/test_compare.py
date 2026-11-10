@@ -367,7 +367,7 @@ def own(tmp_path_factory: pytest.TempPathFactory) -> Iterator[OwnData]:
             settings,
             access,
             stores=stores,
-            app_data=paths.data_dir,
+            app_data=paths.own_dirs,
             others=[path for name, path in folders.items() if name != access],
         )
         labels = {}

@@ -146,7 +146,7 @@ class SnapshotEnv:
             self.settings,
             project.access_key,
             stores=stores,
-            app_data=self.paths.data_dir,
+            app_data=self.paths.own_dirs,
             others=[
                 path for name, path in folders.items() if name != project.access_key
             ],

@@ -10,14 +10,17 @@ code (``refuse``). The texts of a problem are catalog messages
 (``archiwista.messages``): each interface renders them where they leave the
 process, in the language of its reader (``Problem.localized``) - the API in the
 ``Accept-Language`` of the request, English without one, the document in
-English and the line for a person on the command line in Polish. Codes,
-reasons and keys are not texts.
+English and the line for a person on the command line in the person's language
+(``person_language``: ``lang`` of ``nogat.toml``, else Polish). Codes, reasons
+and keys are not texts.
 """
 
 import json
 import re
 import sqlite3
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Final, Self, TextIO
 
@@ -51,6 +54,29 @@ REGISTRY_PAGE: Final = (
 FALLBACK_EXIT_STATUS: Final = 1
 
 type Language = Lang
+
+_PERSON_LANGUAGE: ContextVar[Lang] = ContextVar(
+    "archiwista_person_language", default="pl"
+)
+
+
+@contextmanager
+def person_language(lang: Lang) -> Iterator[None]:
+    """Write the line of a refusal for a person in ``lang`` inside the block.
+
+    The command line sets it once from ``lang`` of ``nogat.toml`` (A-ADR-053);
+    outside the block the line is Polish.
+
+    Parameters
+    ----------
+    lang : {"en", "pl"}
+        The language of the person reading standard error.
+    """
+    token = _PERSON_LANGUAGE.set(lang)
+    try:
+        yield
+    finally:
+        _PERSON_LANGUAGE.reset(token)
 
 
 @dataclass(frozen=True, slots=True)
@@ -318,9 +344,10 @@ def error_document(
 def refuse(problem: Problem, err: TextIO, *, command: str | None = None) -> int:
     """Report a refusal of a command and return its exit status (ERR-4).
 
-    The ``detail`` in Polish goes to ``err`` for the person, then the English
-    error document as one compact JSON line, the last one (AGI-3.3). Nothing
-    goes to standard output (AGI-3.2), with or without ``--json``.
+    The ``detail`` in the person's language (``person_language``, Polish by
+    default) goes to ``err`` for the person, then the English error document as
+    one compact JSON line, the last one (AGI-3.3). Nothing goes to standard
+    output (AGI-3.2), with or without ``--json``.
 
     Parameters
     ----------
@@ -336,7 +363,7 @@ def refuse(problem: Problem, err: TextIO, *, command: str | None = None) -> int:
     int
         The registry's exit code; ``1`` for a REST-only code.
     """
-    err.write(f"{localize(problem.detail, 'pl')}\n")
+    err.write(f"{localize(problem.detail, _PERSON_LANGUAGE.get())}\n")
     document = error_document(problem, command=command)
     err.write(json.dumps(document, ensure_ascii=False, separators=(",", ":")) + "\n")
     exit_code = problem.exit_code

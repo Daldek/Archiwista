@@ -456,7 +456,7 @@ def check_own_folder(
     project: str,
     *,
     stores: Sequence[Path],
-    app_data: Path,
+    app_data: Sequence[Path],
     others: Sequence[Path],
 ) -> OwnFolderCheck:
     """Check a project's data folder against its rules now, then on the disk.
@@ -478,8 +478,8 @@ def check_own_folder(
         The project directory after ``realpath`` (``access_key``).
     stores : Sequence[Path]
         Producer directories of the stores (also of projects' own stores).
-    app_data : Path
-        Archiwista's data directory.
+    app_data : Sequence[Path]
+        Archiwista's own directories (``AppPaths.own_dirs``).
     others : Sequence[Path]
         Data folders of the other projects.
 
@@ -566,7 +566,7 @@ def folder_check(
     queries : IndexQueries
         The indexed projects: their folders and stores take part in the rules.
     paths : AppPaths
-        Archiwista's data directory, which no folder may overlap.
+        Archiwista's own directories, which no folder may overlap.
     project : str
         The project's access key (``ProjectRef.access_key``).
     """
@@ -574,7 +574,7 @@ def folder_check(
     stores, folders = folder_rules(settings, known)
     others = [path for key, path in folders.items() if key != project]
     return check_own_folder(
-        settings, project, stores=stores, app_data=paths.data_dir, others=others
+        settings, project, stores=stores, app_data=paths.own_dirs, others=others
     )
 
 
@@ -600,7 +600,7 @@ class _FolderScan:
             self.settings,
             key,
             stores=stores,
-            app_data=self.paths.data_dir,
+            app_data=self.paths.own_dirs,
             others=others,
         )
         folder, source, state = check.path, check.source, check.state
