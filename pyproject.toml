@@ -25,7 +25,7 @@ dependencies = [
     # The release pull request replaces the commit with the tag (REL-2.1) and
     # narrows `SUPPORTED_VERSIONS` to `>=0.8.0` (REL-5.6). The versions the
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`.
-    "kartograf @ git+https://github.com/Daldek/Kartograf@9deaa314c88f89ea2d9308481e0c0b04751fc792",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@d0990c89da88e73b9081fe33a151ba9d27b4f820",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
@@ -57,13 +57,14 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057). The
-# commit is the head of the Obserwator branch `feature/obserwator` (REL-5.3), which
-# has the default root (`store_root()`), no projects, `command_for_version` (IMGW-21,
-# A-ADR-049) and the names of its ADR-009; the release pull request replaces it with
-# the tag `v3.0.0`. `[store]` brings `pyarrow` for the Parquet series. The versions the
-# adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator`.
+# commit is on the Obserwator branch `develop` (REL-5.3; Nogat release set
+# candidate-2), which has the default root (`store_root()`), no projects,
+# `command_for_version` (IMGW-21, A-ADR-049) and the names of its ADR-009; the
+# release pull request replaces it with the tag `v3.0.0`. `[store]` brings `pyarrow`
+# for the Parquet series. The versions the adapter reads are `SUPPORTED_VERSIONS` in
+# `archiwista.adapter.obserwator`.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@1ee54573453473392f21e2c8bb34f76e4976e03f",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@f9f4ee7927ba520d3e82d3e289872090ae24e2ec",
 ]
 
 [dependency-groups]

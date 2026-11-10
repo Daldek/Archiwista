@@ -1179,6 +1179,13 @@ command-line interface may change.
 
 ### Changed
 
+- Kartograf is re-pinned from `9deaa314` to `d0990c89` and Obserwator from `1ee5457` to
+  `f9f4ee79`, the commits of Nogat's release set candidate-2 (Nogat `587c909`;
+  `pyproject.toml`, `uv.lock`; the supported ranges are unchanged, both builds keep their
+  versions). Kartograf's catalog, which the producer commands follow, offers `soil hsg
+  --depth-rule least-permeable` (`--depth` is no longer required) and `hydro download
+  --product pgw`, and Kartograf refuses NMT and NMPT sheets of different cell sizes
+  (`ResolutionMismatchError`, a data error); Obserwator changes wording only.
 - A re-pin and a restore of a project's set confirm the plan of the set's check (ADR-042
   erratum 2, option H; the author's decision of 2026-11-09): `POST
   /projects/{project}/jobs` takes `plan_job` with `repin` and `restore` (`archiwista
