@@ -149,6 +149,7 @@ def test_a_licence_repeated_by_obserwator_is_listed_once(
                 (download["id"],),
             )
         ]
+    db.close()
     distinct = list(dict.fromkeys(sent))
 
     # Assert: the events keep the licence of each archive; the window lists each once.
