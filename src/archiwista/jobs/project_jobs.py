@@ -610,7 +610,12 @@ def _checked_pin(
     calls: _GroupCalls,
     plans: Sequence[ActionPlan | None],
 ) -> JsonObject:
-    """Return the state of one pin against the plans of its group's calls."""
+    """Return the state of one pin against the plans of its group's calls.
+
+    The row names the pin by producer, version and pinned SHA-256, so a
+    re-pin or a restore that confirms this check's plan knows the group's
+    pins did not change since (``services.project_jobs.start``).
+    """
     key = (pin.producer, pin.version)
     entry: PlanEntry | None = None
     detail: str | None = None
@@ -636,6 +641,7 @@ def _checked_pin(
             status = "newer"
     return {
         **_pin_row(group, pin, status=status),
+        "sha256": pin.sha256,
         "unit": pin.unit,
         "path": _slot(pin),
         "pinned_label": pin.label,

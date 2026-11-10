@@ -20,6 +20,7 @@ https://archiwista-test.debever.pl, user unit `archiwista-public.service`) runs 
 
 | Component | State | Note |
 |---|---|---|
+| The project card's re-pin and restore through the plan window of the set's check (`feature/project-plan-window`, ADR-042 erratum 2) | merged into `develop` on 2026-11-10, not deployed on :8090 | „Przepnij” and „Przywróć brakujące” of a set open a window that runs the set's check (`project_check`), shows the set's plan and starts the job with `plan_job` when it is confirmed; `POST /projects/{project}/jobs` and `project-repin`/`project-restore --plan` refuse a check without its plan (`404`) and one of another kind, project or set, or of a set changed since (`409 plan_mismatch`; the check's pin rows carry the pinned `sha256`). The worker plans again. Targeted tests: the project jobs' integration tests (65 passed) and the e2e of the card, UC-06, the sets in the making and the projects view (18 passed, Playwright) |
 | Archiwista reads `nogat.toml` (`feature/nogat-settings`, A-ADR-053) | merged into `develop` on 2026-11-10, not deployed on :8090 | `data_dir` puts the local data in `<data_dir>/archiwista`, `cache_dir` the caches in `<cache_dir>/archiwista`, `lang` sets the command line's language for a person (`[archiwista]` before `[nogat]`; no `NOGAT_<KEY>` variable); an unusable file stops every command but `archiwista doctor`, which names each value's source. The server of :8090 has no `nogat.toml` in its `XDG_CONFIG_HOME`, so its directories stay. Targeted tests only, the full gate has not run on it |
 | The status text of a Kartograf store without its marker names `kartograf store init --root <path>` (`fix/no-marker-banner-command`) | merged into `develop` (`bf6813b`) on 2026-11-10, not deployed on :8090 | The banner and the Store view show the command, as the job error's hint, the settings problem and `archiwista doctor` did (`source.no_marker`); targeted tests only, the full gate has not run on it |
 | Obserwator's commands (plan `docs/plans/2026-11-05-obserwator-actions.md` P1 to P5, A-ADR-050; Nogat plan `2026-11-05-obserwator-in-archiwista.md` steps 1 and 2) | merged into `develop` (`b253244`) and deployed on :8090 on 2026-11-05 | The adapter offers `store sync`, `store catalog` and `series build`; „Polecenia producenta” of the Store view. P5 on 2026-11-05: :8090 at `b253244` with `uv sync --locked --all-extras`, the store `zespol` moved to the SMB share `/mnt/magazyn/agent-tmp/archiwista-zespol/` (`kartograf/`, `obserwator/`, `kind = "share"`; backup and rollback in `backup-2026-11-05/`), its first IMGW-PIB data (station catalog, daily, monthly and half-year hydrological data) fetched by the author through Archiwista's jobs. |
@@ -136,10 +137,7 @@ Known gaps:
 
 Decisions awaiting the author:
 
-- SPEC 13 v0.3 criterion 4 ("every action with the network or a write goes through the plan
-  window"): the project card starts re-pin and restore at once, and the project's plan is
-  its own action, "Sprawdź aktualizacje" (ADR-042 option I). Should a window built from
-  that check stand before them as well (option H)?
+- None.
 
 Open outside this repository:
 
@@ -162,6 +160,11 @@ Open outside this repository:
 
 Author's decisions of 2026-11-09.
 
+- **The project card's re-pin and restore through the plan window (ADR-042 option H).**
+  „Przepnij” and „Przywróć brakujące” of a set open a window that runs the set's check
+  and shows its plan, and the job starts when it is confirmed, naming that check
+  (`plan_job`): done on 2026-11-10 (`feature/project-plan-window`, ADR-042 erratum 2;
+  Status, CHANGELOG).
 - **Status text of a store without its marker.** It carries the command too: done on
   2026-11-10 (`fix/no-marker-banner-command`; Status, CHANGELOG).
 - **`nogat.toml`.** Read, for a consistent `data_dir`: done on 2026-11-10

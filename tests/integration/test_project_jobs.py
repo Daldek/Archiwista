@@ -8,7 +8,9 @@ and ``stations.json``, and its check plans them ``current``, ``newer``,
 a file of ``derived/`` has no call (D5). Olga owns the public project ``raba``
 and every person may write the stores. Each test writes the files it needs,
 scans the store and pins them through the API, then runs a job through
-``POST /projects/{project}/jobs`` (or ``archiwista project-…``).
+``POST /projects/{project}/jobs`` (or ``archiwista project-…``); a re-pin and
+a restore may confirm the plan of the set's check (``plan_job``, ADR-042
+erratum 2).
 """
 
 import hashlib
@@ -26,6 +28,7 @@ from archiwista.cli import main
 from archiwista.commands import project_jobs as project_job_commands
 from archiwista.config import AppPaths, ConfigStore, SettingsService
 from archiwista.jobs import JobSupervisor
+from archiwista.messages import message
 from archiwista.projects import PROJECT_FILE, change_project_file
 from archiwista.sources.registry import load_registry
 from tests.fixtures.actions import (
@@ -39,7 +42,7 @@ from tests.fixtures.actions import (
 )
 from tests.fixtures.api_session import Api, Caller, assert_problem, running_api
 from tests.fixtures.availability import register_standin
-from tests.fixtures.cli_errors import refusal
+from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.jobs import worker_path
 from tests.fixtures.permissions import add_people, principal, share
 
@@ -439,6 +442,147 @@ def test_project_restore_gives_restored_content_match_not_restored_and_d5(
     card = place.owner.request("GET", f"/projects/{place.project}").json()
     states = {pin["version"]: pin["state"] for pin in card["groups"][0]["pins"]}
     assert states[f"{FOLDER}/2023.csv"] == "ok"
+
+
+def test_project_repin_and_restore_confirm_the_plan_of_their_check(
+    place: Place,
+) -> None:
+    """Each starts with its set's check and keeps it; a re-pin makes the plan stale.
+
+    The re-pin writes ``2024.csv`` anew at the same path: the set holds other
+    bytes than the check saw, so its plan confirms nothing any more.
+    """
+    # Arrange
+    _write(place, f"{FOLDER}/2023.csv", _line("2023.csv", "2023-12-31"))
+    _write(place, f"{FOLDER}/2024.csv", _line("2024.csv", "2024-06-30"))
+    _scan(place)
+    _pin(place, LOCAL, f"{FOLDER}/2023.csv", f"{FOLDER}/2024.csv")
+    _reopen(place, LOCAL)
+    checked = _job(place, {"kind": "check", "groups": [LOCAL.lower()]})["id"]
+    url = f"/projects/{place.project}/jobs"
+
+    # Act
+    repinned = _job(place, {"kind": "repin", "groups": [LOCAL], "plan_job": checked})
+    stale = place.owner.request(
+        "POST", url, json={"kind": "restore", "groups": [LOCAL], "plan_job": checked}
+    )
+    (place.root / FOLDER / "2023.csv").unlink()
+    _scan(place)
+    rechecked = _job(place, {"kind": "check", "groups": [LOCAL]})["id"]
+    restored = _job(
+        place, {"kind": "restore", "groups": [LOCAL], "plan_job": rechecked}
+    )
+
+    # Assert
+    assert repinned["state"] == "succeeded", repinned
+    assert repinned["params"] == {
+        "project": place.project,
+        "groups": [LOCAL],
+        "plan_job": checked,
+    }
+    assert repinned["result"]["pins"] == {"kept": 1, "new": 1, "dropped": 0}
+    assert_problem(stale, 409, "conflict", "plan_mismatch")
+    assert stale.json()["details"]["job"] == checked
+    assert stale.json()["detail"] == message(
+        "job.project_plan_changed", "en", job=checked, group=LOCAL
+    )
+    assert restored["state"] == "succeeded", restored
+    assert restored["params"]["plan_job"] == rechecked
+    assert _states(restored) == {f"{FOLDER}/2023.csv": "restored"}
+
+
+def test_a_plan_the_job_cannot_confirm_is_refused_before_a_job(
+    place: Place, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unknown, failed, of another kind, set or project: the command agrees.
+
+    The check of the derived set fails (no pin of it can be asked about), so
+    it has no plan.
+    """
+    # Arrange
+    _write(place, f"{FOLDER}/2023.csv", _line("2023.csv", "2023-12-31"))
+    _write(place, DERIVED, "zlewnia\n")
+    _scan(place)
+    _pin(place, LOCAL, f"{FOLDER}/2023.csv")
+    _pin(place, "Pochodne", DERIVED)
+    created = place.owner.request(
+        "POST", "/projects", json={"path": str(place.directory.parent / "dunajec")}
+    )
+    assert created.status_code == 201, created.text
+    elsewhere = place.owner.request(
+        "POST", f"/projects/{created.json()['project']}/jobs", json={"kind": "check"}
+    )
+    assert _wait(place, place.owner, elsewhere.json()["id"])["state"] == "succeeded"
+    checked = _job(place, {"kind": "check", "groups": [LOCAL]})
+    failed = _job(place, {"kind": "check", "groups": ["Pochodne"]})
+    verified = _job(place, {"kind": "verify", "groups": [LOCAL]})
+
+    def supervisor(paths: AppPaths, service: SettingsService) -> JobSupervisor:
+        return JobSupervisor(paths, service, worker_command=ACTION_WORKER)
+
+    monkeypatch.setattr(project_job_commands, "JobSupervisor", supervisor)
+    registry = load_registry(cache_dir=place.paths.cache_dir)
+
+    def cli(group: str, plan_job: str) -> Any:
+        capsys.readouterr()
+        argv = ["project-restore", place.project, group, "--plan", plan_job, "--json"]
+        status = main(argv, registry=registry, paths=place.paths)
+        captured = capsys.readouterr()
+        if status == 0:
+            return json.loads(captured.out)
+        return refusal(captured.out, captured.err, status)
+
+    unknown = "0123456789abcdef"
+    cases = {
+        "unknown": (LOCAL, unknown),
+        "failed": ("Pochodne", failed["id"]),
+        "verify": (LOCAL, verified["id"]),
+        "other_set": ("Pochodne", checked["id"]),
+        "other_project": (LOCAL, elsewhere.json()["id"]),
+    }
+    url = f"/projects/{place.project}/jobs"
+
+    # Act
+    refused = {
+        case: place.owner.request(
+            "POST",
+            url,
+            json={"kind": "restore", "groups": [group], "plan_job": plan_job},
+        )
+        for case, (group, plan_job) in cases.items()
+    }
+    printed = {case: cli(*request) for case, request in cases.items()}
+    a_check = place.owner.request(
+        "POST",
+        url,
+        json={"kind": "check", "groups": [LOCAL], "plan_job": checked["id"]},
+    )
+    confirmed = cli(LOCAL, checked["id"])
+
+    # Assert
+    assert failed["state"] == "failed", failed
+    assert_problem(refused["unknown"], 404, "not_found")
+    assert refused["unknown"].json()["detail"] == message(
+        "job.not_found", "en", job=unknown
+    )
+    assert_problem(refused["failed"], 404, "not_found")
+    assert refused["failed"].json()["detail"] == message(
+        "job.no_plan", "en", job=failed["id"]
+    )
+    for case in ("verify", "other_set", "other_project"):
+        assert_problem(refused[case], 409, "conflict", "plan_mismatch")
+        assert refused[case].json()["details"]["job"] == cases[case][1]
+    for case, answer in refused.items():
+        assert_same_error(printed[case], answer.json())
+    assert_problem(a_check, 400, "validation_error")
+    assert confirmed["state"] == "succeeded", confirmed
+    assert confirmed["params"] == {
+        "project": place.project,
+        "groups": [LOCAL],
+        "plan_job": checked["id"],
+    }
+    restores = [job for job in place.jobs.list().items if job.kind == "project_restore"]
+    assert [job.id for job in restores] == [confirmed["id"]]
 
 
 def test_project_jobs_refuse_before_a_job_and_ask_again_on_retry(

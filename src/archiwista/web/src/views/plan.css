@@ -35,6 +35,24 @@
 .plan-actions { display: flex; justify-content: space-between; gap: 8px; }
 .plan-actions .btn:only-child { margin-left: auto; }
 
+/* ---------- the plan window of a set's re-pin or restore (views/project-plan.js) ---------- */
+.pp-checking { display: flex; }
+.pp-failure { display: grid; gap: 4px; min-width: 0; }
+.pp-plan { display: grid; gap: 10px; min-width: 0; }
+.pp-counts { font-size: 13px; }
+.pp-counts .tech { display: inline-flex; vertical-align: baseline; }
+.pp-section { display: grid; gap: 4px; min-width: 0; }
+.pp-section .section-title { margin: 0; }
+.pp-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 12px; }
+.pp-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
+.pp-path { overflow-wrap: anywhere; }
+.pp-labels { color: var(--text-2); }
+.pp-call { display: grid; gap: 4px; }
+.pp-call .cmd { margin-top: 0; align-items: center; }
+.pp-call .copy-btn { color: #cbd5e1; flex: none; }
+.pp-call-state { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pp-call-state .row-problem { margin: 0; }
+
 @media (max-width: 860px) {
   .plan-facts { grid-template-columns: 1fr; }
 }

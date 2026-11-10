@@ -1179,6 +1179,19 @@ command-line interface may change.
 
 ### Changed
 
+- A re-pin and a restore of a project's set confirm the plan of the set's check (ADR-042
+  erratum 2, option H; the author's decision of 2026-11-09): `POST
+  /projects/{project}/jobs` takes `plan_job` with `repin` and `restore` (`archiwista
+  project-repin` and `project-restore` take `--plan JOB`), the `project_check` job whose
+  plan was confirmed. A check the session does not see, or without its plan (waiting,
+  running, failed), is `404`; one of another kind, project or set, or of a set whose pins
+  changed since, is `409 conflict` (`plan_mismatch`, the job in `details.job`); a
+  `plan_job` with `verify` or `check` is `400`. The job keeps it in `params.plan_job`
+  (`null` without it) and still asks the source again, so it fetches what the source has
+  then. A `project_check`'s pin rows name the pinned `sha256`. The project card's
+  „Przepnij” and „Przywróć brakujące” open the set's plan window, which runs that check,
+  shows the set's plan and starts the job only when it is confirmed.
+
 - A Kartograf store without its marker `kartograf-store.json` names the command that
   marks it in its status text too, so the banner and the Store view say „… nie ma pliku
   kartograf-store.json — zaznacz magazyn poleceniem: kartograf store init --root

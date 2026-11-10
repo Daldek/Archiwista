@@ -1049,16 +1049,24 @@ export function getProjectActivity(project, query = {}, { signal } = {}) {
  * Start a job over a project's groups (`start_project_job`, A-ADR-049
  * decision 11): `verify` hashes the pinned files, `check` compares the pins
  * with the source, `repin` pins one group anew, `restore` downloads the
- * missing pinned versions again.
+ * missing pinned versions again. A `repin` or a `restore` may confirm the
+ * plan of a check (`plan_job`, the card's plan window: ADR-042 erratum 2);
+ * the worker plans again.
  *
  * @param {string} project - Project id.
  * @param {ProjectJobRequest} body - The kind; `groups` left out: every group
- *   (a re-pin names exactly one).
+ *   (a re-pin names exactly one); `plan_job`: the `project_check` job whose
+ *   plan the person confirmed.
  * @returns {Promise<JobDetail>} The queued job (`202`).
- * @throws {ApiError} `403 permission_denied` (a re-pin or restore without
- *   `project_write` or `store_write`), `404` (an unknown group), `409
- *   conflict` (`offline_mode`, `unknown_store`, a job of the project already
- *   running in `details.job`), `422 unsupported` (`no_commands`,
+ * @throws {ApiError} `400 validation_error` (a re-pin of not exactly one
+ *   group, a `plan_job` of a `verify` or a `check`), `403 permission_denied`
+ *   (a re-pin or restore without `project_write` or `store_write`), `404
+ *   not_found` (an unknown group; a `plan_job` the session does not see, or a
+ *   check without its plan yet: waiting, running or failed), `409 conflict`
+ *   (`offline_mode`, `unknown_store`, `set_closed`; `plan_mismatch`: the
+ *   `plan_job` is no check of these groups of the project, or one of them
+ *   changed since, its id alone in `details.job`; a job of the project
+ *   already running in `details.job`), `422 unsupported` (`no_commands`,
  *   `command_not_rebuildable`).
  */
 export function startProjectJob(project, body) {

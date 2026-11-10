@@ -2071,7 +2071,10 @@ class JobDetail(BaseModel):
             " `check` job whose plans it runs, or `null`);"
             " `preview_warm`: `store`, `product`, `segment`, `project`,"
             " `area_id` and `since` (each `null` when not given; `since` only"
-            " from the warm-up after a scan)."
+            " from the warm-up after a scan); the `project_*` kinds: `project`"
+            " and `groups` (`null`: every group), `project_repin` and"
+            " `project_restore` also `plan_job` (the `project_check` job whose"
+            " plan the person confirmed, or `null`)."
         )
     )
     created_at: datetime

@@ -908,7 +908,9 @@ class JobSupervisor:
             time with its offset); the ``PROJECT_KINDS``: ``project`` (its
             key) and ``groups`` (a list of group names, a name given twice
             kept once, or ``None`` for every group, the default; exactly one
-            for ``project_repin``).
+            for ``project_repin``), and for ``project_repin`` and
+            ``project_restore`` ``plan_job`` (the ``project_check`` job whose
+            plan the person confirmed, ``None`` by default).
         actor : Principal
             Who asks; the job keeps its id, kind and session label. A person
             (any actor but the ``scheduler``) gets the action log's entry
@@ -2135,16 +2137,23 @@ def _availability_params(params: Mapping[str, object]) -> JsonObject:
 
 
 def _project_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
-    """Check a project job's project and groups; a re-pin takes one group.
+    """Check a project job's project, groups and plan; a re-pin takes one group.
 
     ``groups`` is a list of group names, a name given twice kept once, or
-    ``None``, every group of the project.
+    ``None``, every group of the project. A ``project_repin`` and a
+    ``project_restore`` also take ``plan_job``, the ``project_check`` job
+    whose plan the person confirmed (a non-empty text), kept as ``None``
+    when not given, as a ``download`` keeps its own.
     """
     project = params.get("project")
     groups = params.get("groups")
+    plan_job = params.get("plan_job")
+    confirms = kind in ("project_repin", "project_restore")
+    allowed = {"project", "groups", "plan_job"} if confirms else {"project", "groups"}
     if (
-        set(params) - {"project", "groups"}
+        set(params) - allowed
         or not (isinstance(project, str) and project)
+        or not (plan_job is None or (isinstance(plan_job, str) and plan_job))
         or not (
             (groups is None and kind != "project_repin")
             or (
@@ -2158,7 +2167,10 @@ def _project_params(kind: JobKind, params: Mapping[str, object]) -> JsonObject:
     names = None if groups is None else list(dict.fromkeys(cast(list[str], groups)))
     if kind == "project_repin" and (names is None or len(names) != 1):
         raise ValueError(f"a project_repin job takes one group, got {groups!r}"[:300])
-    return {"project": project, "groups": names}
+    checked: JsonObject = {"project": project, "groups": names}
+    if confirms:
+        checked["plan_job"] = plan_job
+    return checked
 
 
 def _warm_params(params: Mapping[str, object]) -> JsonObject:

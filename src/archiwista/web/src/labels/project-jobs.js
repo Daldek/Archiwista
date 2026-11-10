@@ -3,8 +3,9 @@
  * 6.5 g; A-ADR-049 decisions 11 and 12): „Weryfikuj” and „Sprawdź
  * aktualizacje” of the project, „Sprawdź aktualizacje”, „Przepnij” and
  * „Przywróć brakujące” of each set (a group), the reasons that disable them
- * and „Zamknij zestaw”, the state of a pin's command and what the last job
- * found at each pin.
+ * and „Zamknij zestaw”, the state of a pin's command, what the last job
+ * found at each pin, and the plan window of a set's re-pin and restore
+ * (views/project-plan.js; ADR-042 erratum 2).
  */
 
 export const projectJobs = {
@@ -109,5 +110,48 @@ export const projectJobs = {
       "Nie całe pobranie się udało, więc przypięcia zestawu „{group}” zostały bez zmian " +
       "(pobrane pliki są w magazynie).",
     seconds: "Czas: {seconds} s.",
+  },
+  /**
+   * The plan window of a set's „Przepnij” and „Przywróć brakujące”: the set's
+   * check, then the plan to confirm (views/project-plan.js).
+   */
+  plan: {
+    title: {
+      repin: "Przepiąć zestaw „{group}”?",
+      restore: "Przywrócić brakujące wersje zestawu „{group}”?",
+    },
+    checking: "Sprawdzanie zestawu u źródła…",
+    checking_progress: "Sprawdzanie zestawu u źródła: {current} z {total} {commands}…",
+    /** After „z”: the genitive („z 1 polecenia”, „z 2 poleceń”). */
+    commands: ["polecenia", "poleceń", "poleceń"],
+    /** A check that ended without its plan and without an error to tell. */
+    ended: "Sprawdzenie zakończone stanem „{state}” nie dało planu.",
+    pins: "Wersje zestawu: {total} — {counts}.",
+    no_pins: "Zestaw nie ma przypiętych wersji.",
+    changes: "Wersje, które przepięcie zmieni",
+    no_changes: "Sprawdzenie nie znalazło wersji do zmiany.",
+    added: "Nowe pozycje u źródła, które przepięcie przypnie",
+    missing: "Brakujące wersje, które przywracanie pobierze ponownie",
+    not_checked: "Wersje, których nie sprawdzono",
+    /** A version's pinned label and the one the source has now. */
+    change: "{pinned} → {available}",
+    calls: "Polecenia producenta",
+    copy_line: "polecenie producenta",
+    /** How the check of each call went (`status` of `result.calls`). */
+    call: {
+      ok: "sprawdzone",
+      partial: "sprawdzone częściowo",
+      failed: "bez planu",
+    },
+    note: {
+      repin:
+        "Przepięcie przypina dopiero, gdy całe pobranie się uda; " +
+        "inaczej przypięcia zostają bez zmian.",
+      restore:
+        "Przywracanie nie zmienia pliku projektu: pobiera do magazynu tylko brakujące wersje.",
+      again:
+        "Zadanie zapyta źródło jeszcze raz i pobierze to, co źródło udostępni " +
+        "w chwili pobierania.",
+    },
   },
 };

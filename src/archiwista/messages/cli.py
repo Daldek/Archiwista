@@ -3016,6 +3016,17 @@ MESSAGES = {
         "name of the group to pin anew",
         "nazwa zestawu do przypięcia na nowo",
     ),
+    "project_plan_job_help": Text(
+        (
+            "the project-check job of these groups whose plan you confirm; refused"
+            " when it has no plan or a group changed since; the job plans again"
+        ),
+        (
+            "zadanie project-check tych zestawów, którego plan potwierdzasz;"
+            " odmowa, gdy nie ma planu albo zestaw zmienił się od tego czasu;"
+            " zadanie planuje ponownie"
+        ),
+    ),
     "jobs_project_pins": Text(
         "Pins: {pins} ({counts}).",
         "Przypięcia: {pins} ({counts}).",

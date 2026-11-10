@@ -20,7 +20,8 @@ on it:
 
 UC-06 as A-ADR-049 gives it: a project filled from the plan window's
 download (``pin``) and from the store, verified and checked on its card, its
-files lost and brought back with „Przywróć brakujące”.
+files lost and brought back with „Przywróć brakujące”, confirmed in the set's
+plan window after the set's own check (ADR-042 erratum 2).
 
 Criteria 1, 2 and 6 need the network and real stores:
 ``tests/integration/test_live_actions.py`` (marker ``live``, run by the
@@ -468,7 +469,8 @@ def test_uc06_a_project_is_filled_verified_checked_and_restored_by_its_owner(
     expect(status).to_contain_text("Sprawdzenie projektu")
     expect(pin_of(plan, "2023.csv")).to_contain_text("aktualna")
 
-    # Act: on another computer the store lost the station's files.
+    # Act: on another computer the store lost the station's files; „Przywróć
+    # brakujące” opens the set's plan window, whose check finds them missing.
     for path in (root / FOLDER).iterdir():
         path.unlink()
     rescan(page)
@@ -478,6 +480,15 @@ def test_uc06_a_project_is_filled_verified_checked_and_restored_by_its_owner(
     plan.get_by_role(
         "button", name=f"Przywróć brakujące wersje zestawu {PLAN_GROUP}"
     ).click()
+    dialog = page.get_by_role(
+        "dialog", name=f"Przywrócić brakujące wersje zestawu „{PLAN_GROUP}”?"
+    )
+    missing = dialog.get_by_role(
+        "list", name="Brakujące wersje, które przywracanie pobierze ponownie"
+    )
+    expect(missing.get_by_role("listitem")).to_have_count(4)
+    expect(missing).to_contain_text("2023.csv")
+    dialog.get_by_role("button", name="Przywróć brakujące", exact=True).click()
 
     # Assert: back with the same bytes; the project file did not change.
     expect(pin_of(plan, "2023.csv")).to_contain_text("przywrócona")
