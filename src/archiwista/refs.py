@@ -483,7 +483,7 @@ def job_resolver(spec: JobSpec) -> Callable[[str], PreviewSource]:
     data directory of the job's index.
     """
     settings = spec.settings
-    paths = AppPaths(config_file=Path(os.devnull), data_dir=spec.index_path.parent)
+    paths = spec.app_paths
 
     def resolve(ref: str) -> PreviewSource:
         with IndexQueries(spec.index_path) as queries:

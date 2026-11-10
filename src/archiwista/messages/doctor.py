@@ -125,8 +125,48 @@ MESSAGES = {
         "Katalog projektów: {path}",
     ),
     "data_dir_ok": Text(
-        "Local data (index, cache, jobs): {path}",
-        "Dane lokalne (indeks, pamięć, zadania): {path}",
+        "Local data (index, state, jobs): {path} ({origin})",
+        "Dane lokalne (indeks, stan, zadania): {path} ({origin})",
+    ),
+    "caches_ok": Text(
+        "Caches (previews, producers' caches): {path} ({origin})",
+        "Pamięć podręczna (podglądy, pamięć producentów): {path} ({origin})",
+    ),
+    "language": Text(
+        "Language of the command line for a person: {language} ({origin})",
+        "Język wiersza poleceń dla człowieka: {language} ({origin})",
+    ),
+    "setting_default": Text(
+        "built-in default",
+        "wartość domyślna",
+    ),
+    "setting_caches_default": Text(
+        "in the local data directory, the built-in default",
+        "w katalogu danych lokalnych, wartość domyślna",
+    ),
+    "setting_file": Text(
+        "{name} of nogat.toml",
+        "{name} w pliku nogat.toml",
+    ),
+    "shared_file": Text(
+        "Settings of the Nogat tools: {path} ({origin}; {state})",
+        "Ustawienia narzędzi Nogat: {path} ({origin}; {state})",
+    ),
+    "shared_file_platform": Text(
+        "the user configuration directory",
+        "katalog konfiguracji użytkownika",
+    ),
+    "shared_file_variable": Text(
+        "variable {variable}",
+        "zmienna {variable}",
+    ),
+    "shared_file_read": Text(
+        "read",
+        "odczytany",
+    ),
+    "shared_file_absent": Text(
+        "does not exist, the built-in defaults apply",
+        "nie istnieje, obowiązują wartości domyślne",
     ),
     "data_dir_open": Text(
         (

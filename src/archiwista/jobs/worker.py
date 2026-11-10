@@ -78,7 +78,7 @@ from typing import IO, cast
 from archiwista._errors import BY_CODE
 from archiwista.areas import write_area_geojson
 from archiwista.auth import ALL_PROJECTS
-from archiwista.config import AppPaths, StoreConfig
+from archiwista.config import StoreConfig
 from archiwista.error_document import Problem, describe
 from archiwista.errors import (
     ArchiwistaError,
@@ -507,7 +507,7 @@ def run_own_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
     project = spec.params.get("project")
     # The reader process reads no settings: only its work directory, below
     # the data directory (the index's).
-    paths = AppPaths(config_file=Path(os.devnull), data_dir=spec.index_path.parent)
+    paths = spec.app_paths
     registry = load_registry(cache_dir=spec.cache_dir)
     with (
         IndexWriter(spec.index_path) as writer,
@@ -558,7 +558,7 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
     file_id = str(spec.params["file_id"])
     # The reader process reads no settings: only its work directory, below
     # the data directory (the index's), like the snapshot's local copy.
-    paths = AppPaths(config_file=Path(os.devnull), data_dir=spec.index_path.parent)
+    paths = spec.app_paths
     with IndexQueries(spec.index_path) as queries:
         known = queries.projects(visible=ALL_PROJECTS)
         project = next((item for item in known if item.key == key), None)
@@ -570,7 +570,7 @@ def run_snapshot(spec: JobSpec, emit: Emitter) -> JsonObject:
             spec.settings,
             project.access_key,
             stores=stores,
-            app_data=paths.data_dir,
+            app_data=paths.own_dirs,
             others=[
                 path for name, path in folders.items() if name != project.access_key
             ],

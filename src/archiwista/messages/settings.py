@@ -122,4 +122,50 @@ MESSAGES = {
         "proxy_autocreate needs proxy_user_header",
         "proxy_autocreate wymaga proxy_user_header",
     ),
+    "shared_missing": Text(
+        (
+            "The settings file of the Nogat tools {path}, named by {variable},"
+            " does not exist"
+        ),
+        (
+            "Plik ustawień narzędzi Nogat {path}, wskazany zmienną {variable},"
+            " nie istnieje"
+        ),
+    ),
+    "shared_unreadable": Text(
+        "The settings file of the Nogat tools {path} cannot be read: {detail}",
+        "Nie można odczytać pliku ustawień narzędzi Nogat {path}: {detail}",
+    ),
+    "shared_not_utf8": Text(
+        "The settings file of the Nogat tools {path} is not UTF-8 text",
+        "Plik ustawień narzędzi Nogat {path} nie jest tekstem UTF-8",
+    ),
+    "shared_invalid_toml": Text(
+        "The settings file of the Nogat tools {path} is not valid TOML: {detail}",
+        "Plik ustawień narzędzi Nogat {path} nie jest poprawnym TOML: {detail}",
+    ),
+    "shared_not_table": Text(
+        "[{table}] of the settings file of the Nogat tools {path} is not a table",
+        "[{table}] w pliku ustawień narzędzi Nogat {path} nie jest tabelą",
+    ),
+    "shared_directory": Text(
+        (
+            "{key} of [{table}] in the settings file of the Nogat tools {path} is"
+            " not an absolute path: {value}"
+        ),
+        (
+            "{key} w [{table}] pliku ustawień narzędzi Nogat {path} nie jest"
+            " ścieżką bezwzględną: {value}"
+        ),
+    ),
+    "shared_lang": Text(
+        (
+            "lang of [{table}] in the settings file of the Nogat tools {path} is"
+            " neither pl nor en: {value}"
+        ),
+        (
+            "lang w [{table}] pliku ustawień narzędzi Nogat {path} to ani pl,"
+            " ani en: {value}"
+        ),
+    ),
 }

@@ -604,8 +604,9 @@ from 0.7 (ADR-031) preserved in ADR-041 and ADR-044,
 
 The index (A-ADR-002) is a SQLite file (WAL mode) on the local disk, in the user's data directory
 (`platformdirs`: Linux `~/.local/share/archiwista/`, Windows
-`%LOCALAPPDATA%\Archiwista\`); next to it are the preview cache (`cache/`)
-and the job logs (`jobs/`). The configuration (stores, project directories,
+`%LOCALAPPDATA%\Archiwista\`; `<data_dir>/archiwista/` when `nogat.toml` names a `data_dir`,
+A-ADR-053); next to it are the preview cache (`previews/`, in `<cache_dir>/archiwista/` when
+`nogat.toml` names a `cache_dir`) and the job logs (`jobs/`). The configuration (stores, project directories,
 limits, assistant provider) is in a readable TOML file in the user's
 configuration directory and in the "Ustawienia" (Settings) view; a person's view
 preferences (the kind of years, 6.7, the basemap, path aliases) are in the state

@@ -13,6 +13,7 @@ from typing import Any, Literal, TextIO
 from archiwista._errors import OUTCOMES
 from archiwista.auth.passwords import sign_in_administrators
 from archiwista.config import (
+    APP_NAME,
     AppPaths,
     AppSettings,
     ConfigStore,
@@ -23,8 +24,9 @@ from archiwista.config import (
     validate_settings,
 )
 from archiwista.errors import StateError
-from archiwista.messages import message, with_detail
+from archiwista.messages import current_language, localize, message, with_detail
 from archiwista.security import LOOPBACK_HOST, tls_problem
+from archiwista.shared_settings import CONFIG_ENV, SharedSettings, SharedValue
 from archiwista.sources import DefaultRoot, SourceState
 from archiwista.sources.registry import (
     PluginRegistry,
@@ -108,6 +110,7 @@ def run_doctor(
     registry: PluginRegistry,
     *,
     port_available: Callable[[int], bool] = is_port_available,
+    shared: SharedSettings | None = None,
 ) -> DoctorReport:
     """Diagnose plugins, stores, permissions, and the port without writing.
 
@@ -120,6 +123,10 @@ def run_doctor(
         default store root.
     port_available : callable, optional
         Port check, replaceable in tests.
+    shared : SharedSettings or None, optional
+        ``nogat.toml`` as the command read it; read now when omitted. The
+        report names it and where the data directory, the caches and the
+        language come from (A-ADR-053).
 
     Returns
     -------
@@ -127,8 +134,10 @@ def run_doctor(
         Diagnostic lines; nothing is created in stores, project directories,
         or the local data directory.
     """
+    shared = SharedSettings.read() if shared is None else shared
     checks: list[DoctorCheck] = []
     settings = _load_settings(paths, checks)
+    checks.append(shared_file_check(shared))
     states = {state.producer: state for state in registry.states()}
     used = {
         producer: store.id for store in settings.stores for producer in store.roots()
@@ -151,7 +160,20 @@ def run_doctor(
                 )
             )
     checks.extend(_store_checks(settings, registry))
-    checks.append(_data_dir_check(paths.data_dir))
+    data_origin = _origin(shared.value("data_dir"), paths.data_dir)
+    checks.append(_data_dir_check(paths.data_dir, data_origin))
+    caches = shared.value("cache_dir")
+    caches_origin = (
+        message("doctor.setting_caches_default")
+        if paths.cache_home is None
+        else _origin(caches, paths.cache_home)
+    )
+    checks.append(
+        DoctorCheck(
+            "ok", message("doctor.caches_ok", path=paths.caches, origin=caches_origin)
+        )
+    )
+    checks.append(_language_check(shared))
     privacy = _privacy_check(paths.data_dir)
     if privacy is not None:
         checks.append(privacy)
@@ -287,12 +309,63 @@ def _fix(problem: SettingsProblem) -> str:
     return message(_FIX_BY_CODE.get(problem.code, "fix.source"))
 
 
-def _data_dir_check(data_dir: Path) -> DoctorCheck:
+def shared_file_check(shared: SharedSettings) -> DoctorCheck:
+    """Describe ``nogat.toml``: where it is and whether Archiwista can use it.
+
+    Parameters
+    ----------
+    shared : SharedSettings
+        The file as read.
+
+    Returns
+    -------
+    DoctorCheck
+        ``ok`` with the path, the place that named it and whether it exists,
+        or the error why it cannot be used: every other command refuses to run
+        then (A-ADR-053).
+    """
+    if shared.problem is not None:
+        fix = message("fix.shared_settings", path=shared.path, variable=CONFIG_ENV)
+        # Read before the command chose its language: rendered again in it.
+        text = localize(shared.problem, current_language())
+        return DoctorCheck("error", text, fix)
+    origin = (
+        message("doctor.shared_file_variable", variable=CONFIG_ENV)
+        if shared.named
+        else message("doctor.shared_file_platform")
+    )
+    state = message(
+        "doctor.shared_file_read" if shared.exists else "doctor.shared_file_absent"
+    )
+    text = message("doctor.shared_file", path=shared.path, origin=origin, state=state)
+    return DoctorCheck("ok", text)
+
+
+def _origin(given: SharedValue | None, directory: Path) -> str:
+    """Name the setting that gave ``directory``: ``nogat.toml``'s, else the default."""
+    if given is not None and directory == Path(given.value) / APP_NAME:
+        return message("doctor.setting_file", name=given.name)
+    return message("doctor.setting_default")
+
+
+def _language_check(shared: SharedSettings) -> DoctorCheck:
+    given = shared.value("lang")
+    origin = (
+        message("doctor.setting_default")
+        if given is None
+        else message("doctor.setting_file", name=given.name)
+    )
+    text = message("doctor.language", language=shared.language, origin=origin)
+    return DoctorCheck("ok", text)
+
+
+def _data_dir_check(data_dir: Path, origin: str) -> DoctorCheck:
     existing = data_dir
     while not existing.exists() and existing.parent != existing:
         existing = existing.parent
     if existing.is_dir() and os.access(existing, os.W_OK | os.X_OK):
-        return DoctorCheck("ok", message("doctor.data_dir_ok", path=data_dir))
+        text = message("doctor.data_dir_ok", path=data_dir, origin=origin)
+        return DoctorCheck("ok", text)
     text = message("doctor.data_dir_unwritable", path=data_dir)
     return DoctorCheck("error", text, message("fix.data_dir"))
 
@@ -413,7 +486,13 @@ def format_report(report: DoctorReport) -> str:
     return "\n".join(lines) + "\n"
 
 
-def doctor_main(paths: AppPaths, registry: PluginRegistry, out: TextIO) -> int:
+def doctor_main(
+    paths: AppPaths,
+    registry: PluginRegistry,
+    out: TextIO,
+    *,
+    shared: SharedSettings | None = None,
+) -> int:
     """Print the diagnostics and return the process exit status.
 
     A failed check is an outcome, not an error (ERR §1): the report is the
@@ -425,7 +504,7 @@ def doctor_main(paths: AppPaths, registry: PluginRegistry, out: TextIO) -> int:
         ``0`` without errors, ``10`` (``partial``) when some checks failed and
         others passed, ``11`` (``failed``) when every check failed.
     """
-    report = run_doctor(paths, registry)
+    report = run_doctor(paths, registry, shared=shared)
     out.write(format_report(report))
     if not report.errors:
         return OUTCOMES["ok"]

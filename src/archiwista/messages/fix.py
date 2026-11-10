@@ -7,6 +7,16 @@ MESSAGES = {
         "correct the configuration file {path} or delete it and configure again.",
         "popraw plik konfiguracji {path} albo usuń go i skonfiguruj ponownie.",
     ),
+    "shared_settings": Text(
+        (
+            "correct or delete {path}, or point {variable} at another file; until"
+            " then every command but archiwista doctor refuses to run."
+        ),
+        (
+            "popraw albo usuń plik {path} albo wskaż inny zmienną {variable}; do"
+            " tego czasu każde polecenie poza archiwista doctor odmawia działania."
+        ),
+    ),
     "setting_retired": Text(
         (
             "nothing to do: the next change of the settings leaves it out of the"

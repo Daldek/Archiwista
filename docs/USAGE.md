@@ -1118,7 +1118,12 @@ Restoring is putting the copy back in place while the server is stopped.
 ## When something does not work
 
 - `archiwista doctor` checks the installation, the Kartograf plugin, the
-  stores and the port, and gives a repair for every problem.
+  stores and the port, and gives a repair for every problem. It also names
+  `nogat.toml`, the settings file the Nogat tools share, and where the data
+  directory, the caches and the language of the command line come from
+  (`data_dir`, `cache_dir` and `lang` of the file, else the defaults; README,
+  A-ADR-053). A file Archiwista cannot use stops every other command until it is
+  corrected.
 - **Store unavailable** (for example a disconnected share): the views show the
   state of the index, the status bar gives its time; after reconnecting, the
   next scan completes the changes without rebuilding the index.

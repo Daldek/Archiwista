@@ -128,7 +128,7 @@ def set_data_dir(
             problem = SettingsProblem("own_data_dir_outside_project", field, text)
             raise SettingsValidationError([problem])
         conflict = own_folder_conflict(
-            Path(path), stores=stores, app_data=paths.data_dir, others=folders_of_others
+            Path(path), stores=stores, app_data=paths.own_dirs, others=folders_of_others
         )
         if conflict is not None:
             reason, directory = conflict
@@ -148,7 +148,7 @@ def set_data_dir(
             after={"path": str(after[0]), "source": after[1]},
         )
     return check_own_folder(
-        changed, key, stores=stores, app_data=paths.data_dir, others=folders_of_others
+        changed, key, stores=stores, app_data=paths.own_dirs, others=folders_of_others
     )
 
 

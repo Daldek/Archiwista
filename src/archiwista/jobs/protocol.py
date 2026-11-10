@@ -34,6 +34,7 @@ and turns ``result``, ``partial`` and ``error`` into the job's final state.
 """
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast, get_args
@@ -42,7 +43,7 @@ from pydantic import ValidationError
 
 from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
-from archiwista.config import AppSettings
+from archiwista.config import AppPaths, AppSettings
 
 PROTOCOL_VERSION = 14
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
@@ -203,6 +204,20 @@ class JobSpec:
     settings: AppSettings
     claimed: tuple[str, ...] | None = None
     taken: tuple[JsonObject, ...] = ()
+
+    @property
+    def app_paths(self) -> AppPaths:
+        """Return Archiwista's directories as the server gave them to the job.
+
+        The index lies in the data directory and the preview cache in the
+        directory of the caches (``AppPaths.previews_dir``), which may lie apart
+        from it (A-ADR-053); a job reads no settings file.
+        """
+        return AppPaths(
+            config_file=Path(os.devnull),
+            data_dir=self.index_path.parent,
+            cache_home=self.previews_dir.parent,
+        )
 
 
 def encode_message(message: WorkerMessage) -> str:

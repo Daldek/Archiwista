@@ -136,6 +136,7 @@ def create_app(
     jobs: JobSupervisor | None = None,
     previews: RenderPool | None = None,
     on_redeem: Callable[[TokenKind], None] | None = None,
+    cache_home: Path | None = None,
 ) -> FastAPI:
     """Build the Archiwista application for one server.
 
@@ -174,6 +175,10 @@ def create_app(
     on_redeem : Callable[[TokenKind], None] or None, optional
         Called with the token's kind after a one-time token starts a session,
         e.g. ``archiwista serve`` deleting the browser's launch file.
+    cache_home : Path or None, optional
+        The directory of the caches when it lies apart from the index's
+        (``AppPaths.cache_home``, ``<cache_dir>/archiwista`` of
+        ``nogat.toml``): no project's data folder may overlap it.
 
     Returns
     -------
@@ -210,6 +215,7 @@ def create_app(
     app.state.sessions = sessions
     app.state.login_throttle = login_throttle or LoginThrottle()
     app.state.index_path = index_path
+    app.state.cache_home = cache_home
     app.state.authorizer = Authorizer(state, settings.get)
     # Who sessions act as now: the middleware's check and the session routes.
     app.state.principals = session_principals(state, index_path)
