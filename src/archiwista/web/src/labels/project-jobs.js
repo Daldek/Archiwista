@@ -150,7 +150,7 @@ export const projectJobs = {
       restore:
         "Przywracanie nie zmienia pliku projektu: pobiera do magazynu tylko brakujące wersje.",
       again:
-        "Zadanie planuje jeszcze raz u źródła: pobierze to, co źródło będzie miało " +
+        "Zadanie zapyta źródło jeszcze raz i pobierze to, co źródło udostępni " +
         "w chwili pobierania.",
     },
   },

@@ -18,14 +18,15 @@
  * succeeds, a restore never changes the project file, and the job plans again
  * at the source, so it fetches what the source has then.
  *
- * The confirmation („Przepnij”, „Przywróć brakujące”) is disabled with the
- * reason the card's button would have now (`groupJobReason`; a running check
- * is a job of the project), for a restore also when the check found no
- * missing version, the reason in the window (`aria-describedby`). It starts
- * the job with the check as its `plan_job` and closes the window: the card
- * follows the job to its summary, or shows its refusal (e.g. `409
- * plan_mismatch`: the set changed since its check). „Anuluj” and `Esc` close
- * the window; the check goes on as the card's job and nothing else starts.
+ * The confirmation („Przepnij”, „Przywróć brakujące”) waits for the plan
+ * (the window says the check runs); then it is disabled with the reason the
+ * card's button would have now (`groupJobReason`), for a restore also when
+ * the check found no missing version, the reason in the window
+ * (`aria-describedby`). It starts the job with the check as its `plan_job`
+ * and closes the window: the card follows the job to its summary, or shows
+ * its refusal (e.g. `409 plan_mismatch`: the set changed since its check).
+ * „Anuluj” and `Esc` close the window; the check goes on as the card's job
+ * and nothing else starts.
  */
 
 import { int, plural } from "../format.js";
@@ -105,7 +106,8 @@ export function ProjectPlan({ kind, group, jobs, context, onClose }) {
   const plan = result ? planOf(result, group.name) : null;
   // Nothing to confirm after a refused start or a check that gave no plan.
   const offered = check !== null && !(ended && plan === null);
-  let why = groupJobReason(kind, group, context);
+  // While the window's check runs it says so itself; the card's reasons wait for the plan.
+  let why = plan ? groupJobReason(kind, group, context) : null;
   if (!why && kind === "restore" && plan && !plan.missing.length) why = reason("no_missing");
   const whyId = `${id}-why`;
   const title = t(L.title[kind], { group: group.name });
@@ -122,12 +124,13 @@ export function ProjectPlan({ kind, group, jobs, context, onClose }) {
     ${offered && !plan ? html`<${Checking} events=${events} />` : null}
     ${ended && !plan ? html`<${CheckFailure} events=${events} />` : null}
     ${plan ? html`<${SetPlan} kind=${kind} plan=${plan} events=${events} />` : null}
-    ${offered && why ? html`<p class="hint" id=${whyId}>${why.text}</p>` : null}
+    ${why ? html`<p class="hint" id=${whyId}>${why.text}</p>` : null}
     <div class="modal-actions">
       <button type="button" class="btn" onClick=${onClose}>${T.common.actions.cancel}</button>
       ${offered
         ? html`<button type="button" class="btn primary" disabled=${!plan || why !== null}
-            title=${why ? why.text : confirm.title} aria-describedby=${why ? whyId : null}
+            title=${why ? why.text : plan ? confirm.title : L.checking}
+            aria-describedby=${why ? whyId : null}
             onClick=${start}>
             <${Icon} name=${confirm.icon} size=${14} />${confirm.label}</button>`
         : null}
