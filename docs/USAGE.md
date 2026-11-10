@@ -462,11 +462,14 @@ and a directory holding only one of them is no project.
   other option kept, and pins them only when every call succeeded (an unchanged pin
   keeps its time and author); `project-restore PROJEKT [ZESTAW …]` downloads the
   missing pinned versions again (`restored`, `content_match`, `not_restored`,
-  `not_restorable`) and never changes the file. No set named is every set. Anyone who
-  sees the project verifies and checks it; a re-pin and a restore need the owner or an
-  administrator and the right to write the stores. One job of a project runs at a
-  time; each follows the job in the foreground and exits `0`, `10` (partial), `11` or
-  `130`.
+  `not_restorable`) and never changes the file. No set named is every set. With
+  `--plan ZADANIE` a re-pin or a restore confirms the plan of a `project-check` of its
+  sets, as the card's plan window does: it is refused when that check has no plan or
+  checked other sets, or when a set changed since (`plan_mismatch`: check again), and
+  the job still asks the source again. Anyone who sees the project verifies and checks
+  it; a re-pin and a restore need the owner or an administrator and the right to write
+  the stores. One job of a project runs at a time; each follows the job in the
+  foreground and exits `0`, `10` (partial), `11` or `130`.
 
 ![Project with a snapshot](reports/v0.2-screenshots/08-migawka-w-edycji.webp)
 

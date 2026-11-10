@@ -315,8 +315,10 @@ version (`project_check`); "Przepnij" (Re-pin) moves one group to newer data
 (`project_repin`: the calls in the update mode, the group's pins replaced after the whole run
 succeeded); "Przywróć brakujące" (Restore missing) downloads missing pinned versions again on
 a colleague's computer (`project_restore`: kept when the same `sha256`, or for ČHMÚ the same
-content, returns). A version whose command the producer cannot rebuild (e.g. `soil hsg`) is
-pinned and verified, and its check and restore are disabled with the producer's reason. The
+content, returns); both open the group's plan window first, the group's check with what the
+job would change, and start once Ola confirms it (ADR-042 erratum 2). A version whose
+command the producer cannot rebuild (e.g. `soil hsg`) is pinned and verified, and its check
+and restore are disabled with the producer's reason. The
 card lists the project's activity from the action log ("Kasia: przypięcie zestawu „NMT 2023”,
 wczoraj 14:02").
 When the work is done, "Usuń projekt…" (Delete project) removes the project from
@@ -972,16 +974,22 @@ IMGW-21). Decisions: A-ADR-049 (D1 to D7 of the author's decision of 2026-10-31)
   (`project_repin`: one group's calls in the update mode, its pins replaced after the whole
   run succeeded) and "Przywróć brakujące" (`project_restore`: the calls in the default
   mode; a missing pin is kept when its `sha256`, or for ČHMÚ its `content_sha256`,
-  returns). A version whose command the producer cannot rebuild (KB-6, IMGW-21) is pinned,
-  verified and exported, and its check, restore and re-pin are disabled with the
-  producer's reason (D5). In a set of calls and hand pins each run pin goes by the set's
-  calls and each hand pin by its own command; the calls run with their options as written
-  (`year` too), never dropped or changed. A closed set is not re-pinned (`409 set_closed`,
-  before the job and again under the lock). IMGW pins are checked, re-pinned and restored
-  by the calls Obserwator rebuilds of their versions (`store sync`, `store catalog`,
-  `series build`; A-ADR-050); Obserwator has no mode that keeps the stored versions, so a
-  restore fetches the source's current file and reports `not_restored` when its bytes
-  differ.
+  returns). "Przepnij" and "Przywróć brakujące" of a set open its plan window first (6.1
+  "Plan before action"; ADR-042 erratum 2): the set's check runs, the window shows the
+  set's plan (the pins by state, the pins a re-pin moves, the positions it adds, the
+  missing versions a restore downloads again, the command lines), and the job starts
+  only when the person confirms it, naming that check (`plan_job`); a set changed since
+  its check is refused (`409 plan_mismatch`), and the job asks the source again, so it
+  fetches what the source has then. A version whose command the producer cannot rebuild
+  (KB-6, IMGW-21) is pinned, verified and exported, and its check, restore and re-pin are
+  disabled with the producer's reason (D5). In a set of calls and hand pins each run pin
+  goes by the set's calls and each hand pin by its own command; the calls run with their
+  options as written (`year` too), never dropped or changed. A closed set is not re-pinned
+  (`409 set_closed`, before the job and again under the lock). IMGW pins are checked,
+  re-pinned and restored by the calls Obserwator rebuilds of their versions (`store sync`,
+  `store catalog`, `series build`; A-ADR-050); Obserwator has no mode that keeps the
+  stored versions, so a restore fetches the source's current file and reports
+  `not_restored` when its bytes differ.
 - **Activity:** the project card lists the action log's entries of the project (A-ADR-047;
   D7): who created, changed, pinned, unpinned and exported it and which of its jobs ran,
   without the client addresses.
@@ -1877,7 +1885,8 @@ and the mockup.
 - **Plan before action:** every action involving the network or a write opens
   the "Okno planu" (Plan window) (6.5 h, l) with the number of files, what is already local,
   the size, the write location and the producer command (`kartograf …` or
-  `obserwator …`).
+  `obserwator …`); a project set's re-pin and restore open the plan window of the set's
+  check (4.7, 6.5 g).
 - **Transparency:** a human-readable name on top, the technical value
   (segment, source key, EPSG code, version path) in "Szczegóły techniczne" (Technical details)
   or in a tooltip.
@@ -4816,8 +4825,9 @@ Status (2026-10-26): built on the branch `feature/kartograf-data-output` (plan
 with v0.4 and the projects (D2 of 2026-10-31), when the author decides. Its project actions are
 rewritten by A-ADR-049. Criteria 3, 5 and 7 are met, criterion 8 on a local disk (the first
 thumbnail of a warmed version p95 4.1 ms), and criterion 4 for the downloads of the map
-and of a pasted command; whether the project card's re-pin and restore need the window
-too is open (ADR-042, A-ADR-049). Criteria 1, 2 and 6 are the `live` test
+and of a pasted command and, since 2026-11-10, for the project card's re-pin and restore,
+which start from the plan window of the set's check (ADR-042 erratum 2, the author's
+decision of 2026-11-09). Criteria 1, 2 and 6 are the `live` test
 `tests/integration/test_live_actions.py` and criterion 8 on a share the `smb` run, both
 run by the user. Area selection by unit name waits for KB-7; the list of jobs with
 cancel, retry and the log ("Zadania", A12) came with v0.4 (plan T9). Evidence:

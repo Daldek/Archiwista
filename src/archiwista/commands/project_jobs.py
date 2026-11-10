@@ -5,16 +5,17 @@ their store without the network, ``project-check PROJEKT [ZESTAW ...]``
 compares the pins with the source, ``project-repin PROJEKT ZESTAW`` pins one
 group anew to the source's newer versions and ``project-restore PROJEKT
 [ZESTAW ...]`` downloads the missing pinned versions again; no group named is
-every group. Each starts its job as ``POST /projects/{project}/jobs`` does,
-follows it to its end in the foreground (``archiwista.jobs.foreground``),
-prints the job as it ended (``GET /jobs/{job}``, ``JobDetail``) and exits
-with its outcome: ``0`` succeeded, ``10`` partial, ``11`` failed, ``130``
-cancelled or interrupted (ERR §1). They call
-``archiwista.services.project_jobs`` without HTTP, as the owner of the
-installation (``LOCAL_OWNER``, who may change every project and write the
-stores), through the ``Authorizer`` over the state database; ``--json``
-prints the route's model, a refusal prints no model and ends standard error
-with its ``archiwista-error/1`` document.
+every group. ``--plan ZADANIE`` of the last two names the ``project-check``
+job whose plan was confirmed (``plan_job``, ADR-042 erratum 2). Each starts
+its job as ``POST /projects/{project}/jobs`` does, follows it to its end in
+the foreground (``archiwista.jobs.foreground``), prints the job as it ended
+(``GET /jobs/{job}``, ``JobDetail``) and exits with its outcome: ``0``
+succeeded, ``10`` partial, ``11`` failed, ``130`` cancelled or interrupted
+(ERR §1). They call ``archiwista.services.project_jobs`` without HTTP, as the
+owner of the installation (``LOCAL_OWNER``, who may change every project and
+write the stores), through the ``Authorizer`` over the state database;
+``--json`` prints the route's model, a refusal prints no model and ends
+standard error with its ``archiwista-error/1`` document.
 """
 
 import argparse
@@ -91,6 +92,13 @@ def add_commands(commands: Commands) -> None:
                 metavar=message("metavar.group"),
                 help=message("cli.project_job_groups_help"),
             )
+        if kind in ("repin", "restore"):
+            parser.add_argument(
+                "--plan",
+                dest="plan_job",
+                metavar=message("metavar.job"),
+                help=message("cli.project_plan_job_help"),
+            )
 
 
 def main(
@@ -128,6 +136,8 @@ def main(
         given["groups"] = [args.group]
     elif args.groups:
         given["groups"] = args.groups
+    if getattr(args, "plan_job", None) is not None:
+        given["plan_job"] = args.plan_job
     try:
         request = ProjectJobRequest.model_validate(given)
     except ValidationError as error:
@@ -156,6 +166,7 @@ def main(
                 groups=request.groups,
                 actor=LOCAL_OWNER,
                 visible=ALL_PROJECTS,
+                plan_job=request.plan_job,
             )
 
         return foreground(jobs, submit, args, out, err)

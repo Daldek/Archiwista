@@ -972,22 +972,29 @@ def start_project_job(
     pins with the source, without effects; `repin` runs one group's calls in
     the producer's update mode and pins the group anew only when every call
     and unit succeeded; `restore` downloads the missing pinned versions
-    again in the default mode and never changes the file. The job has no
-    store (`store` `null`) and the parameters `project` and `groups`; its
-    `result` is described in AGENT_API 9. The answer has `Location:
-    /api/v1/jobs/{job}`; follow the job with `GET /jobs/{job}/events`. A
-    project the session does not see is `404`, as is a group it does not
-    have; `repin` and `restore` need `project.write` and `store.write` (`403
-    permission_denied`). Refused before a job exists: a `repin` without
-    exactly one group (`400`), a `repin` of a closed set (`409 set_closed`:
-    open it for editing first), a group whose producer offers no commands
-    (`422 no_commands`), a local group, or a pin added by hand to a plan
-    group, to re-pin with a pin known not rebuildable (`422
-    command_not_rebuildable`), a group whose producer's store the project
-    names matches no configured store (`409 unknown_store`), a second job of
-    the project (`409 conflict`, that job in `details.job`), offline mode
-    for all but `verify` (`409 offline_mode`) and a producer whose plugin is
-    missing (`503`).
+    again in the default mode and never changes the file. A `repin` or a
+    `restore` may name `plan_job`, the `check` job whose plan the person
+    confirmed (the card's plan window, ADR-042 erratum 2); the worker plans
+    again. The job has no store (`store` `null`) and the parameters `project`
+    and `groups`, a `repin` and a `restore` also `plan_job` (`null` when not
+    given); its `result` is described in AGENT_API 9. The answer has
+    `Location: /api/v1/jobs/{job}`; follow the job with `GET
+    /jobs/{job}/events`. A project the session does not see is `404`, as is
+    a group it does not have; `repin` and `restore` need `project.write` and
+    `store.write` (`403 permission_denied`). Refused before a job exists: a
+    `repin` without exactly one group and a `plan_job` of a `verify` or a
+    `check` (`400`), a `repin` of a closed set (`409 set_closed`: open it for
+    editing first), a group whose producer offers no commands (`422
+    no_commands`), a local group, or a pin added by hand to a plan group, to
+    re-pin with a pin known not rebuildable (`422 command_not_rebuildable`), a
+    group whose producer's store the project names matches no configured
+    store (`409 unknown_store`), a `plan_job` the session does not see or
+    without a plan yet (`404`: waiting, running or failed) or that is no
+    check of the named groups of the project as they are now (`409
+    plan_mismatch`, the job in `details.job`), a second job of the project
+    (`409 conflict`, that job in `details.job`), offline mode for all but
+    `verify` (`409 offline_mode`) and a producer whose plugin is missing
+    (`503`).
     """
     job = project_jobs.start(
         registry,
@@ -1000,6 +1007,7 @@ def start_project_job(
         groups=body.groups,
         actor=principal,
         visible=visible,
+        plan_job=body.plan_job,
     )
     response.headers["Location"] = f"{API_PREFIX}/jobs/{job.id}"
     return JobDetail.of(job)

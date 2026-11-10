@@ -12,14 +12,20 @@ editing first, A-ADR-049 erratum 6), a group whose producer offers no
 commands (``422 unsupported``, ``no_commands``) for the jobs that run calls,
 a re-pin of a local group, or of a pin added by hand to a plan group, whose
 call the index knows cannot be rebuilt (``422 unsupported``,
-``command_not_rebuildable``, A-ADR-049 D5) and a group whose producer's store
+``command_not_rebuildable``, A-ADR-049 D5), a group whose producer's store
 the project names matches no configured store (``409 conflict``,
-``unknown_store``). The supervisor then refuses a second job of the project
-(``409 conflict``) and, offline, a job that needs the network (``409``,
-``offline_mode``). A verification and a check need only that the principal
-sees the project. ``require`` and ``require_open_sets`` ask the same of a
-retry (``archiwista.services.jobs.retry``). Nothing here uses the network:
-the producer runs in the job's worker.
+``unknown_store``) and, for a re-pin or a restore that confirms the plan of
+a check (``plan_job``, the card's plan window: ADR-042 erratum 2), a job the
+principal does not see (``404``, as an unknown one), a check without its
+plan (``404``, ``job.no_plan``) or one that did not check the chosen groups
+of the project as they are now (``409 conflict``, ``plan_mismatch``). The
+supervisor then refuses a second job of the project (``409 conflict``) and,
+offline, a job that needs the network (``409``, ``offline_mode``). A
+verification and a check need only that the principal sees the project.
+``require`` and ``require_open_sets`` ask the same of a retry
+(``archiwista.services.jobs.retry``), which keeps the ``plan_job`` of the job
+it runs again. Nothing here uses the network: the producer runs in the job's
+worker, which plans again.
 
 ``chosen_groups``, ``group_producers``, ``group_store``, ``by_hand`` and
 ``set_closed`` are shared with the jobs' runners
@@ -81,6 +87,7 @@ def start(
     groups: Sequence[str] | None,
     actor: Principal,
     visible: ProjectVisibility,
+    plan_job: str | None = None,
 ) -> "JobRecord":
     """Check a request for a job of a project's groups, then start the job.
 
@@ -107,19 +114,28 @@ def start(
     actor : Principal
         Who asks: the job's actor.
     visible : ProjectVisibility
-        The projects ``actor`` sees.
+        The projects ``actor`` sees: a ``plan_job`` must be a job they see.
+    plan_job : str or None, optional
+        A re-pin or a restore only: the ``project_check`` job whose plan the
+        person confirmed. It must have ended with its plan (``succeeded`` or
+        ``partial``) of this project and of every chosen group, each group's
+        pins (producer, version and SHA-256) still those it checked.
 
     Returns
     -------
     JobRecord
         The job, ``queued`` or already ``running``, with no store; its
         parameters are ``project`` and ``groups`` (the names as the file
-        writes them, ``None`` for every group).
+        writes them, ``None`` for every group), and for a re-pin and a
+        restore ``plan_job`` (``None`` when not given).
 
     Raises
     ------
     NotFoundError
-        No project ``key`` that ``actor`` sees; a group it does not have.
+        No project ``key`` that ``actor`` sees; a group it does not have;
+        ``plan_job`` is no job ``actor`` sees (``job.not_found``) or a check
+        of the groups that has no plan, waiting, running or failed
+        (``job.no_plan``).
     PermissionDeniedError
         A re-pin or a restore while ``actor`` may not change the project or
         may not write the stores.
@@ -132,14 +148,17 @@ def start(
     ConflictError
         A check, a re-pin or a restore of a group whose producer's store
         the project names matches no configured store (``unknown_store``); a
-        re-pin of a closed set (``set_closed``).
+        re-pin of a closed set (``set_closed``); ``plan_job`` is no check of
+        the chosen groups of the project, or one of them changed since
+        (``plan_mismatch``, ``details.job``).
     JobConflictError
         The project has a job that waits or runs (``details.job``).
     OfflineModeError
         Offline mode is on and the job needs the network; nothing is
         recorded.
     ValueError
-        ``groups`` is empty, or a re-pin does not name exactly one group.
+        ``groups`` is empty, a re-pin does not name exactly one group, or a
+        verification or a check names ``plan_job``.
     """
     record = queries.project(key, visible=visible)
     if record is None:
@@ -153,6 +172,8 @@ def start(
         groups is None or len({name.casefold() for name in groups}) != 1
     ):
         raise ValueError(f"a re-pin takes one group, got {groups!r}")
+    if plan_job is not None and job_kind not in _WRITING:
+        raise ValueError(f"a {kind} job confirms no plan")
     chosen = chosen_groups(record, groups)
     if kind == "repin":
         require_open_sets(record, [group.name for group in chosen])
@@ -172,10 +193,81 @@ def start(
                 raise not_rebuildable(
                     pin.producer, pin.version, pin.command_refusal or ""
                 )
+    if plan_job is not None:
+        _require_plan(jobs, plan_job, project, chosen, visible=visible)
     names = None if groups is None else [group.name for group in chosen]
-    return jobs.submit(
-        job_kind, params={"project": project.key, "groups": names}, actor=actor
-    )
+    params: dict[str, object] = {"project": project.key, "groups": names}
+    if job_kind in _WRITING:
+        params["plan_job"] = plan_job
+    return jobs.submit(job_kind, params=params, actor=actor)
+
+
+def _require_plan(
+    jobs: "JobSupervisor",
+    plan_job: str,
+    project: ProjectRef,
+    chosen: Sequence[PinGroupRef],
+    *,
+    visible: ProjectVisibility,
+) -> None:
+    """Refuse a check whose plan is not that of ``chosen`` as they are now.
+
+    The plan of a re-pin or a restore is the ``project_check`` job the person
+    confirmed (ADR-042 erratum 2): a check of ``project`` that named every
+    group of ``chosen`` (or every group), ended with its plan, and whose rows
+    of each group are the group's pins now, compared by producer, version and
+    pinned SHA-256 (names compared case-folded): a pin added, removed or
+    pinned anew since makes the plan another set's. The worker plans again;
+    this only makes sure the person saw the plan of the sets the job changes.
+
+    Raises
+    ------
+    NotFoundError
+        No job ``plan_job`` that the principal sees (``job.not_found``); a
+        check of the groups that waits, runs or did not end with its plan
+        (``job.no_plan``).
+    ConflictError
+        The job is no check of the groups of the project, or a group
+        changed since it was checked (``plan_mismatch``, ``details.job``).
+    """
+    planned = jobs.get(plan_job, visible=visible)
+    if planned is None:
+        raise NotFoundError(message("job.not_found", job=plan_job))
+    asked = planned.params.get("groups")
+    if (
+        planned.kind != "project_check"
+        or planned.params.get("project") != project.key
+        or (isinstance(asked, list) and not _named(chosen, asked))
+    ):
+        raise _plan_mismatch(message("job.project_plan_other", job=plan_job), plan_job)
+    result = planned.result
+    if result is None:
+        raise NotFoundError(message("job.no_plan", job=plan_job))
+    checked = result.get("groups")
+    rows = result.get("pins")
+    if not isinstance(checked, list) or not _named(chosen, checked):
+        raise _plan_mismatch(message("job.project_plan_other", job=plan_job), plan_job)
+    for group in chosen:
+        name = group.name.casefold()
+        seen = {
+            (row.get("producer"), row.get("version"), row.get("sha256"))
+            for row in (rows if isinstance(rows, list) else ())
+            if isinstance(row, dict) and str(row.get("group", "")).casefold() == name
+        }
+        if seen != {(pin.producer, pin.version, pin.sha256) for pin in group.pins}:
+            text = message("job.project_plan_changed", job=plan_job, group=group.name)
+            raise _plan_mismatch(text, plan_job)
+
+
+def _named(chosen: Sequence[PinGroupRef], names: Sequence[object]) -> bool:
+    """Whether ``names`` hold every group of ``chosen``, compared case-folded."""
+    folded = {str(name).casefold() for name in names}
+    return all(group.name.casefold() in folded for group in chosen)
+
+
+def _plan_mismatch(text: str, plan_job: str) -> ConflictError:
+    """Return the refusal of a plan of other sets (``plan_mismatch``)."""
+    return ConflictError(text, reason="plan_mismatch", details={"job": plan_job})
 
 
 def by_hand(pin: ProjectPinRef) -> bool:

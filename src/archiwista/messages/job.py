@@ -310,6 +310,26 @@ MESSAGES = {
             " albo najpierw sprawdź te polecenia."
         ),
     ),
+    "project_plan_other": Text(
+        (
+            'Job "{job}" is no check of these sets of this project: check them and'
+            " confirm the plan of that check."
+        ),
+        (
+            "Zadanie „{job}” nie jest sprawdzeniem tych zestawów tego projektu:"
+            " sprawdź je i potwierdź plan tego sprawdzenia."
+        ),
+    ),
+    "project_plan_changed": Text(
+        (
+            'Set "{group}" changed after job "{job}" checked it: check it again'
+            " and confirm the new plan."
+        ),
+        (
+            "Zestaw „{group}” zmienił się po sprawdzeniu w zadaniu „{job}”:"
+            " sprawdź go ponownie i potwierdź nowy plan."
+        ),
+    ),
     "conflict_snapshot": Text(
         (
             "A snapshot of this file is already in progress: job {job} ({state}). Wait"

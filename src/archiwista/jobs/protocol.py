@@ -154,8 +154,10 @@ class JobSpec:
         ``force``; ``check``: ``producer`` and ``calls``, each a ``command``
         and its ``options``; ``download``: those of ``check`` and
         ``plan_job``; the ``PROJECT_KINDS``: ``project`` and ``groups``
-        (names, ``None`` for every group; one for ``project_repin``);
-        ``preview_warm``: the ``WARM_FILTERS``).
+        (names, ``None`` for every group; one for ``project_repin``), and
+        ``plan_job`` of ``project_repin`` and ``project_restore`` (the
+        confirmed ``project_check``, which the worker does not read: it plans
+        again); ``preview_warm``: the ``WARM_FILTERS``).
     actor : str
         Who asked for the job (``Principal.id``).
     actor_kind : {"local_owner", "user", "agent", "scheduler"}
