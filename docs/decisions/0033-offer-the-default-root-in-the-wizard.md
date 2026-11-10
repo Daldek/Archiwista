@@ -1,7 +1,7 @@
 # ADR-033: Offer the producer's default root in the wizard, and never use it
 
 **Date:** 2026-10-25
-**Status:** proposed (done on the topic branch `feature/kartograf-data-output`; decision D7 of the plan `docs/plans/2026-10-25-archiwista-next.md` was accepted by delegated approval; accepted when the author approves and merges the branch)
+**Status:** proposed (done on the topic branch `feature/kartograf-data-output`; decision D7 of the plan `docs/plans/2026-10-25-archiwista-next.md` was accepted by delegated approval; accepted when the author approves and merges the branch); amended by ADR-053 (2026-11-10: Archiwista reads `nogat.toml` for its own directories; erratum 1)
 
 **Context:** The data-output convention (Nogat DEV §19, ECO-051) gives every producer a default store root: `KARTOGRAF_ROOT`, `[kartograf] root` of `nogat.toml`, else `<data_dir>/kartograf` (DEV-19.2; IMGWTools has `IMGW_ROOT` and `<data_dir>/imgw`). A producer call that names no root reads and writes there. Archiwista names the store in every call it makes (Decision 1 of the plan), so it never needs the default. A person who has used Kartograf's command line, however, already has a store in that directory, and the first-run wizard asks for a directory that this person would have to find and type. Kartograf first reported its default only through `kartograf.get_config()`: `store.root`, its `source`, `name`, `exists` and `size_bytes`, the sum of every file below the root, so one report was a walk of the whole store (the request for a read-only `store_root()` in `kartograf.__all__` was filed in the plan). Kartograf `c655639b` has it: `store_root()` returns `StoreRoot(root, source, name, marker_exists)`, in the order of DEV-18.1 and without reading the store.
 
