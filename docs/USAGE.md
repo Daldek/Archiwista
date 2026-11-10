@@ -334,6 +334,18 @@ and a directory holding only one of them is no project.
   nothing missing. One job of a project runs at a time; the card follows
   it and, when it ends, reads the project again and marks each pin with what the job
   found ("nienaruszona", "jest nowsza: <label>", "przywrócona", …) until the next job.
+  A set's "Przepnij" and "Przywróć brakujące" start nothing at once (ADR-042 erratum
+  2): each opens a window ("Przepiąć zestaw „…”?", "Przywrócić brakujące wersje zestawu
+  „…”?") that runs the set's check ("Sprawdzanie zestawu u źródła…") and shows the
+  set's plan: its versions by what the check found, the versions a re-pin changes
+  ("Wersje, które przepięcie zmieni", the pinned label → the source's) and the new
+  positions it pins, the missing versions a restore downloads again, the versions that
+  could not be checked, and each command line to copy. Its "Przepnij" or "Przywróć
+  brakujące" starts the job with that check as its plan; a check that failed offers
+  nothing to confirm, and a set changed after its check is refused on the card
+  ("Zestaw „…” zmienił się po sprawdzeniu…": check it again). The job still asks the
+  source again, so it fetches what the source has then. "Anuluj" closes the window and
+  leaves the check running as the card's job.
   Below come the exports, the own data and the activity.
 - **Sets in the making** (A-ADR-049 erratum 6; the owner or an administrator): a set is
   built from several plan windows and hand-picked versions while it is open ("w
