@@ -89,7 +89,7 @@ src/archiwista/
 ├── services/ auth/ state/   # services shared by API and CLI, permissions, local state database
 ├── commands/ reader.py admin.py   # CLI commands
 ├── errors.py messages/   # exceptions, the message catalog (English and Polish texts)
-└── web/            # the build-free interface: Preact + htm modules, vendor/ libraries
+└── web/            # the build-free interface: Preact + htm modules, vendor/ libraries, nogat/ kit
 tests/{unit,integration,contract,e2e,perf,fixtures}
 ```
 
@@ -176,9 +176,9 @@ contract KA-1 to KA-8, SPEC 12); Obserwator is an optional producer behind the e
   `/api` route) and `operationId` is the route function name; there is no command catalog.
 - DEV-18, DEV-19: profile `tool` only; Archiwista keeps its own `config.toml` and writes no
   data files except own-data snapshots and a project's exports. Of DEV-18.1 it reads
-  `data_dir`, `cache_dir` and `lang` of `nogat.toml` (`[archiwista]` before `[nogat]`), not
-  the `NOGAT_<KEY>` variables, and has no `config show`; `archiwista doctor` reports the
-  file and each value's source (A-ADR-053).
+  `data_dir`, `cache_dir`, `lang` and the table `gui` of `nogat.toml` (`[archiwista]`
+  before `[nogat]`), not the `NOGAT_<KEY>` variables, and has no `config show`;
+  `archiwista doctor` reports the file and each value's source (A-ADR-053, A-ADR-054).
 - ERR-4: a job that does not succeed, `reindex` and `archiwista doctor` end with the
   outcome statuses 10, 11 and 130 and print no error document; every other refusal ends
   standard error with the `archiwista-error/1` document.

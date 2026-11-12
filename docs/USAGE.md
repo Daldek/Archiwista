@@ -57,8 +57,15 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
   see "Team server") and the action log ("Dziennik"). Saving the settings
   replaces all of them at once; a new or moved store is scanned from scratch.
 - **Top bar:** the stores with a state dot, "Szukaj" (search; `Ctrl+K` or `/`
-  in every view), "Instrukcja" (the guide) and the current session (on a team
-  server the account menu).
+  in every view), "Instrukcja" (the guide), "Aplikacje" (the ecosystem's other
+  GUIs, below) and the current session (on a team server the account menu).
+- **The menu „Aplikacje”** lists the GUIs of the Nogat ecosystem this deployment
+  names in the table `gui` of `nogat.toml` (README; for example Hydrolog and
+  Hydrograf), each with its mark and what it does, Archiwista marked „Ta
+  aplikacja”; an entry opens its GUI in a tab named after it, which a later click
+  takes again (unless one of the two pages forbids it, as Hydrolog's does: then a
+  new tab). Without another GUI in the file there is no menu. It is Nogat's, the
+  same in every GUI of the ecosystem (A-ADR-054).
 - **The guide:** "Instrukcja" (its icon alone on a phone) opens a short guide in
   Polish at `/instrukcja` in a new tab: twelve slides with pictures of this
   interface, from the window and its views to a team server and how to report a
@@ -822,8 +829,13 @@ maxima, the lesser of their minima), their days, half and occurrences, and
 annual maxima of complete hydrological years, as a hand-off to Hydrolog
 (`nogat-handoff/1`, A-ADR-052); the same document comes from „Do Hydrologa” under the
 chart of the station card (choose „Dane” and „Zmienna”, then „Kopiuj do Hydrologa” or
-„Plik przekazania”), and Hydrolog's
-„Statystyka przepływów” opens it with „Wczytaj z Archiwisty”. `stations compare` compares one variable of 2 to 5
+„Plik przekazania”, which saves `<subject>.handoff.json`), and Hydrolog's
+„Statystyka przepływów” opens it with „Wczytaj z Archiwisty”. Where the browser
+cannot copy (an address `http://` on the network, not `127.0.0.1`, or a refusal) the
+text appears selected in a field under the buttons: press Ctrl+C, then „Wklej ze
+schowka” in Hydrolog. With Hydrolog in the menu „Aplikacje” the note links „Otwórz
+Hydrologa”. The buttons, the file and the copy are those of every GUI of the
+ecosystem (Nogat's kit, A-ADR-054). `stations compare` compares one variable of 2 to 5
 stations (`--station MAGAZYN/DOSTAWCA/KOD`, repeated) in one dataset over one range
 (by default every known day of the variable at those stations): the range once, then
 each station with the variable's label and full years and its chart as `stations
@@ -1135,10 +1147,10 @@ Restoring is putting the copy back in place while the server is stopped.
 - `archiwista doctor` checks the installation, the Kartograf plugin, the
   stores and the port, and gives a repair for every problem. It also names
   `nogat.toml`, the settings file the Nogat tools share, and where the data
-  directory, the caches and the language of the command line come from
-  (`data_dir`, `cache_dir` and `lang` of the file, else the defaults; README,
-  A-ADR-053). A file Archiwista cannot use stops every other command until it is
-  corrected.
+  directory, the caches, the language of the command line and the GUIs of the
+  menu „Aplikacje” come from (`data_dir`, `cache_dir`, `lang` and `gui` of the
+  file, else the defaults; README, A-ADR-053, A-ADR-054). A file Archiwista cannot
+  use stops every other command until it is corrected.
 - **Store unavailable** (for example a disconnected share): the views show the
   state of the index, the status bar gives its time; after reconnecting, the
   next scan completes the changes without rebuilding the index.

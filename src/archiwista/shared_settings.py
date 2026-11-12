@@ -3,7 +3,7 @@
 The tools of the ecosystem keep their shared settings in one file, ``nogat.toml``
 (Nogat ECO-028, DEV-18.1): the path in ``NOGAT_CONFIG``, else the file in the user
 configuration directory of ``nogat`` (``platformdirs.user_config_path("nogat")``).
-Archiwista keeps its own settings in its ``config.toml`` and reads three keys of
+Archiwista keeps its own settings in its ``config.toml`` and reads four keys of
 that file, each from the table ``[archiwista]`` before the table ``[nogat]``. A
 value comes from the first of: Archiwista's own setting, ``nogat.toml``, the
 built-in default.
@@ -20,6 +20,11 @@ built-in default.
   ``en``; Polish by default. Archiwista's own settings come first: ``--json``
   output is English, and the API follows each request's ``Accept-Language``
   (English without it).
+- ``gui``: the GUIs of the deployment, the table of their addresses by registry
+  name (``[nogat.gui]``, Nogat DEV-15.4, A-ADR-054): an address is absolute
+  (``https://hydrolog.example/``) or a path on this host (``/hydrolog/``). The
+  server gives it to the interface (``GET /api/v1/session``), whose menu
+  „Aplikacje” lists the GUIs; no default, so without it the menu is not drawn.
 
 The ``NOGAT_<KEY>`` variables are not read: the file is the one place every
 process of a person reads, while a variable left in one shell would start the
@@ -29,7 +34,8 @@ Archiwista works without it. A file that cannot be used (unreadable, not UTF-8
 text, not TOML, a table that is not one, a value of these keys that is not
 valid, or a file ``NOGAT_CONFIG`` names that does not exist) gives no value:
 ``archiwista doctor`` reports it and every other command refuses to run, so
-Archiwista never starts on another directory than the file means.
+Archiwista never starts on another directory or with another menu than the file
+means.
 """
 
 import os
@@ -53,6 +59,8 @@ PERSON_LANG: Final[Lang] = "pl"
 
 type SharedKey = Literal["data_dir", "cache_dir", "lang"]
 SHARED_KEYS: Final[tuple[SharedKey, ...]] = ("data_dir", "cache_dir", "lang")
+GUI_KEY: Final = "gui"
+"""The table of the GUIs' addresses (Nogat DEV-15.4, DEV-18.1)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +88,29 @@ class SharedValue:
 
 
 @dataclass(frozen=True, slots=True)
+class SharedGui:
+    """The table ``gui`` of ``nogat.toml``: the GUIs of the deployment (A-ADR-054).
+
+    Attributes
+    ----------
+    addresses : Mapping of str to str
+        Each GUI's address by its registry name, in the file's order, as the
+        file writes them (spaces around an address left out): absolute, or a
+        path on this host. The interface's menu keeps the http and https ones.
+    table : {"archiwista", "nogat"}
+        The table of the file that gave it.
+    """
+
+    addresses: Mapping[str, str]
+    table: str
+
+    @property
+    def name(self) -> str:
+        """Return the table as the file writes it, e.g. ``[nogat] gui``."""
+        return f"[{self.table}] {GUI_KEY}"
+
+
+@dataclass(frozen=True, slots=True)
 class SharedSettings:
     """``nogat.toml`` as Archiwista read it.
 
@@ -93,9 +124,12 @@ class SharedSettings:
     exists : bool
         Whether the file exists.
     problem : Message or None
-        Why the file cannot be used; then ``values`` is empty.
+        Why the file cannot be used; then ``values`` is empty and ``gui`` is
+        ``None``.
     values : Mapping of str to SharedValue
         The keys the file gives, by key.
+    gui : SharedGui or None
+        The GUIs of the deployment, ``None`` without the table ``gui``.
     """
 
     path: Path
@@ -103,6 +137,7 @@ class SharedSettings:
     exists: bool
     problem: Message | None = None
     values: Mapping[SharedKey, SharedValue] = field(default_factory=dict)
+    gui: SharedGui | None = None
 
     @classmethod
     def read(cls, environ: Mapping[str, str] | None = None) -> Self:
@@ -150,10 +185,12 @@ class SharedSettings:
             problem = message("settings.shared_invalid_toml", path=path, detail=detail)
             return cls(path, named, exists=True, problem=problem)
         try:
-            values = _values(data, path)
+            tables = _tables(data, path)
+            values = _values(tables, path)
+            gui = _gui(tables, path)
         except _UnusableError as error:
             return cls(path, named, exists=True, problem=error.problem)
-        return cls(path, named, exists=True, values=values)
+        return cls(path, named, exists=True, values=values, gui=gui)
 
     def value(self, key: SharedKey) -> SharedValue | None:
         """Return the value the file gives for ``key``, ``None`` without one."""
@@ -174,9 +211,12 @@ class _UnusableError(Exception):
         self.problem = problem
 
 
-def _values(data: Mapping[str, object], path: Path) -> dict[SharedKey, SharedValue]:
-    """Return the keys the tables give, the first table's value winning."""
-    tables: list[tuple[str, Mapping[str, object]]] = []
+type _Tables = list[tuple[str, Mapping[str, object]]]
+
+
+def _tables(data: Mapping[str, object], path: Path) -> _Tables:
+    """Return the tables Archiwista reads, in their order; refuse one that is not."""
+    tables: _Tables = []
     for table in TABLES:
         found = data.get(table, {})
         if not isinstance(found, Mapping):
@@ -184,6 +224,11 @@ def _values(data: Mapping[str, object], path: Path) -> dict[SharedKey, SharedVal
                 message("settings.shared_not_table", path=path, table=table)
             )
         tables.append((table, cast(Mapping[str, object], found)))
+    return tables
+
+
+def _values(tables: _Tables, path: Path) -> dict[SharedKey, SharedValue]:
+    """Return the keys the tables give, the first table's value winning."""
     values: dict[SharedKey, SharedValue] = {}
     for key in SHARED_KEYS:
         for table, entries in tables:
@@ -192,6 +237,34 @@ def _values(data: Mapping[str, object], path: Path) -> dict[SharedKey, SharedVal
                 values[key] = SharedValue(key, text, table)
                 break
     return values
+
+
+def _gui(tables: _Tables, path: Path) -> SharedGui | None:
+    """Return the first table's ``gui`` whole, ``None`` when no table has one."""
+    for table, entries in tables:
+        if GUI_KEY not in entries:
+            continue
+        raw = entries[GUI_KEY]
+        if not isinstance(raw, Mapping):
+            problem = message(
+                "settings.shared_gui", path=path, table=table, value=_shown(raw)
+            )
+            raise _UnusableError(problem)
+        addresses: dict[str, str] = {}
+        for name, address in cast(Mapping[str, object], raw).items():
+            text = address.strip() if isinstance(address, str) else ""
+            if not text:
+                problem = message(
+                    "settings.shared_gui_address",
+                    path=path,
+                    table=table,
+                    name=name,
+                    value=_shown(address),
+                )
+                raise _UnusableError(problem)
+            addresses[name] = text
+        return SharedGui(addresses, table)
+    return None
 
 
 def _checked(key: SharedKey, raw: object, table: str, path: Path) -> str:

@@ -91,6 +91,10 @@ _STATE_EXAMPLE: dict[str, Any] = {
     "password_change_required": False,
     "team": True,
     "expires_at": "2026-10-19T20:00:00Z",
+    "gui": {
+        "archiwista": "https://archiwista.example/",
+        "hydrolog": "https://hydrolog.example/",
+    },
 }
 
 
@@ -233,6 +237,16 @@ class SessionState(BaseModel):
             " an agent's session ends 12 h after its start at the latest."
         )
     )
+    gui: dict[str, str] = Field(
+        description=(
+            "The GUIs of the deployment by registry name (`hydrolog`), as the"
+            " table `gui` of `nogat.toml` lists them (`[nogat.gui]`, Nogat"
+            " DEV-15.4; `[archiwista.gui]` first, A-ADR-054), read when the server"
+            " started: each one's address, absolute or a path on this host. The"
+            " interface's menu „Aplikacje” lists their http and https ones, this"
+            " one marked; empty when the file sets none: no menu."
+        )
+    )
 
 
 class NewSession(SessionState):
@@ -305,6 +319,7 @@ def _state(session: Session, principal: Principal, request: Request) -> SessionS
         password_change_required=session.password_change_required,
         team=transport.team,
         expires_at=session.expires_at,
+        gui=request.app.state.gui,
     )
 
 

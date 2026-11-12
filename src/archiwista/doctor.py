@@ -125,8 +125,9 @@ def run_doctor(
         Port check, replaceable in tests.
     shared : SharedSettings or None, optional
         ``nogat.toml`` as the command read it; read now when omitted. The
-        report names it and where the data directory, the caches and the
-        language come from (A-ADR-053).
+        report names it and where the data directory, the caches, the
+        language and the GUIs of the menu „Aplikacje” come from (A-ADR-053,
+        A-ADR-054).
 
     Returns
     -------
@@ -174,6 +175,7 @@ def run_doctor(
         )
     )
     checks.append(_language_check(shared))
+    checks.append(_gui_check(shared))
     privacy = _privacy_check(paths.data_dir)
     if privacy is not None:
         checks.append(privacy)
@@ -357,6 +359,16 @@ def _language_check(shared: SharedSettings) -> DoctorCheck:
     )
     text = message("doctor.language", language=shared.language, origin=origin)
     return DoctorCheck("ok", text)
+
+
+def _gui_check(shared: SharedSettings) -> DoctorCheck:
+    gui = shared.gui
+    if gui is None or not gui.addresses:
+        origin = message("doctor.setting_default")
+        return DoctorCheck("ok", message("doctor.gui_none", origin=origin))
+    listed = ", ".join(f"{name} {address}" for name, address in gui.addresses.items())
+    origin = message("doctor.setting_file", name=gui.name)
+    return DoctorCheck("ok", message("doctor.gui", guis=listed, origin=origin))
 
 
 def _data_dir_check(data_dir: Path, origin: str) -> DoctorCheck:

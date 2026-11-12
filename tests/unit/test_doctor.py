@@ -427,12 +427,13 @@ def test_doctor_shows_no_default_root_of_a_plugin_that_is_not_available(
 def test_doctor_names_nogat_toml_and_where_each_value_comes_from(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The shared file; the data, the caches and the language with their sources."""
+    """The shared file and where the data, caches, language and GUIs come from."""
     # Arrange
     settings = tmp_path / "nogat.toml"
     shared_data = tmp_path / "shared-data"
     settings.write_text(
-        f'[nogat]\ndata_dir = "{shared_data}"\n[archiwista]\nlang = "en"\n',
+        f'[nogat]\ndata_dir = "{shared_data}"\n[archiwista]\nlang = "en"\n'
+        '[nogat.gui]\nhydrolog = "http://127.0.0.1:8070/"\narchiwista = "/"\n',
         encoding="utf-8",
     )
     monkeypatch.setenv("NOGAT_CONFIG", str(settings))
@@ -463,5 +464,9 @@ def test_doctor_names_nogat_toml_and_where_each_value_comes_from(
     assert (
         "Language of the command line for a person: en"
         " ([archiwista] lang of nogat.toml)"
+    ) in lines
+    assert (
+        "GUIs of the interface's menu „Aplikacje”: hydrolog http://127.0.0.1:8070/,"
+        " archiwista / ([nogat] gui of nogat.toml)"
     ) in lines
     assert not data.exists()

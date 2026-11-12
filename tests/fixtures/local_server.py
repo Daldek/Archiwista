@@ -7,7 +7,7 @@ import socket
 import stat
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import ExitStack, contextmanager
 from functools import partial
 from pathlib import Path
@@ -86,6 +86,7 @@ def serving(
     on_ready: Callable[[AppServer], object] | None = None,
     port: int = 0,
     web_dir: Path | None = None,
+    gui: Mapping[str, str] | None = None,
 ) -> Iterator[tuple[AppServer, str]]:
     """Run ``serve_main`` on ``port``; yield the server and what it printed.
 
@@ -93,8 +94,9 @@ def serving(
     ``on_ready`` runs as ``archiwista serve`` runs it (e.g. opening the
     browser). ``port`` ``0`` is a free one; the port of a stopped server
     serves the same address again. ``web_dir`` replaces the package's
-    interface files (an upgrade of the interface). The server stops when the
-    block ends and must then exit with status 0.
+    interface files (an upgrade of the interface); ``gui`` is the table of
+    the GUIs ``nogat.toml`` would give. The server stops when the block ends
+    and must then exit with status 0.
     """
     out = io.StringIO()
     err = io.StringIO()
@@ -116,6 +118,7 @@ def serving(
                 port=port,
                 access_log=access_log,
                 on_ready=ready_now,
+                gui=gui,
             )
         )
 

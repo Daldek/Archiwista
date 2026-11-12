@@ -1,7 +1,8 @@
 /**
  * The shell around the views (mockup layout): the top bar with the stores,
  * the downloads in the background, „Zgłoś uwagę” (feedback.js), the link to
- * the user guide and the session — on a team server the account menu
+ * the user guide, „Aplikacje” (the menu of the ecosystem's GUIs from Nogat's
+ * kit, `AppMenu`) and the session — on a team server the account menu
  * (`AccountMenu`) —, the navigation (a rail on a computer, a bar at the
  * bottom of a phone), the index state banner, the current view of the
  * address and the overlays opened over it, and over all of them the plan
@@ -9,6 +10,8 @@
  * overlays come from `routes.js`; the first run, without any store, opens the
  * wizard.
  */
+
+import "../nogat/nogat-app-menu.js";
 
 import { endSession, endSessionLabel, issueToken, listSessions, readSession } from "./api.js";
 import { AppContext, useApp, useAppState } from "./context.js";
@@ -49,6 +52,8 @@ const loaded = new Map();
 const ACCOUNT_PANEL = "account-panel";
 /** The user guide, a page of its own beside the interface (app.py `GUIDE_PATH`). */
 const GUIDE = "/instrukcja";
+/** The marks of the GUIs the kit's menu shows (web/nogat/marks/, Nogat design/marks/). */
+const MARKS = "/static/nogat/marks/";
 /** Most path aliases a person keeps (the server's `MAX_PATH_ALIASES`). */
 const MAX_PATH_ALIASES = 20;
 // The key of the last row of „Moje ścieżki”.
@@ -187,6 +192,7 @@ function TopBar({ onSessionChange, onSignOut }) {
       <${SearchButton} />
       <${FeedbackButton} />
       <${GuideLink} />
+      <${AppMenu} gui=${session.gui} />
       ${session.team
         ? html`<${AccountMenu} session=${session} onSessionChange=${onSessionChange} onSignOut=${onSignOut} />`
         : html`<span class="session-chip" title=${t(L.session_expires, { expires_at: stamp(session.expires_at) })}>
@@ -205,6 +211,18 @@ function GuideLink() {
     title=${L.guide_title} aria-label=${L.guide}>
     <${Icon} name="help" size=${15} /><span class="guide-link-text">${L.guide}</span>
   </a>`;
+}
+
+/**
+ * „Aplikacje” (Nogat DEV-15.4, A-ADR-054): the kit's menu of the deployment's GUIs, the
+ * table `gui` of `nogat.toml` the session gives, each opened in its own tab; with no other
+ * GUI the element draws nothing. It stands where Nogat's shell has the theme switch, left of
+ * the session.
+ *
+ * @param {{gui: Object<string, string>|undefined}} props
+ */
+function AppMenu({ gui }) {
+  return html`<nogat-app-menu current="archiwista" marks=${MARKS} apps=${gui}></nogat-app-menu>`;
 }
 
 /**

@@ -164,7 +164,10 @@ Rules of the session:
   agent tokens. Disabling or deleting an account ends its sessions, and a
   revoked role stops working at the next request.
 - `GET /session` returns the state of the session (without `csrf_token`) with
-  the roles and `store_write` read at this request; `DELETE /session` ends it.
+  the roles and `store_write` read at this request, and `gui`: the ecosystem's
+  GUIs the deployment names in the table `gui` of `nogat.toml`, registry name to
+  address, as the server read it at its start (`{}` without it; A-ADR-054);
+  `DELETE /session` ends it.
   An agent does not issue tokens for further sessions (`POST /session/tokens`
   → `403 forbidden`, `permission_denied`): the owner gives a new token
   (`archiwista token`).

@@ -9,6 +9,19 @@ command-line interface may change.
 
 ### Added
 
+- „Aplikacje” in the top bar (A-ADR-054; Nogat ECO-058, DEV-15.4, plan
+  `2026-11-12-gui-links-and-handoff` step 6): Nogat's menu of the ecosystem's GUIs, the
+  same in each of them, lists the GUIs the deployment names in the table `gui` of
+  `nogat.toml` (`[nogat.gui]`, e.g. `hydrolog = "http://127.0.0.1:8070/"`; an address
+  absolute or a path on this host) with their marks, Archiwista marked „Ta aplikacja”,
+  and opens each in a tab of its own (`nogat-<name>`). Without another GUI in the file
+  there is no menu: there are no built-in addresses. `archiwista serve` reads the table
+  at its start and `GET /session` answers it as `gui` (`{}` without it); `archiwista
+  doctor` names it and its table, and a `gui` that is not a table of addresses stops
+  every other command as the other keys of the file do. Nogat's GUI kit 0.1.0 (the menu,
+  the hand-off module, the marks) is copied byte for byte into
+  `src/archiwista/web/nogat/`, checked against its own `nogat-kit.json`.
+
 - Archiwista reads `nogat.toml`, the settings file the Nogat tools share (A-ADR-053; the
   author's decision of 2026-11-09): the path in `NOGAT_CONFIG`, else
   `~/.config/nogat/nogat.toml`, each key from `[archiwista]` before `[nogat]`. A value
@@ -1179,6 +1192,16 @@ command-line interface may change.
 
 ### Changed
 
+- „Do Hydrologa” of the station card hands off through Nogat's kit (A-ADR-052 erratum 1,
+  A-ADR-054), as Hydrograf and Hydrolog do: „Plik przekazania” saves
+  `<subject>.handoff.json` with `\/:*?"<>|` and control characters as `-`, runs of white
+  space as one space and the ends trimmed, in 2-space JSON with a final newline (the
+  document is the same; `archiwista stations handoff` prints it as before); the notes
+  are the kit's („Skopiowano przekazanie do schowka.”, „Zapisano plik „…”.”), and with
+  Hydrolog in the menu „Aplikacje” the note links „Otwórz Hydrologa”.
+- The copies of Nogat's `handoff-1.schema.json` (with `node_provenance`) and
+  `error_registry.json` (the standard numbered 1.0; `_errors.STANDARD_VERSION` `"1.0"`,
+  the codes unchanged) are Nogat's of `7786271`.
 - Kartograf is re-pinned from `9deaa314` to `d0990c89` and Obserwator from `1ee5457` to
   `f9f4ee79`, the commits of Nogat's release set candidate-2 (Nogat `587c909`;
   `pyproject.toml`, `uv.lock`; the supported ranges are unchanged, both builds keep their
@@ -1552,6 +1575,12 @@ command-line interface may change.
   both once with `uv run playwright install chromium firefox`.
 
 ### Fixed
+
+- „Kopiuj do Hydrologa” of the station card copies on a plain-HTTP address of the
+  network too (A-ADR-054): where the browser has no Clipboard API, or refuses it, the
+  hand-off's text appears selected in a field under the buttons, with „Przeglądarka nie
+  pozwoliła skopiować: tekst przekazania jest zaznaczony, naciśnij Ctrl+C.”; before, the
+  button failed without a word.
 
 - The map shows the stations of a station catalog downloaded without series (ČHMÚ's
   `store catalogs`, say): „Zbiór danych” of hydro or meteo stations labels the points,

@@ -4,8 +4,9 @@ The text for a person (help, usage errors, the output of a command and the
 line before an error document) is in ``lang`` of ``nogat.toml``, Polish by
 default (A-ADR-053); ``--json`` output and the error document on the last line
 of standard error are English (AGI-9.2). ``nogat.toml`` also gives the data
-directory and the caches (``AppPaths.default``): every command but
-``archiwista doctor``, which reports it, refuses a file that cannot be used.
+directory and the caches (``AppPaths.default``), and ``archiwista serve`` the
+GUIs of the interface's menu „Aplikacje” (``gui``, A-ADR-054): every command
+but ``archiwista doctor``, which reports it, refuses a file that cannot be used.
 """
 
 import argparse
@@ -297,6 +298,7 @@ def _dispatch(
             access_log=args.access_log,
             log_level=log_level,
             on_ready=None if args.no_browser else open_in_browser,
+            gui=None if shared.gui is None else shared.gui.addresses,
         )
     if args.command in READ_COMMANDS:
         return read_main(args, paths, registry, sys.stdout, sys.stderr)

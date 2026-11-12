@@ -34,7 +34,7 @@ import sqlite3
 import ssl
 import threading
 import webbrowser
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
@@ -449,6 +449,7 @@ def serve_main(
     access_log: bool = False,
     log_level: str = DEFAULT_LOG_LEVEL,
     on_ready: Callable[[AppServer], object] | None = None,
+    gui: Mapping[str, str] | None = None,
 ) -> int:
     """Run ``archiwista serve`` and return the process exit status.
 
@@ -476,6 +477,10 @@ def serve_main(
         Called with the server after the address is printed and before it
         serves, e.g. ``open_in_browser``. The launch file goes once the
         startup token is used, when it expires, and when the server stops.
+    gui : Mapping of str to str or None, optional
+        The GUIs of the deployment by registry name (``[nogat.gui]`` of
+        ``nogat.toml``, A-ADR-054), which ``GET /api/v1/session`` gives the
+        interface's menu „Aplikacje”; none when omitted.
 
     Returns
     -------
@@ -574,6 +579,7 @@ def serve_main(
                 previews=previews,
                 on_redeem=redeemed,
                 cache_home=paths.cache_home,
+                gui=gui,
             )
             if origin is None:
                 issued = issue_one_time_token(

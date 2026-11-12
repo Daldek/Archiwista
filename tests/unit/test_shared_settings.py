@@ -1,4 +1,4 @@
-"""``nogat.toml``, the settings Archiwista shares with the Nogat tools (A-ADR-053).
+"""``nogat.toml``, the settings shared with the Nogat tools (A-ADR-053, A-ADR-054).
 
 Every test runs with ``NOGAT_CONFIG`` naming an empty file (``tests/conftest.py``),
 so each one writes the file it needs, or removes the variable to find the file in
@@ -105,6 +105,34 @@ def test_shared_settings_read_takes_archiwista_table_before_nogat_table(
     assert shared.language == "en"
 
 
+def test_shared_settings_read_takes_the_first_gui_table_whole_in_its_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``[archiwista.gui]`` replaces ``[nogat.gui]`` whole; the file's order stays."""
+    # Arrange
+    settings = _nogat_toml(
+        tmp_path / "nogat.toml",
+        "[nogat.gui]\n"
+        'hydrolog = "http://127.0.0.1:8070/"\n'
+        'hydrograf = "http://127.0.0.1:8080/"\n'
+        "[archiwista.gui]\n"
+        'obserwator = " /obserwator/ "\n'
+        'archiwista = "https://archiwista.example/"\n',
+    )
+    monkeypatch.setenv("NOGAT_CONFIG", str(settings))
+
+    # Act
+    shared = SharedSettings.read()
+
+    # Assert
+    assert shared.problem is None
+    assert shared.gui is not None
+    assert (shared.gui.name, list(shared.gui.addresses.items())) == (
+        "[archiwista] gui",
+        [("obserwator", "/obserwator/"), ("archiwista", "https://archiwista.example/")],
+    )
+
+
 @pytest.mark.parametrize(
     ("content", "expected"),
     [
@@ -114,6 +142,9 @@ def test_shared_settings_read_takes_archiwista_table_before_nogat_table(
         (b'[archiwista]\ndata_dir = "relative/dir"\n', "data_dir of [archiwista]"),
         (b"[nogat]\ncache_dir = 7\n", "cache_dir of [nogat]"),
         (b'[nogat]\nlang = "de"\n', "lang of [nogat]"),
+        (b'[nogat]\ngui = "http://127.0.0.1:8070/"\n', "gui of [nogat]"),
+        (b"[nogat.gui]\nhydrolog = 8070\n", "hydrolog of [nogat.gui]"),
+        (b'[archiwista.gui]\nhydrolog = " "\n', "hydrolog of [archiwista.gui]"),
     ],
 )
 def test_shared_settings_read_gives_no_value_from_a_file_it_cannot_use(
@@ -132,6 +163,7 @@ def test_shared_settings_read_gives_no_value_from_a_file_it_cannot_use(
     assert shared.problem is not None
     assert expected in shared.problem.localized("en")
     assert dict(shared.values) == {}
+    assert shared.gui is None
     assert shared.language == "pl"
 
 
