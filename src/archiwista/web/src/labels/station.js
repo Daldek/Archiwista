@@ -116,14 +116,13 @@ export const station = {
       variable: "Zmienna",
       summary: "przekazanie: {what} {variable} [{unit}]",
       range_shown: " w zakresie wykresu",
-      copy: "Kopiuj do Hydrologa",
       copy_title:
         "Skopiuj {what} {variable} jako przekazanie dla Hydrologa (Statystyka przepływów → " +
-        "„Wczytaj z Archiwisty” → „Wklej ze schowka”)",
-      file: "Plik przekazania",
-      file_title: "Zapisz {what} {variable} jako plik .handoff.json do wczytania w Hydrologu",
-      copied: "Skopiowano przekazanie: {subject}",
-      saved: "Zapisano {name}",
+        "„{load}” → „{paste}”)",
+      file_title:
+        "Zapisz {what} {variable} jako plik .handoff.json do wczytania w Hydrologu " +
+        "(Statystyka przepływów → „{load}” → „{open_file}”)",
+      field: "Tekst przekazania dla Hydrologa",
       what_daily: "wartości dobowe",
       what_annual: "maksima roczne pełnych lat hydrologicznych",
       left_out: "pominięte lata bez jednego z półroczy: {years}",

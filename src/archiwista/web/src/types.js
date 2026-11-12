@@ -33,6 +33,10 @@
  * @property {string} expires_at - End of the session unless used again: each request
  *   extends it by 24 h, in team mode by 8 h and never past 7 days after its start;
  *   an agent's session ends 12 h after its start at the latest.
+ * @property {Object<string, string>} gui - The GUIs of the deployment by registry name
+ *   (`hydrolog`), as the table `gui` of `nogat.toml` lists them: each one's address,
+ *   absolute or a path on this host; empty without the table. The menu „Aplikacje” of
+ *   the top bar lists them (A-ADR-054).
  */
 
 /**

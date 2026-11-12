@@ -1,7 +1,8 @@
 """The shell in Chromium on a real server (plan v0.1, step 10a).
 
 A session from the one-time token of the address, the instruction without a
-session, the first-run wizard, offline mode with MapLibre's worker and the
+session, the menu „Aplikacje” of the GUIs ``nogat.toml`` names (Nogat's kit,
+A-ADR-054), the first-run wizard, offline mode with MapLibre's worker and the
 packaged glyphs under the CSP, every ES module loading without errors (the
 syntax check without Node.js), and in Chromium and Firefox an interface
 upgraded on the same address reaching the next visit, view modules included.
@@ -175,6 +176,66 @@ def test_no_session_shows_instruction(serve: Serve, tab: Tab) -> None:
         tab.page.get_by_text("Sesja wygasła albo serwer został uruchomiony ponownie.")
     ).to_be_visible()
     expect(tab.page.get_by_role("navigation", name="Widoki")).to_have_count(0)
+    tab.assert_clean()
+
+
+def test_the_menu_aplikacje_opens_each_gui_of_nogat_toml_in_its_own_tab(
+    serve: Serve, tab: Tab
+) -> None:
+    """The deployment's GUIs with their marks; Archiwista marked, the others links."""
+    # Arrange
+    served = serve(
+        gui={
+            "archiwista": "/",
+            "hydrolog": "http://127.0.0.1:8070/",
+            "hydrograf": "https://hydrograf.example/",
+        }
+    )
+    open_shell(tab.page, served.token_url())
+    # The first run's wizard takes the focus once the settings arrive, which
+    # closes an open menu (the kit's rule): open it after that.
+    expect(
+        tab.page.get_by_role("heading", name="Pierwsze uruchomienie")
+    ).to_be_visible()
+    menu = tab.page.locator("nogat-app-menu")
+
+    # Act
+    menu.get_by_role("button", name="Aplikacje").click()
+
+    # Assert
+    listed = menu.get_by_role("list", name="Aplikacje ekosystemu")
+    expect(listed.get_by_role("listitem")).to_have_count(3)
+    current = listed.locator("[aria-current=page]")
+    expect(current).to_contain_text("Archiwista")
+    expect(current).to_contain_text("Ta aplikacja")
+    links = listed.get_by_role("link")
+    expect(links).to_have_count(2)
+    expect(links.nth(0)).to_have_attribute("href", "http://127.0.0.1:8070/")
+    expect(links.nth(0)).to_have_attribute("target", "nogat-hydrolog")
+    expect(links.nth(1)).to_have_attribute("href", "https://hydrograf.example/")
+    expect(links.nth(1)).to_have_attribute("target", "nogat-hydrograf")
+    tab.page.wait_for_function(
+        "() => [...document.querySelectorAll('nogat-app-menu img')]"
+        ".every((mark) => mark.complete && mark.naturalWidth > 0)"
+    )
+    tab.page.keyboard.press("Escape")
+    expect(listed).to_be_hidden()
+    tab.assert_clean()
+
+
+def test_without_a_table_gui_in_nogat_toml_there_is_no_menu(
+    serve: Serve, tab: Tab
+) -> None:
+    """No built-in addresses: the menu „Aplikacje” waits for the deployment's."""
+    # Arrange
+    served = serve()
+
+    # Act
+    open_shell(tab.page, served.token_url())
+
+    # Assert
+    expect(tab.page.locator("nogat-app-menu")).to_be_hidden()
+    expect(tab.page.get_by_role("button", name="Aplikacje")).to_have_count(0)
     tab.assert_clean()
 
 

@@ -136,6 +136,17 @@ MESSAGES = {
         "Language of the command line for a person: {language} ({origin})",
         "Język wiersza poleceń dla człowieka: {language} ({origin})",
     ),
+    "gui": Text(
+        "GUIs of the interface's menu „Aplikacje”: {guis} ({origin})",
+        "GUI w menu „Aplikacje” interfejsu: {guis} ({origin})",
+    ),
+    "gui_none": Text(
+        (
+            "GUIs of the interface's menu „Aplikacje”: none, the menu is not drawn"
+            " ({origin})"
+        ),
+        "GUI w menu „Aplikacje” interfejsu: brak, menu nie jest rysowane ({origin})",
+    ),
     "setting_default": Text(
         "built-in default",
         "wartość domyślna",

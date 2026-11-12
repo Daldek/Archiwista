@@ -21,7 +21,11 @@ of Raba Górna is the mean line inside the band of each month's published
 minimum and maximum, broken at the gap of March 2024; Stacja Bez Miejsca
 (``149190312``), with half-year characteristics only, opens on the annual
 chart of its Q, whose 2023 has no summer maximum: a hollow dot and a tooltip
-naming the missing half.
+naming the missing half. Its annual maxima go to Hydrolog through Nogat's kit
+(A-ADR-054): a file of 2-space JSON with a final newline, the clipboard with
+„Otwórz Hydrologa” when ``nogat.toml`` gives Hydrolog's address, and without a
+Clipboard API (a plain-HTTP address on the network) a field holding the text
+selected for Ctrl+C.
 """
 
 import json
@@ -54,6 +58,15 @@ SPINDLER = "CHMI/0-203-1-900001"
 HALF_YEARS = f"IMGW-PIB/{HALF_YEARS_ONLY}"
 VERTEX = re.compile(r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)")
 MAX_POINTS = re.compile(r"[?&]max_points=(\d+)")
+# The page as on a plain-HTTP address of the network, where browsers give no
+# Clipboard API (it needs a secure context; 127.0.0.1 is one).
+WITHOUT_CLIPBOARD = """
+Object.defineProperty(Navigator.prototype, "clipboard", {
+  get: () => undefined,
+  configurable: true,
+});
+"""
+HYDROLOG = "http://127.0.0.1:8070/"
 
 
 def card_address(served: Served, station: str, **params: str) -> str:
@@ -405,10 +418,12 @@ def test_the_annual_chart_saves_its_complete_years_maxima_as_a_hand_off_to_hydro
     with page.expect_download() as started:
         card.get_by_role("button", name="Plik przekazania").click()
     saved = started.value
-    doc = json.loads(Path(saved.path()).read_text(encoding="utf-8"))
+    text = Path(saved.path()).read_text(encoding="utf-8")
+    doc = json.loads(text)
 
     # Assert
     assert saved.suggested_filename.endswith("— Q, maksima roczne.handoff.json")
+    assert text == json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
     assert (doc["schema"], doc["payload"]["schema"]) == (
         "nogat-handoff/1",
         "hydrolog-series/1",
@@ -420,6 +435,71 @@ def test_the_annual_chart_saves_its_complete_years_maxima_as_a_hand_off_to_hydro
         "pominięte lata bez jednego z półroczy: 2023"
     )
     engine_tab.assert_clean()
+
+
+def test_a_copy_without_a_clipboard_api_waits_selected_in_a_field_for_ctrl_c(
+    serve: Serve, engine_tab: Tab, statistics_store: Path, tmp_path: Path
+) -> None:
+    """„Kopiuj do Hydrologa” on a plain-HTTP address: the text, selected, to copy."""
+    # Arrange
+    served = serve(station_settings(statistics_store, tmp_path))
+    page = open_session(engine_tab, served)
+    page.add_init_script(WITHOUT_CLIPBOARD)
+    page.goto(card_address(served, HALF_YEARS))
+    card = page.get_by_role("dialog", name="Stacja Bez Miejsca")
+    panel = card.get_by_role("group", name="Do Hydrologa")
+    field = panel.get_by_role("textbox", name="Tekst przekazania dla Hydrologa")
+    expect(card.locator(".sch-year[data-key=Q]")).to_have_count(10)
+    expect(field).to_be_hidden()
+
+    # Act
+    panel.get_by_role("button", name="Kopiuj do Hydrologa").click()
+
+    # Assert
+    expect(field).to_be_focused()
+    text = field.input_value()
+    doc = json.loads(text)
+    assert text == json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
+    assert doc["payload"]["schema"] == "hydrolog-series/1"
+    assert field.evaluate("(it) => [it.selectionStart, it.selectionEnd]") == [
+        0,
+        len(text),
+    ]
+    expect(panel.get_by_role("status")).to_contain_text("naciśnij Ctrl+C")
+    engine_tab.assert_clean()
+
+
+def test_a_copy_goes_to_the_clipboard_and_the_note_opens_hydrolog_of_nogat_toml(
+    serve: Serve, tab: Tab, statistics_store: Path, tmp_path: Path
+) -> None:
+    """With the Clipboard API the text is copied; „Otwórz Hydrologa” opens its tab."""
+    # Arrange
+    served = serve(
+        station_settings(statistics_store, tmp_path),
+        gui={"archiwista": "/", "hydrolog": HYDROLOG},
+    )
+    page = open_session(tab, served)
+    page.context.grant_permissions(
+        ["clipboard-read", "clipboard-write"], origin=served.base
+    )
+    page.goto(card_address(served, HALF_YEARS))
+    card = page.get_by_role("dialog", name="Stacja Bez Miejsca")
+    panel = card.get_by_role("group", name="Do Hydrologa")
+    expect(card.locator(".sch-year[data-key=Q]")).to_have_count(10)
+
+    # Act
+    panel.get_by_role("button", name="Kopiuj do Hydrologa").click()
+
+    # Assert
+    status = panel.get_by_role("status")
+    expect(status).to_contain_text("Skopiowano przekazanie do schowka.")
+    copied = page.evaluate("navigator.clipboard.readText()")
+    assert copied == json.dumps(json.loads(copied), indent=2, ensure_ascii=False) + "\n"
+    link = status.get_by_role("link", name="Otwórz Hydrologa")
+    expect(link).to_have_attribute("href", HYDROLOG)
+    expect(link).to_have_attribute("target", "nogat-hydrolog")
+    expect(panel.get_by_role("textbox")).to_be_hidden()
+    tab.assert_clean()
 
 
 def test_the_hand_off_takes_the_kind_and_variable_chosen_beside_any_chart(

@@ -1,7 +1,13 @@
-"""Vendored third-party files match their manifests byte for byte (SPEC 10.1)."""
+"""Vendored and copied files match their manifests byte for byte (SPEC 10.1).
+
+Third-party files list their SHA-256 in ``vendor.json``; the copy of Nogat's GUI
+kit in ``web/nogat/`` is checked against the kit's own ``nogat-kit.json`` (Nogat
+DEV-15.6, A-ADR-054).
+"""
 
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -16,6 +22,8 @@ VENDORED_DIRS = {
     PACKAGE_DIR / "web" / "vendor": frozenset({MANIFEST_NAME}),
     PACKAGE_DIR / "api" / "swagger": frozenset({MANIFEST_NAME, "archiwista-docs.js"}),
 }
+KIT_DIR = PACKAGE_DIR / "web" / "nogat"
+KIT_MANIFEST = "nogat-kit.json"
 
 
 def vendor_problems(root: Path, own_files: frozenset[str]) -> list[str]:
@@ -103,3 +111,27 @@ def test_vendor_manifest_unlisted_file_reported(tmp_path: Path) -> None:
 
     # Assert
     assert problems == ["unlisted: htm/extra.mjs"]
+
+
+def test_nogat_kit_copy_is_the_kit_its_manifest_names() -> None:
+    """Every kit file is byte for byte Nogat's; beside them only the GUIs' marks."""
+    # Arrange
+    manifest = json.loads((KIT_DIR / KIT_MANIFEST).read_text("utf-8"))
+    present = {
+        path.relative_to(KIT_DIR).as_posix()
+        for path in KIT_DIR.rglob("*")
+        if path.is_file()
+    }
+    marks = {name for name in present if re.fullmatch(r"marks/[a-z]+\.svg", name)}
+
+    # Act
+    changed = [
+        name
+        for name, sha256 in manifest["files"].items()
+        if name not in present
+        or hashlib.sha256((KIT_DIR / name).read_bytes()).hexdigest() != sha256
+    ]
+
+    # Assert
+    assert changed == []
+    assert present - marks == {KIT_MANIFEST, *manifest["files"]}

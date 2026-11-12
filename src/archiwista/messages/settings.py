@@ -168,4 +168,25 @@ MESSAGES = {
             " ani en: {value}"
         ),
     ),
+    "shared_gui": Text(
+        (
+            "gui of [{table}] in the settings file of the Nogat tools {path} is not"
+            ' a table of GUI addresses (e.g. hydrolog = "http://127.0.0.1:8070/"):'
+            " {value}"
+        ),
+        (
+            "gui w [{table}] pliku ustawień narzędzi Nogat {path} nie jest tabelą"
+            ' adresów GUI (np. hydrolog = "http://127.0.0.1:8070/"): {value}'
+        ),
+    ),
+    "shared_gui_address": Text(
+        (
+            "{name} of [{table}.gui] in the settings file of the Nogat tools {path}"
+            " is not an address: {value}"
+        ),
+        (
+            "{name} w [{table}.gui] pliku ustawień narzędzi Nogat {path} nie jest"
+            " adresem: {value}"
+        ),
+    ),
 }

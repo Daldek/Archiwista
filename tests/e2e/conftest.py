@@ -1,9 +1,11 @@
 """Fixtures of the interface tests: real servers and watched browser tabs.
 
-``serve(settings)`` starts ``archiwista serve`` over the test directory, the
-settings saved first (none: a first run); ``tab`` is a fresh Chromium context
-(its own cookies) with a recording page, and ``engine_tab`` the same in
-Chromium and then in Firefox, for what depends on the browser engine.
+``serve(settings, gui)`` starts ``archiwista serve`` over the test directory,
+the settings saved first (none: a first run) and ``gui`` the table of the GUIs
+``nogat.toml`` would give (none: no menu „Aplikacje”); ``tab`` is a fresh
+Chromium context (its own cookies) with a recording page, and ``engine_tab``
+the same in Chromium and then in Firefox, for what depends on the browser
+engine.
 ``team_serve(base, **team)`` starts a team server over TLS, and ``team_tab()``
 opens one person's browser of it, in each engine. The browsers are
 installed once with ``.venv/bin/python -m playwright install chromium
@@ -79,15 +81,17 @@ def firefox(playwright: Playwright) -> Iterator[Browser]:
 
 @pytest.fixture
 def serve(tmp_path: Path) -> Iterator[Callable[..., Served]]:
-    """Start a server over ``tmp_path``: ``serve(settings=None)``."""
+    """Start a server over ``tmp_path``: ``serve(settings=None, gui=None)``."""
     with ExitStack() as stack:
 
-        def start(settings: AppSettings | None = None) -> Served:
+        def start(
+            settings: AppSettings | None = None, gui: dict[str, str] | None = None
+        ) -> Served:
             paths = local_paths(tmp_path)
             if settings is not None:
                 ConfigStore(paths.config_file).save(settings)
             registry = load_registry(cache_dir=paths.cache_dir)
-            server, _ = stack.enter_context(serving(paths, registry=registry))
+            server, _ = stack.enter_context(serving(paths, registry=registry, gui=gui))
             return Served(server, paths)
 
         yield start

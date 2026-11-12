@@ -39,7 +39,10 @@
  * `ChartPlot` and `TimeAxis` of this module.
  */
 
+import { entries } from "../../nogat/nogat-app-menu.js";
+import { copyHandoff, downloadHandoff, TEXTS as HANDOFF } from "../../nogat/nogat-handoff.js";
 import { getStationHandoff, getStationSeries } from "../api.js";
+import { useApp } from "../context.js";
 import { count, day } from "../format.js";
 import { useResource, useSize } from "../hooks.js";
 import { t } from "../labels/index.js";
@@ -61,6 +64,10 @@ export const MARGIN = { top: 24, bottom: 24, left: 56, right: 16, axis: 56 };
 export const AXIS_HEIGHT = 22;
 /** The fewest days a zoom shows. */
 const MIN_DAYS = 3;
+/** The GUI a station's series is handed to (A-ADR-052), by its registry name. */
+const HANDOFF_TARGET = "hydrolog";
+/** „Do Hydrologa” before and between its actions. */
+const HANDOFF_IDLE = { busy: false, note: null, byHand: false, problem: null };
 /** A press moved less than this many px is a click, not a selection. */
 const DRAG_PX = 4;
 /** What a step of the keys and of the wheel does to the length of the range. */
@@ -272,12 +279,16 @@ export function handoffKinds(charts) {
 }
 
 /**
- * „Do Hydrologa” (A-ADR-052): what Hydrolog's „Statystyka przepływów” gets, chosen
- * here — the daily values of a series of days or the annual maxima of complete
- * hydrological years, and the variable — then „Kopiuj do Hydrologa” or „Plik
- * przekazania”. It starts at the chart shown and its first variable; the chart's range
- * goes with its own kind only. What happened shows beside them, with the years an annual
- * hand-off leaves out.
+ * „Do Hydrologa” (A-ADR-052, A-ADR-054): what Hydrolog's „Statystyka przepływów” gets,
+ * chosen here — the daily values of a series of days or the annual maxima of complete
+ * hydrological years, and the variable — then „Kopiuj do Hydrologa” or „Plik przekazania”,
+ * written by Nogat's kit (`nogat-handoff.js`, DEV-15.5): the file `<subject>.handoff.json`
+ * in 2-space JSON with a final newline; a copy goes to the clipboard, or where the browser
+ * has no Clipboard API (a plain-HTTP address on the network) or refuses it, into a field
+ * below with its text selected for Ctrl+C. It starts at the chart shown and its first
+ * variable; the chart's range goes with its own kind only. What happened shows beside
+ * them, with the years an annual hand-off leaves out and „Otwórz Hydrologa” when the
+ * deployment's GUIs (`session.gui`) give Hydrolog's address.
  *
  * @param {{station: import("../types.js").StationItem,
  *   charts: import("../types.js").StationChartChoice[],
@@ -288,9 +299,11 @@ export function handoffKinds(charts) {
 function HandoffPanel({ station, charts, chosen, variable, names, from, to }) {
   const H = C.handoff;
   const id = useId();
+  const field = useRef(null);
+  const gui = useApp()?.session.gui;
   const kinds = handoffKinds(charts);
   const [picked, setPicked] = useState({ kind: null, variable: null });
-  const [state, setState] = useState({ busy: false, note: null, problem: null });
+  const [state, setState] = useState(HANDOFF_IDLE);
   if (!kinds.length) return null;
   const shown = `${chosen.resolution}:${chosen.dataset}`;
   const kind =
@@ -302,12 +315,13 @@ function HandoffPanel({ station, charts, chosen, variable, names, from, to }) {
   const unit = kind.chart.variables.find((item) => item.key === key)?.unit;
   const ranged = kind.key === shown;
   const what = kind.annual ? H.what_annual : H.what_daily;
+  const target = entries(gui).find(([name]) => name === HANDOFF_TARGET)?.[1];
   const choose = (patch) => {
     setPicked({ ...picked, ...patch });
-    setState({ busy: false, note: null, problem: null });
+    setState(HANDOFF_IDLE);
   };
   const act = async (way) => {
-    setState({ busy: true, note: null, problem: null });
+    setState({ ...HANDOFF_IDLE, busy: true });
     try {
       const doc = await getStationHandoff(station.code, {
         store: station.store,
@@ -318,23 +332,26 @@ function HandoffPanel({ station, charts, chosen, variable, names, from, to }) {
         from: ranged ? from : null,
         to: ranged ? to : null,
       });
-      const text = JSON.stringify(doc, null, 2);
       let note;
+      let byHand = false;
       if (way === "copy") {
-        await navigator.clipboard.writeText(text);
-        note = t(H.copied, { subject: doc.subject });
+        byHand = (await copyHandoff(doc, field.current)) === "field";
+        note = byHand ? HANDOFF.copyByHand : HANDOFF.copied;
       } else {
-        const name = `${doc.subject.replace(/[\\/:*?"<>|]+/g, "-")}.handoff.json`;
-        saveText(text, name);
-        note = t(H.saved, { name });
+        note = HANDOFF.saved(downloadHandoff(doc));
       }
       const left = doc.provenance?.series?.left_out ?? [];
       if (left.length) note = `${note} · ${t(H.left_out, { years: left.join(", ") })}`;
-      setState({ busy: false, note, problem: null });
+      setState({ ...HANDOFF_IDLE, note, byHand });
     } catch (error) {
       if (!error.problem) throw error;
-      setState({ busy: false, note: null, problem: error.problem });
+      setState({ ...HANDOFF_IDLE, problem: error.problem });
     }
+  };
+  const steps = {
+    load: HANDOFF.loadFrom("archiwista"),
+    paste: HANDOFF.paste,
+    open_file: HANDOFF.openFile,
   };
   return html`<div class="sch-handoff" role="group" aria-label=${H.title}>
     <span class="sch-handoff-title">${H.title}</span>
@@ -362,29 +379,24 @@ function HandoffPanel({ station, charts, chosen, variable, names, from, to }) {
       </select>
     </label>
     <button type="button" class="btn ghost sm" disabled=${state.busy}
-      title=${t(H.copy_title, { what, variable: key })} onClick=${() => act("copy")}>
-      <${Icon} name="copy" size=${13} />${H.copy}</button>
+      title=${t(H.copy_title, { what, variable: key, ...steps })} onClick=${() => act("copy")}>
+      <${Icon} name="copy" size=${13} />${HANDOFF.copyTo(HANDOFF_TARGET)}</button>
     <button type="button" class="btn ghost sm" disabled=${state.busy}
-      title=${t(H.file_title, { what, variable: key })} onClick=${() => act("file")}>
-      <${Icon} name="download" size=${13} />${H.file}</button>
+      title=${t(H.file_title, { what, variable: key, ...steps })} onClick=${() => act("file")}>
+      <${Icon} name="download" size=${13} />${HANDOFF.file}</button>
     <span class="faint sch-handoff-what">
       ${t(H.summary, { what, variable: key, unit: unitText(unit) })}
       ${ranged && (from || to) ? H.range_shown : ""}</span>
-    ${state.note ? html`<span class="faint sch-handoff-note" role="status">${state.note}</span>` : null}
+    ${state.note
+      ? html`<span class="faint sch-handoff-note" role="status">${state.note}${target
+          ? html` · <a href=${target} target=${`nogat-${HANDOFF_TARGET}`}>
+              ${HANDOFF.open(HANDOFF_TARGET)}</a>`
+          : null}</span>`
+      : null}
+    <textarea ref=${field} class="sch-handoff-field mono" hidden=${!state.byHand} readOnly
+      rows="6" aria-label=${H.field}></textarea>
     ${state.problem ? html`<${ProblemView} problem=${state.problem} compact />` : null}
   </div>`;
-}
-
-/** Save a text as a download named `name`. */
-function saveText(text, name) {
-  const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** A variable of a chart choice by its key. */

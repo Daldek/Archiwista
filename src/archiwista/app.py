@@ -25,12 +25,14 @@ without background jobs, which leaves out their routes), ``job_streams``
 last minute), ``layer_memo`` (``LayerMemo``: the local layers of the last
 answers, for their images), ``file_streams`` (``FileStreams``: the file
 downloads each person streams), ``denials`` (``DenialLog``: refusals in the
-action log) and ``on_redeem`` (told when a one-time token starts a session).
+action log), ``on_redeem`` (told when a one-time token starts a session) and
+``gui`` (the GUIs of the deployment, which ``GET /session`` gives the page's
+menu „Aplikacje”, A-ADR-054).
 """
 
 import asyncio
 import os
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from importlib.metadata import version
 from pathlib import Path
@@ -137,6 +139,7 @@ def create_app(
     previews: RenderPool | None = None,
     on_redeem: Callable[[TokenKind], None] | None = None,
     cache_home: Path | None = None,
+    gui: Mapping[str, str] | None = None,
 ) -> FastAPI:
     """Build the Archiwista application for one server.
 
@@ -179,6 +182,10 @@ def create_app(
         The directory of the caches when it lies apart from the index's
         (``AppPaths.cache_home``, ``<cache_dir>/archiwista`` of
         ``nogat.toml``): no project's data folder may overlap it.
+    gui : Mapping of str to str or None, optional
+        The GUIs of the deployment by registry name (``[nogat.gui]`` of
+        ``nogat.toml``), read once like ``[team]``: ``GET /session`` gives
+        them to the interface's menu „Aplikacje”; none when omitted.
 
     Returns
     -------
@@ -226,6 +233,7 @@ def create_app(
     app.state.registry = registry
     app.state.area_files = AreaFiles(areas_dir)
     app.state.on_redeem = on_redeem
+    app.state.gui = dict(gui or {})
     app.state.area_refreshes = area_routes.AreaRefreshes()
     app.state.layer_memo = LayerMemo()
     app.state.file_streams = FileStreams()
