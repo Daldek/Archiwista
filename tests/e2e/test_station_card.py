@@ -8,11 +8,12 @@ variable as ``GET /stations/{code}`` does; its header switch numbers the
 labels in calendar years, writes ``year_type`` to the address and remembers
 it in the person's preferences (``PUT /preferences``). A station without a
 position shows the catalog's reason and no map action, a located one opens
-the map centred on it. Under the tabs stand the lines the IMGW-PIB terms
-require with the card's data and the station's position, byte for byte the
-card's ``attribution`` and ``terms_notice``, and „Kopiuj atrybucję” copies
+the map centred on it. At its foot stands its one strip of the IMGW-PIB
+lines (S and P), whose dialog lists every line, byte for byte the card's
+``attribution`` and ``terms_notice``, and „Kopiuj atrybucję” there copies
 them one per line, as „Kopiuj ścieżkę pliku” copies the series file's path
-(read back in Chromium, whose clipboard Playwright can grant); the IMGW
+(read back in Chromium, whose clipboard Playwright can grant); Esc closes
+the dialog and not the card. The IMGW
 station page is a plain link the page never requests.
 """
 
@@ -26,24 +27,26 @@ from playwright.sync_api import Locator, Page, Response, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.provider_lines import (
-    IMGW_HYDRO,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_HYDRO,
     IMGW_TERMS_PUBLIC_DATA,
 )
 from tests.fixtures.station_browser import (
+    SOURCES,
+    SOURCES_BUTTON,
+    SOURCES_DIALOG,
     STORE,
     WORLD,
     address,
     api,
+    dialog_lines,
     hover_until,
     open_session,
     query_of,
     screen_point,
-    shown_lines,
     station_settings,
+    strip_lines,
 )
 
 Serve = Callable[..., Served]
@@ -272,7 +275,7 @@ def test_a_station_without_a_position_has_its_reason_and_no_map_action(
 def test_the_lines_and_the_file_path_are_copied_as_the_card_gives_them(
     serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
-    """The card's lines of the IMGW-PIB terms and its file path, copied (Chromium)."""
+    """One strip at the card's foot: S and P; its dialog copies all lines (Chromium)."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
@@ -285,31 +288,41 @@ def test_the_lines_and_the_file_path_are_copied_as_the_card_gives_them(
         address(served, view="catalog", product="hydro", station=station_of(RABA))
     )
     card = dialog(page, "Raba Górna")
+    strip = card.locator(SOURCES)
     copied: dict[str, str] = {}
 
     # Act
-    for name in ("Kopiuj atrybucję", "Kopiuj ścieżkę pliku"):
-        action = card.locator(".copy-action").filter(
-            has=page.get_by_role("button", name=name, exact=True)
-        )
-        action.get_by_role("button").click()
-        expect(action.get_by_role("status")).to_have_text("Skopiowano")
-        copied[name] = page.evaluate("navigator.clipboard.readText()")
+    shown = strip_lines(strip)
+    full = dialog_lines(strip)
+    action = card.locator(".copy-action").filter(
+        has=page.get_by_role("button", name="Kopiuj ścieżkę pliku", exact=True)
+    )
+    action.get_by_role("button").click()
+    expect(action.get_by_role("status")).to_have_text("Skopiowano")
+    copied["path"] = page.evaluate("navigator.clipboard.readText()")
+    strip.get_by_role("button", name=SOURCES_BUTTON).click()
+    sources = page.get_by_role("dialog", name=SOURCES_DIALOG)
+    sources.get_by_role("button", name="Kopiuj atrybucję", exact=True).click()
+    expect(sources.get_by_role("status")).to_have_text("Skopiowano")
+    copied["lines"] = page.evaluate("navigator.clipboard.readText()")
+    page.keyboard.press("Escape")
 
     # Assert
     lines = [*answer["attribution"], *answer["terms_notice"]]
     assert lines == [
         IMGW_SOURCE,
         IMGW_PROCESSED,
-        IMGW_HYDRO,
-        IMGW_TERMS,
         IMGW_TERMS_PUBLIC_DATA,
         IMGW_TERMS_HYDRO,
     ]
-    assert shown_lines(card.locator(".sc-lines")) == lines
+    assert shown == [IMGW_SOURCE, IMGW_PROCESSED]
+    assert full == lines
     assert copied == {
-        "Kopiuj atrybucję": "\n".join(lines),
-        "Kopiuj ścieżkę pliku": str(tmp_path / "obserwator" / series["file"]),
+        "lines": "\n".join(lines),
+        "path": str(tmp_path / "obserwator" / series["file"]),
     }
-    assert answer["paths"][DAILY]["local"] == copied["Kopiuj ścieżkę pliku"]
+    assert answer["paths"][DAILY]["local"] == copied["path"]
+    expect(sources).to_be_hidden()
+    expect(card).to_be_visible()
+    expect(card.locator(SOURCES)).to_have_count(1)
     tab.assert_clean()

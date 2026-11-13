@@ -1,11 +1,11 @@
 """The lines the data providers' terms require with every product (A-ADR-055).
 
-Nogat's standard (DEV §20, ECO-060) lists them: the source of IMGW-PIB's data
-(S) and, once they were processed in any way, the mark of processing (P), with
-the hydrological service named for station positions taken from it (H);
-PMAXTP's source, mark and monograph (PS, PP, M); ČHMÚ's credit with its licence
-(C) and what was done (CP); and the IMGW-PIB terms of use (N) followed by the
-terms that apply (RD, RH, RK). A product names the origins of its data and
+Nogat's standard (DEV §20, ECO-060, ECO-065) lists them: the source of
+IMGW-PIB's data (S) and, once they were processed in any way, the mark of
+processing (P); PMAXTP's source, mark and monograph (PS, PP, M); ČHMÚ's credit
+with its licence (C) and what was done (CP); and the links to the IMGW-PIB
+terms that apply (RD, RH for station positions of the hydrological service,
+RK), never a summary of them. A product names the origins of its data and
 ``of`` gives their lines in the standard's order, each once: ``attribution``
 (DEV-20.4) and ``terms_notice`` (DEV-20.7). The texts are the ``legal`` area
 of the catalog (``archiwista.messages.legal``), the one place that holds them.
@@ -34,7 +34,6 @@ type Origin = DataOrigin | Literal["chmi_views"]
 _ATTRIBUTION = (
     "legal.imgw_source",
     "legal.imgw_processed",
-    "legal.imgw_hydro",
     "legal.pmaxtp_source",
     "legal.pmaxtp_processed",
     "legal.pmaxtp_monograph",
@@ -43,7 +42,6 @@ _ATTRIBUTION = (
     "legal.chmi_processed_views",
 )
 _TERMS = (
-    "legal.imgw_terms",
     "legal.imgw_terms_public_data",
     "legal.imgw_terms_hydro",
     "legal.imgw_terms_pmaxtp",
@@ -52,20 +50,16 @@ _TERMS = (
 _LINES: dict[Origin, tuple[str, ...]] = {
     "imgw_file": (
         "legal.imgw_source",
-        "legal.imgw_terms",
         "legal.imgw_terms_public_data",
     ),
     "imgw_processed": (
         "legal.imgw_source",
         "legal.imgw_processed",
-        "legal.imgw_terms",
         "legal.imgw_terms_public_data",
     ),
     "imgw_stations": (
         "legal.imgw_source",
         "legal.imgw_processed",
-        "legal.imgw_hydro",
-        "legal.imgw_terms",
         "legal.imgw_terms_public_data",
         "legal.imgw_terms_hydro",
     ),
@@ -73,7 +67,6 @@ _LINES: dict[Origin, tuple[str, ...]] = {
         "legal.pmaxtp_source",
         "legal.pmaxtp_processed",
         "legal.pmaxtp_monograph",
-        "legal.imgw_terms",
         "legal.imgw_terms_pmaxtp",
     ),
     "chmi_file": ("legal.chmi_source",),

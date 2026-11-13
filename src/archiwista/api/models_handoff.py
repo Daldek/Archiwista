@@ -137,7 +137,7 @@ class StationHandoff(BaseModel):
         default_factory=list,
         exclude_if=lambda lines: not lines,
         description=(
-            "The IMGW-PIB terms of use and the address of its terms (DEV-20.7);"
+            "The links to the IMGW-PIB terms that apply (DEV-20.7, ECO-065);"
             " left out for ČHMÚ's data."
         ),
     )

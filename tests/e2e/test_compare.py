@@ -5,9 +5,10 @@ local tile server on another origin. „Porównaj z…” in the file card opens
 the comparison of two versions of a slot: the rows of ``GET /compare`` in a
 table with the differences marked, „tylko różnice” and the CSV of the rows
 shown, whose last two columns carry the lines of the providers' terms (Nogat
-DEV-20.5) that a strip under the maps shows; both versions' tiles on two maps
-at one position — the curtain (moved with a mouse, a finger and the arrows),
-the fade (a slider) and two maps side by side. Two year layers of an area
+DEV-20.5) that the dialog of the view's one strip under the maps lists; both
+versions' tiles on two maps at one position — the curtain (moved with a
+mouse, a finger and the arrows), the fade (a slider) and two maps side by
+side. Two year layers of an area
 compare the same way, with their summaries side by side.
 """
 
@@ -32,13 +33,13 @@ from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import NMT, StoreManifest, make_store
 from tests.fixtures.provider_lines import (
-    IMGW_HYDRO,
+    CHMI_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
+    IMGW_TERMS_HYDRO,
     IMGW_TERMS_PUBLIC_DATA,
 )
-from tests.fixtures.station_browser import LINES_TITLE, shown_lines
+from tests.fixtures.station_browser import SOURCES, dialog_lines
 from tests.fixtures.tile_server import TileServer, tile_server
 
 STORE = "zespol"
@@ -787,8 +788,8 @@ def test_compare_save_csv_joins_the_lines_beyond_the_last_row_into_it(
     served = compare_store.served
     page = open_session(tab, served)
     _, versions = version_pair(page, compare_store.store)
-    attribution = [IMGW_SOURCE, IMGW_PROCESSED, IMGW_HYDRO]
-    terms = [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+    attribution = [IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE]
+    terms = [IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO]
 
     def two_rows(route: Route) -> None:
         answer = route.fetch()
@@ -803,8 +804,8 @@ def test_compare_save_csv_joins_the_lines_beyond_the_last_row_into_it(
     # Act
     page.goto(compare_address(served, versions))
     expect(page.locator(".cmp-table tbody tr:not(.cmp-group)")).to_have_count(2)
-    strip = page.locator(".cmp-view").get_by_role("group", name=LINES_TITLE)
-    shown = shown_lines(strip)
+    strip = page.locator(".cmp-view").locator(SOURCES)
+    shown = dialog_lines(strip)
     with page.expect_download() as started:
         panel(page).get_by_role("button", name="Eksportuj CSV").click()
     saved = tmp_path / "comparison.csv"
@@ -817,8 +818,8 @@ def test_compare_save_csv_joins_the_lines_beyond_the_last_row_into_it(
     assert shown == [*attribution, *terms]
     assert header[-2:] == ["attribution", "terms_notice"]
     assert [row[-2:] for row in rows] == [
-        [IMGW_SOURCE, IMGW_TERMS],
-        [f"{IMGW_PROCESSED}\n{IMGW_HYDRO}", IMGW_TERMS_PUBLIC_DATA],
+        [IMGW_SOURCE, IMGW_TERMS_PUBLIC_DATA],
+        [f"{IMGW_PROCESSED}\n{CHMI_SOURCE}", IMGW_TERMS_HYDRO],
     ]
     tab.assert_clean()
 

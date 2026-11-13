@@ -473,8 +473,8 @@
  * @typedef {object} ProviderLines
  * @property {string[]} attribution - IMGW-PIB, PMAXTP, then ČHMÚ (DEV-20.4); for a
  *   producer that names no origin of its data the attribution of its sidecar.
- * @property {string[]} terms_notice - The IMGW-PIB terms of use and the terms that
- *   apply (DEV-20.7); empty without IMGW-PIB data.
+ * @property {string[]} terms_notice - The links to the IMGW-PIB terms that apply
+ *   (DEV-20.7, ECO-065); empty without IMGW-PIB data.
  */
 
 // Catalog, cards and map (9a) ------------------------------------------------

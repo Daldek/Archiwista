@@ -711,8 +711,8 @@ TermsNotice = Annotated[
     list[str],
     Field(
         description=(
-            "The IMGW-PIB terms of use and the terms that apply, one line each"
-            " (DEV-20.7), shown after `attribution`; empty without IMGW-PIB data."
+            "The links to the IMGW-PIB terms that apply, one line each (DEV-20.7,"
+            " ECO-065), shown after `attribution`; empty without IMGW-PIB data."
         )
     ),
 ]

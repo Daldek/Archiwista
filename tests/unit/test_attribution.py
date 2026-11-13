@@ -1,8 +1,8 @@
 """The lines a product carries by the origins of its data (A-ADR-055).
 
 Nogat's DEV §20 fixes the lines byte for byte and their order: the
-attribution S, P, H, PS, PP, M, C, CP (DEV-20.4), then the terms N, RD, RH,
-RK (DEV-20.7), each line once whatever order the parts come in. A file as
+attribution S, P, PS, PP, M, C, CP (DEV-20.4), then the terms RD, RH, RK
+(DEV-20.7), each line once whatever order the parts come in. A file as
 published carries S alone; a version whose producer names no origin carries
 its sidecar's attribution.
 """
@@ -16,10 +16,8 @@ from tests.fixtures.provider_lines import (
     CHMI_PROCESSED,
     CHMI_PROCESSED_VIEWS,
     CHMI_SOURCE,
-    IMGW_HYDRO,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_HYDRO,
     IMGW_TERMS_PMAXTP,
     IMGW_TERMS_PUBLIC_DATA,
@@ -29,7 +27,7 @@ from tests.fixtures.provider_lines import (
 )
 
 GUGIK = "Główny Urząd Geodezji i Kartografii"
-PUBLIC_DATA_TERMS = (IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA)
+PUBLIC_DATA_TERMS = (IMGW_TERMS_PUBLIC_DATA,)
 
 
 @pytest.mark.parametrize(
@@ -43,7 +41,7 @@ PUBLIC_DATA_TERMS = (IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA)
         (
             "imgw_stations",
             Attribution(
-                (IMGW_SOURCE, IMGW_PROCESSED, IMGW_HYDRO),
+                (IMGW_SOURCE, IMGW_PROCESSED),
                 (*PUBLIC_DATA_TERMS, IMGW_TERMS_HYDRO),
             ),
         ),
@@ -51,7 +49,7 @@ PUBLIC_DATA_TERMS = (IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA)
             "pmaxtp",
             Attribution(
                 (PMAXTP_SOURCE, PMAXTP_PROCESSED, PMAXTP_MONOGRAPH),
-                (IMGW_TERMS, IMGW_TERMS_PMAXTP),
+                (IMGW_TERMS_PMAXTP,),
             ),
         ),
         ("chmi_file", Attribution((CHMI_SOURCE,))),
@@ -62,7 +60,7 @@ PUBLIC_DATA_TERMS = (IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA)
 def test_attribution_of_one_origin_gives_the_lines_its_terms_require(
     origin: Origin, lines: Attribution
 ) -> None:
-    """S alone for a file as published; PS, PP and M for PMAXTP; no N for ČHMÚ."""
+    """S alone for a file as published; PS, PP and M for PMAXTP; no terms for ČHMÚ."""
     assert attribution.of([origin]) == lines
 
 
@@ -87,7 +85,6 @@ def test_attribution_of_many_origins_gives_each_line_once_in_order() -> None:
     assert lines.attribution == (
         IMGW_SOURCE,
         IMGW_PROCESSED,
-        IMGW_HYDRO,
         PMAXTP_SOURCE,
         PMAXTP_PROCESSED,
         PMAXTP_MONOGRAPH,
@@ -96,7 +93,6 @@ def test_attribution_of_many_origins_gives_each_line_once_in_order() -> None:
         CHMI_PROCESSED_VIEWS,
     )
     assert lines.terms_notice == (
-        IMGW_TERMS,
         IMGW_TERMS_PUBLIC_DATA,
         IMGW_TERMS_HYDRO,
         IMGW_TERMS_PMAXTP,

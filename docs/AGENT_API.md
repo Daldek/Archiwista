@@ -685,7 +685,7 @@ disk.
 PMAXTP and ČHMÚ require their lines with every product of their data. An answer
 carries them in two lists of strings: `attribution` (the sources and the marks of
 processing, IMGW-PIB, PMAXTP, then ČHMÚ, each line once) and `terms_notice` (the
-IMGW-PIB terms of use and the addresses of the terms that apply), both empty without
+links to the IMGW-PIB terms that apply, each naming whose terms it links), both empty without
 such data. They come with `GET /slots` (merged over the page's versions), a
 version's card, `GET /compare` (both sides merged) and every station answer
 (`/stations`, `/stations/datasets`, `/stations/timeline`, `/stations/compare`,

@@ -16,8 +16,9 @@
  * counter (`location=none`) and Back/Forward open the same list. Location
  * groups come with their counts over the whole answer; the search field is
  * the one of `Ctrl+K`. A row opens the file card overlay (`file=`). Under
- * the list stand the lines the terms of the rows' providers require, those
- * of every page read (provider-lines.js). The switch over the centre
+ * the list stands the view's one strip of the lines the terms of the rows'
+ * providers require, those of every page read, with the map's beside it
+ * (provider-lines.js). The switch over the centre
  * (views/switch.js) leads to the map and the Wachlarz with the same address;
  * where the centre is wide enough, the map stands beside the catalog
  * (views/map.js `embedded`). „Dodaj do projektu…” over the list pins the
@@ -37,7 +38,7 @@ import { timeline as TL } from "../labels/timeline.js";
 import { GROUP_PARAM, LAYER_PARAM } from "../map/previews.js";
 import { isStationProduct } from "../map/stations.js";
 import { ViewLayout } from "../panels.js";
-import { mergeLines, NO_LINES, ProviderLines } from "../provider-lines.js";
+import { mergeLines, NO_LINES, SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { href, Link, navigate, setParams } from "../router.js";
 import { findView } from "../routes.js";
 import { CATALOG, FOCUS_SEARCH, SLOT_PARAMS, takeSearchFocus } from "../search.js";
@@ -138,6 +139,8 @@ export default function Catalog({ route }) {
   const centreWidth = useSize(centre).width;
   const split = !narrow && centreWidth >= SPLIT_MIN;
   const MapView = useMapView(split);
+  // The rows' lines, of every page read; the map beside the list adds its own (one strip).
+  useProviderLines(stationMode || timeline ? null : pages.lines);
   const search = useRef(null);
   const searchWanted = useRef(false);
   const grid = useRef(null);
@@ -318,7 +321,7 @@ export default function Catalog({ route }) {
                 empty=${html`<${Empty} query=${query} indexing=${indexing} activeFilters=${activeFilters}
                   location=${location} groups=${pages.groups} />`} />`}
       </div>
-      ${timeline ? null : html`<${ProviderLines} answer=${pages.lines} strip />`}
+      <${SourcesStrip} />
       <footer class="cat-foot">
         ${!timeline && pages.moreError
           ? html`<span class="cat-more-error" role="alert">${L.result.more_failed}

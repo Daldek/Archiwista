@@ -264,9 +264,13 @@ versions a scan has just indexed.
 - "Pokaż wynik na mapie" (show the result on the map) opens the map with the
   same filters, and "Zapytanie API" (API query) gives the same query as an API
   address.
-- **„Źródło danych i warunki”** under the list: the lines the terms of the rows'
-  providers require (for example an archive file of IMGW-PIB), of every page read,
-  each once (A-ADR-055); nothing when no row's producer names its data's origin.
+- **The strip of sources** under the list, above the footer with the keys: the lines
+  the terms of the rows' providers require (for example an archive file of IMGW-PIB), of
+  every page read and of the map beside the list, each once (A-ADR-055). It shows the
+  short lines (the source, the mark of processing, „Źródło: ČHMÚ, CC BY 4.0”) and
+  „Źródła i warunki”, which opens „Źródła danych i warunki korzystania” with every
+  line and the terms, and there „Kopiuj atrybucję” (every line, one a line; `Esc`
+  closes only this window). Nothing when no row's producer names its data's origin.
 
 ## File card
 
@@ -280,11 +284,11 @@ versions a scan has just indexed.
   date), request, full sheet, resolution, horizontal and vertical systems,
   nodata, size, SHA-256, download date and the location with the source of the
   footprint.
-- **„Źródło danych i warunki”** above the version's tabs, so on „Podgląd” too: the
-  lines the terms of the data's provider require (A-ADR-055; for a producer that
-  names no origin of its data, the attribution of its sidecar, e.g. GUGiK's), their
-  addresses as links; „Kopiuj atrybucję” copies them all, one a line. The licence the
-  sidecar gives is under „Metadane”.
+- **The strip of sources** at the card's foot, under every tab: the lines the terms of
+  the chosen version's provider require (A-ADR-055; for a producer that names no origin
+  of its data, the attribution of its sidecar, e.g. GUGiK's, which only the window that
+  „Źródła i warunki” opens shows); „Kopiuj atrybucję” in that window copies them all, one a
+  line. The licence the sidecar gives is under „Metadane”.
 - **Paths:** the version path always points to the same content, which is the
   one to use in projects and analyses; the standard path is a link to the
   current version and points to other content once a newer one is downloaded.
@@ -415,7 +419,7 @@ and a directory holding only one of them is no project.
   `README.txt`, which describes each file — its folder and name, product, year or label,
   coordinate systems, size, SHA-256 and the set it came from — and ends with „Źródła
   danych i warunki korzystania”: the lines the terms of the data's providers require,
-  each once, then the terms (A-ADR-055); `ATTRIBUTION.txt` beside it holds the same
+  each once, then the links to the terms (A-ADR-055); `ATTRIBUTION.txt` beside it holds the same
   lines, one a line, to carry on with the data. The files are copies, never links
   into the store, so opening them in QGIS changes no version. A version stored as a
   ZIP that holds exactly one raster
@@ -572,10 +576,10 @@ mean the producer has no such product, only that this layer is not local.
 "Porównaj" (compare) sets the metadata of two versions, own files or
 snapshots side by side (object differences are not computed). You can view two
 previews with the curtain, by cross-fading or side by side; this is a visual
-comparison and changes no data. „Źródło danych i warunki” under it gives the lines
-the terms of both versions' providers require, and „Eksportuj CSV” puts them in the
-table's last two columns, `attribution` and `terms_notice`, a line a cell from the
-first row down.
+comparison and changes no data. The strip of sources under the maps gives the lines
+the terms of both versions' providers require (every line in „Źródła i warunki”),
+and „Eksportuj CSV” puts them in full in the table's last two columns, `attribution`
+and `terms_notice`, a line a cell from the first row down.
 
 ![Comparison and curtain](reports/v0.2-screenshots/06-porownanie-kurtyna.webp)
 
@@ -704,10 +708,13 @@ whether the stations on an area's boundary count. Stations far apart at a low zo
 form a neutral cluster with their count, which zooms in on a click; stations at one
 position spread around it until the next click or `Esc`. "N bez położenia" in the bar
 opens the Catalog with the stations that have no position; a click on a point opens
-the station card (below). While stations are drawn, „Źródło danych i warunki” under
-the map gives the lines the terms of their providers require (A-ADR-055): for
-IMGW-PIB its source, the mark of processing and the hydrological service of the
-positions, with its terms; for ČHMÚ its credit with the licence and what was done.
+the station card (below). While stations are drawn, the strip of sources under the map
+gives the lines the terms of their providers require (A-ADR-055): for IMGW-PIB its
+source and the mark of processing, for ČHMÚ „Źródło: ČHMÚ, CC BY 4.0”; „Źródła i
+warunki” opens every line (ČHMÚ's full credit with what was done) and the links to
+the terms (for IMGW-PIB „Regulamin danych IMGW-PIB”, and for the positions „Regulamin
+serwisu hydrologicznego IMGW-PIB”). With the Catalog beside the map, its lines join
+the Catalog's strip.
 
 ![Stations on the map with the legend and a tooltip](reports/v0.5-screenshots/01-stacje-na-mapie.webp)
 
@@ -758,9 +765,11 @@ of its series file (the person's own first, as on the file card). "Pokrycie" giv
 each variable of each series with its label, full years and longest gap; the tabs
 "Wykres" (the default), "Metadane" (the catalog's facts), "Pochodzenie" (each series
 version with the station's file, its SHA-256 and the series index, and the catalog
-version) and "Szczegóły techniczne" (the API's answer) follow, and below them
-„Źródło danych i warunki”: the lines the terms of the station's provider require,
-the hydrological service too for a position of IMGW-PIB, with „Kopiuj atrybucję”.
+version) and "Szczegóły techniczne" (the API's answer) follow. At the card's foot,
+outside its scrolling part, the strip of sources gives the lines the terms of the
+station's provider require, with those of the chart; „Źródła i warunki” opens every
+line and the links to the terms (for a position of IMGW-PIB the hydrological
+service's terms too), with „Kopiuj atrybucję”.
 
 ![The station card](reports/v0.5-screenshots/04-karta-stacji.webp)
 
@@ -777,8 +786,8 @@ is a grey band: the bands are the gaps the label counts in the card's year type,
 "luki 92%" shows its 92%; a day without a value outside them (not known, or outside
 the label's years) has no band.
 Dots are the extremes the provider published and a diamond an accumulated sum, each
-with its date in its tooltip; the pointer gives the values of its day. Under the chart
-„Źródło danych i warunki” gives the lines of the series' provider.
+with its date in its tooltip; the pointer gives the values of its day. The lines of the
+series' provider join the card's strip of sources.
 
 ![The chart of a station](reports/v0.5-screenshots/05-wykres-stacji.webp)
 
@@ -791,7 +800,7 @@ or "Cały okres" shows the whole period again. A station without the series or t
 variable keeps its panel with "brak danych". "Zmienna" switches the variable, "Dodaj
 stację" finds another station with a series of the dataset by name, river or code (five
 at most), and the table below gives each station's facts as on its card, followed by
-„Źródło danych i warunki” with „Kopiuj atrybucję”.
+the strip of sources, with „Kopiuj atrybucję” in the window that „Źródła i warunki” opens.
 
 ![The comparison of stations](reports/v0.5-screenshots/06-porownanie-stacji.webp)
 

@@ -47,7 +47,6 @@ from tests.fixtures.obserwator_statistics import (
 from tests.fixtures.provider_lines import (
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_PUBLIC_DATA,
 )
 
@@ -564,7 +563,6 @@ def test_station_chart_command_line_writes_each_year_for_a_person(
         "Źródła danych i warunki korzystania:",
         f"  {IMGW_SOURCE}",
         f"  {IMGW_PROCESSED}",
-        f"  {IMGW_TERMS}",
         f"  {IMGW_TERMS_PUBLIC_DATA}",
     ]
 

@@ -17,8 +17,8 @@
  * summaries side by side. Differences are marked, „tylko różnice”
  * (`only_diff`) hides the rest and „Eksportuj CSV” saves the rows shown,
  * made in the browser: the server writes nothing. The lines the terms of
- * the versions' providers require stand in a strip under the maps
- * (provider-lines.js) and in the CSV's last two columns. Two sides with vector
+ * the versions' providers require stand in the view's one strip under the
+ * maps (provider-lines.js) and in full in the CSV's last two columns. Two sides with vector
  * layers (own data) also show the differences of their schema: layers only
  * in A or B, objects per layer, fields added, removed and changed.
  */
@@ -46,7 +46,7 @@ import { OwnCardLink, useOwnFile } from "../map/own.js";
 import { availableBasemaps, pickBasemap } from "../map/style.js";
 import { ViewLayout } from "../panels.js";
 import { BuildSection, PreviewLegend, PreviewReason, styleName, useBuild } from "../previews.js";
-import { LINE_COLUMNS, lineColumns, ProviderLines } from "../provider-lines.js";
+import { LINE_COLUMNS, lineColumns, SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { Link, setParams } from "../router.js";
 import {
   html,
@@ -330,6 +330,7 @@ function useFraming(stage, key, bounds) {
 }
 
 function CompareBody({ stage, toolbar, sides, notes, legend, panel, lines = null }) {
+  useProviderLines(lines);
   return html`<${ViewLayout} id="compare"
     right=${{ label: L.panel, open: stage.panel, onClose: () => stage.setPanel(false), content: panel }}>
     <div class="cmp-view">
@@ -343,7 +344,7 @@ function CompareBody({ stage, toolbar, sides, notes, legend, panel, lines = null
             </${CompareMaps}>`
           : html`<div class="page"><${Spinner} /></div>`}
       </div>
-      <${ProviderLines} answer=${lines} strip />
+      <${SourcesStrip} />
     </div>
   </${ViewLayout}>`;
 }

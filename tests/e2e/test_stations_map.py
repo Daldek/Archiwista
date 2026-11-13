@@ -11,9 +11,10 @@ so, and the view still counts the stations of the view it would show), the
 legend names the three shapes and five fills, the counter of stations
 without a position equals ``counts.unlocated`` and opens the Catalog with
 ``location=none``, and the "Kolor punktów" and dataset chips change the
-address and the next request. A strip under the map shows the lines the
-IMGW-PIB terms require with the stations of the view and their positions
-(Nogat DEV §20), byte for byte those of ``GET /map/stations``.
+address and the next request. The view's one strip under the map shows S
+and P of the IMGW-PIB lines with the stations of the view and their
+positions (Nogat DEV §20, DEV-20.5); its dialog lists every line, byte for
+byte those of ``GET /map/stations``.
 """
 
 import json
@@ -27,25 +28,24 @@ from playwright.sync_api import Locator, Page, Request, Response, Route, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.provider_lines import (
-    IMGW_HYDRO,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_HYDRO,
     IMGW_TERMS_PUBLIC_DATA,
 )
 from tests.fixtures.station_browser import (
-    LINES_TITLE,
+    SOURCES,
     WORLD,
     address,
     api,
+    dialog_lines,
     hover_until,
     mercator_lat,
     open_session,
     query_of,
     screen_point,
-    shown_lines,
     station_settings,
+    strip_lines,
     wait_still,
 )
 
@@ -310,7 +310,7 @@ def test_legend_counter_and_chips_stand_beside_the_map(
 def test_map_screen_station_lines_stand_in_a_strip_under_the_map(
     serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
-    """Raba Górna in the view: S, P, H, then N, RD and RH under the map."""
+    """Raba Górna in the view: S and P in the strip under the map, every line behind."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
@@ -322,21 +322,22 @@ def test_map_screen_station_lines_stand_in_a_strip_under_the_map(
     # Act
     open_stations(page, served, product="hydro", center=centre, zoom="9")
     expect(counter(page)).to_have_text("1 stacja w widoku")
-    lines = page.locator(".map-view").get_by_role("group", name=LINES_TITLE)
-    shown = shown_lines(lines)
+    strip = page.locator(".map-view").locator(SOURCES)
+    shown = strip_lines(strip)
+    full = dialog_lines(strip)
     pane = page.locator(".map-pane").bounding_box()
-    strip = lines.bounding_box()
+    box = strip.bounding_box()
 
     # Assert
-    assert shown == [*view["attribution"], *view["terms_notice"]]
-    assert shown == [
+    assert shown == [IMGW_SOURCE, IMGW_PROCESSED]
+    assert full == [*view["attribution"], *view["terms_notice"]]
+    assert full == [
         IMGW_SOURCE,
         IMGW_PROCESSED,
-        IMGW_HYDRO,
-        IMGW_TERMS,
         IMGW_TERMS_PUBLIC_DATA,
         IMGW_TERMS_HYDRO,
     ]
-    assert pane is not None and strip is not None
-    assert strip["y"] >= pane["y"] + pane["height"]
+    expect(page.locator(SOURCES)).to_have_count(1)
+    assert pane is not None and box is not None
+    assert box["y"] >= pane["y"] + pane["height"]
     engine_tab.assert_clean()

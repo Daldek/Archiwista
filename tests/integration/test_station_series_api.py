@@ -53,7 +53,6 @@ from tests.fixtures.provider_lines import (
     CHMI_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_PUBLIC_DATA,
 )
 
@@ -369,7 +368,7 @@ def test_the_bands_are_the_gaps_the_label_counts(
             RABA,
             "H",
             [IMGW_SOURCE, IMGW_PROCESSED],
-            [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA],
+            [IMGW_TERMS_PUBLIC_DATA],
             id="imgw",
         ),
         pytest.param(SPINDLER, "T", [CHMI_SOURCE, CHMI_PROCESSED_VIEWS], [], id="chmi"),
@@ -382,7 +381,7 @@ def test_the_chart_carries_the_lines_its_providers_terms_require(
     attribution: list[str],
     terms_notice: list[str],
 ) -> None:
-    """IMGW-PIB: S, P, N and RD (no position, no H); ČHMÚ: C and CP, no notice."""
+    """IMGW-PIB: S, P and RD (no position, no RH); ČHMÚ: C and CP, no notice."""
     # Act
     chart = served_cz.json(f"/stations/{code}/series", {"variable": key})
 
@@ -397,7 +396,7 @@ def test_the_chart_carries_the_lines_its_providers_terms_require(
             RABA,
             "H",
             [IMGW_SOURCE, IMGW_PROCESSED],
-            [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA],
+            [IMGW_TERMS_PUBLIC_DATA],
             id="imgw",
         ),
         pytest.param(SPINDLER, "T", [CHMI_SOURCE, CHMI_PROCESSED], None, id="chmi"),
@@ -410,7 +409,7 @@ def test_a_handoff_carries_the_lines_its_providers_terms_require(
     attribution: list[str],
     terms_notice: list[str] | None,
 ) -> None:
-    """The values in another format: S, P, N and RD; C and CP without a notice."""
+    """The values in another format: S, P and RD; C and CP without a notice."""
     # Act
     doc = served_cz.json(f"/stations/{code}/handoff", {"variable": key})
 
@@ -574,7 +573,6 @@ def test_the_command_line_writes_the_chart_for_a_person(
         "Źródła danych i warunki korzystania:",
         f"  {IMGW_SOURCE}",
         f"  {IMGW_PROCESSED}",
-        f"  {IMGW_TERMS}",
         f"  {IMGW_TERMS_PUBLIC_DATA}",
     ]
 

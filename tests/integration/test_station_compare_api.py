@@ -32,10 +32,8 @@ from tests.fixtures.local_server import local_paths
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED_VIEWS,
     CHMI_SOURCE,
-    IMGW_HYDRO,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_HYDRO,
     IMGW_TERMS_PUBLIC_DATA,
 )
@@ -51,8 +49,8 @@ SPINDLER = "0-203-1-900001"  # values 2023-01-01 to 2024-12-31
 ZAPADLA = "0-203-1-900002"  # values 2004 to 2006, no known year
 # The lines of IMGW-PIB stations, one with a position (of the hydrological service).
 IMGW_LINES = (
-    [IMGW_SOURCE, IMGW_PROCESSED, IMGW_HYDRO],
-    [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO],
+    [IMGW_SOURCE, IMGW_PROCESSED],
+    [IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO],
 )
 # The facts of a compared station that its card gives too.
 _CARD_FIELDS = (
@@ -259,7 +257,7 @@ def test_the_comparison_carries_the_lines_its_providers_terms_require(
     variable: str,
     lines: tuple[list[str], list[str]],
 ) -> None:
-    """IMGW-PIB: S, P and H for a position, N, RD and RH; ČHMÚ: C and CP alone."""
+    """IMGW-PIB: S and P, RD, and RH for a position; ČHMÚ: C and CP alone."""
     # Act
     answer = _compare(served, stations, variable=variable, dataset=dataset)
 
@@ -462,7 +460,7 @@ def test_the_command_line_writes_the_comparison_for_a_person(
     assert lines[10] == f"  brak danych: brak zmiennej H w szeregu {DAILY}"
     assert lines[11].startswith(f"{NO_Q}  Stacja Bez Q")
     assert lines[14] == "    luka 2023-11-02 – 2024-10-31 (365 dni)"
-    assert lines[-7:] == [
+    assert lines[-5:] == [
         "Źródła danych i warunki korzystania:",
         *(f"  {line}" for part in IMGW_LINES for line in part),
     ]

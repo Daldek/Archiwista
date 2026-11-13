@@ -29,8 +29,9 @@
  * legend and the counter of stations without a position, which opens the
  * catalog with `location=none`. Its choices are address parameters of their
  * own (`STATION_PARAMS`), never filters of the outlines. While stations or
- * their grid are drawn, the lines their providers' terms require stand in a
- * strip under the map (provider-lines.js).
+ * their grid are drawn, the view's one strip of the providers' lines stands
+ * under the map; embedded beside the Catalog, the lines join the Catalog's
+ * strip (provider-lines.js).
  */
 
 import {
@@ -100,7 +101,7 @@ import {
 } from "../map/stations.js";
 import { availableBasemaps, pickBasemap } from "../map/style.js";
 import { ViewLayout } from "../panels.js";
-import { ProviderLines } from "../provider-lines.js";
+import { SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { Link, setParams } from "../router.js";
 import {
   html,
@@ -453,8 +454,10 @@ export default function MapScreen({ route, embedded = false }) {
   if (own.project) {
     sections.push(html`<${OwnLegend} key="own" own=${own} onFrame=${(bbox) => mapApi?.fit(widenBounds(bbox, FRAME_MIN_DEGREES))} />`);
   }
-  // The lines of the stations drawn: of the view's answer, kept while the next one loads.
+  // The lines of the stations drawn: of the view's answer, kept while the next one loads;
+  // embedded beside the Catalog, they join its strip.
   const stationLines = stationMode || allStations ? stationView.data : null;
+  useProviderLines(fanMode && !split ? null : stationLines);
 
   const centreView = html`<div class="map-view" ref=${setCentre}>
     <div class="center-bar map-bar">
@@ -549,7 +552,7 @@ export default function MapScreen({ route, embedded = false }) {
           </div>`
         : null}
     </div>
-    ${fanMode && !split ? null : html`<${ProviderLines} answer=${stationLines} strip />`}
+    ${embedded || (fanMode && !split) ? null : html`<${SourcesStrip} />`}
   </div>`;
   if (embedded) return centreView;
   const details = layer
