@@ -112,7 +112,7 @@
 .fc-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .fc-block { display: grid; gap: 6px; justify-items: start; }
 .fc-block .section-title, .fc-block .hint { margin: 0; }
-.fc-license, .fc-attribution { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.fc-license { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
 .fc-path { display: grid; gap: 4px; justify-items: start; }
 .fc-path p { margin: 0; }
 .fc-path-head { font-size: 12.5px; line-height: 1.45; }

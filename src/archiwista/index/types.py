@@ -1190,6 +1190,8 @@ class StationMap:
     ``aggregated`` replaces ``items`` by ``cells`` (each a count of
     stations). ``counts`` are those of the same query as a list, and
     ``coverage`` that of ``items`` when the query asked for labels.
+    ``providers`` are the providers of the stations drawn, items or cells, in
+    the order of their first station (the lines their terms require).
     """
 
     total: int
@@ -1198,6 +1200,7 @@ class StationMap:
     cells: tuple[GridCell, ...]
     counts: StationCounts
     coverage: tuple[StationCoverage, ...] = ()
+    providers: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

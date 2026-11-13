@@ -246,7 +246,7 @@ def test_the_route_and_the_command_line_give_the_same_pages(
 def test_the_command_line_draws_a_strip_of_years_for_a_person(
     served: Served, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A line per variable: its years as cells, then its label; a legend."""
+    """A line per variable: its years as cells, then its label; a legend; lines."""
     # Arrange
     path = f"/stations/timeline?dataset={DAILY}"
     route = served.owner.request("GET", path, accept_language="pl").json()
@@ -272,7 +272,9 @@ def test_the_command_line_draws_a_strip_of_years_for_a_person(
         assert line == f"    {variable['key']} {years}  {variable['label']}"
     assert strips[0].split()[1] == "?" * 73 + "▒"  # 2024 holds the gaps of H
     assert "Lata: █ pełny, ▒ z lukami, · bez wartości, ? nieznany." in lines
-    assert lines[-1].startswith("Stacje na stronie: ")
+    shown = [f"  {line}" for line in (*route["attribution"], *route["terms_notice"])]
+    assert lines[-len(shown) - 2].startswith("Stacje na stronie: ")
+    assert lines[-len(shown) - 1 :] == ["Źródła danych i warunki korzystania:", *shown]
 
 
 # Performance ------------------------------------------------------------------

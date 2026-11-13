@@ -7,10 +7,12 @@
  * It shows every version of the slot on an axis, newest first, marking the
  * current one (the standard path) and the `full_sheet/` one, with the pins
  * of the projects the session sees — older versions too. The chosen version
- * has two tabs: „Metadane” — its metadata for people next to the raw values
- * (criterion 6), its licence with the attribution to copy, the paths to copy
- * (this version and the standard path, also as mounted on other computers),
- * the files of the same producer request and the raw sidecar — and
+ * has the lines its provider's terms require above its tabs, beside „Pobierz
+ * plik” (provider-lines.js, with „Kopiuj atrybucję”), and two tabs:
+ * „Metadane” — its metadata for people next to the raw values (criterion 6),
+ * its licence, the paths to copy (this version and the standard path, also
+ * as mounted on other computers), the files of the same producer request and
+ * the raw sidecar — and
  * „Podgląd” (`file_tab=preview`, style `file_style`): the version's preview
  * (previews.js `PreviewPane`) with „Pokaż podgląd na mapie” when it has
  * tiles or features (the map with `preview=<ref>`). „Porównaj z…” next to
@@ -43,12 +45,14 @@ import { T, t } from "../labels/index.js";
 import { pins as P } from "../labels/pins.js";
 import { PREVIEW_PARAM, PREVIEW_STYLE_PARAM } from "../map/previews.js";
 import { PreviewPane } from "../previews.js";
+import { ProviderLines } from "../provider-lines.js";
 import { Link, readRoute, setParams, useRoute } from "../router.js";
 import { startView } from "../routes.js";
 import {
   CopyButton,
   html,
   Icon,
+  outsideLink,
   ProblemView,
   Spinner,
   Tech,
@@ -297,6 +301,10 @@ function Pins({ pins }) {
 
 function VersionDetails({ store, card, version, versions, tab, style, onPinned }) {
   const panel = useId();
+  const details = useResource(
+    (signal) => getVersion(store, version.path, { signal }),
+    [store, version.path],
+  );
   const title = version.label
     ? t(L.version.title, { label: version.label })
     : L.version.title_plain;
@@ -316,11 +324,12 @@ function VersionDetails({ store, card, version, versions, tab, style, onPinned }
           })} />
       </div>
     </div>
+    <${ProviderLines} answer=${details.data} copy />
     <${VersionTabs} tab=${tab} panel=${panel} />
     <div class="fc-panel" role="tabpanel" id=${panel} aria-labelledby=${`${panel}-${tab}`}>
       ${tab === "preview"
         ? html`<${VersionPreview} store=${store} version=${version} style=${style} />`
-        : html`<${VersionMetadata} store=${store} card=${card} version=${version} />`}
+        : html`<${VersionMetadata} card=${card} details=${details} />`}
     </div>
   </section>`;
 }
@@ -392,11 +401,9 @@ function VersionTabs({ tab, panel }) {
   </div>`;
 }
 
-function VersionMetadata({ store, card, version }) {
-  const { data, error } = useResource(
-    (signal) => getVersion(store, version.path, { signal }),
-    [store, version.path],
-  );
+/** „Metadane”: the version's card (`GET /stores/{store}/versions/{path}`) for people. */
+function VersionMetadata({ card, details }) {
+  const { data, error } = details;
   if (error && !data) return html`<${ProblemView} problem=${error.problem} compact />`;
   if (!data) return html`<${Spinner} label=${L.version.loading} />`;
   return html`
@@ -520,49 +527,16 @@ function Location({ details }) {
   return html`<${Tech} value=${values}>${why ? `${kind} — ${why}` : kind}</${Tech}>`;
 }
 
-/**
- * A sidecar's licence address as a link target, or `null`: only `http(s)` to
- * another computer. The sidecar comes from the shared store, and a link to a
- * loopback address would reach other servers of this computer.
- *
- * @param {*} value - `license.url` of the raw sidecar.
- * @returns {string|null}
- */
-function licenseLink(value) {
-  if (typeof value !== "string") return null;
-  let address;
-  try {
-    address = new URL(value);
-  } catch {
-    return null;
-  }
-  if (address.protocol !== "http:" && address.protocol !== "https:") return null;
-  const host = address.hostname.replace(/^\[|\]$/g, "").toLowerCase();
-  const loopback =
-    host === "localhost" ||
-    host.endsWith(".localhost") ||
-    /^127\./.test(host) ||
-    host === "0.0.0.0" ||
-    host === "::1" ||
-    host === "::" ||
-    host.startsWith("::ffff:127.");
-  return loopback ? null : address.href;
-}
-
+/** The licence the sidecar gives, with its address as a link. */
 function License({ details }) {
-  const url = licenseLink(details.sidecar?.license?.url);
+  const url = outsideLink(details.sidecar?.license?.url);
+  const link = url
+    ? html` · <a href=${url} target="_blank" rel="noopener noreferrer">${url}</a>`
+    : null;
   return html`<div class="fc-block">
     <h4 class="section-title">${L.license.title}</h4>
-    ${details.license || details.attribution
-      ? html`
-          ${details.license ? html`<p class="fc-license"><b>${details.license}</b>
-              ${url ? html` · <a href=${url} target="_blank" rel="noopener noreferrer">${url}</a>` : null}
-            </p>` : null}
-          ${details.attribution
-            ? html`<p class="fc-attribution"><span class="faint">${L.license.attribution}:</span>${" "}${details.attribution}</p>
-                <${CopyAction} text=${details.attribution} label=${L.license.copy_attribution} />`
-            : null}
-        `
+    ${details.license
+      ? html`<p class="fc-license"><b>${details.license}</b>${link}</p>`
       : html`<p class="faint">${L.license.none}</p>`}
   </div>`;
 }

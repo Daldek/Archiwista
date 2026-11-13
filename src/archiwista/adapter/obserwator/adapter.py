@@ -80,6 +80,7 @@ from archiwista.sources import (
     AvailabilityReport,
     CommandCall,
     CommandInfo,
+    DataOrigin,
     DefaultRoot,
     DefaultRootSource,
     EntryKind,
@@ -145,6 +146,22 @@ _NO_DATES: Mapping[str, tuple[datetime | None, datetime | None]] = MappingProxyT
 _NO_COUNTS: Mapping[str, int] = MappingProxyType({})
 # Trees whose files cover a whole country; the others have no place.
 _COUNTRY_TREES = frozenset({"archives", "series"})
+# The origin of the data of each tree of each provider, for the lines their
+# terms require (A-ADR-055): an archive is the provider's file as published, a
+# series and a station catalog are Obserwator's processed forms (the IMGW-PIB
+# catalog with the positions of the hydrological service), and a PMAXTP cell,
+# whatever its provider, is PMAXTP's.
+_ORIGINS: Mapping[tuple[str, str], DataOrigin] = MappingProxyType(
+    {
+        ("archives", "IMGW-PIB"): "imgw_file",
+        ("series", "IMGW-PIB"): "imgw_processed",
+        ("stations", "IMGW-PIB"): "imgw_stations",
+        ("archives", "CHMI"): "chmi_file",
+        ("series", "CHMI"): "chmi_processed",
+        ("stations", "CHMI"): "chmi_processed",
+    }
+)
+_PMAXTP_TREE = "pmaxtp"
 # The codes of an Obserwator error that say a slot has no current version, not that
 # the store is unusable: a version of the slot is broken (``data_error``) or the
 # producer cannot read the slot (``validation_error``: a link in its path, a key it
@@ -169,7 +186,9 @@ class ObserwatorAdapter:
     catalog), ``SeriesIndexAdapter`` (the index of each dataset's series),
     ``SeriesValuesAdapter`` (a station's values), ``DefaultRootAdapter``
     (``store_root()``), ``VersionCommandAdapter`` (``command_for_version``),
-    ``ExportFolderAdapter`` (every version under ``IMGW``), ``ActionAdapter``
+    ``ExportFolderAdapter`` (every version under ``IMGW``),
+    ``DataOriginAdapter`` (an archive is a provider's file as published, the
+    other trees processed forms), ``ActionAdapter``
     (the commands that write the store, ``actions.py``),
     ``AreaCommandAdapter`` (which refuses every area: the archives are
     national files) and ``ProductNameAdapter`` (a family is named after its
@@ -722,6 +741,28 @@ class ObserwatorAdapter:
     def export_folder(self, product: str | None, dataset_key: str | None) -> str:
         """Return the export folder of every IMGW version: ``IMGW``."""
         return "IMGW"
+
+    def data_origin(self, path: str, segment: str | None) -> DataOrigin | None:
+        """Return the origin of a version by its tree and its dataset's provider.
+
+        ``segment`` is the version's dataset, whose key names its provider
+        (``pl.imgw.hydro_daily``); a path outside the trees, or a dataset of
+        no provider, has none.
+        """
+        tree = PurePosixPath(path).parts[:1]
+        if tree == (_PMAXTP_TREE,):
+            return "pmaxtp"
+        provider = next(
+            (
+                str(item.id)
+                for item in providers()
+                if segment is not None and segment.startswith(f"{item.key_prefix}.")
+            ),
+            None,
+        )
+        if not tree or provider is None:
+            return None
+        return _ORIGINS.get((tree[0], provider))
 
     def commands(self) -> tuple[CommandInfo, ...]:
         """Return the commands that write the store (``command_schema``)."""

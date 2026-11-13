@@ -8,7 +8,9 @@ is offline. Helpers start a session, read the API in the interface's
 language (Polish labels), find where a position of the map lies on the
 screen (MapLibre draws Web Mercator with 512 px tiles around the centre and
 zoom the address holds) and where the days of a chart's plot lie, to select
-them by dragging.
+them by dragging, and read the lines of the providers' terms a view shows
+(„Źródło danych i warunki”); ``tests.fixtures.provider_lines`` gives those
+lines byte for byte.
 """
 
 import math
@@ -49,6 +51,8 @@ API_GET = """async (path) => {
   const answer = await fetch(`/api/v1${path}`, { headers });
   return { status: answer.status, body: await answer.json() };
 }"""
+# The heading of the lines of the providers' terms in every view.
+LINES_TITLE = "Źródło danych i warunki"
 
 
 def station_settings(source: Path, base: Path) -> AppSettings:
@@ -81,6 +85,19 @@ def api(page: Page, path: str) -> Any:
     answer: dict[str, Any] = page.evaluate(API_GET, path)
     assert answer["status"] == 200, answer
     return answer["body"]
+
+
+def shown_lines(block: Locator) -> list[str]:
+    """Return the lines of the providers' terms a block shows, each line's text.
+
+    The block and every line of it are visible; the texts are the page's own,
+    no whitespace normalised, to compare byte for byte.
+    """
+    expect(block).to_be_visible()
+    lines = block.locator(".pl-line").all()
+    for line in lines:
+        expect(line).to_be_visible()
+    return [line.text_content() or "" for line in lines]
 
 
 def address(served: Served, **params: str) -> str:

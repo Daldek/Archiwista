@@ -35,7 +35,8 @@
 .sc-alias { display: inline-flex; align-items: center; gap: 4px; }
 .sc-json { margin: 0; max-height: 320px; overflow: auto; justify-self: stretch; min-width: 0; }
 
-.sc-attribution { border-top: 1px solid var(--line); padding-top: 10px; }
+/* The lines of the providers' terms under the tabs (provider-lines.js). */
+.sc-lines { border-top: 1px solid var(--line); padding-top: 10px; }
 
 /* The chart of the tab „Wykres” (views/station-chart.js; plan I8.5). */
 .sch { display: grid; gap: 8px; min-width: 0; }

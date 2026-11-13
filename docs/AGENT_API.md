@@ -81,7 +81,9 @@ services as the HTTP routes, as the owner of the local installation
   (`debug`, `info`, `warning`, `error`) sets the level; the default is `warning`.
 
 Without `--json` the commands print a short Polish text for people; an agent
-should always pass `--json`.
+should always pass `--json`. The text of an answer that carries the lines of the
+data providers' terms (section 5) ends with „Źródła danych i warunki korzystania:”
+and the lines, each indented two spaces.
 
 The CLI downloads data and writes a store only through a job: a `download` (`jobs
 start download`) or `jobs retry` of one. The commands `users`,
@@ -464,13 +466,16 @@ cursor is safe in a URL).
   before the extension (`M-33-44-A-d-2-2_2025-06-13.asc`; equal labels add the
   SHA-256 prefix). `README.txt` (Polish, UTF-8, LF) describes every file (folder and
   name, product, year, label, coordinate and height systems when known, size,
-  SHA-256, the groups that pin it) and ends with "Źródła danych", each attribution
-  once. With `zip` the folder's content is also `eksport/<name>.zip`. An export of
-  that name is replaced whole, written in a hidden sibling directory and swapped in;
-  without `zip` its old ZIP is removed. The answer `201 ProjectExport` has `name`,
-  `path` (the export directory as a copy path), `files` (every file written,
-  relative and `/`-separated, the category folders' files by name and `README.txt`
-  last), `pins` (the versions copied), `skipped` (`no_store`: pins whose store
+  SHA-256, the groups that pin it) and ends with „Źródła danych i warunki
+  korzystania”: the lines the providers' terms require (section 5, A-ADR-055), merged
+  over the copied versions, each once, then the terms; `ATTRIBUTION.txt` at the
+  export's root holds the same lines, one a line (UTF-8), and is written only when
+  there are lines. With `zip` the folder's content is also `eksport/<name>.zip`. An
+  export of that name is replaced whole, written in a hidden sibling directory and
+  swapped in; without `zip` its old ZIP is removed. The answer `201 ProjectExport`
+  has `name`, `path` (the export directory as a copy path), `files` (every file
+  written, relative and `/`-separated, the category folders' files by name, then
+  `ATTRIBUTION.txt` and `README.txt` last), `pins` (the versions copied), `skipped` (`no_store`: pins whose store
   matches no configured one; `missing`: pins whose version is not present in the
   index or on the disk), `zip` and `written_at`. It needs `project.write` like a
   change (`403 permission_denied`, `404` for a hidden project; `409
@@ -676,6 +681,24 @@ still answer `200` from the index as of `indexed_at`, and `stale` is `true`: an
 agent should tell the user so, not treat the result as the current state of the
 disk.
 
+**Data sources and terms** (A-ADR-055, Nogat DEV §20). The terms of IMGW-PIB,
+PMAXTP and ČHMÚ require their lines with every product of their data. An answer
+carries them in two lists of strings: `attribution` (the sources and the marks of
+processing, IMGW-PIB, PMAXTP, then ČHMÚ, each line once) and `terms_notice` (the
+IMGW-PIB terms of use and the addresses of the terms that apply), both empty without
+such data. They come with `GET /slots` (merged over the page's versions), a
+version's card, `GET /compare` (both sides merged) and every station answer
+(`/stations`, `/stations/datasets`, `/stations/timeline`, `/stations/compare`,
+`/stations/{code}`, its `/coverage` and `/series`, `/map/stations`). Archiwista
+chooses them by the provider and the form of the data, not from the sidecar; a
+version of a producer that names no origin of its data (Kartograf) gives its
+sidecar's attribution on its card and in `/compare` (for example „Główny Urząd
+Geodezji i Kartografii”). The lines are Polish whatever `Accept-Language` says. An
+agent shows them verbatim with the data, neither shortened nor translated, and
+carries them into everything it makes of the data (a table, a report, a file). The
+`attribution` of `StationChart` and `VersionCard`, once the sidecar's formula as a
+string or `null`, is this list now.
+
 **Offline mode.** The setting `offline` (`GET /settings`) turns off everything
 that needs the network; reading the index, cards and local scans still work,
 and a job of unit outlines gets `409 conflict` (`offline_mode`).
@@ -719,8 +742,9 @@ to its `q` and `sort`. Filters: `store`, `provider`, `kind`, `active`, `river_co
 `bbox` with `bbox_crs`, and it takes the stations on its boundary too, those closer
 to it than their location uncertainty (`location.on_boundary`; `boundary=false`
 leaves them out). Each item has its `location` and `series[]`: per dataset the
-series version, the station's `file` with its `sha256`, the `license`, the
-`attribution` to quote with the data, and `coverage` with an entry per variable
+series version, the station's `file` with its `sha256`, the `license` and
+`attribution` its sidecar gives (the lines to show are the answer's `attribution`
+and `terms_notice`, above), and `coverage` with an entry per variable
 (`state`, the `label` in the request's language and the structure behind it); a
 station has no single label. `counts` counts the whole result: `located`,
 `boundary`, `unlocated` (no position: after the attribute and coverage filters,
@@ -779,7 +803,11 @@ characteristics `400 no_annual_source`. `GET /stations/{code}/handoff`
 around Hydrolog's `hydrolog-series/1`: every day of a daily series (`null` without a
 value; a series not of days is `400 no_daily_series`), or the annual maxima of
 complete hydrological years, a year missing a half `null` and named in
-`provenance.series.left_out`; Hydrolog's „Statystyka przepływów” opens it.
+`provenance.series.left_out`; Hydrolog's „Statystyka przepływów” opens it. The
+document carries the series' lines as `attribution` and `terms_notice` (IMGW-PIB:
+its source, the mark of processing and its terms; ČHMÚ: its credit with the licence
+and what was done, no `terms_notice`), each left out when empty; Hydrolog shows them
+with the series and carries them on.
 `version` must be the current one in the index (`409` otherwise; read the card
 again); half-year characteristics are not drawn as a line of units (`400`, reason
 `half_year_chart`; ask `resolution=annual`). `GET /stations/compare` (`archiwista stations compare`) is one
@@ -1169,6 +1197,8 @@ schema is `schemas/nogat/error-1.schema.json`.
    → wait for `Retry-After`.
 7. **Paths:** to work with a file use `paths.local` from the card; do not build
    paths yourself.
+8. **Data sources and terms:** show the answer's `attribution` and `terms_notice`
+   with the data, verbatim, and carry them into what you make of it (section 5).
 
 ## 9. Background jobs and SSE
 

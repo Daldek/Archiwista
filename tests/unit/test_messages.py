@@ -68,6 +68,9 @@ _SAME_WORDS = frozenset(
         "role.admin",
     }
 )
+# Areas whose every entry is one wording in both languages: the lines the data
+# providers' terms prescribe verbatim (Nogat DEV §20, A-ADR-055).
+_SAME_AREAS = frozenset({"legal"})
 # Modules whose Polish is a table of names, not a message: the catalog of the
 # registry page (generated from the Nogat registry), and the legend names of the
 # class tables of previews (the interface is Polish; the producers' codes stay).
@@ -87,6 +90,7 @@ _DATA = frozenset(
         ("api/jobs.py", "/mnt/nas/projekty/archiwum"),
         ("api/models.py", "/mnt/nas/projekty"),
         ("api/models.py", "Główny Urząd Geodezji i Kartografii"),
+        ("api/models_compare.py", "Główny Urząd Geodezji i Kartografii"),
         ("api/models.py", "Zespół"),
         ("api/models.py", "Sheet code (godło)."),
         ("api/models_layers.py", "Kraków"),
@@ -215,7 +219,8 @@ def test_every_entry_has_both_languages_with_the_same_placeholders() -> None:
             )
         if "lang" in english:
             problems.append(f"{key}: a placeholder is called lang")
-        if text.en == text.pl and key not in _SAME_WORDS:
+        same_allowed = key in _SAME_WORDS or key.partition(".")[0] in _SAME_AREAS
+        if text.en == text.pl and not same_allowed:
             words = re.sub(r"\{[^}]*\}", " ", text.en)
             if re.search(r"[^\W\d_]", words):
                 problems.append(f"{key}: the Polish text is the English one")

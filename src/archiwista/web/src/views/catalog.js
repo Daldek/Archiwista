@@ -15,12 +15,14 @@
  * (`search.js` `SLOT_PARAMS`), so a shared link, the map's „bez obrysu”
  * counter (`location=none`) and Back/Forward open the same list. Location
  * groups come with their counts over the whole answer; the search field is
- * the one of `Ctrl+K`. A row opens the file card overlay (`file=`). The
- * switch over the centre (views/switch.js) leads to the map and the
- * Wachlarz with the same address; where the centre is wide enough, the map
- * stands beside the catalog (views/map.js `embedded`). „Dodaj do projektu…”
- * over the list pins the versions of every row of the result
- * (views/pin-dialog.js), disabled with the reason above 10 000 rows.
+ * the one of `Ctrl+K`. A row opens the file card overlay (`file=`). Under
+ * the list stand the lines the terms of the rows' providers require, those
+ * of every page read (provider-lines.js). The switch over the centre
+ * (views/switch.js) leads to the map and the Wachlarz with the same address;
+ * where the centre is wide enough, the map stands beside the catalog
+ * (views/map.js `embedded`). „Dodaj do projektu…” over the list pins the
+ * versions of every row of the result (views/pin-dialog.js), disabled with
+ * the reason above 10 000 rows.
  */
 
 import { listProducts, listSlots, listStationDatasets } from "../api.js";
@@ -35,6 +37,7 @@ import { timeline as TL } from "../labels/timeline.js";
 import { GROUP_PARAM, LAYER_PARAM } from "../map/previews.js";
 import { isStationProduct } from "../map/stations.js";
 import { ViewLayout } from "../panels.js";
+import { mergeLines, NO_LINES, ProviderLines } from "../provider-lines.js";
 import { href, Link, navigate, setParams } from "../router.js";
 import { findView } from "../routes.js";
 import { CATALOG, FOCUS_SEARCH, SLOT_PARAMS, takeSearchFocus } from "../search.js";
@@ -315,6 +318,7 @@ export default function Catalog({ route }) {
                 empty=${html`<${Empty} query=${query} indexing=${indexing} activeFilters=${activeFilters}
                   location=${location} groups=${pages.groups} />`} />`}
       </div>
+      ${timeline ? null : html`<${ProviderLines} answer=${pages.lines} strip />`}
       <footer class="cat-foot">
         ${!timeline && pages.moreError
           ? html`<span class="cat-more-error" role="alert">${L.result.more_failed}
@@ -508,8 +512,9 @@ function Empty({ query, indexing, activeFilters, location, groups }) {
 /**
  * Pages of the query: the first one when the query changes, the next ones on
  * demand (`more`), all again on `reload`. Until the first page of a new
- * query arrives, the rows of the previous one stay, marked `loading`.
- * Nothing is asked while `enabled` is false (the timeline layout).
+ * query arrives, the rows of the previous one stay, marked `loading`;
+ * `lines` are those of every page read (`mergeLines`). Nothing is asked
+ * while `enabled` is false (the timeline layout).
  */
 function usePages(query, key, enabled) {
   const [state, setState] = useState({
@@ -517,6 +522,7 @@ function usePages(query, key, enabled) {
     items: [],
     next: null,
     groups: null,
+    lines: NO_LINES,
     error: null,
     moreError: null,
     loading: true,
@@ -557,6 +563,7 @@ function usePages(query, key, enabled) {
           items: first ? page.items : [...previous.items, ...page.items],
           next: page.next_cursor,
           groups: page.groups,
+          lines: mergeLines(first ? [page] : [previous.lines, page]),
           error: null,
           moreError: null,
           loading: false,
@@ -570,7 +577,17 @@ function usePages(query, key, enabled) {
         if (first) live.loaded = requested;
         setState((previous) =>
           first
-            ? { ...previous, key: requested, items: [], next: null, groups: null, error, loading: false, pages: 0 }
+            ? {
+                ...previous,
+                key: requested,
+                items: [],
+                next: null,
+                groups: null,
+                lines: NO_LINES,
+                error,
+                loading: false,
+                pages: 0,
+              }
             : { ...previous, moreError: error, loadingMore: false },
         );
       },

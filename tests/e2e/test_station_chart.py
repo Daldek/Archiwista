@@ -26,6 +26,11 @@ naming the missing half. Its annual maxima go to Hydrolog through Nogat's kit
 „Otwórz Hydrologa” when ``nogat.toml`` gives Hydrolog's address, and without a
 Clipboard API (a plain-HTTP address on the network) a field holding the text
 selected for Ctrl+C.
+
+Right under every chart, of days, months or years, stand the lines the terms of
+its provider require (Nogat DEV §20, A-ADR-055), as visible text byte for byte
+the chart's answer: for IMGW-PIB the source and the mark of processing, then the
+terms of use and the address of the terms; for ČHMÚ its credit and what was done.
 """
 
 import json
@@ -35,11 +40,21 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import urlencode
 
+import pytest
 from playwright.sync_api import Locator, Route, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.obserwator_statistics import HALF_YEARS_ONLY, MONTHLY
+from tests.fixtures.provider_lines import (
+    CHMI_PROCESSED_VIEWS,
+    CHMI_SOURCE,
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_PUBLIC_DATA,
+)
 from tests.fixtures.station_browser import (
+    LINES_TITLE,
     STORE,
     address,
     api,
@@ -47,6 +62,7 @@ from tests.fixtures.station_browser import (
     frame_of,
     open_session,
     query_of,
+    shown_lines,
     station_settings,
 )
 
@@ -575,4 +591,77 @@ def test_an_incomplete_year_is_a_hollow_dot_whose_tooltip_names_the_missing_half
             "Q min.: 7 m³/s · 2023.07.01 (półrocze letnie)",
         ]
     )
+    engine_tab.assert_clean()
+
+
+@pytest.mark.parametrize(
+    ("station", "name", "params"),
+    [
+        (RABA, "Raba Górna", {}),
+        (RABA, "Raba Górna", {"chart_dataset": MONTHLY, "chart_variable": "Q"}),
+        (HALF_YEARS, "Stacja Bez Miejsca", {}),
+    ],
+    ids=["daily", "monthly", "annual"],
+)
+def test_station_chart_series_chart_imgw_lines_stand_under_the_chart(
+    serve: Serve,
+    engine_tab: Tab,
+    statistics_store: Path,
+    tmp_path: Path,
+    station: str,
+    name: str,
+    params: dict[str, str],
+) -> None:
+    """S and P, then N and the address of the terms, under the frame (IMGW-PIB)."""
+    # Arrange
+    served = serve(station_settings(statistics_store, tmp_path))
+    page = open_session(engine_tab, served)
+
+    # Act
+    with page.expect_response(lambda response: "/series?" in response.url) as answer:
+        page.goto(card_address(served, station, **params))
+    chart = answer.value.json()
+    card = page.get_by_role("dialog", name=name)
+    expect(card.locator(".sch-plot")).to_be_visible()
+    lines = card.locator(".sch").get_by_role("group", name=LINES_TITLE)
+    shown = shown_lines(lines)
+    frame = card.locator(".sch-frame").bounding_box()
+    block = lines.bounding_box()
+    size = lines.evaluate("(node) => parseFloat(getComputedStyle(node).fontSize)")
+
+    # Assert
+    assert shown == [*chart["attribution"], *chart["terms_notice"]]
+    assert shown == [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+    assert frame is not None and block is not None
+    assert block["y"] >= frame["y"] + frame["height"]
+    assert size >= 12
+    terms = lines.get_by_role("link", name="https://danepubliczne.imgw.pl/regulations")
+    expect(terms).to_have_attribute("href", "https://danepubliczne.imgw.pl/regulations")
+    engine_tab.assert_clean()
+
+
+def test_station_chart_series_chart_chmi_lines_stand_under_the_chart(
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
+) -> None:
+    """Špindlerův Mlýn: ČHMÚ's credit and what was done, no IMGW-PIB terms."""
+    # Arrange
+    served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
+    page = open_session(engine_tab, served)
+
+    # Act
+    with page.expect_response(lambda response: "/series?" in response.url) as answer:
+        page.goto(card_address(served, SPINDLER))
+    chart = answer.value.json()
+    card = page.get_by_role("dialog", name="Špindlerův Mlýn")
+    expect(card.locator(".sch-plot")).to_be_visible()
+    lines = card.locator(".sch").get_by_role("group", name=LINES_TITLE)
+    shown = shown_lines(lines)
+    frame = card.locator(".sch-frame").bounding_box()
+    block = lines.bounding_box()
+
+    # Assert
+    assert shown == [*chart["attribution"], *chart["terms_notice"]]
+    assert shown == [CHMI_SOURCE, CHMI_PROCESSED_VIEWS]
+    assert frame is not None and block is not None
+    assert block["y"] >= frame["y"] + frame["height"]
     engine_tab.assert_clean()

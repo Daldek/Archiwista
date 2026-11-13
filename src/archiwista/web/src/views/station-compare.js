@@ -16,7 +16,8 @@
  * move all. A station without the series or the variable keeps its panel
  * with „brak danych”. Below the panels the facts of each station as on its
  * card (years with a value, the label with its gap share, the longest gap,
- * full years, the location's source) and the formula of each provider.
+ * full years, the location's source) and the lines the providers' terms
+ * require with the comparison's data (provider-lines.js).
  * „Dodaj stację” finds a station with a series of the dataset by name, river
  * or code (`GET /stations` with `q` and `dataset`); it is disabled at five.
  */
@@ -28,6 +29,7 @@ import { catalog as CL } from "../labels/catalog.js";
 import { t } from "../labels/index.js";
 import { station as L } from "../labels/station.js";
 import { COMPARE_PARAM, MAX_COMPARED, stationAddress } from "../map/stations.js";
+import { ProviderLines } from "../provider-lines.js";
 import { setParams } from "../router.js";
 import {
   html,
@@ -53,7 +55,7 @@ import {
   timeTicks,
   unitText,
 } from "./station-chart.js";
-import { Attribution, parseStation } from "./station.js";
+import { parseStation } from "./station.js";
 
 await loadStylesheet(new URL("./station-compare.css", import.meta.url));
 
@@ -208,7 +210,7 @@ function AddStation({ dataset, stations, onAdd }) {
   </div>`;
 }
 
-/** The comparison of the address: the panels, the time axis, the facts, the formulas. */
+/** The comparison of the address: the panels, the time axis, the facts, the lines. */
 function Comparison({ params, stations, dataset, datasetName, variable, onRemove }) {
   const [box, setBox] = useState(null);
   const { width } = useSize(box);
@@ -270,7 +272,7 @@ function Comparison({ params, stations, dataset, datasetName, variable, onRemove
           : html`<div class="sch-wait"><${Spinner} /></div>`}
     </div>
     ${data ? html`<${Facts} answer=${data} />` : null}
-    ${data ? html`<${Attribution} items=${data.stations} />` : null}
+    <${ProviderLines} answer=${data} copy level=${3} className="scmp-lines" />
     <p class="sch-api faint"><${Tech} value=${[[C.api, api]]}>${C.api}</${Tech}></p>
   `;
 }

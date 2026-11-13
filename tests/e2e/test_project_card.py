@@ -14,8 +14,9 @@ the set and shows the newer year, and the re-pin confirmed there names that
 check (``plan_job``) and marks the pins; a plan confirmed after its set
 changed is refused on the card (``409 plan_mismatch``) and nothing re-pins. The
 computer's owner writes an export of a fixture project with „Eksportuj…” and
-finds its category folders and ``README.txt`` on the disk; once the project file
-changes, the list says „projekt zmieniony po eksporcie — wygeneruj ponownie”
+finds its category folders, ``ATTRIBUTION.txt`` and ``README.txt`` on the disk;
+once the project file changes, the list says „projekt zmieniony po eksporcie —
+wygeneruj ponownie”
 and the export is written again from the form opened on its name. With
 „Utwórz też plik ZIP” the export's category folders and ``README.txt`` come
 as one ZIP file from „Pobierz ZIP”. A person
@@ -123,12 +124,15 @@ def test_an_export_is_written_and_written_again_after_a_change(
     expect(listed).to_contain_text(str(target))
     expect(listed).not_to_contain_text(CHANGED)
     assert sorted(path.name for path in target.iterdir()) == [
+        "ATTRIBUTION.txt",
         "BDOT",
         "NMT",
         "README.txt",
     ]
     readme = (target / "README.txt").read_text(encoding="utf-8")
     assert readme.endswith(f"\n- {ATTRIBUTION}")
+    lines = (target / "ATTRIBUTION.txt").read_text(encoding="utf-8")
+    assert lines == ATTRIBUTION
 
     # Act: the project file changes after the export; the card is read again.
     def describe(data: dict[str, Any]) -> None:

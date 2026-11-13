@@ -5,8 +5,9 @@ compare REF REF``: both sides (reference, kind, title, the address of their
 preview and their outline), whether their content is the same, rows of one
 field each with the human name of the field and the values of A and B,
 marked when they differ, and for two sides with vector layers the
-differences of their layers and fields (``schema_diff``). The interface
-exports the rows as CSV itself; the server writes nothing.
+differences of their layers and fields (``schema_diff``), with the lines the
+terms of the versions' providers require (A-ADR-055). The interface exports
+the rows as CSV itself; the server writes nothing.
 """
 
 from datetime import date, datetime
@@ -14,7 +15,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from archiwista.api.models import Geometry
+from archiwista.api.models import AttributionLines, Geometry, TermsNotice
 from archiwista.messages import message
 
 type CompareValue = str | int | float | bool | datetime | date | None
@@ -74,6 +75,8 @@ _EXAMPLE: dict[str, Any] = {
         },
     ],
     "schema_diff": None,
+    "attribution": ["Główny Urząd Geodezji i Kartografii"],
+    "terms_notice": [],
 }
 
 
@@ -193,3 +196,12 @@ class Comparison(BaseModel):
             " have vector layers (own files and snapshots); null otherwise."
         )
     )
+    attribution: AttributionLines = Field(
+        description=(
+            "The lines the terms of both versions' providers require (Nogat DEV"
+            " §20), merged in the standard's order: for a producer that does not"
+            " name its data's origin the attribution its sidecar gives; none for"
+            " own data."
+        )
+    )
+    terms_notice: TermsNotice

@@ -36,6 +36,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Self
 
+from archiwista import attribution
 from archiwista.api.models_stations import (
     AnnualExtreme,
     AnnualPoint,
@@ -607,7 +608,13 @@ def _chart_fields(
     resolution: ChartResolution,
     freshness: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Return the fields of a chart but its variables."""
+    """Return the fields of a chart but its variables.
+
+    Its lines are those of the station's series, charted (A-ADR-055).
+    """
+    lines = attribution.of(
+        [attribution.station_origin(series.provider, positions=False)]
+    )
     return {
         "store": series.store,
         "provider": series.provider,
@@ -627,7 +634,7 @@ def _chart_fields(
         "units": 0 if span is None else span.units,
         "interval": 1 if span is None else span.interval,
         "license": series.license,
-        "attribution": series.attribution,
+        **lines.fields(),
         **freshness,
     }
 

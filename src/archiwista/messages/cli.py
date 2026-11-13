@@ -686,9 +686,9 @@ MESSAGES = {
             " SHA-256: {sha256}."
         ),
     ),
-    "version_license": Text(
-        "License: {license}; attribution: {attribution}.",
-        "Licencja: {license}; atrybucja: {attribution}.",
+    "version_license": Text("License: {license}.", "Licencja: {license}."),
+    "provider_lines": Text(
+        "Data sources and terms of use:", "Źródła danych i warunki korzystania:"
     ),
     "path_line": Text(
         "Path: {path}",
@@ -2818,10 +2818,6 @@ MESSAGES = {
     "station_variable": Text(
         "  {key} ({unit}): {label}; full years: {complete}",
         "  {key} ({unit}): {label}; pełne lata: {complete}",
-    ),
-    "station_attribution": Text(
-        "  Licence {license}: {attribution}",
-        "  Licencja {license}: {attribution}",
     ),
     "station_chart_title": Text(
         "{code}: series {dataset}, version {series}, {year_type} years: {file}",

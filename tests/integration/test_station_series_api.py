@@ -6,8 +6,10 @@ copy of ``complete`` (``obserwator.testing``): each unit's value up to
 ``max_points`` units, else the least, mean and greatest value of intervals,
 the gaps each variable's label counts cut at the range's ends (by default the
 variables' known span, ADR-045 erratum 1; ``complete_pl_cz`` for the ČHMÚ
-gauge) and the accumulated sums as markers. ``archiwista stations series``
-prints the same. Building the chart of 27,393 days takes less than the 500 ms
+gauge) and the accumulated sums as markers, with the lines the providers'
+terms require (A-ADR-055), which a hand-off to Hydrolog carries too.
+``archiwista stations series`` prints the same. Building the chart of
+27,393 days takes less than the 500 ms
 of SPEC 4.5 (``perf``; the read of a real 75-year file is measured on the
 author's store).
 """
@@ -25,6 +27,7 @@ from urllib.parse import urlencode
 
 import httpx
 import pytest
+from jsonschema import Draft202012Validator
 from obserwator import read_series, read_series_index
 
 from archiwista.auth import LOCAL_OWNER
@@ -44,12 +47,32 @@ from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.provider_lines import (
+    CHMI_PROCESSED,
+    CHMI_PROCESSED_VIEWS,
+    CHMI_SOURCE,
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_PUBLIC_DATA,
+)
 
 STORE = "dane"
 DAILY = "pl.imgw.hydro_daily"
 PRECIPITATION = "pl.imgw.meteo_precip_daily"
 RABA = "149190310"
 SPINDLER = "0-203-1-900001"
+# The envelope of a hand-off, checked against Nogat's schema (DEV-15.5).
+HANDOFF_CHECK = Draft202012Validator(
+    json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "schemas"
+            / "nogat"
+            / "handoff-1.schema.json"
+        ).read_text("utf-8")
+    )
+)
 
 type Stores = Callable[[str], Path]
 type Params = dict[str, str | list[str]]
@@ -165,10 +188,7 @@ def test_the_daily_values_are_the_producers_and_the_gaps_the_labels(
         series["file"],
         series["sha256"],
     )
-    assert (chart["license"], chart["attribution"]) == (
-        series["license"],
-        series["attribution"],
-    )
+    assert chart["license"] == series["license"]
     (variable,) = chart["variables"]
     value = {record.date: record.measurements["H"].value for record in records}
     assert variable["points"] == [
@@ -342,6 +362,63 @@ def test_the_bands_are_the_gaps_the_label_counts(
         assert span[0] <= longest["from"] <= longest["to"] <= span[1]
 
 
+@pytest.mark.parametrize(
+    ("code", "key", "attribution", "terms_notice"),
+    [
+        pytest.param(
+            RABA,
+            "H",
+            [IMGW_SOURCE, IMGW_PROCESSED],
+            [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA],
+            id="imgw",
+        ),
+        pytest.param(SPINDLER, "T", [CHMI_SOURCE, CHMI_PROCESSED_VIEWS], [], id="chmi"),
+    ],
+)
+def test_the_chart_carries_the_lines_its_providers_terms_require(
+    served_cz: Served,
+    code: str,
+    key: str,
+    attribution: list[str],
+    terms_notice: list[str],
+) -> None:
+    """IMGW-PIB: S, P, N and RD (no position, no H); ČHMÚ: C and CP, no notice."""
+    # Act
+    chart = served_cz.json(f"/stations/{code}/series", {"variable": key})
+
+    # Assert
+    assert (chart["attribution"], chart["terms_notice"]) == (attribution, terms_notice)
+
+
+@pytest.mark.parametrize(
+    ("code", "key", "attribution", "terms_notice"),
+    [
+        pytest.param(
+            RABA,
+            "H",
+            [IMGW_SOURCE, IMGW_PROCESSED],
+            [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA],
+            id="imgw",
+        ),
+        pytest.param(SPINDLER, "T", [CHMI_SOURCE, CHMI_PROCESSED], None, id="chmi"),
+    ],
+)
+def test_a_handoff_carries_the_lines_its_providers_terms_require(
+    served_cz: Served,
+    code: str,
+    key: str,
+    attribution: list[str],
+    terms_notice: list[str] | None,
+) -> None:
+    """The values in another format: S, P, N and RD; C and CP without a notice."""
+    # Act
+    doc = served_cz.json(f"/stations/{code}/handoff", {"variable": key})
+
+    # Assert
+    assert [error.message for error in HANDOFF_CHECK.iter_errors(doc)] == []
+    assert (doc["attribution"], doc.get("terms_notice")) == (attribution, terms_notice)
+
+
 def test_an_accumulated_sum_is_a_marker_and_no_value_of_its_day(
     served: Served,
 ) -> None:
@@ -493,7 +570,13 @@ def test_the_command_line_writes_the_chart_for_a_person(
         "    luka 2024-02-01 – 2024-02-28 (28 dni)",
         "    luka 2024-03-01 – 2024-10-31 (245 dni)",
     ]
-    assert lines[7].startswith("  Licencja IMGW-PIB: Źródłem pochodzenia danych")
+    assert lines[7:] == [
+        "Źródła danych i warunki korzystania:",
+        f"  {IMGW_SOURCE}",
+        f"  {IMGW_PROCESSED}",
+        f"  {IMGW_TERMS}",
+        f"  {IMGW_TERMS_PUBLIC_DATA}",
+    ]
 
 
 # Performance ------------------------------------------------------------------

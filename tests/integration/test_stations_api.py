@@ -5,8 +5,9 @@
 of a scanned copy of ``complete_pl_cz`` (``obserwator.testing``): the stations
 of both providers, the location groups counted apart (SPEC 4.3 point 3), the
 coverage of each variable with its licence and attribution, the boundary of
-an area by the location uncertainty, and ``503`` while the source is not
-available (SPEC 5.8). The OpenAPI document lists the five routes with their
+an area by the location uncertainty, the lines the providers' terms require
+with every answer (A-ADR-055), and ``503`` while the source is not available
+(SPEC 5.8). The OpenAPI document lists the five routes with their
 parameters, examples and problems.
 """
 
@@ -29,6 +30,16 @@ from archiwista.sources.registry import PluginRegistry, load_registry
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.local_server import NoSources, local_paths
 from tests.fixtures.missing_package import hide_packages
+from tests.fixtures.provider_lines import (
+    CHMI_PROCESSED_VIEWS,
+    CHMI_SOURCE,
+    IMGW_HYDRO,
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_HYDRO,
+    IMGW_TERMS_PUBLIC_DATA,
+)
 
 STORE = "dane"
 COPY = "kopia"
@@ -61,6 +72,13 @@ ROUTES = (
     "/api/v1/stations/{code}/series",
     "/api/v1/map/stations",
 )
+# The lines of answers about IMGW-PIB stations with a position, which the
+# hydrological service gives (H, RH), and without; ČHMÚ asks no notice.
+LOCATED = [IMGW_SOURCE, IMGW_PROCESSED, IMGW_HYDRO]
+LOCATED_TERMS = [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO]
+UNLOCATED = [IMGW_SOURCE, IMGW_PROCESSED]
+UNLOCATED_TERMS = [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+CZECH = [CHMI_SOURCE, CHMI_PROCESSED_VIEWS]
 
 
 @dataclass(frozen=True)
@@ -357,6 +375,64 @@ def test_the_map_draws_located_stations_or_their_grid(served: Served) -> None:
         "T": "gaps",
     }
     assert list(labels.values()) == [{}] * 7  # no series of the dataset, no labels
+
+
+@pytest.mark.parametrize(
+    ("path", "attribution", "terms_notice"),
+    [
+        pytest.param(f"/stations/{RABA}", LOCATED, LOCATED_TERMS, id="card"),
+        pytest.param(
+            "/stations/149190311", UNLOCATED, UNLOCATED_TERMS, id="card-unlocated"
+        ),
+        pytest.param("/stations/0-203-1-900001", CZECH, [], id="card-chmi"),
+        pytest.param("/stations?limit=50", LOCATED + CZECH, LOCATED_TERMS, id="list"),
+        pytest.param(
+            f"/stations?dataset={DAILY}&location=none",
+            UNLOCATED,
+            UNLOCATED_TERMS,
+            id="list-unlocated",
+        ),
+        pytest.param(
+            f"/stations/timeline?dataset={DAILY}",
+            LOCATED,
+            LOCATED_TERMS,
+            id="timeline",
+        ),
+        pytest.param(
+            f"/stations/{RABA}/coverage", UNLOCATED, UNLOCATED_TERMS, id="coverage"
+        ),
+        pytest.param(
+            "/stations/datasets",
+            UNLOCATED + CZECH,
+            UNLOCATED_TERMS,
+            id="datasets",
+        ),
+        pytest.param(
+            "/map/stations?bbox=14,48,24,55",
+            LOCATED + CZECH,
+            LOCATED_TERMS,
+            id="map",
+        ),
+        pytest.param(
+            "/map/stations?bbox=14,48,24,55&limit=3&grid_columns=4",
+            LOCATED + CZECH,
+            LOCATED_TERMS,
+            id="map-grid",
+        ),
+    ],
+)
+def test_station_answers_carry_the_lines_their_providers_terms_require(
+    served: Served, path: str, attribution: list[str], terms_notice: list[str]
+) -> None:
+    """Each line once, in the standard's order; H and RH only with positions."""
+    # Act
+    answer = served.json(path)
+
+    # Assert
+    assert (answer["attribution"], answer["terms_notice"]) == (
+        attribution,
+        terms_notice,
+    )
 
 
 def test_a_code_of_two_stations_names_them_until_store_and_provider_choose(

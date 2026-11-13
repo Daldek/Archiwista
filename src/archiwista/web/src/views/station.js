@@ -21,10 +21,11 @@
  * the default (views/station-chart.js: the series drawn over the address's
  * `from` and `to`), „Metadane”, „Pochodzenie” (the series versions with their
  * files and SHA-256, the catalog) and „Szczegóły techniczne” (the API's
- * answer), the chosen one in the address (`station_tab`); and last the
- * licence with the provider's formula and „Kopiuj atrybucję”. A point on the
- * map, a row of the Catalog's list and a station of its Timeline open the
- * card; its parameters go with it.
+ * answer), the chosen one in the address (`station_tab`); and last, outside
+ * the tabs, the lines the providers' terms require with the card's data and
+ * „Kopiuj atrybucję” (provider-lines.js). A point on the map, a row of the
+ * Catalog's list and a station of its Timeline open the card; its parameters
+ * go with it.
  */
 
 import { getStation, listStationDatasets } from "../api.js";
@@ -44,6 +45,7 @@ import {
   stationShape,
   stationType,
 } from "../map/stations.js";
+import { ProviderLines } from "../provider-lines.js";
 import { navigate, readRoute, setParams } from "../router.js";
 import { findView } from "../routes.js";
 import {
@@ -180,7 +182,7 @@ function CardBody({ card, params, error, loading }) {
                   names=${names} actions=${compareAction(station, params)} />`}
       </div>
     </section>
-    <${Attribution} items=${station.series} />
+    <${ProviderLines} answer=${card} copy level=${3} className="det-sec sc-lines" />
     ${loading ? html`<${Spinner} quiet />` : null}
   `;
 }
@@ -533,36 +535,4 @@ function Technical({ card, params }) {
     <pre class="sidecar sc-json" tabindex="0">${text}</pre>
     <${CopyAction} text=${text} label=${L.tech.copy_json} />
   </div>`;
-}
-
-/**
- * The licence and the provider's formula of series, each once: a card's
- * series, or the stations of a comparison.
- *
- * @param {{items: Array<{license: string|null, attribution: string|null}>}} props
- */
-export function Attribution({ items }) {
-  const A = L.attribution;
-  const seen = new Map();
-  for (const series of items) {
-    const key = `${series.license ?? ""}\n${series.attribution ?? ""}`;
-    if ((series.license || series.attribution) && !seen.has(key)) seen.set(key, series);
-  }
-  return html`<section class="det-sec fc-block sc-attribution"
-    aria-labelledby="sc-attribution-title">
-    <h3 class="section-title" id="sc-attribution-title">${A.title}</h3>
-    ${seen.size
-      ? [...seen.entries()].map(
-          ([key, series]) => html`<div class="fc-block" key=${key}>
-            ${series.license
-              ? html`<p class="fc-license"><b>${t(A.license, { license: series.license })}</b></p>`
-              : null}
-            ${series.attribution
-              ? html`<p class="fc-attribution">${series.attribution}</p>
-                  <${CopyAction} text=${series.attribution} label=${A.copy} />`
-              : null}
-          </div>`,
-        )
-      : html`<p class="faint">${A.none}</p>`}
-  </section>`;
 }

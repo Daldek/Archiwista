@@ -4,10 +4,11 @@ One generated store is served for the module, online with a basemap from a
 local tile server on another origin. „Porównaj z…” in the file card opens
 the comparison of two versions of a slot: the rows of ``GET /compare`` in a
 table with the differences marked, „tylko różnice” and the CSV of the rows
-shown; both versions' tiles on two maps at one position — the curtain
-(moved with a mouse, a finger and the arrows), the fade (a slider) and two
-maps side by side. Two year layers of an area compare the same way, with
-their summaries side by side.
+shown, whose last two columns carry the lines of the providers' terms (Nogat
+DEV-20.5) that a strip under the maps shows; both versions' tiles on two maps
+at one position — the curtain (moved with a mouse, a finger and the arrows),
+the fade (a slider) and two maps side by side. Two year layers of an area
+compare the same way, with their summaries side by side.
 """
 
 import csv
@@ -30,6 +31,14 @@ from archiwista.sources.registry import load_registry
 from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import NMT, StoreManifest, make_store
+from tests.fixtures.provider_lines import (
+    IMGW_HYDRO,
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_PUBLIC_DATA,
+)
+from tests.fixtures.station_browser import LINES_TITLE, shown_lines
 from tests.fixtures.tile_server import TileServer, tile_server
 
 STORE = "zespol"
@@ -638,7 +647,7 @@ def test_two_year_layers_compared(compare_store: CompareStore, tab: Tab) -> None
 def test_csv_export_matches_table(
     compare_store: CompareStore, tab: Tab, tmp_path: Path
 ) -> None:
-    """„Eksportuj CSV” saves the rows shown, with the raw values of A and B."""
+    """„Eksportuj CSV”: the rows shown, raw values of A and B, then the lines."""
     served = compare_store.served
     page = open_session(tab, served)
     _, versions = version_pair(page, compare_store.store)
@@ -660,6 +669,9 @@ def test_csv_export_matches_table(
     page.goto(compare_address(served, versions))
     expect(page.locator(".cmp-table")).to_be_visible()
     header, *lines = export()
+    # The attribution both versions' sidecars give: one line, in the first row.
+    (attribution,) = expected["attribution"]
+    assert expected["terms_notice"] == []
     assert header == [
         "grupa",
         "pole",
@@ -667,6 +679,8 @@ def test_csv_export_matches_table(
         f"A: {titles[0]}",
         f"B: {titles[1]}",
         "różne",
+        "attribution",
+        "terms_notice",
     ]
     wanted = [
         [
@@ -679,7 +693,10 @@ def test_csv_export_matches_table(
         ]
         for row in expected["rows"]
     ]
-    assert lines == wanted
+    assert [line[:6] for line in lines] == wanted
+    assert [line[6:] for line in lines] == [[attribution, ""]] + [["", ""]] * (
+        len(wanted) - 1
+    )
     labels = [row["label"] for row in page.evaluate(TABLE_ROWS)]
     assert [line[2] for line in lines] == labels
 
@@ -689,7 +706,10 @@ def test_csv_export_matches_table(
         sum(row["differs"] for row in expected["rows"])
     )
     _, *only = export()
-    assert only == [line for line in wanted if line[5] == "tak"]
+    assert [line[:6] for line in only] == [line for line in wanted if line[5] == "tak"]
+    assert [line[6:] for line in only] == [[attribution, ""]] + [["", ""]] * (
+        len(only) - 1
+    )
     assert [line[2] for line in only] == [
         row["label"] for row in page.evaluate(TABLE_ROWS)
     ]
@@ -746,7 +766,7 @@ def test_csv_export_neutralizes_every_cell(
         csv.reader(io.StringIO(saved.read_bytes().decode("utf-8-sig"), newline=""))
     )
     assert data[0][3:5] == [f"A: {attack}", "B: +SUM(1,2)"]
-    assert data[-2:] == [
+    assert [line[:6] for line in data[-2:]] == [
         ["'=1+2", "'+SUM(1,2)", f"'{attack}", "'@SUM(1,2)", "'\t=1+2", "tak"],
         ["Pola surowego sidecara", "'\r=1+2", "'-1+2", "'\n=1+2", f"'{attack}", "tak"],
     ]
@@ -756,6 +776,50 @@ def test_csv_export_neutralizes_every_cell(
         for line in data
         for cell in line
     )
+    tab.assert_clean()
+
+
+def test_compare_save_csv_joins_the_lines_beyond_the_last_row_into_it(
+    compare_store: CompareStore, tab: Tab, tmp_path: Path
+) -> None:
+    """Two rows, three lines and two terms: a cell each, the rest in the last one."""
+    # Arrange
+    served = compare_store.served
+    page = open_session(tab, served)
+    _, versions = version_pair(page, compare_store.store)
+    attribution = [IMGW_SOURCE, IMGW_PROCESSED, IMGW_HYDRO]
+    terms = [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+
+    def two_rows(route: Route) -> None:
+        answer = route.fetch()
+        comparison = answer.json()
+        comparison["rows"] = comparison["rows"][:2]
+        comparison["attribution"] = attribution
+        comparison["terms_notice"] = terms
+        route.fulfill(response=answer, json=comparison)
+
+    page.route("**/api/v1/compare?*", two_rows)
+
+    # Act
+    page.goto(compare_address(served, versions))
+    expect(page.locator(".cmp-table tbody tr:not(.cmp-group)")).to_have_count(2)
+    strip = page.locator(".cmp-view").get_by_role("group", name=LINES_TITLE)
+    shown = shown_lines(strip)
+    with page.expect_download() as started:
+        panel(page).get_by_role("button", name="Eksportuj CSV").click()
+    saved = tmp_path / "comparison.csv"
+    started.value.save_as(saved)
+    header, *rows = csv.reader(
+        io.StringIO(saved.read_bytes().decode("utf-8-sig"), newline="")
+    )
+
+    # Assert
+    assert shown == [*attribution, *terms]
+    assert header[-2:] == ["attribution", "terms_notice"]
+    assert [row[-2:] for row in rows] == [
+        [IMGW_SOURCE, IMGW_TERMS],
+        [f"{IMGW_PROCESSED}\n{IMGW_HYDRO}", IMGW_TERMS_PUBLIC_DATA],
+    ]
     tab.assert_clean()
 
 

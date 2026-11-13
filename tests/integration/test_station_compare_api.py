@@ -6,7 +6,8 @@ of ``complete_pl_cz`` (``obserwator.testing``: ``complete`` and the ČHMÚ
 gauges): one range for all, by default the variable's known spans together
 (ADR-045 erratum 1), one interval, each station's chart its own over that
 range and its facts those of its card; a station without the series or the
-variable stays, without them. ``archiwista stations compare`` prints the same.
+variable stays, without them; the answer carries the lines the providers'
+terms require (A-ADR-055). ``archiwista stations compare`` prints the same.
 """
 
 import json
@@ -28,6 +29,16 @@ from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.provider_lines import (
+    CHMI_PROCESSED_VIEWS,
+    CHMI_SOURCE,
+    IMGW_HYDRO,
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_HYDRO,
+    IMGW_TERMS_PUBLIC_DATA,
+)
 
 STORE = "dane"
 DAILY = "pl.imgw.hydro_daily"
@@ -38,6 +49,11 @@ UNSERIED = "149190312"  # no series at all
 RAINFALL = "123750000"  # a precipitation series only
 SPINDLER = "0-203-1-900001"  # values 2023-01-01 to 2024-12-31
 ZAPADLA = "0-203-1-900002"  # values 2004 to 2006, no known year
+# The lines of IMGW-PIB stations, one with a position (of the hydrological service).
+IMGW_LINES = (
+    [IMGW_SOURCE, IMGW_PROCESSED, IMGW_HYDRO],
+    [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO],
+)
 # The facts of a compared station that its card gives too.
 _CARD_FIELDS = (
     "store", "provider", "code", "name", "kind", "river", "hydrographic_code",
@@ -224,6 +240,33 @@ def test_the_facts_of_each_station_are_those_of_its_card(
         }
 
 
+@pytest.mark.parametrize(
+    ("stations", "dataset", "variable", "lines"),
+    [
+        ([imgw(RABA), imgw(NO_Q)], DAILY, "Q", IMGW_LINES),
+        (
+            [chmi(SPINDLER), chmi(ZAPADLA)],
+            CZ_DAILY,
+            "T",
+            ([CHMI_SOURCE, CHMI_PROCESSED_VIEWS], []),
+        ),
+    ],
+)
+def test_the_comparison_carries_the_lines_its_providers_terms_require(
+    served: Served,
+    stations: list[str],
+    dataset: str,
+    variable: str,
+    lines: tuple[list[str], list[str]],
+) -> None:
+    """IMGW-PIB: S, P and H for a position, N, RD and RH; ČHMÚ: C and CP alone."""
+    # Act
+    answer = _compare(served, stations, variable=variable, dataset=dataset)
+
+    # Assert
+    assert (answer["attribution"], answer["terms_notice"]) == lines
+
+
 def test_a_station_without_the_series_stays_without_data(served: Served) -> None:
     """A station without a series of the dataset keeps its place, with ``null``."""
     # Act
@@ -389,7 +432,7 @@ def test_the_command_line_refuses_as_the_route_does(
 def test_the_command_line_writes_the_comparison_for_a_person(
     served: Served, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The range once, each station with its label, chart and gaps, the licence."""
+    """The range once, each station with its label, chart and gaps; the lines."""
     # Act
     capsys.readouterr()
     status = main(
@@ -419,5 +462,7 @@ def test_the_command_line_writes_the_comparison_for_a_person(
     assert lines[10] == f"  brak danych: brak zmiennej H w szeregu {DAILY}"
     assert lines[11].startswith(f"{NO_Q}  Stacja Bez Q")
     assert lines[14] == "    luka 2023-11-02 – 2024-10-31 (365 dni)"
-    (licence,) = [line for line in lines if line.startswith("  Licencja")]
-    assert licence == lines[-1]
+    assert lines[-7:] == [
+        "Źródła danych i warunki korzystania:",
+        *(f"  {line}" for part in IMGW_LINES for line in part),
+    ]

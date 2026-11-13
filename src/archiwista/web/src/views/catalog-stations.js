@@ -26,6 +26,8 @@
  * address's, else the product's first) in one cursor of the address's
  * location group, drawn as stations × years
  * (views/catalog-station-timeline.js), whose station names open the card too.
+ * Under either stand the lines the providers' terms require with the
+ * stations read so far, those of every page (provider-lines.js).
  */
 
 import { listStations, listStationTimeline } from "../api.js";
@@ -43,6 +45,7 @@ import {
   stationShape,
   stationType,
 } from "../map/stations.js";
+import { mergeLines, NO_LINES, ProviderLines } from "../provider-lines.js";
 import { href, Link, navigate, setParams } from "../router.js";
 import { findView } from "../routes.js";
 import {
@@ -343,6 +346,7 @@ export function CatalogStations(props) {
       <${Notes} counts=${counts} location=${location} pages=${pages} />
     </div>
     <div class="cat-body">${body}</div>
+    <${ProviderLines} answer=${pages.lines} strip />
     <footer class="cat-foot">
       ${pages.moreError
         ? html`<span class="cat-more-error" role="alert">${L.result.more_failed}
@@ -465,7 +469,8 @@ function Empty({ counts, location }) {
  * `more(open)` reads the next page of the first group not read to its end,
  * the group „Bez położenia” of the list only while it is open. Until the
  * first page of a new query arrives, the rows of the previous one stay,
- * marked `loading`. Nothing is asked while `enabled` is false.
+ * marked `loading`; `lines` are those of every page read (`mergeLines`).
+ * Nothing is asked while `enabled` is false.
  *
  * @param {import("../types.js").StationListFilters} query
  * @param {string} key - Changes with the query and the location group.
@@ -515,6 +520,7 @@ function useStationPages(query, key, order, list, { enabled }) {
               },
             },
             counts: page.counts,
+            lines: mergeLines([base.lines, page]),
             error: null,
             moreError: null,
             loading: false,
@@ -573,6 +579,7 @@ function fresh(key) {
     key,
     parts: { any: part(), with: part(), none: part() },
     counts: null,
+    lines: NO_LINES,
     error: null,
     moreError: null,
     loading: true,

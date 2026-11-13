@@ -69,7 +69,9 @@ MESSAGES = {
             " ustaw go w QGIS; punkty brakujące w siatce to nodata"
         ),
     ),
-    "readme_sources": Text("Data sources", "Źródła danych"),
+    "readme_sources": Text(
+        "Data sources and terms of use", "Źródła danych i warunki korzystania"
+    ),
     "readme_no_sources": Text(
         "The store names no attribution for these files.",
         "Magazyn nie podaje atrybucji dla tych plików.",

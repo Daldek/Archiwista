@@ -465,6 +465,18 @@
  * @property {string|null} detail - Why the store is unavailable.
  */
 
+/**
+ * The lines the terms of the providers of an answer's data require (Nogat DEV
+ * §20, A-ADR-055), verbatim and Polish whatever `Accept-Language` says: shown
+ * with the data as given (provider-lines.js), `attribution` first.
+ *
+ * @typedef {object} ProviderLines
+ * @property {string[]} attribution - IMGW-PIB, PMAXTP, then ČHMÚ (DEV-20.4); for a
+ *   producer that names no origin of its data the attribution of its sidecar.
+ * @property {string[]} terms_notice - The IMGW-PIB terms of use and the terms that
+ *   apply (DEV-20.7); empty without IMGW-PIB data.
+ */
+
 // Catalog, cards and map (9a) ------------------------------------------------
 
 /**
@@ -542,6 +554,9 @@
  * @property {string|null} next_cursor - Opaque cursor of the next page of the same
  *   query; null on the last page. A cursor of other filters is rejected (400).
  * @property {LocationGroups} groups
+ * @property {string[]} attribution - The lines of the page's versions, merged
+ *   (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 /**
@@ -712,7 +727,9 @@
  * @property {string|null} parent_request - Key of the producer request; files of one
  *   request: /requests/{key}.
  * @property {string|null} license
- * @property {string|null} attribution
+ * @property {string[]} attribution - The lines of the version's provider
+ *   (`ProviderLines`).
+ * @property {string[]} terms_notice
  * @property {string[]} source_files - Store paths of the input versions of a derived
  *   file.
  * @property {string|null} resolution
@@ -906,6 +923,9 @@
  * @property {boolean} stale
  * @property {StaleStore[]} stale_stores
  * @property {StationDataset[]} items - By store and key.
+ * @property {string[]} attribution - The lines of the datasets' providers
+ *   (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 /**
@@ -957,6 +977,9 @@
  * @property {StationPoint[]} items
  * @property {Cell[]} cells
  * @property {StationCounts} counts
+ * @property {string[]} attribution - The lines of the stations of the view, their
+ *   positions too (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 /**
@@ -1012,7 +1035,8 @@
  * @property {string} file - The station's series file, relative to the store.
  * @property {string|null} sha256 - SHA-256 of the station's series file.
  * @property {string|null} license - Licence of the series version.
- * @property {string|null} attribution - The formula the source requires (IMGW §5).
+ * @property {string|null} attribution - The attribution of the series version's
+ *   sidecar; the card shows its answer's lines (`ProviderLines`).
  * @property {Object<string, VariableCoverage>} coverage - Each variable by key, in
  *   the order of the series index.
  */
@@ -1100,6 +1124,9 @@
  *   this computer and as aliased elsewhere; none for an unconfigured directory.
  * @property {StationChartChoice[]} charts - Days first, then months, then the
  *   annual charts of half-year characteristics.
+ * @property {string[]} attribution - The lines of the station's data and position
+ *   (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 /**
@@ -1201,7 +1228,9 @@
  * @property {number} interval - Units of a point: more than 1, a simplified chart.
  * @property {ChartVariable[]} variables
  * @property {string|null} license
- * @property {string|null} attribution
+ * @property {string[]} attribution - The lines of the chart's series
+ *   (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 /**
@@ -1239,7 +1268,8 @@
  * @property {string|null} file
  * @property {string|null} sha256
  * @property {string|null} license
- * @property {string|null} attribution
+ * @property {string|null} attribution - The attribution of the series version's
+ *   sidecar; the comparison shows its answer's lines (`ProviderLines`).
  * @property {VariableCoverage|null} coverage
  * @property {ChartVariable|null} chart
  */
@@ -1260,6 +1290,9 @@
  * @property {number} units - Units of the range.
  * @property {number} interval - Units of a point, the same for every station.
  * @property {ComparedStation[]} stations - In the order asked.
+ * @property {string[]} attribution - The lines of the stations' data and positions
+ *   (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 /**
@@ -1272,6 +1305,9 @@
  * @property {StationCounts} counts
  * @property {StationItem[]} items
  * @property {string|null} next_cursor
+ * @property {string[]} attribution - The lines of the page's stations, their
+ *   positions too (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 /**
@@ -1372,6 +1408,9 @@
  * @property {StationCounts} counts
  * @property {StationTimelineItem[]} items
  * @property {string|null} next_cursor
+ * @property {string[]} attribution - The lines of the page's stations, their
+ *   positions too (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 // Projects (9a) --------------------------------------------------------------
@@ -2323,6 +2362,9 @@
  * @property {ComparisonRow[]} rows
  * @property {SchemaDiff|null} schema_diff - Differences of the vector layers and
  *   their fields when both sides have them (own files and snapshots).
+ * @property {string[]} attribution - The lines of both versions' providers, merged
+ *   (`ProviderLines`); none for own data.
+ * @property {string[]} terms_notice
  */
 
 /**
