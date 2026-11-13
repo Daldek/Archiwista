@@ -1,7 +1,7 @@
 /**
  * Shared interface pieces: Preact and htm in one import, icons, the
- * technical-value toggle, problems, progress, modal windows and stylesheets
- * of views.
+ * technical-value toggle, outside addresses as links, problems, progress,
+ * modal windows and stylesheets of views.
  *
  * Views import everything from here (`import { html, useState } from
  * "../ui.js"`), not from `vendor/`, so library paths and versions live in one
@@ -178,6 +178,35 @@ export function Tech({ children, value }) {
 export function pointerPath(pointer) {
   const parts = String(pointer ?? "").split("/").slice(1);
   return parts.map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~")).join(".");
+}
+
+/**
+ * An address from a producer's data as a link's target, or `null`: only
+ * `http(s)` to another computer. The data come from the shared store, and a
+ * link to a loopback address would reach other servers of this computer.
+ *
+ * @param {*} value - E.g. `license.url` of a raw sidecar.
+ * @returns {string|null}
+ */
+export function outsideLink(value) {
+  if (typeof value !== "string") return null;
+  let address;
+  try {
+    address = new URL(value);
+  } catch {
+    return null;
+  }
+  if (address.protocol !== "http:" && address.protocol !== "https:") return null;
+  const host = address.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  const loopback =
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    /^127\./.test(host) ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "::" ||
+    host.startsWith("::ffff:127.");
+  return loopback ? null : address.href;
 }
 
 /**

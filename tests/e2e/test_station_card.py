@@ -8,10 +8,12 @@ variable as ``GET /stations/{code}`` does; its header switch numbers the
 labels in calendar years, writes ``year_type`` to the address and remembers
 it in the person's preferences (``PUT /preferences``). A station without a
 position shows the catalog's reason and no map action, a located one opens
-the map centred on it. The IMGW formula is the series' attribution and is
-copied as it is, as is the series file's path (read back in Chromium, whose
-clipboard Playwright can grant), and the IMGW station page is a plain link
-the page never requests.
+the map centred on it. Under the tabs stand the lines the IMGW-PIB terms
+require with the card's data and the station's position, byte for byte the
+card's ``attribution`` and ``terms_notice``, and „Kopiuj atrybucję” copies
+them one per line, as „Kopiuj ścieżkę pliku” copies the series file's path
+(read back in Chromium, whose clipboard Playwright can grant); the IMGW
+station page is a plain link the page never requests.
 """
 
 import re
@@ -23,6 +25,14 @@ from urllib.parse import urlencode
 from playwright.sync_api import Locator, Page, Response, expect
 
 from tests.fixtures.browser import Served, Tab
+from tests.fixtures.provider_lines import (
+    IMGW_HYDRO,
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_HYDRO,
+    IMGW_TERMS_PUBLIC_DATA,
+)
 from tests.fixtures.station_browser import (
     STORE,
     WORLD,
@@ -32,6 +42,7 @@ from tests.fixtures.station_browser import (
     open_session,
     query_of,
     screen_point,
+    shown_lines,
     station_settings,
 )
 
@@ -258,10 +269,10 @@ def test_a_station_without_a_position_has_its_reason_and_no_map_action(
     engine_tab.assert_clean()
 
 
-def test_the_formula_and_the_file_path_are_copied_as_the_card_gives_them(
+def test_the_lines_and_the_file_path_are_copied_as_the_card_gives_them(
     serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
-    """The IMGW formula and the series file's path are copied as given (Chromium)."""
+    """The card's lines of the IMGW-PIB terms and its file path, copied (Chromium)."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
@@ -286,12 +297,18 @@ def test_the_formula_and_the_file_path_are_copied_as_the_card_gives_them(
         copied[name] = page.evaluate("navigator.clipboard.readText()")
 
     # Assert
-    assert series["attribution"].startswith(
-        "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej"
-    )
-    expect(card.locator(".fc-attribution")).to_have_text(series["attribution"])
+    lines = [*answer["attribution"], *answer["terms_notice"]]
+    assert lines == [
+        IMGW_SOURCE,
+        IMGW_PROCESSED,
+        IMGW_HYDRO,
+        IMGW_TERMS,
+        IMGW_TERMS_PUBLIC_DATA,
+        IMGW_TERMS_HYDRO,
+    ]
+    assert shown_lines(card.locator(".sc-lines")) == lines
     assert copied == {
-        "Kopiuj atrybucję": series["attribution"],
+        "Kopiuj atrybucję": "\n".join(lines),
         "Kopiuj ścieżkę pliku": str(tmp_path / "obserwator" / series["file"]),
     }
     assert answer["paths"][DAILY]["local"] == copied["Kopiuj ścieżkę pliku"]

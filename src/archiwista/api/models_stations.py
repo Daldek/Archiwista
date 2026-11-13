@@ -23,12 +23,15 @@ from pydantic import (
     with_config,
 )
 
+from archiwista import attribution
 from archiwista.api.models import (
     WGS84,
     AreaRef,
+    AttributionLines,
     Cell,
     CopyPath,
     IndexAnswer,
+    TermsNotice,
     parse_bbox,
 )
 from archiwista.index import (
@@ -94,6 +97,12 @@ MAX_COMPARED = 5
 
 _SHA256 = "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623"
 _SERIES_DIR = "series/versions/hydro_daily/2026-08-31_ab12cd34"
+# The lines of an answer about IMGW-PIB stations with their positions, and of
+# one about their series alone (A-ADR-055), and the formula the sidecar of an
+# IMGW-PIB series version gives (Obserwator's).
+_STATIONS_LINES = attribution.of(["imgw_stations"]).fields()
+_SERIES_LINES = attribution.of(["imgw_processed"]).fields()
+_SIDECAR_ATTRIBUTION = ". ".join(_SERIES_LINES["attribution"])
 _GAP_EXAMPLE = {"from": "1981-06-02", "to": "1982-12-31", "units": 578}
 _VARIABLE_EXAMPLE: dict[str, Any] = {
     "key": "Q",
@@ -130,10 +139,7 @@ _SERIES_EXAMPLE = {
     "file": f"{_SERIES_DIR}/stations/149190310.parquet",
     "sha256": _SHA256,
     "license": "IMGW-PIB",
-    "attribution": (
-        "The source of the data is the Institute of Meteorology and Water"
-        " Management – National Research Institute; the data has been processed."
-    ),
+    "attribution": _SIDECAR_ATTRIBUTION,
     "coverage": {"Q": _VARIABLE_EXAMPLE},
 }
 _LOCATION_EXAMPLE = {
@@ -1078,7 +1084,10 @@ class StationSeriesItem(BaseModel):
     sha256: str | None = Field(description="SHA-256 of the station's series file.")
     license: str | None = Field(description="Licence of the series version.")
     attribution: str | None = Field(
-        description="The formula the source requires with its data (IMGW §5)."
+        description=(
+            "The attribution the series version's sidecar gives; the lines to"
+            " show are the answer's `attribution` and `terms_notice`."
+        )
     )
     coverage: dict[str, VariableCoverageItem] = Field(
         description="Each variable by its key, in the order of the series index."
@@ -1260,6 +1269,7 @@ class StationList(IndexAnswer):
             "counts": _COUNTS_EXAMPLE,
             "items": [_STATION_EXAMPLE],
             "next_cursor": None,
+            **_STATIONS_LINES,
             **_FRESH,
         }
     )
@@ -1268,6 +1278,8 @@ class StationList(IndexAnswer):
     counts: StationCountsItem
     items: list[StationItem]
     next_cursor: str | None = Field(description="Cursor of the next page, if any.")
+    attribution: AttributionLines
+    terms_notice: TermsNotice
 
     @classmethod
     def of(
@@ -1282,6 +1294,7 @@ class StationList(IndexAnswer):
                 StationItem.of(row, coverage.get(_key(row), ())) for row in page.items
             ],
             next_cursor=page.next_cursor,
+            **_station_lines(page.items),
             **freshness,
         )
 
@@ -1344,6 +1357,7 @@ class StationCard(IndexAnswer):
                 }
             },
             "charts": [_CHART_CHOICE_EXAMPLE],
+            **_STATIONS_LINES,
             **_FRESH,
         }
     )
@@ -1365,6 +1379,8 @@ class StationCard(IndexAnswer):
             " and so does a producer that reads no values."
         )
     )
+    attribution: AttributionLines
+    terms_notice: TermsNotice
 
 
 @with_config(
@@ -1482,6 +1498,7 @@ class StationTimeline(IndexAnswer):
             "code": "149190310",
             "name": "STROZA",
             "series": [_TIMELINE_SERIES_EXAMPLE],
+            **_SERIES_LINES,
             **_FRESH,
         }
     )
@@ -1491,6 +1508,8 @@ class StationTimeline(IndexAnswer):
     code: str
     name: str | None
     series: list[TimelineSeries]
+    attribution: AttributionLines
+    terms_notice: TermsNotice
 
     @classmethod
     def of(
@@ -1507,6 +1526,9 @@ class StationTimeline(IndexAnswer):
             code=row.code,
             name=row.name,
             series=[TimelineSeries.of(found, variables) for found in series],
+            **attribution.of(
+                [attribution.station_origin(row.provider, positions=False)]
+            ).fields(),
             **freshness,
         )
 
@@ -1567,6 +1589,7 @@ class StationTimelinePage(IndexAnswer):
             "counts": _COUNTS_EXAMPLE,
             "items": [_TIMELINE_ITEM_EXAMPLE],
             "next_cursor": None,
+            **_STATIONS_LINES,
             **_FRESH,
         }
     )
@@ -1575,6 +1598,8 @@ class StationTimelinePage(IndexAnswer):
     counts: StationCountsItem
     items: list[StationTimelineItem]
     next_cursor: str | None = Field(description="Cursor of the next page, if any.")
+    attribution: AttributionLines
+    terms_notice: TermsNotice
 
     @classmethod
     def of(
@@ -1594,6 +1619,7 @@ class StationTimelinePage(IndexAnswer):
                 for row in page.items
             ],
             next_cursor=page.next_cursor,
+            **_station_lines(page.items),
             **freshness,
         )
 
@@ -1669,6 +1695,7 @@ class StationMapView(IndexAnswer):
             "items": [_POINT_EXAMPLE],
             "cells": [],
             "counts": _COUNTS_EXAMPLE,
+            **_STATIONS_LINES,
             **_FRESH,
         }
     )
@@ -1683,6 +1710,8 @@ class StationMapView(IndexAnswer):
             " without location' counter leading to the Catalog."
         )
     )
+    attribution: AttributionLines
+    terms_notice: TermsNotice
 
     @classmethod
     def of(cls, found: StationMap, freshness: Mapping[str, Any]) -> Self:
@@ -1696,6 +1725,10 @@ class StationMapView(IndexAnswer):
             ],
             cells=[Cell.of(cell) for cell in found.cells],
             counts=StationCountsItem.of(found.counts),
+            **attribution.of(
+                attribution.station_origin(provider, positions=True)
+                for provider in found.providers
+            ).fields(),
             **freshness,
         )
 
@@ -1782,14 +1815,23 @@ class StationDatasetItem(BaseModel):
 class StationDatasets(IndexAnswer):
     """The datasets with station series in the index, by store and key."""
 
-    model_config = _examples({"items": [_DATASET_EXAMPLE], **_FRESH})
+    model_config = _examples({"items": [_DATASET_EXAMPLE], **_SERIES_LINES, **_FRESH})
 
     items: list[StationDatasetItem]
+    attribution: AttributionLines
+    terms_notice: TermsNotice
 
     @classmethod
     def of(cls, found: Iterable[StationDataset], freshness: Mapping[str, Any]) -> Self:
         """Return the model of the datasets with station series."""
-        return cls(items=[StationDatasetItem.of(item) for item in found], **freshness)
+        lines = attribution.of(
+            attribution.station_origin(item.provider, positions=False) for item in found
+        )
+        return cls(
+            items=[StationDatasetItem.of(item) for item in found],
+            **lines.fields(),
+            **freshness,
+        )
 
 
 @with_config(_examples({"t": "1950-11-01", "min": 2.9, "mean": 3.6, "max": 5.1}))
@@ -1981,7 +2023,7 @@ class StationChart(IndexAnswer):
             "interval": 14,
             "variables": [_CHART_VARIABLE_EXAMPLE],
             "license": "IMGW-PIB",
-            "attribution": _SERIES_EXAMPLE["attribution"],
+            **_SERIES_LINES,
             **_FRESH,
         },
         {
@@ -2013,7 +2055,7 @@ class StationChart(IndexAnswer):
                 }
             ],
             "license": "IMGW-PIB",
-            "attribution": _SERIES_EXAMPLE["attribution"],
+            **_SERIES_LINES,
             **_FRESH,
         },
         aliased=True,
@@ -2071,9 +2113,8 @@ class StationChart(IndexAnswer):
     )
     variables: list[ChartVariable]
     license: str | None = Field(description="Licence of the series version.")
-    attribution: str | None = Field(
-        description="The formula the source requires with its data (IMGW §5)."
-    )
+    attribution: AttributionLines
+    terms_notice: TermsNotice
 
 
 class ComparedStation(BaseModel):
@@ -2110,7 +2151,10 @@ class ComparedStation(BaseModel):
     sha256: str | None = Field(description="SHA-256 of the station's series file.")
     license: str | None = Field(description="Licence of the series version.")
     attribution: str | None = Field(
-        description="The formula the source requires with its data (IMGW §5)."
+        description=(
+            "The attribution the series version's sidecar gives; the lines to"
+            " show are the answer's `attribution` and `terms_notice`."
+        )
     )
     coverage: VariableCoverageItem | None = Field(
         description="The variable's label and facts in R, as on the station's card."
@@ -2177,6 +2221,7 @@ class StationComparison(IndexAnswer):
                     "chart": None,
                 },
             ],
+            **_STATIONS_LINES,
             **_FRESH,
         },
         aliased=True,
@@ -2201,6 +2246,8 @@ class StationComparison(IndexAnswer):
     stations: list[ComparedStation] = Field(
         description="The stations in the order asked, one panel each."
     )
+    attribution: AttributionLines
+    terms_notice: TermsNotice
 
 
 type _StationKey = tuple[str, str, str]
@@ -2208,6 +2255,18 @@ type _StationKey = tuple[str, str, str]
 
 def _key(row: StationRow) -> _StationKey:
     return row.store, row.provider, row.code
+
+
+def _station_lines(rows: Iterable[StationRow]) -> dict[str, Any]:
+    """Return the lines of an answer that gives these stations with their places.
+
+    The positions of the IMGW-PIB catalog come from the hydrological service
+    (A-ADR-055); a station without a position gives its other data.
+    """
+    return attribution.of(
+        attribution.station_origin(row.provider, positions=row.point is not None)
+        for row in rows
+    ).fields()
 
 
 def _by_station(

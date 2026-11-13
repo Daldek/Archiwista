@@ -16,7 +16,8 @@ coordinate system, extent, size, content identity, the snapshot's date,
 author and note, the file's dates), then one row per vector layer with its
 object count; two sides with vector layers also get ``schema_diff``. Any
 pair of kinds compares (a snapshot with its working file, a file with a
-version); rows a side does not have hold ``null``.
+version); rows a side does not have hold ``null``. The comparison carries
+the lines the terms of its versions' providers require (A-ADR-055).
 """
 
 import json
@@ -28,6 +29,7 @@ from typing import Any, cast
 
 from pydantic import ValidationError
 
+from archiwista import attribution
 from archiwista.api.models_compare import (
     CompareValue,
     Comparison,
@@ -61,6 +63,7 @@ from archiwista.refs import (
     format_ref,
     parse_ref,
 )
+from archiwista.sources.registry import PluginRegistry
 
 # Normalized fields of a store version, in the order of the rows; each has
 # its name ``compare_field_<field>``.
@@ -120,10 +123,17 @@ class _Compared:
     values: dict[RowGroup, dict[str, CompareValue]]
     layers: tuple[LayerInfo, ...] = ()
     """Vector layers (``schema_diff``); empty for a side without them."""
+    lines: attribution.Attribution = attribution.Attribution()
+    """The lines of a version's data (A-ADR-055); none for own data."""
 
 
 def compare(
-    queries: IndexQueries, a: str, b: str, *, visible: ProjectVisibility
+    queries: IndexQueries,
+    a: str,
+    b: str,
+    *,
+    visible: ProjectVisibility,
+    registry: PluginRegistry,
 ) -> Comparison:
     """Return the metadata of two objects side by side.
 
@@ -137,13 +147,16 @@ def compare(
     visible : ProjectVisibility
         The projects the principal sees (own data); store versions are
         visible to everyone.
+    registry : PluginRegistry
+        The producers, which name the origin of a version's data.
 
     Returns
     -------
     Comparison
         Both sides, ``same_content``, the rows (a version's index fields,
         its raw sidecar's fields, an own object's fields, its objects per
-        layer) and ``schema_diff`` when both sides have vector layers.
+        layer), ``schema_diff`` when both sides have vector layers, and the
+        lines of both sides' providers.
 
     Raises
     ------
@@ -153,8 +166,9 @@ def compare(
         The index does not know an object, or its project is not visible
         (``404``).
     """
-    left = _compared(queries, parse_ref(a), visible)
-    right = _compared(queries, parse_ref(b), visible)
+    origins = attribution.Origins(registry)
+    left = _compared(queries, parse_ref(a), visible, origins)
+    right = _compared(queries, parse_ref(b), visible, origins)
     rows = [
         row
         for group in _GROUPS
@@ -166,18 +180,27 @@ def compare(
         if left.layers and right.layers
         else None
     )
+    lines = attribution.merge([left.lines, right.lines])
     return Comparison(
-        a=left.side, b=right.side, same_content=same, rows=rows, schema_diff=schema
+        a=left.side,
+        b=right.side,
+        same_content=same,
+        rows=rows,
+        schema_diff=schema,
+        **lines.fields(),
     )
 
 
 def _compared(
-    queries: IndexQueries, ref: ObjectRef, visible: ProjectVisibility
+    queries: IndexQueries,
+    ref: ObjectRef,
+    visible: ProjectVisibility,
+    origins: attribution.Origins,
 ) -> _Compared:
     """Return one side of a comparison by the kind of its reference."""
     match ref:
         case VersionRef():
-            return _version(queries, ref, visible)
+            return _version(queries, ref, visible, origins)
         case FileRef(project, path):
             return _working_file(_own_file(queries, project, path, visible), ref)
         case SnapshotRef(project, label, path):
@@ -197,7 +220,10 @@ def _compared(
 
 
 def _version(
-    queries: IndexQueries, ref: VersionRef, visible: ProjectVisibility
+    queries: IndexQueries,
+    ref: VersionRef,
+    visible: ProjectVisibility,
+    origins: attribution.Origins,
 ) -> _Compared:
     detail = queries.version(ref.store, ref.path, visible=visible)
     if detail is None:
@@ -242,6 +268,9 @@ def _version(
     raw = queries.sidecar(ref.store, ref.path)
     if raw is not None:
         _flatten(raw, "", sidecar)
+    origin = origins.of(
+        detail.segment.producer, detail.summary.path, detail.segment.segment
+    )
     return _Compared(
         side=side,
         content=None if sha256 is None else (_BYTES, sha256),
@@ -249,6 +278,7 @@ def _version(
             "metadata": {name: values[name] for name in VERSION_FIELDS},
             "sidecar": sidecar,
         },
+        lines=attribution.version(origin, detail.attribution),
     )
 
 

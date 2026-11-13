@@ -16,7 +16,9 @@
  * rows of `GET /compare` (level 1) or — for two year layers — their
  * summaries side by side. Differences are marked, „tylko różnice”
  * (`only_diff`) hides the rest and „Eksportuj CSV” saves the rows shown,
- * made in the browser: the server writes nothing. Two sides with vector
+ * made in the browser: the server writes nothing. The lines the terms of
+ * the versions' providers require stand in a strip under the maps
+ * (provider-lines.js) and in the CSV's last two columns. Two sides with vector
  * layers (own data) also show the differences of their schema: layers only
  * in A or B, objects per layer, fields added, removed and changed.
  */
@@ -44,6 +46,7 @@ import { OwnCardLink, useOwnFile } from "../map/own.js";
 import { availableBasemaps, pickBasemap } from "../map/style.js";
 import { ViewLayout } from "../panels.js";
 import { BuildSection, PreviewLegend, PreviewReason, styleName, useBuild } from "../previews.js";
+import { LINE_COLUMNS, lineColumns, ProviderLines } from "../provider-lines.js";
 import { Link, setParams } from "../router.js";
 import {
   html,
@@ -195,15 +198,17 @@ function RefCompare({ params }) {
                 preview=${previews[index]} card=${cards[index]} />`,
             )}
           </section>
-          <${CompareTable} title=${L.table.title} rows=${comparison.rows} same=${comparison.same_content}
-            titles=${sides.map((side) => side.title)} only=${params[ONLY_PARAM] === "1"} />
+          <${CompareTable} title=${L.table.title} rows=${comparison.rows}
+            same=${comparison.same_content} titles=${sides.map((side) => side.title)}
+            only=${params[ONLY_PARAM] === "1"} lines=${comparison} />
           ${comparison.schema_diff ? html`<${SchemaDiff} diff=${comparison.schema_diff} />` : null}`
       : null}
   </div>`;
   const toolbar = html`<${Toolbar} stage=${stage} styles=${styles} style=${style}
     onSwap=${() => setParams({ a: params.b, b: params.a }, { replace: true })} />`;
+  const legend = html`<${CompareLegend} rows=${refLegend(infos, shownStyles, scale, sides)} />`;
   return html`<${CompareBody} stage=${stage} toolbar=${toolbar} sides=${mapSides} notes=${notes}
-    legend=${html`<${CompareLegend} rows=${refLegend(infos, shownStyles, scale, sides)} />`} panel=${panel} />`;
+    legend=${legend} panel=${panel} lines=${comparison} />`;
 }
 
 /** Two year layers of one set: their tiles and summaries side by side. */
@@ -324,7 +329,7 @@ function useFraming(stage, key, bounds) {
   }, [stage.mapApi, key, bounds ? bounds.join() : ""]);
 }
 
-function CompareBody({ stage, toolbar, sides, notes, legend, panel }) {
+function CompareBody({ stage, toolbar, sides, notes, legend, panel, lines = null }) {
   return html`<${ViewLayout} id="compare"
     right=${{ label: L.panel, open: stage.panel, onClose: () => stage.setPanel(false), content: panel }}>
     <div class="cmp-view">
@@ -338,6 +343,7 @@ function CompareBody({ stage, toolbar, sides, notes, legend, panel }) {
             </${CompareMaps}>`
           : html`<div class="page"><${Spinner} /></div>`}
       </div>
+      <${ProviderLines} answer=${lines} strip />
     </div>
   </${ViewLayout}>`;
 }
@@ -636,10 +642,11 @@ function refLegend(infos, shownStyles, scale, sides) {
  * CSV of the rows shown.
  *
  * @param {{title: string, rows: import("../types.js").ComparisonRow[]|Array<object>,
- *   same: boolean, titles: string[], only: boolean}} props - `titles`: A's and
- *   B's names for the CSV's header.
+ *   same: boolean, titles: string[], only: boolean,
+ *   lines?: import("../types.js").ProviderLines|null}} props - `titles`: A's and
+ *   B's names for the CSV's header; `lines`: the providers' lines it carries.
  */
-function CompareTable({ title, rows, same, titles, only }) {
+function CompareTable({ title, rows, same, titles, only, lines = null }) {
   const id = useId();
   const shown = only ? rows.filter((row) => row.differs) : rows;
   const differs = rows.filter((row) => row.differs).length;
@@ -656,7 +663,7 @@ function CompareTable({ title, rows, same, titles, only }) {
         ${L.table.only_diff}
       </label>
       <button type="button" class="btn sm" title=${L.table.export_title} disabled=${!shown.length}
-        onClick=${() => saveCsv(shown, titles)}>
+        onClick=${() => saveCsv(shown, titles, lines)}>
         <${Icon} name="file" size=${14} />${L.table.export}
       </button>
     </div>
@@ -718,22 +725,34 @@ function CellValue({ row, value }) {
 /**
  * Save rows as CSV (RFC 4180, UTF-8 with a BOM for spreadsheets, comma,
  * CRLF): group, field, its name, the raw values of A and B (dates ISO,
- * numbers with a dot, „tak”/„nie”) and whether they differ.
+ * numbers with a dot, „tak”/„nie”) and whether they differ; with lines of
+ * the providers' terms, their columns `attribution` and `terms_notice` last
+ * (Nogat DEV-20.5, provider-lines.js `lineColumns`).
  */
-function saveCsv(rows, titles) {
+function saveCsv(rows, titles, lines) {
   const C = L.table.csv;
-  const lines = [
-    [C.group, C.field, C.label, t(C.a, { title: titles[0] }), t(C.b, { title: titles[1] }), C.differs],
-    ...rows.map((row) => [
+  const extra = lineColumns(lines, rows.length);
+  const table = [
+    [
+      C.group,
+      C.field,
+      C.label,
+      t(C.a, { title: titles[0] }),
+      t(C.b, { title: titles[1] }),
+      C.differs,
+      ...(extra ? LINE_COLUMNS : []),
+    ],
+    ...rows.map((row, index) => [
       L.table.groups[row.group] ?? row.group,
       row.field,
       row.label,
       csvValue(row.a),
       csvValue(row.b),
       row.differs ? L.table.yes : L.table.no,
+      ...(extra ? extra[index] : []),
     ]),
   ];
-  const text = `\ufeff${lines.map((cells) => cells.map(csvCell).join(",")).join("\r\n")}\r\n`;
+  const text = `\ufeff${table.map((cells) => cells.map(csvCell).join(",")).join("\r\n")}\r\n`;
   const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;

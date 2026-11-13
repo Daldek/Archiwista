@@ -34,6 +34,7 @@ from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, Path, Query
 
+from archiwista import attribution
 from archiwista.api.dependencies import (
     index_queries,
     plugin_registry,
@@ -247,10 +248,14 @@ def station_card(
         if isinstance(adapter, SeriesValuesAdapter)
         else []
     )
+    lines = attribution.of(
+        [attribution.station_origin(row.provider, positions=row.point is not None)]
+    )
     return StationCard(
         station=StationItem.of(row, found),
         paths=paths,
         charts=charts,
+        **lines.fields(),
         **staleness(freshness, {row.store}),
     )
 
@@ -585,6 +590,10 @@ def station_comparison(
         if span is None
         else series_chart.chart_range(first.time_unit, *span, query.max_points)
     )
+    lines = attribution.of(
+        attribution.station_origin(row.provider, positions=row.point is not None)
+        for row, _ in found
+    )
     return StationComparison.model_validate(
         {
             "dataset": first.dataset,
@@ -597,6 +606,7 @@ def station_comparison(
             "units": 0 if whole is None else whole.units,
             "interval": 1 if whole is None else whole.interval,
             "stations": stations,
+            **lines.fields(),
             **fresh,
         }
     )

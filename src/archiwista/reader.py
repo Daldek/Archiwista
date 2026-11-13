@@ -23,6 +23,7 @@ from typing import TextIO
 
 from pydantic import BaseModel, ValidationError
 
+from archiwista import attribution
 from archiwista.api.health import read_health, source_list
 from archiwista.api.models import (
     CatalogFilters,
@@ -281,6 +282,7 @@ def _version(args: argparse.Namespace, reader: _Reader) -> _Output:
         reader.queries,
         reader.settings,
         reader.preferences,
+        reader.registry,
         args.store,
         args.version,
         visible=reader.visible,
@@ -409,6 +411,7 @@ def _page_text(page: CatalogPage) -> str:
     )
     if page.next_cursor is not None:
         lines.append(message("cli.search_next", cursor=page.next_cursor))
+    lines += attribution.text(page.attribution, page.terms_notice)
     return _with_stale(page, lines)
 
 
@@ -466,14 +469,11 @@ def _version_text(card: VersionCard) -> str:
             crs=_value(version.crs.horizontal),
             sha256=_value(version.sha256),
         ),
-        message(
-            "cli.version_license",
-            license=_value(card.license),
-            attribution=_value(card.attribution),
-        ),
+        message("cli.version_license", license=_value(card.license)),
     ]
     if card.paths is not None:
         lines.append(message("cli.path_line", path=card.paths.local))
+    lines += attribution.text(card.attribution, card.terms_notice)
     return _with_stale(card, lines)
 
 

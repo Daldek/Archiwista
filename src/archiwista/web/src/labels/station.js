@@ -2,9 +2,9 @@
  * Texts of the station card (views/station.js, docs/SPEC.md 6.7 and sketch
  * 6.5 k; plan I8.5): the header with the station's type, river and the
  * year-type switch, the location or the reason without one, the coverage of
- * each variable, the tabs, the series versions, the actions and the
- * provider's formula; and of the comparison of stations
- * (views/station-compare.js, plan I8.6).
+ * each variable, the tabs, the series versions and the actions; and of the
+ * comparison of stations (views/station-compare.js, plan I8.6). The lines of
+ * the providers' terms have their own texts (labels/provider-lines.js).
  */
 
 export const station = {
@@ -184,12 +184,6 @@ export const station = {
   tech: {
     api: "Odpowiedź API karty",
     copy_json: "Kopiuj JSON",
-  },
-  attribution: {
-    title: "Licencja i atrybucja",
-    license: "Licencja {license}",
-    copy: "Kopiuj atrybucję",
-    none: "Szeregi stacji nie podają licencji ani formuły.",
   },
   compare: {
     title: "Porównanie stacji",

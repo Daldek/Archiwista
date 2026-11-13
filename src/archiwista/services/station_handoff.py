@@ -6,7 +6,8 @@ series: every day of a variable's daily values in a range, a day without a
 value (no row, or a missing or accumulated one) as ``null``; or the annual
 maxima of an annual chart (A-ADR-051), only of complete hydrological years,
 since a flood frequency analysis must not take one half-year's maximum for its
-year's; the years left out are named in the provenance.
+year's; the years left out are named in the provenance. The document carries
+the lines the provider's terms require with the series (A-ADR-055).
 """
 
 from collections.abc import Iterable, Sequence
@@ -14,6 +15,7 @@ from datetime import UTC, date, datetime, timedelta
 from importlib.metadata import version
 from typing import Any
 
+from archiwista import attribution
 from archiwista.api.models_handoff import (
     HANDOFF_SCHEMA,
     SERIES_SCHEMA,
@@ -110,7 +112,11 @@ def handoff(
     left_out: Sequence[int] = (),
     now: datetime | None = None,
 ) -> StationHandoff:
-    """Return the ``nogat-handoff/1`` envelope of a series payload."""
+    """Return the ``nogat-handoff/1`` envelope of a series payload.
+
+    ``attribution`` and ``terms_notice`` are the lines of the station's
+    provider for its series values, written in another format.
+    """
     origin: dict[str, Any] = {
         "source": row.provider.lower(),
         "provider": row.provider,
@@ -133,6 +139,7 @@ def handoff(
         else message("api.handoff_subject_daily", "pl", **names)
     )
     moment = (now or datetime.now(UTC)).replace(microsecond=0)
+    lines = attribution.of([attribution.series_origin(row.provider)])
     return StationHandoff.model_validate(
         {
             "schema": HANDOFF_SCHEMA,
@@ -142,6 +149,7 @@ def handoff(
             ),
             "subject": str(subject),
             "provenance": {"series": origin},
+            **lines.fields(),
             "payload": payload,
         }
     )

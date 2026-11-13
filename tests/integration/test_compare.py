@@ -37,7 +37,7 @@ from archiwista.owndata.scan import check_own_folder, folder_rules, scan_own_dat
 from archiwista.owndata.snapshots import make_snapshot
 from archiwista.sandbox import process_work_dir
 from archiwista.services.compare import OWN_FIELDS, VERSION_FIELDS, compare
-from archiwista.sources.registry import load_registry
+from archiwista.sources.registry import PluginRegistry, load_registry
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.api_store import STORE, ServedStore, served_store
 from tests.fixtures.index_data import indexed_project
@@ -282,6 +282,7 @@ class OwnData:
     """A project's data folder after its snapshots and the GeoPackage's edit."""
 
     queries: IndexQueries
+    registry: PluginRegistry
     project: str
     labels: dict[str, str]
     """Label of the snapshot of each file, by path."""
@@ -388,7 +389,7 @@ def own(tmp_path_factory: pytest.TempPathFactory) -> Iterator[OwnData]:
             labels[path] = made.label
         _edit_gpkg(folder.root / GPKG)
         scan()
-        yield OwnData(queries, key, labels)
+        yield OwnData(queries, registry, key, labels)
 
 
 def _own_rows(comparison: Any, group: str) -> dict[str, Any]:
@@ -406,10 +407,18 @@ def test_snapshot_against_edited_working_file(own: OwnData) -> None:
 
     # Act
     forward = compare(
-        own.queries, own.snapshot(GPKG), own.file(GPKG), visible=ALL_PROJECTS
+        own.queries,
+        own.snapshot(GPKG),
+        own.file(GPKG),
+        visible=ALL_PROJECTS,
+        registry=own.registry,
     )
     backward = compare(
-        own.queries, own.file(GPKG), own.snapshot(GPKG), visible=ALL_PROJECTS
+        own.queries,
+        own.file(GPKG),
+        own.snapshot(GPKG),
+        visible=ALL_PROJECTS,
+        registry=own.registry,
     )
 
     # Assert
@@ -476,9 +485,19 @@ def test_snapshot_against_edited_working_file(own: OwnData) -> None:
 def test_snapshot_of_unchanged_file_has_same_content(own: OwnData) -> None:
     """An untouched raster's snapshot holds its content; it has no schema."""
     # Act
-    pair = compare(own.queries, own.snapshot(TIF), own.file(TIF), visible=ALL_PROJECTS)
+    pair = compare(
+        own.queries,
+        own.snapshot(TIF),
+        own.file(TIF),
+        visible=ALL_PROJECTS,
+        registry=own.registry,
+    )
     itself = compare(
-        own.queries, own.snapshot(TIF), own.snapshot(TIF), visible=ALL_PROJECTS
+        own.queries,
+        own.snapshot(TIF),
+        own.snapshot(TIF),
+        visible=ALL_PROJECTS,
+        registry=own.registry,
     )
 
     # Assert
@@ -528,7 +547,13 @@ def test_own_data_not_found(own: OwnData) -> None:
     for ref, visible, text in cases:
         # Act
         with pytest.raises(NotFoundError) as caught:
-            compare(own.queries, ref, own.file(TIF), visible=visible)
+            compare(
+                own.queries,
+                ref,
+                own.file(TIF),
+                visible=visible,
+                registry=own.registry,
+            )
 
         # Assert
         assert str(caught.value) == text, ref

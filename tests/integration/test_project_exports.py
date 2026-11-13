@@ -2,7 +2,8 @@
 
 ``POST /projects/{project}/exports`` copies the pinned versions of the
 generated store's projects, scanned into the index, into flat category
-folders of ``eksport/<name>/`` with ``README.txt``, and with ``zip`` into
+folders of ``eksport/<name>/`` with ``README.txt`` and the sources' lines in
+``ATTRIBUTION.txt`` (A-ADR-055), and with ``zip`` into
 ``eksport/<name>.zip``; ``GET …/exports`` lists them and says which are older
 than the project file, ``GET …/exports/{name}/zip`` sends the ZIP.
 ``archiwista project-export`` and ``project-exports`` print the routes'
@@ -43,6 +44,7 @@ SHEET = "M-34-79-D-c-2-3"
 ATTRIBUTION = "Archiwista synthetic test store"
 UNKNOWN_STORE_VERSION = "nmt/pl_1992_1m_evrf2007/versions/obcy/nmt.asc"
 README = "README.txt"
+ATTRIBUTION_TXT = "ATTRIBUTION.txt"
 
 
 def _versions(store: StoreManifest, unit: str) -> list[ExpectedEntry]:
@@ -183,6 +185,7 @@ def test_an_export_copies_two_sets_into_flat_folders(tmp_path: Path) -> None:
         f"{new}.asc",
         f"{new}.prj",
         "ORTO/N-34-82-A-b-4-3.tif",
+        ATTRIBUTION_TXT,
         README,
     ]
     body = written.json()
@@ -208,7 +211,8 @@ def test_an_export_copies_two_sets_into_flat_folders(tmp_path: Path) -> None:
     assert "BDOT/0411.gpkg\n  produkt: bdot10k" in readme
     assert "  zestaw: 2024, 2014\n" in readme
     assert f"  suma SHA-256: {pinned['old'].sha256}\n" in readme
-    assert readme.endswith(f"\nŹródła danych\n- {ATTRIBUTION}\n")
+    assert readme.endswith(f"\nŹródła danych i warunki korzystania\n- {ATTRIBUTION}\n")
+    assert (target / ATTRIBUTION_TXT).read_text(encoding="utf-8") == f"{ATTRIBUTION}\n"
     zip_path = target.parent / "raba.zip"
     assert zipfile.ZipFile(zip_path).namelist() == files
     assert archive.status_code == 200, archive.text
@@ -300,7 +304,7 @@ def test_an_export_of_one_set_replaces_the_export_and_its_zip(tmp_path: Path) ->
     # Assert
     assert again.status_code == 201, again.text
     base = _directory(served, YEARS) / "eksport"
-    files = ["BDOT/0411.gpkg", f"NMT/{SHEET}.asc", README]
+    files = ["BDOT/0411.gpkg", f"NMT/{SHEET}.asc", ATTRIBUTION_TXT, README]
     assert (again.json()["files"], again.json()["pins"]) == (files, 2)
     assert again.json()["zip"] is False
     assert _tree(base) == sorted(f"raba/{file}" for file in files)
@@ -340,7 +344,12 @@ def test_an_export_counts_the_pins_it_leaves_out(tmp_path: Path) -> None:
         {"no_store": 0, "missing": 1},
     )
     # The remaining sheet is alone in its folder: no label is added.
-    assert deleted.json()["files"] == ["BDOT/0411.gpkg", f"NMT/{SHEET}.asc", README]
+    assert deleted.json()["files"] == [
+        "BDOT/0411.gpkg",
+        f"NMT/{SHEET}.asc",
+        ATTRIBUTION_TXT,
+        README,
+    ]
     for name in ("inny-magazyn", "brak-wersji"):
         assert _tree(_directory(served, name) / "eksport" / "x") == [README]
 
@@ -400,7 +409,7 @@ def test_an_export_unpacks_a_zip_of_one_xyz(tmp_path: Path) -> None:
     assert written.status_code == 201, written.text
     source = served.store.root / packed.path
     inner = f"NMT/{packed.unit}.xyz"
-    assert written.json()["files"] == [inner, README]
+    assert written.json()["files"] == [inner, ATTRIBUTION_TXT, README]
     grid = zipfile.ZipFile(source).read(f"{packed.unit}.xyz")
     target = _directory(served, YEARS) / "eksport" / "xyz"
     assert (target / inner).read_bytes() == grid

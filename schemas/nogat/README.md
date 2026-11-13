@@ -14,9 +14,11 @@ Verbatim copies (ERR-3, AGI-4.1, DEV-15.6) of the files below from the
   envelope, the error document and the command catalog. `tests/contract/` validates
   Archiwista's error documents against `error-1`.
 - `handoff-1.schema.json` (Nogat `schemas/exchange/handoff-1.schema.json` at commit
-  `7786271`, with `node_provenance`; SHA-256
-  `84c6856d1148acdc08bf79600c8cdab03674e81fe1f30eb7abeb66629b5742ed`): the envelope
-  `nogat-handoff/1` of a station's series handed to Hydrolog (A-ADR-052, A-ADR-054);
+  `55a2d4b` of `develop`, last changed in `bbb58a8`, with `node_provenance` and the optional
+  `attribution` and `terms_notice` of DEV §20; SHA-256
+  `7d69384bafe92c02c2008b4e822b9d7b80f5b382817dc3dbce213c6726ecd958`): the envelope
+  `nogat-handoff/1` of a station's series handed to Hydrolog (A-ADR-052, A-ADR-054,
+  A-ADR-055);
   `tests/integration/test_station_statistics_api.py` validates Archiwista's hand-offs against
   it, and their payload against Hydrolog's `../hydrolog/hydrolog-series-1.schema.json`
   (Hydrolog `src/hydrolog/schemas/` at commit `35054bf` of `feature/series-handoff`; SHA-256

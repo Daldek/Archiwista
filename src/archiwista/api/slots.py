@@ -8,8 +8,10 @@ copy path (``/stores/{store}/versions/{version}``, ``…/sidecar``) and the
 files of one producer request (``/requests/{parent_request}``) answer from the
 index too. Routes only translate: ``IndexQueries`` reads and filters, also by
 the projects the principal sees; copy paths also go through the principal's
-own path aliases (``CopyPath.personal``). ``archiwista search`` and
-``archiwista entry`` (step 12) call ``search_slots`` and ``slot_card``.
+own path aliases (``CopyPath.personal``). A page and a version carry the lines
+their providers' terms require, by each producer's ``DataOriginAdapter``
+(A-ADR-055). ``archiwista search`` and ``archiwista entry`` (step 12) call
+``search_slots`` and ``slot_card``.
 """
 
 from collections.abc import Collection
@@ -18,6 +20,7 @@ from typing import Annotated, Any
 import numpy as np
 from fastapi import APIRouter, Depends, Path, Query
 
+from archiwista import attribution
 from archiwista.api.dependencies import (
     app_paths,
     index_queries,
@@ -132,7 +135,16 @@ def search_slots(
     if bbox is not None:
         area = bbox_area(registry, bbox, filters.bbox_crs)
     page = queries.slots(filters.slot_query(area), visible=visible)
-    return CatalogPage.of(page, staleness(freshness, stores))
+    origins = attribution.Origins(registry)
+    lines = attribution.merge(
+        attribution.version(
+            origins.of(row.segment.producer, row.version.path, row.segment.segment),
+            None,
+        )
+        for row in page.items
+        if row.version is not None
+    )
+    return CatalogPage.of(page, lines, staleness(freshness, stores))
 
 
 def read_products(
@@ -206,12 +218,16 @@ def version_card(
     queries: IndexQueries,
     settings: AppSettings,
     preferences: Preferences,
+    registry: PluginRegistry,
     store: str,
     version: str,
     *,
     visible: ProjectVisibility,
 ) -> VersionCard:
     """Return every indexed value of a version, its raw sidecar and copy path.
+
+    Its lines are those of its data's origin as its producer names it, else
+    the attribution of its sidecar (A-ADR-055).
 
     Raises
     ------
@@ -222,11 +238,16 @@ def version_card(
     if detail is None:
         text = message("api.version_unknown", version=version, store=store)
         raise NotFoundError(text)
-    paths = copy_path(settings, preferences, store, detail.segment.producer, version)
+    producer = detail.segment.producer
+    paths = copy_path(settings, preferences, store, producer, version)
+    origin = attribution.Origins(registry).of(
+        producer, detail.summary.path, detail.segment.segment
+    )
     return VersionCard.of(
         detail,
         queries.sidecar(store, version),
         paths,
+        attribution.version(origin, detail.attribution),
         staleness(queries.freshness(), {store}),
     )
 
@@ -553,10 +574,22 @@ def get_version(
     settings: _Settings,
     preferences: _Preferences,
     queries: _Queries,
+    registry: _Registry,
 ) -> VersionCard:
-    """Return a version: every indexed value, outline, raw sidecar, copy path."""
+    """Return a version: every indexed value, outline, raw sidecar, copy path.
+
+    `attribution` and `terms_notice` are the lines the terms of the version's
+    provider require (Nogat DEV §20): for a file of IMGW-PIB as published its
+    source, for its processed forms the mark of processing too.
+    """
     return version_card(
-        queries, settings.get(), preferences, store, version, visible=visible
+        queries,
+        settings.get(),
+        preferences,
+        registry,
+        store,
+        version,
+        visible=visible,
     )
 
 

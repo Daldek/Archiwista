@@ -10,8 +10,10 @@ with its tributaries and the coverage chips are parameters of the address,
 and the stations the coverage hides are counted. The year-type switch
 numbers the labels as the API does with ``year_type``, stays in the address
 and is remembered for the family in the person's preferences. The rows move
-with the keys of the file list. Everything stands beside the map, so each
-test runs in Chromium and Firefox.
+with the keys of the file list. Under the list stand the lines the IMGW-PIB
+terms require with every page read, those of the hydrological service only
+with stations that have a position (Nogat DEV §20). Everything stands beside
+the map, so each test runs in Chromium and Firefox.
 """
 
 import json
@@ -25,11 +27,21 @@ from urllib.parse import urlencode
 from playwright.sync_api import Locator, Page, Response, Route, expect
 
 from tests.fixtures.browser import Served, Tab
+from tests.fixtures.provider_lines import (
+    IMGW_HYDRO,
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_HYDRO,
+    IMGW_TERMS_PUBLIC_DATA,
+)
 from tests.fixtures.station_browser import (
+    LINES_TITLE,
     address,
     api,
     open_session,
     query_of,
+    shown_lines,
     station_settings,
 )
 
@@ -445,4 +457,38 @@ def test_keys_move_through_the_rows_fold_the_group_open_the_card_and_the_map(
     located = first["location"]
     assert (round(lon, 4), round(lat, 4)) == (located["lon"], located["lat"])
     assert (opened["product"], float(opened["zoom"])) == ("stations", 11)
+    engine_tab.assert_clean()
+
+
+def test_catalog_stations_lines_of_the_pages_read_stand_under_the_list(
+    serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
+) -> None:
+    """Both groups: S, P, H, N, RD and RH; "Bez położenia" alone neither H nor RH."""
+    # Arrange
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
+    page = open_session(engine_tab, served)
+    rows, counts = expected(page, kind="hydro")
+    unlocated = stations(page, kind="hydro", location="none")
+    alone = [row_of(item) for item in unlocated["items"]]
+    strip = page.locator(".cat").get_by_role("group", name=LINES_TITLE)
+
+    # Act
+    open_list(page, served, product="hydro")
+    settled(page, rows, row_count(counts))
+    both = shown_lines(strip)
+    open_list(page, served, product="hydro", location="none")
+    settled(page, alone, 1 + unlocated["counts"]["unlocated"])
+    without = shown_lines(strip)
+
+    # Assert
+    assert both == [
+        IMGW_SOURCE,
+        IMGW_PROCESSED,
+        IMGW_HYDRO,
+        IMGW_TERMS,
+        IMGW_TERMS_PUBLIC_DATA,
+        IMGW_TERMS_HYDRO,
+    ]
+    assert without == [*unlocated["attribution"], *unlocated["terms_notice"]]
+    assert without == [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
     engine_tab.assert_clean()

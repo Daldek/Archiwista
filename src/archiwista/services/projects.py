@@ -33,6 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import Any
 
+from archiwista import attribution
 from archiwista.auth import (
     LOCAL_PRINCIPAL_ID,
     Principal,
@@ -742,6 +743,7 @@ def _export_items(
             if group.name not in names:
                 names.append(group.name)
     folders = _ExportFolders(registry)
+    origins = attribution.Origins(registry)
     items: list[ExportItem] = []
     no_store = missing = 0
     for identity, pin in pins.items():
@@ -776,7 +778,10 @@ def _export_items(
                 year=version.data_year,
                 crs=version.horizontal_crs or detail.native_crs,
                 vertical_crs=version.vertical_crs,
-                attribution=detail.attribution,
+                lines=attribution.version(
+                    origins.of(pin.producer, pin.version, detail.segment.segment),
+                    detail.attribution,
+                ),
             )
         )
     return items, no_store, missing

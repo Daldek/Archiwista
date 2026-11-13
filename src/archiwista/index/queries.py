@@ -1418,10 +1418,13 @@ class IndexQueries:
                 f" WHERE {found.located.sql()} ORDER BY {_NAME_ORDER}",
                 found.located.params,
             ).fetchall()
+            providers = tuple(dict.fromkeys(str(row["provider"]) for row in rows))
             if len(rows) > limit:
                 points = [(row["lon"], row["lat"]) for row in rows]
                 cells = grid.count(points)
-                return StationMap(len(rows), True, (), cells, found.counts)
+                return StationMap(
+                    len(rows), True, (), cells, found.counts, providers=providers
+                )
             coverage = (
                 _stations_coverage(connection, stores, rows, query)
                 if query.labels
@@ -1434,6 +1437,7 @@ class IndexQueries:
             cells=(),
             counts=found.counts,
             coverage=coverage,
+            providers=providers,
         )
 
     def station(self, store: str, provider: str, code: str) -> StationRow | None:

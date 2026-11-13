@@ -7,9 +7,9 @@ version of a slot, station catalogs, the series indexes of stations, the
 values of a station's series, their parts, coordinate operations, link
 confirmation, sheet grids, the default store root, the producer's commands
 with the availability at the source, a command over an area of Archiwista,
-the command of a stored version and the folder of a version in a project's
-export are optional capabilities: a producer without them still satisfies
-``SourceAdapter``.
+the command of a stored version, the folder of a version in a project's
+export and the origin of a version's data are optional capabilities: a
+producer without them still satisfies ``SourceAdapter``.
 """
 
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
@@ -26,6 +26,7 @@ from archiwista.sources.types import (
     AvailabilityReport,
     CommandCall,
     CommandInfo,
+    DataOrigin,
     DefaultRoot,
     EntryMeta,
     Extreme,
@@ -639,5 +640,24 @@ class ProductNameAdapter(Protocol):
         """Return the Polish name of ``product``; ``None`` leaves the default.
 
         Offline, no disk access.
+        """
+        ...
+
+
+@runtime_checkable
+class DataOriginAdapter(Protocol):
+    """Optional capability: whose data a version holds, and in what form.
+
+    The providers' terms require their lines with every product of their
+    data (Nogat DEV §20, A-ADR-055): Archiwista chooses them by the origin
+    (``archiwista.attribution``). Without the capability, or without an
+    answer, a version carries its sidecar's attribution alone.
+    """
+
+    def data_origin(self, path: str, segment: str | None) -> DataOrigin | None:
+        """Return the origin of the version at ``path`` of ``segment``.
+
+        ``path`` is relative to the store (``/``-separated); ``None`` when no
+        provider's terms are known for it. Offline, no disk access.
         """
         ...

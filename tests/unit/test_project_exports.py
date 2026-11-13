@@ -4,8 +4,9 @@
 decision 13 and its erratum 1): each version's file copied into its category
 folder under its name with its companions (never a ``*.meta.json``), a ZIP
 of one raster unpacked under its member's name, two files of one name in a
-folder told apart by their labels, ``README.txt`` with every file and each
-attribution once, the export and its ZIP replaced whole.
+folder told apart by their labels, ``README.txt`` with every file and the
+providers' lines once each, which ``ATTRIBUTION.txt`` at the root holds too
+(A-ADR-055), the export and its ZIP replaced whole.
 """
 
 import hashlib
@@ -15,8 +16,10 @@ from pathlib import Path
 
 import pytest
 
+from archiwista.attribution import Attribution
 from archiwista.errors import PathOutsideRootError, ProjectFileWriteError
 from archiwista.projects.exports import (
+    ATTRIBUTION,
     README,
     ExportItem,
     export_zip,
@@ -25,6 +28,25 @@ from archiwista.projects.exports import (
     list_exports,
     write_export,
 )
+from tests.fixtures.provider_lines import (
+    CHMI_PROCESSED,
+    CHMI_SOURCE,
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_PUBLIC_DATA,
+)
+
+# A version of a producer whose providers' terms Archiwista does not know: the
+# attribution of its sidecar is its one line.
+GUGIK = Attribution(("Główny Urząd Geodezji i Kartografii",))
+# A station series of Obserwator, processed; a file of IMGW-PIB as published.
+SERIES = Attribution(
+    (IMGW_SOURCE, IMGW_PROCESSED), (IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA)
+)
+ARCHIVE = Attribution((IMGW_SOURCE,), (IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA))
+CHMI = Attribution((CHMI_SOURCE, CHMI_PROCESSED))
+NO_LINES = Attribution()
 
 
 def _project(tmp_path: Path) -> Path:
@@ -63,7 +85,7 @@ def _item(
     *,
     label: str | None = None,
     sets: tuple[str, ...] = ("2024",),
-    attribution: str | None = None,
+    lines: Attribution = NO_LINES,
     sha256: str = "ab" * 32,
     crs: str | None = "EPSG:2180",
     vertical_crs: str | None = None,
@@ -78,7 +100,7 @@ def _item(
         year=2024,
         crs=crs,
         vertical_crs=vertical_crs,
-        attribution=attribution,
+        lines=lines,
     )
 
 
@@ -188,18 +210,24 @@ def test_exports_write_export_adds_the_hash_when_the_labels_are_equal(
 def test_exports_write_export_describes_every_file_and_source_in_readme(
     tmp_path: Path,
 ) -> None:
-    """Known facts only; the sets; each attribution once under „Źródła danych”."""
+    """Known facts only; the sets; the providers' lines once each, in order."""
     directory = _project(tmp_path)
     sheet = _version(tmp_path, "v1", "a.asc", b"abc")
     tile = _version(tmp_path, "v2", "b.tif", b"xy")
+    czech = _version(tmp_path, "v3", "cz.csv", b"t,h\n")
+    archive = _version(tmp_path, "v4", "stany.csv", b"t,h\n")
+    series = _version(tmp_path, "v5", "seria.csv", b"t,h\n")
 
     # Act
     result = write_export(
         directory,
         "raba",
         [
-            _item(sheet, label="2024-06-13", sets=("2024", "2014"), attribution="A"),
-            _item(tile, "ORTO", attribution=" A "),
+            _item(sheet, label="2024-06-13", sets=("2024", "2014"), lines=GUGIK),
+            _item(tile, "ORTO", lines=GUGIK),
+            _item(czech, "OBSERWATOR", lines=CHMI),
+            _item(archive, "OBSERWATOR", lines=ARCHIVE),
+            _item(series, "OBSERWATOR", lines=SERIES),
         ],
         project="Raba",
         with_zip=False,
@@ -219,7 +247,56 @@ def test_exports_write_export_describes_every_file_and_source_in_readme(
         "b00361a396177a9cb410ff61f20015ad\n"
         "  zestaw: 2024, 2014\n"
     ) in readme
-    assert readme.endswith("\nŹródła danych\n- A\n")
+    assert readme.endswith(
+        "\nŹródła danych i warunki korzystania\n"
+        f"- {IMGW_SOURCE}\n"
+        f"- {IMGW_PROCESSED}\n"
+        f"- {CHMI_SOURCE}\n"
+        f"- {CHMI_PROCESSED}\n"
+        "- Główny Urząd Geodezji i Kartografii\n"
+        f"- {IMGW_TERMS}\n"
+        f"- {IMGW_TERMS_PUBLIC_DATA}\n"
+    )
+
+
+def test_exports_write_export_writes_the_providers_lines_into_attribution_txt(
+    tmp_path: Path,
+) -> None:
+    """At the root, listed and zipped: the attribution, then the terms, each once."""
+    directory = _project(tmp_path)
+    series = _version(tmp_path, "v1", "seria.csv", b"t,h\n")
+    archive = _version(tmp_path, "v2", "stany.csv", b"t,h\n")
+
+    # Act
+    result = write_export(
+        directory,
+        "raba",
+        [
+            _item(archive, "OBSERWATOR", lines=ARCHIVE),
+            _item(series, "OBSERWATOR", lines=SERIES),
+        ],
+        project="Raba",
+        with_zip=True,
+    )
+
+    # Assert
+    assert result.files == (
+        "OBSERWATOR/seria.csv",
+        "OBSERWATOR/stany.csv",
+        ATTRIBUTION,
+        README,
+    )
+    written = (result.path / ATTRIBUTION).read_text(encoding="utf-8")
+    assert written.split("\n") == [
+        IMGW_SOURCE,
+        IMGW_PROCESSED,
+        IMGW_TERMS,
+        IMGW_TERMS_PUBLIC_DATA,
+        "",
+    ]
+    packed = zipfile.ZipFile(directory / "eksport" / "raba.zip")
+    assert packed.namelist() == list(result.files)
+    assert packed.read(ATTRIBUTION).decode() == written
 
 
 def test_exports_write_export_unpacks_a_zip_of_one_xyz_and_describes_it(
@@ -494,7 +571,9 @@ def test_exports_list_exports_says_which_are_older_than_the_project(
     """Exports by name with files and ZIP; one older than the project is flagged."""
     directory = _project(tmp_path)
     sheet = _version(tmp_path, "v1", "a.asc")
-    old = write_export(directory, "stary", [_item(sheet)], project="R", with_zip=True)
+    old = write_export(
+        directory, "stary", [_item(sheet, lines=SERIES)], project="R", with_zip=True
+    )
     new = write_export(directory, "nowy", [], project="R", with_zip=False)
     (directory / "eksport" / "inny").mkdir()  # not an export: no README
     stamp = old.written_at.timestamp()
@@ -510,7 +589,8 @@ def test_exports_list_exports_says_which_are_older_than_the_project(
         ("stary", True, True),
     ]
     assert found[0].written_at == new.written_at
-    assert found[1].files == ("NMT/a.asc", README)
+    assert found[0].files == (README,)
+    assert found[1].files == old.files == ("NMT/a.asc", ATTRIBUTION, README)
     assert found[1].written_at.timestamp() == pytest.approx(stamp - 10)
     assert export_zip(directory, "stary") == directory / "eksport" / "stary.zip"
     assert export_zip(directory, "nowy") is None

@@ -8,7 +8,9 @@ recipient may write to a GeoPackage, which must not change the store), with
 the companion files the store holds beside it (``.prj``, ``.tfw``,
 ``.aux.xml``, the parts of a Shapefile; never a ``*.meta.json`` sidecar), and
 ``README.txt`` (Polish) describing every file and listing each data source's
-attribution once. A version stored as a ZIP that holds exactly one raster
+attribution once, with the lines the providers' terms require also in
+``ATTRIBUTION.txt`` at the export's root (Nogat DEV-20.5, A-ADR-055). A
+version stored as a ZIP that holds exactly one raster
 (``archiwista.formats.raster_member``: GUGiK's NMT of 2020, one XYZ grid per
 sheet) is unpacked: its raster under the member's own name, its bytes
 unchanged, and ``README.txt`` names the archive with both checksums; any
@@ -36,6 +38,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
+from archiwista.attribution import Attribution, merge
 from archiwista.errors import PathOutsideRootError
 from archiwista.formats import file_format, raster_member
 from archiwista.messages import message
@@ -43,6 +46,8 @@ from archiwista.projects.document import EXPORTS_DIR
 from archiwista.projects.files import _write_failed
 
 README = "README.txt"
+# The lines the providers' terms require, one a line (Nogat DEV-20.5).
+ATTRIBUTION = "ATTRIBUTION.txt"
 ZIP_SUFFIX = ".zip"
 MAX_EXPORT_NAME_CHARS = 64
 # An export's name: 1 to 64 letters, digits, ".", "_" and "-", not starting
@@ -65,7 +70,8 @@ class ExportItem:
 
     ``file`` is the version's file as the server reads it, inside its store;
     ``folder`` its category (``ExportFolderAdapter``, cleaned here);
-    ``sets`` the names of the groups that pin it.
+    ``sets`` the names of the groups that pin it; ``lines`` what its data's
+    providers require (``archiwista.attribution``).
     """
 
     file: Path
@@ -77,7 +83,7 @@ class ExportItem:
     year: int | None
     crs: str | None
     vertical_crs: str | None
-    attribution: str | None
+    lines: Attribution
 
 
 @dataclass(frozen=True, slots=True)
@@ -394,9 +400,13 @@ def _write_tree(
         for source, copied in zip(place.companions, place.companion_names, strict=True):
             shutil.copyfile(source, folder / copied)
             files.append(f"{place.item.folder}/{copied}")
+    sources = merge(place.item.lines for place in placed)
     readme = target / README
-    readme.write_bytes(_readme(name, project, placed, sizes))
+    readme.write_bytes(_readme(name, project, placed, sizes, sources))
     files.sort()
+    if sources.lines():
+        (target / ATTRIBUTION).write_bytes(_text(sources.lines()))
+        files.append(ATTRIBUTION)
     files.append(README)
     return tuple(files)
 
@@ -434,8 +444,13 @@ def _readme(
     project: str,
     placed: Sequence[_Placed],
     sizes: Sequence[tuple[int, str]],
+    sources: Attribution,
 ) -> bytes:
-    """Return ``README.txt``: every file with what is known of it, the sources."""
+    """Return ``README.txt``: every file with what is known of it, the sources.
+
+    The sources are the lines the providers' terms require, then their terms
+    of use, as ``ATTRIBUTION.txt`` holds them.
+    """
 
     def text(key: str, **values: object) -> str:
         return str(message(f"export.{key}", "pl", **values))
@@ -443,7 +458,6 @@ def _readme(
     written = datetime.now(UTC).astimezone().isoformat(timespec="seconds")
     lines = [text("readme_title", name=name, project=project, written=written), ""]
     lines.append(text("readme_intro") if placed else text("readme_empty"))
-    attributions: dict[str, None] = {}
     for place, (size, sha256) in zip(placed, sizes, strict=True):
         item = place.item
         lines += ["", f"{item.folder}/{place.name}"]
@@ -472,12 +486,9 @@ def _readme(
             lines.append(f"  {text('readme_zip_kept')}")
         if file_format(place.name).driver == _XYZ_DRIVER:
             lines.append(f"  {_xyz_note(text, item)}")
-        attribution = (item.attribution or "").strip()
-        if attribution:
-            attributions.setdefault(attribution)
     lines += ["", text("readme_sources")]
-    if attributions:
-        lines += [f"- {attribution}" for attribution in attributions]
+    if sources.lines():
+        lines += [f"- {line}" for line in sources.lines()]
     else:
         lines.append(text("readme_no_sources"))
     return _text(lines)
@@ -536,6 +547,8 @@ def _tree_files(path: Path) -> tuple[str, ...]:
             if entry.is_file(follow_symlinks=False):
                 files.append(f"{folder.name}/{entry.name}")
     files.sort()
+    if os.path.isfile(path / ATTRIBUTION):
+        files.append(ATTRIBUTION)
     files.append(README)
     return tuple(files)
 

@@ -19,7 +19,8 @@ route without HTTP, as the local owner (whose preferences number the years
 without ``year_type`` and give ``personal`` of a copy path): ``--json``
 prints the route's model, a refusal the route's problem as the
 ``archiwista-error/1`` document (``503`` while Obserwator is not available
-becomes its exit code). Nothing here uses the network or writes but the
+becomes its exit code). A person's text ends with the lines the providers'
+terms require (A-ADR-055). Nothing here uses the network or writes but the
 state database, which is created when missing.
 """
 
@@ -30,6 +31,7 @@ from typing import TextIO, cast, get_origin
 
 from pydantic import BaseModel, ValidationError
 
+from archiwista import attribution
 from archiwista.api.models import IndexAnswer, Preferences
 from archiwista.api.models_handoff import StationHandoffQuery
 from archiwista.api.models_stations import (
@@ -275,7 +277,8 @@ def _list(
         lines.extend(_series_line(series) for series in item.series)
     if not lines:
         lines.append(message("cli.stations_none"))
-    return found, _with_stale(found, [*lines, *_page_end(found)])
+    ends = [*_page_end(found), *attribution.text(found.attribution, found.terms_notice)]
+    return found, _with_stale(found, [*lines, *ends])
 
 
 def _timeline(
@@ -301,7 +304,8 @@ def _timeline(
         lines.append(message("cli.station_timeline_legend", **_CELLS))
     else:
         lines.append(message("cli.stations_none"))
-    return found, _with_stale(found, [*lines, *_page_end(found)])
+    ends = [*_page_end(found), *attribution.text(found.attribution, found.terms_notice)]
+    return found, _with_stale(found, [*lines, *ends])
 
 
 def _show(
@@ -385,6 +389,7 @@ def _datasets(
     lines = [_dataset_line(item) for item in found.items]
     if not lines:
         lines.append(message("cli.station_datasets_none"))
+    lines += attribution.text(found.attribution, found.terms_notice)
     return found, _with_stale(found, lines)
 
 
@@ -546,14 +551,7 @@ def _card_text(card: StationCard) -> str:
             )
             for key, variable in series.coverage.items()
         )
-        if series.attribution is not None:
-            lines.append(
-                message(
-                    "cli.station_attribution",
-                    license=_value(series.license),
-                    attribution=series.attribution,
-                )
-            )
+    lines += attribution.text(card.attribution, card.terms_notice)
     return _with_stale(card, lines)
 
 
@@ -579,14 +577,7 @@ def _chart_text(chart: StationChart) -> str:
         )
         for variable in chart.variables:
             lines.extend(_chart_variable_lines(variable, chart.time_unit))
-    if chart.attribution is not None:
-        lines.append(
-            message(
-                "cli.station_attribution",
-                license=_value(chart.license),
-                attribution=chart.attribution,
-            )
-        )
+    lines += attribution.text(chart.attribution, chart.terms_notice)
     return _with_stale(chart, lines)
 
 
@@ -692,7 +683,6 @@ def _comparison_text(comparison: StationComparison) -> str:
             comparison.time_unit,
         ),
     ]
-    attributions: dict[tuple[str | None, str], None] = {}
     for item in comparison.stations:
         lines.append(_station_line(item))
         if item.coverage is None or item.chart is None:
@@ -714,16 +704,7 @@ def _comparison_text(comparison: StationComparison) -> str:
             )
         )
         lines.extend(_chart_variable_lines(item.chart, comparison.time_unit))
-        if item.attribution is not None:
-            attributions[(item.license, item.attribution)] = None
-    lines.extend(
-        message(
-            "cli.station_attribution",
-            license=_value(license_),
-            attribution=attribution,
-        )
-        for license_, attribution in attributions
-    )
+    lines += attribution.text(comparison.attribution, comparison.terms_notice)
     return _with_stale(comparison, lines)
 
 

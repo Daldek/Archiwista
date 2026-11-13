@@ -247,7 +247,7 @@ each requirement: the SPEC section named.
 
 - N7.1 Open code under the MIT licence; contributions with a CLA (A-ADR-026, [`CONTRIBUTING.md`](../CONTRIBUTING.md)).
 - N7.2 Dependencies with licences compatible with MIT; a dependency with a copyleft licence needs a decision (ADR) before it is added.
-- N7.3 Compliance with the data terms: GUGiK and ČÚZK (CC BY 4.0) attributions, the IMGW-PIB formulas (terms, section 5), OSM (ODbL) for the basemap, in the file card and the station card.
+- N7.3 Compliance with the data terms: GUGiK and ČÚZK (CC BY 4.0) attributions in the file card; the lines of IMGW-PIB, PMAXTP and ČHMÚ and the IMGW-PIB terms of use with their data in every view, API answer, CLI text, export and hand-off (Nogat DEV §20, A-ADR-055); OSM (ODbL) for the basemap.
 
 **N8. Extensibility**
 

@@ -35,6 +35,8 @@
  * the provider published are dots with their dates in the tooltip, an
  * accumulated sum a diamond (`markers`). A second variable of another unit
  * gets the right axis. A line below sums the range, the points and the gaps.
+ * Right under the chart stand the lines the providers' terms require with
+ * the chart's data (provider-lines.js), of a monthly and an annual chart too.
  * The comparison of stations (views/station-compare.js) draws its panels with
  * `ChartPlot` and `TimeAxis` of this module.
  */
@@ -47,6 +49,7 @@ import { count, day } from "../format.js";
 import { useResource, useSize } from "../hooks.js";
 import { t } from "../labels/index.js";
 import { station as L } from "../labels/station.js";
+import { ProviderLines } from "../provider-lines.js";
 import { setParams } from "../router.js";
 import { html, Icon, ProblemView, Seg, Spinner, Tech, useId, useRef, useState } from "../ui.js";
 
@@ -256,6 +259,7 @@ function SeriesChart({ station, charts, chosen, params, names, actions }) {
           ? null
           : html`<div class="sch-wait"><${Spinner} /></div>`}
     </div>
+    <${ProviderLines} answer=${data} />
     <p class="sch-api faint"><${Tech} value=${[[C.api, api]]}>${C.api}</${Tech}></p>
   </div>`;
 }

@@ -283,7 +283,7 @@ Ola opens the sheet `N-34-130-D-d-2-4`. The "Karta pliku" (File card) shows the 
 timeline (flights 2019, 2023, 2025), which version is current, which is full
 (`full_sheet/`), which projects pin which version, metadata in
 plain language ("laser scanning, mean height error 0.06 m, full sheet"),
-the license with a "Kopiuj atrybucję" (Copy attribution) button, a preview and the actions: "Kopiuj
+the license, the lines its provider's terms require with a "Kopiuj atrybucję" (Copy attribution) button (4.8.5), a preview and the actions: "Kopiuj
 ścieżkę wersji" (Copy version path), "Polecenie Kartografa" (Kartograf command: the
 command that selects this version, KB-6), "Sprawdź aktualność" (Check for updates), "Porównaj
 wersje" (Compare versions), "Dodaj do projektu…" (Add to project: the version chosen on the
@@ -361,8 +361,8 @@ Ola's project holds the sets "2024" and "2014" (NMT, BDOT10k and orthophoto of e
 She chooses "Eksportuj…" (Export), names the export "raba-model" and asks for a ZIP. In the
 project directory `eksport/raba-model/` is created with the folders `NMT/`, `BDOT/` and
 `ORTO/` holding copies of the pinned files in their original formats (the sheet of both years
-named with each version's label) and `README.txt` (every file with its year, systems, size,
-SHA-256 and set, and the attributions the licences require), and `eksport/raba-model.zip` with
+named with each version's label), `README.txt` (every file with its year, systems, size,
+SHA-256 and set, and the lines the providers' terms require) and `ATTRIBUTION.txt` (those lines alone), and `eksport/raba-model.zip` with
 the same content, which she sends to a colleague who compares the years in QGIS. From v1.1 the
 export also holds a `.qgz` file that QGIS opens without asking about coordinate systems
 (section 8.4).
@@ -457,7 +457,7 @@ directory byte-identical to the one produced by the same `obserwator` command fr
 Ola opens the station "Stróża": the station card has metadata (code, river and its
 hydrographic code, location with source and uncertainty), coverage of H, Q and T,
 a chart of daily Q (gaps as breaks with a grey band, annual maxima published by
-IMGW as points), versions of series and archives, and IMGW formulas
+IMGW as points), versions of series and archives, and the lines the IMGW-PIB terms require (4.8.5)
 with "Kopiuj atrybucję" (Copy attribution). "Porównaj z…" (Compare with…) adds Q from Gdów and Proszówki as
 panels stacked under that of Stróża on a common time axis, with a table of facts (6.7, M11).
 Archiwista does not compute statistics (1.3).
@@ -490,8 +490,8 @@ provider badge at the point); the "Zestawienie" (Summary) has coverage labels fo
 providers under the same rules (4.8.4, 4.8.6). "Sprawdź aktualność"
 and "Pobierz archiwa…" for ČHMÚ stations go through Obserwator with the "Okno planu" (Plan window)
 and the `obserwator …` command; the plan covers only the stations of the area, because ČHMÚ
-publishes archives per station. The ČHMÚ "Karta stacji" (Station card) gives the CC BY 4.0 attribution
-from the sidecar, and "Dodaj do projektu…" (Add to project…) saves stations of both providers in one
+publishes archives per station. The ČHMÚ "Karta stacji" (Station card) gives ČHMÚ's CC BY 4.0 attribution
+and what was done with the data (4.8.6), and "Dodaj do projektu…" (Add to project…) saves stations of both providers in one
 IMGW project — one job per dataset, so separately for IMGW stations
 and ČHMÚ stations (IMGW-19).
 
@@ -1279,15 +1279,42 @@ IMGW-PIB regulations (https://danepubliczne.imgw.pl/regulations):
 - **purpose of use** — Archiwista assumes private or research use (user decision 2026-10-17; regulations §2 item 2, §4, §5 para. 1); the purposes in §3 para. 2 (including business activity, research for planning in water management) require an agreement with IMGW-PIB, unless the data are high-value data;
 - **§6 para. 3** — some of the data may be unverified.
 
-| Where | Formulas |
+Every product of Archiwista with data of IMGW-PIB or ČHMÚ carries the lines Nogat's standard
+prescribes (DEV §20, ECO-060; A-ADR-055), verbatim and in Polish whatever the language of the
+answer: the attribution (`attribution`, in the order of DEV-20.4), then the terms notice
+(`terms_notice`, DEV-20.7), each line once. The lines of IMGW-PIB (the standard's marks):
+
+| Mark | Line |
 |---|---|
-| archive and station catalog sidecar (`license.attribution`, IMGW-3) | §5 para. 3 |
-| dataset series sidecar and CSV export (processed data: normalization and format change) | §5 para. 3 and 4 |
-| station card, chart (values simplified for display), comparison | §5 para. 3 and 4, with "Kopiuj atrybucję" (Copy attribution) |
-| export ("Źródła danych" of its `README.txt`, 8.4) | formulas of all versions of the export, without repetitions |
+| S | "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy" (§5 para. 3) |
+| P | "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone" (§5 para. 4) |
+| H | "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl" (the station positions of the IMGW-PIB catalog) |
+| PS | "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, dane pochodzą ze strony https://klimat.imgw.pl/opady-maksymalne" (PMAXTP, in place of S) |
+| PP | "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego pochodzące ze strony https://klimat.imgw.pl/opady-maksymalne zostały przetworzone" (PMAXTP, in place of P) |
+| M | "„Modele probabilistyczne opadów maksymalnych o określonym czasie trwania i prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan Ozga-Zieliński, Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy, Warszawa 2022" (PMAXTP) |
+| N | "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB." (terms notice) |
+| RD, RH, RK | "Regulamin: https://danepubliczne.imgw.pl/regulations", "Regulamin: https://hydro.imgw.pl/#/regulamin", "Regulamin: https://klimat.imgw.pl/opady-maksymalne" (terms notice: the terms of the data's service) |
+
+The ČHMÚ lines C and CP follow M (4.8.6).
+
+| Where | Lines |
+|---|---|
+| archive and station catalog sidecar (`license.attribution`, IMGW-3; Obserwator's text) | §5 para. 3 |
+| dataset series sidecar and CSV export (processed data: normalization and format change; Obserwator's text) | §5 para. 3 and 4 |
+| a stored version as it is: the file card ("Kopiuj atrybucję" (Copy attribution)), `GET /stores/{store}/versions/{version}`, the version comparison (`GET /compare`, 8.5), the "Katalog" (Catalog) list of files (a page of `GET /slots`, 9.2) | an archive S; a dataset series S, P; the station catalog S, P, H; a PMAXTP cell PS, PP, M; each with N and its service's terms (RD; RD and RH for the catalog; RK for PMAXTP) |
+| stations with their positions: the map, the "Katalog" (Catalog) list and "Oś czasu" (Timeline) of stations, the station card and the station comparison ("Kopiuj atrybucję" in both) | S, P, H, N, RD, RH; when none of the stations has a position, as the next row |
+| a station's series without positions: the chart (values simplified for display), the coverage of `GET /stations/{code}/coverage`, the datasets of stations | S, P, N, RD |
+| hand-off `nogat-handoff/1` (`GET /stations/{code}/handoff`, 9.2) | S, P, N, RD |
+| export (the section "Źródła danych i warunki korzystania" of its `README.txt` and `ATTRIBUTION.txt`, 8.4) | the lines of all versions of the export, each once |
 | "Okno planu" (Plan window) and assistant proposals | Obserwator message about the purpose of use (IMGW-11), without blocking |
 
-The text of the formulas comes from the sidecars, not from Archiwista's code. Archiwista informs about the terms but does not enforce them — it does not know the purpose of use.
+The lines come from Archiwista's message catalog (`src/archiwista/messages/legal.py`), chosen
+by the provider and the form of the data, never copied from a sidecar: the producer names the
+origin of a version's data (`DataOriginAdapter`, 5.3), so versions written by older Obserwator
+releases carry the same lines. A version whose producer names no origin (Kartograf) carries
+the attribution of its sidecar (`license.attribution`) as its one line, without a terms
+notice. The PNG previews draw no lines, an open point against DEV-20.5 (A-ADR-055).
+Archiwista informs about the terms but does not enforce them — it does not know the purpose of use.
 
 #### 4.8.6 ČHMÚ stations (CZ, from v0.6)
 
@@ -1305,7 +1332,7 @@ Differences from IMGW, which Obserwator handles and Archiwista only displays:
 - **Versions and pins** (ADR-003 D6, D14, D17, D18 Obserwator): the same bytes under a new signal = `relabeled`, as with IMGW; different bytes of the same canonical content (`content_sha256`, form `chmi-json/1`: JSON in canonical form without the envelope fields `zaznamID` and `datumVytvoreni`; `cz.chmi.hydro_daily` and the station lists have it) = `unchanged` without a new version, and the new signal goes once to the `observations/` registry of the slot. Archiwista shows observations as the publication history of a file — they are not versions or problems. A ČHMÚ pin is restored with identical bytes or explicitly by content (`restored_by_content`, job state `content_match` — "zgodne treścią" (matching by content), not "bieżące" (current)); a project job concerns one dataset, so one provider.
 - **Identifier** of a station is WIGOS (e.g. `0-203-0-…`); identity in the index and in project jobs = provider + identifier, so PL and CZ codes do not collide. The ČHMÚ station catalog is a separate version (`stations/versions/chmi_stations/…`, slot `catalog:cz.chmi.stations`; hydro from the metadata `meta1.json` and `meta3.json`, meteo from `meta1-<YYYYMMDD>.json`, both families also from station list archives) with the same fields and rules for missing location as 4.8.1 (`meteo_kind`, `river_order`, `gauge_zero_m`, `river_km` empty), with SPA thresholds in the `thresholds` object; the hydro catchment hierarchy code is `HLGP4` (text, e.g. `1-05-03-0110`; meteo does not have it), and the prefix filter by full segments (e.g. `1-05`) works like P19.
 - **Format**: hydro — JSON in UTF-8 (missing = no row or `null`), meteo — CSV (missing = empty `VALUE`); normalization to records with a flag (4.8.3; meteo also the source `QUALITY` and `FLAG` in the columns `<V>_quality`, `<V>_source_flag`) and the `hydro_year` column (XI–X) are on the Obserwator side; the inventory has `year_type` `calendar` and station periods (`stations[<code>].periods`), so the labels of 4.8.4 (units known per station) and the year-kind switch work unchanged.
-- **License** CC BY 4.0 (`license.id` `CC-BY-4.0`, additive `terms_url`): ČHMÚ attribution in `license.attribution` of sidecars (IMGW-19; in series, catalog and export with a note about processing), in the station card and in the set — text from the sidecar, not from Archiwista's code; the IMGW regulations (4.8.5) do not apply to ČHMÚ stations.
+- **License** CC BY 4.0 (`license.id` `CC-BY-4.0`, additive `terms_url`): ČHMÚ attribution in `license.attribution` of sidecars (IMGW-19; in series, catalog and export with a note about processing). Archiwista's products carry the line C "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)" and what was done (CP): Obserwator's series and station catalog, as stored and in a hand-off, "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"; Archiwista's station views (map, lists, card, chart, comparison) "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu, zestawienia i wykresy)"; an archive as published C alone; never a terms notice (4.8.5, A-ADR-055). The lines come from Archiwista's catalog, not from the sidecar; the IMGW regulations (4.8.5) do not apply to ČHMÚ stations.
 
 Out of scope for v0.6: current and hourly ČHMÚ data, CAP warnings, SPA states (shown at most as station attributes). Adapter: one Obserwator adapter — Obserwator 3.0.0 has ČHMÚ in the `obserwator` package (ADR-003 Obserwator; the tool and its package were renamed from IMGWTools and `imgwtools` in ECO-057, and the adapter and the extra follow as `archiwista.adapter.obserwator` and `archiwista[obserwator]`); should the provider ever move to a separate package, the decision on the adapter and extra will be made at that release (5.8, A-ADR-024; open question in the PRD).
 
@@ -1436,7 +1463,7 @@ Proposed split (the final one will be set by the implementation plan):
 | `src/archiwista/assistant/` | provider adapters, tools, proposals, conversations, cost counters |
 | `src/archiwista/api/` | `/api/v1` routes (section 9) — thin, only calls to the service layer |
 | `src/archiwista/web/` | interface: ES modules (Preact + htm) and bundled libraries, served statically — no build step (A-ADR-028) |
-| `src/archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostics: Kartograf, Obserwator, stores and producer directories, permissions, port), `archiwista token` (one-time agent session token), `archiwista users`, `groups`, `share` (permission administration), `archiwista state export` and `state import`; read commands `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` with `--json` using the API response schema (`archiwista/reader.py`; `docs/AGENT_API.md`) |
+| `src/archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostics: Kartograf, Obserwator, stores and producer directories, permissions, port), `archiwista token` (one-time agent session token), `archiwista users`, `groups`, `share` (permission administration), `archiwista state export` and `state import`; read commands `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` with `--json` using the API response schema (`archiwista/reader.py`; `docs/AGENT_API.md`); the text for a person of a data answer (`search`, `version`, `compare`, `stations list`, `timeline`, `show`, `series`, `compare` and `datasets`) ends with the answer's `attribution` and `terms_notice` under „Źródła danych i warunki korzystania:”, one line each, indented two spaces; `--json` gives the fields (9.1, A-ADR-055) |
 
 Interface (`src/archiwista/web/`, A-ADR-028): routes
 with the whole state in the URL (area, product, filters, map view — the link
@@ -1461,6 +1488,7 @@ which producer wrote the file:
 | `command_for_version(version, *, root)` | optional (`VersionCommandAdapter`): the call that selects a stored version, from its metadata, offline; the producer's coded refusal is `unsupported` / `command_not_rebuildable` (4.7, A-ADR-049) | `command_for_file(sidecar)` (KB-6) | `command_for_version(version, root=…)` (IMGW-21) |
 | `export_folder(product, dataset_key)` | optional (`ExportFolderAdapter`): the category folder of a version in a project's export (`NMT`, `BDOT`, `ORTO`…), a table in the adapter; without it the upper-cased product id (8.4, A-ADR-049 erratum 1) | a table of Kartograf's products in the adapter | `IMGW` |
 | `product_name(product)` | optional (`ProductNameAdapter`): the Polish name of a product for people, offline; without it, or `None`, the product is named after its biggest segment (6.3) | — | „Stacje hydrologiczne” (`hydro`), „Stacje meteorologiczne” (`meteo`) |
+| `data_origin(path, segment)` | optional (`DataOriginAdapter`): whose data a version holds and in what form (`DataOrigin`: `imgw_file`, `imgw_processed`, `imgw_stations`, `pmaxtp`, `chmi_file`, `chmi_processed`), offline, no disk access; Archiwista chooses the lines of the providers' terms by it (4.8.5); without it, or `None`, a version carries its sidecar's attribution alone (A-ADR-055) | — | by tree and the dataset's provider: `archives/` → `imgw_file`, `chmi_file`; `series/` → `imgw_processed`, `chmi_processed`; `stations/` → `imgw_stations`, `chmi_processed`; `pmaxtp/` → `pmaxtp` |
 | `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-033) | `store_root()` | `store_root()` of `obserwator.config` (`OBSERWATOR_ROOT`, else `<data_dir>/obserwator`) |
 
 The Obserwator adapter also has the "stations and series" capabilities, which the Kartograf
@@ -2183,12 +2211,14 @@ store badge; list mode and objects without a location — 6.8, sketch m; M5)
 
 ```text
 NMT 1 m · PL-1992 · EVRF2007 > N-34-130-D-d-2-4                         [x]
-Arkusz 1:10 000 · GUGiK · PL-PGiK-40a [Kopiuj atrybucję]
+Arkusz 1:10 000 · GUGiK · PL-PGiK-40a
 -----------------------------------------------------------------------------
 Wersje:      2019-06-11_61234     2023-05-02_80011     2025-04-26_82710
              o--------------------o--------------------O  bieżąca, pełna
 Przypięta w: -                    Wisła-2026 (dem)     Raba (teren)
 -----------------------------------------------------------------------------
+Źródło danych i warunki                                   [Kopiuj atrybucję]
+Główny Urząd Geodezji i Kartografii
 [Podgląd] [Metadane] [Pochodzenie] [Szczegóły techniczne]
  Kampania 82710 · lot 2025.04.26 · skaning laserowy · błąd wys. 0,06 m
  Arkusz pełny · 37,8 MB · EPSG:2180 · EPSG:9651 · nodata -9999
@@ -2329,7 +2359,7 @@ because the archives are national; M3, M11)
 
 ```text
 Wodowskaz STRÓŻA · Raba (kod hydrograficzny 2138) · 149190310           [x]
-IMGW-PIB · czynna · Lata: [hydrologiczne (XI–X) v]       [Kopiuj atrybucję]
+IMGW-PIB · czynna · Lata: [hydrologiczne (XI–X) v]
 Położenie: 49,7963° N, 19,9247° E · API IMGW (danepubliczne), 2026.10.17
            · niepewność ±150 m                          [Strona stacji IMGW]
 -----------------------------------------------------------------------------
@@ -2355,9 +2385,18 @@ Szeregi: hydro dobowe · wersja 2026-08-31_ab12cd34 · z 867 archiwów [Lista]
 -----------------------------------------------------------------------------
 [Kopiuj ścieżkę pliku] [Polecenie Obserwatora] [Sprawdź aktualność]
 [Przygotuj szeregi...] [Dodaj do zestawu]
+Źródło danych i warunki                                   [Kopiuj atrybucję]
 Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej –
-Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej –
-Państwowego Instytutu Badawczego zostały przetworzone.
+Państwowy Instytut Badawczy
+Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu
+Badawczego zostały przetworzone
+Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl
+Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych
+(niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach
+z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie
+w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.
+Regulamin: https://danepubliczne.imgw.pl/regulations
+Regulamin: https://hydro.imgw.pl/#/regulamin
 ```
 
 **l) "Okno planu" (Plan window) for IMGW archives**
@@ -2630,7 +2669,7 @@ confirmed by the user on 2026-10-26, M11):
   for the missing location, coverage
   of each variable separately (label, full years, longest gap; no
   aggregate station label, P16), chart, versions of series and input archives
-  (`sha256`, `ETag`, `Last-Modified`), IMGW formulas with "Kopiuj atrybucję" (Copy attribution)
+  (`sha256`, `ETag`, `Last-Modified`), the lines of the provider's terms with "Kopiuj atrybucję" (Copy attribution)
   and the link "Strona stacji IMGW" (IMGW station page) (`https://hydro.imgw.pl/#/station/hydro/<code>`
   — a plain link, no background requests). Actions: "Kopiuj ścieżkę pliku" (Copy file path),
   "Polecenie Obserwatora" (Obserwator command), "Sprawdź aktualność" (Check freshness), "Przygotuj szeregi…" (Prepare series…),
@@ -2671,10 +2710,14 @@ confirmed by the user on 2026-10-26, M11):
   boundary from Hydrograf (`zlewnia.gpkg`, EPSG:2180) — selects Kartograf's
   data and IMGW stations at the same time: "Wszystkie produkty" (All products) (UC-02) shows
   the slots and stations of the area, and the set (8.4) combines the layers of both producers
-  with the attributions of both. Optionally, later (M11 did not decide it): a common timeline of the years of
+  with the lines of both providers' terms (4.8.5). Optionally, later (M11 did not decide it): a common timeline of the years of
   NMT flights and series coverage.
-- **Licence.** Below the chart, in the station card and in the comparison are placed
-  the IMGW formulas (4.8.5), and for ČHMÚ stations — the CC BY 4.0 attribution from the sidecar.
+- **Licence.** The lines the providers' terms require (4.8.5, 4.8.6; A-ADR-055) stand under
+  the heading "Źródło danych i warunki" (Data source and terms), one paragraph per line, addresses as links:
+  in the station card below its tabs and in the station comparison, both with "Kopiuj atrybucję"
+  (Copy attribution: every line, one per line), in the footer of the chart, and in a strip under
+  the map and under the "Katalog" (Catalog) station list (the lines of the pages read, merged);
+  an answer without lines shows none.
 - **ČHMÚ stations (from v0.6, 4.8.6).** The same views and rules; the point, row
   and card have a supplier badge ("IMGW-PIB", "ČHMÚ" — the display name
   for the identifier `CHMI`), the "Dostawca" (Supplier) filter works in the map,
@@ -2811,7 +2854,7 @@ shown as a badge in the message field ("Kontekst: Kraków · NMT ·
 | `get_slot`, `get_version` | file card: versions, metadata, pins | read |
 | `list_projects`, `get_project` | projects, pin groups, pins, state (no network) | read |
 | `find_stations` | stations of an area or by attributes (river and hydrographic code with tributaries, P19): type, variable, years, coverage labels separately for each variable of the station (P16), location and its source or the reason for its absence; always with a counter of stations without a location (like `GET /stations`) | read |
-| `get_station` | station card: metadata, coverage of each variable separately, versions of series and archives, IMGW formulas | read |
+| `get_station` | station card: metadata, coverage of each variable separately, versions of series and archives, the lines of the provider's terms (`attribution`, `terms_notice`, 4.8.5) | read |
 | `get_series_coverage` | coverage of a station's variables by year from the index; without archives: "unknown" and a plan to download them | read |
 | `check_availability` | availability at the source for an area; for IMGW datasets, published years and publication dates | read with network (limit per turn, can be disabled) |
 | `plan_command` | plan of a producer command (`check_command` KB-5, `check_store` IMGW-5): units or files, local, to download, size | read with network |
@@ -3251,13 +3294,14 @@ the missing location), not as points of the station layer (6.8; v1.1).
 | File | Contents | From |
 |---|---|---|
 | `<KATEGORIA>/` | one folder per category, named for people by the producer's adapter (`ExportFolderAdapter`: `NMT`, `NMPT`, `LAZ`, `ORTO`, `BDOT`, `HSG`, `CORINE`, `SOILGRIDS`, `WARSTWICE`…; `IMGW` for IMGW data; else the upper-cased product id): each pinned version once, **copied** (never hard-linked: a recipient may write to a GeoPackage, which must not change a store version) under its original name and format, with the companion files the store holds beside it named after its stem (`.prj`, `.tfw`, `.aux.xml`, every part of a Shapefile), never a `*.meta.json` sidecar. A version stored as a ZIP holding exactly one raster (one file, XYZ, ASC or GeoTIFF, under a plain name; the rule of previews, `formats.raster_member`; GUGiK's NMT of 2020: an XYZ grid per sheet) is unpacked: the raster under the member's own name, its bytes unchanged, without the ZIP's companions; any other ZIP is copied as it is (A-ADR-049 erratum 4). Two files of one name in a folder (case-folded; the same sheet of two sets) both get their version's label before the extension (`M-33-44-A-d-2-2_2025-06-13.asc`), their companions alike, and the SHA-256 prefix too when the labels are equal | now |
-| `README.txt` | Polish, UTF-8 with LF: per file its folder and name, product, year and label, coordinate and height systems when the index knows them, size, SHA-256 and the sets that pin it; for an unpacked raster the ZIP it came from and the ZIP's SHA-256 (the version's), for a ZIP kept whole that it does not hold exactly one raster; for an XYZ file (it holds no coordinate system) the CRS to set in QGIS, EPSG:2180 with the version's height system (PL-EVRF2007-NH for the NMT), and that points missing from the grid are nodata; ending with "Źródła danych", the attribution texts of the copied versions (`license.attribution` of their sidecars, kept in the index) without repetitions — required by the GUGiK license (art. 40a), CC BY 4.0 ČÚZK, Copernicus (CORINE) and the IMGW-PIB terms (§5 para. 3 and 4; 4.8.5) | now |
+| `README.txt` | Polish, UTF-8 with LF: per file its folder and name, product, year and label, coordinate and height systems when the index knows them, size, SHA-256 and the sets that pin it; for an unpacked raster the ZIP it came from and the ZIP's SHA-256 (the version's), for a ZIP kept whole that it does not hold exactly one raster; for an XYZ file (it holds no coordinate system) the CRS to set in QGIS, EPSG:2180 with the version's height system (PL-EVRF2007-NH for the NMT), and that points missing from the grid are nodata; ending with "Źródła danych i warunki korzystania": the lines the providers' terms require of the copied versions, each once, then the terms notice, as `ATTRIBUTION.txt` holds them (4.8.5, A-ADR-055) — for IMGW-PIB and ČHMÚ by the data's origin, for a producer that names none the attribution of the sidecar (`license.attribution`, kept in the index) — required by the GUGiK license (art. 40a), CC BY 4.0 ČÚZK, Copernicus (CORINE), CC BY 4.0 ČHMÚ and the IMGW-PIB terms (§5 para. 3 and 4; 4.8.5); without any line "Magazyn nie podaje atrybucji dla tych plików." | now |
+| `ATTRIBUTION.txt` | at the export's root, UTF-8: the same lines alone, one per line, the attribution lines, then the terms notice (Nogat DEV-20.5, A-ADR-055); listed in the export's files; not written when the copied versions have no line | now |
 | `<name>.qgz` | QGIS project: a group per pin group (or product), a layer per exported file, layer CRS from the sidecar (`horizontal_crs`), default style by product (NMT hillshade, orthophoto RGB, CORINE palette, HSG classes), project CRS = CRS of most layers, attributions in the project metadata; the "IMGW" group: a station layer and series tables from `szeregi/` | v1.1 |
 | `vrt/` | VRT wrappers for files without a stored CRS (ASC, JPEG with JGW) — with an explicit SRS from the sidecar; optionally VRT mosaics of groups (references only) | v1.1 |
 | `szeregi/` | IMGW series as CSV (`<code>_<dataset>.csv`) from the Obserwator export (IMGW-12) — not processed by Archiwista; units in the header, gaps as empty cells, a flag column; input for, among others, Hydrolog | v1.1 |
 | `zestaw.json` | description of the export (`archiwista-set/1`): project, the SHA-256 of the project file it was made from, generation time, versions of Archiwista, Kartograf and Obserwator, list of files, and for IMGW — stations, variables, years and their kind, versions of the series and of the station catalog — allows detecting an outdated export exactly | v1.1 |
 
-**ZIP.** With `zip` the folder's content (the category folders and `README.txt`, no top
+**ZIP.** With `zip` the folder's content (the category folders, `README.txt` and `ATTRIBUTION.txt`, no top
 directory) is also `<project directory>/eksport/<name>.zip`, written under a temporary name
 and renamed; `GET /projects/{project}/exports/{name}/zip` sends it as an attachment
 (`Cache-Control: private, no-store`), to a link of the interface without the CSRF header as
@@ -3286,8 +3330,9 @@ store is not configured is left out, and the export says how many. The copy take
 space of the data; it runs at once, without a job.
 
 **What the producers provide.** Sidecars with CRS and license (read into the index), the
-category folder of a product (`ExportFolderAdapter`, a table in the adapter), and
-`export_series` (IMGW-12) for `szeregi/`. Nothing else is required.
+category folder of a product (`ExportFolderAdapter`, a table in the adapter), the origin of a
+version's data (`DataOriginAdapter`, 5.3; optional) and `export_series` (IMGW-12) for
+`szeregi/`. Nothing else is required.
 
 **Where to implement.** Archiwista entirely (`src/archiwista/projects/`) — it is packaging
 and presentation without data processing (the IMGW series CSV is exported by Obserwator).
@@ -3305,7 +3350,10 @@ from the "Zestawienie" (Summary) (dataset versions).
    (flight, PZGiK, download), campaign and submission number, data source,
    accuracies (`height_rmse_m`, `position_rmse_m`), full sheet
    and coverage, resolution, CRS, `sha256`, size, source address,
-   license, Kartograf version.
+   license, Kartograf version; with the lines of both versions' providers' terms
+   (`attribution`, `terms_notice`, 4.8.5, A-ADR-055) in a strip under the table, and in the
+   CSV made in the browser as the last columns `attribution` and `terms_notice`, one line
+   per cell from the first data row down (DEV-20.5).
 2. **Visual** (from previews): the curtain and cross-fade on the map, two views
    side by side synchronized, switching years in the "Wachlarz" (the Fan).
 3. **Computed differences** (KG): raster — a difference model `B − A` on a common
@@ -3455,6 +3503,17 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
   stays in Polish). Commands: text for a person (help, diagnostics, the line
   before an error document) in Polish, the `--json` output and the
   `archiwista-error/1` document in English.
+- **Provider lines (Nogat DEV §20, A-ADR-055):** the answers with data of versions or
+  stations — `GET /slots`, `GET /stores/{store}/versions/{version}`, `GET /compare`,
+  `GET /map/stations` and the `GET /stations…` routes of 9.2 but the hand-off — have
+  `attribution` and `terms_notice`, arrays of the lines the terms of the data's providers
+  require (4.8.5, 4.8.6): verbatim, in Polish whatever `Accept-Language` says, each line
+  once, `attribution` in the order of DEV-20.4 (IMGW-PIB, PMAXTP, ČHMÚ, then the sidecar's
+  attribution of a version whose producer names no data origin) and `terms_notice` in that
+  of DEV-20.7; both are empty arrays for an answer without such data. A client shows them
+  with the data and carries them into everything it makes of it (copies, CSV, reports); they
+  inform and never block. The hand-off (`GET /stations/{code}/handoff`) carries them as
+  optional keys, and a command's text for a person ends with them (5.3).
 - **Pagination:** `limit` (up to 200) and an opaque `cursor`.
 - **Filters** in the query have the names of the interface filters (6.6); an area
   in the query as `bbox` + `bbox_crs`, in the body as GeoJSON (WGS84) or an
@@ -3484,9 +3543,9 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /stores/{store}/footprints` | footprints of units (TERYT, KU, SM5) with the network for versions without a footprint → background job (5.6); administrators only (`store.scan`); in offline mode `409 offline_mode` |
 | `POST /stores/{store}/link-check` | confirmation of the slot link target by content (`slot`; KA-5) → background job; administrators only (`store.scan`) |
 | `GET /products` | products with descriptions, countries and counters in stores (KB-1, IMGW-11 + index); `name` is the producer's name of a product (`ProductNameAdapter`), else `null` |
-| `GET /slots` | search and filters: slots with the current version; `location` (`any`, `with`, `none`), `unit` and `project` (only pins in the visible project) |
+| `GET /slots` | search and filters: slots with the current version; `location` (`any`, `with`, `none`), `unit` and `project` (only pins in the visible project); `attribution` and `terms_notice` (9.1) of the page's current versions, merged, by their producers' data origin (empty for versions whose producer names none, e.g. Kartograf's) |
 | `GET /stores/{store}/slots/{slot}` | file card: versions, current and full, pins |
-| `GET /stores/{store}/versions/{version}` | version: metadata in human-readable form and sidecar |
+| `GET /stores/{store}/versions/{version}` | version: metadata in human-readable form and sidecar; `attribution` and `terms_notice` (9.1): the lines of its data's origin (an IMGW-PIB archive S, a series S, P, the station catalog S, P, H, each with its terms notice; ČHMÚ C, or C and CP; 4.8.5, 4.8.6), for a producer that names none the sidecar's `license.attribution` as its one line; `attribution` is an array since A-ADR-055 (before, that string or `null`) |
 | `GET /stores/{store}/versions/{version}/sidecar` | raw sidecar |
 | `GET /stores/{store}/versions/{version}/command` | the producer's command that selects this version (`command_for_version`: KB-6, IMGW-21; offline): `producer`, `command`, `options` and its `line` (`format_command`; `null` for a producer without commands); `422 unsupported` with the reason `command_not_rebuildable` and the producer's text when its metadata does not rebuild the call, or `no_commands`; the file card's "Polecenie Kartografa" (A-ADR-049) |
 | `GET`/`POST /stores/{store}/versions/{version}/preview` | preview state or build in a `preview` job |
@@ -3497,18 +3556,18 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /stores/{store}/versions/{version}/members` | list of ZIP members |
 | `POST /previews/warm` | the first look at current versions prepared in the preview cache → `202` with the `preview_warm` job (5.7, ADR-041): optional filters `store`, `product`, `segment`, `project` (adds its own data; the job is that project's) and `area_id`; any session; a store that is not configured, a hidden or unknown project and an unknown area → `404` before a job; a request of the filters of a waiting warm-up returns that job |
 | `GET /requests/{parent_request}` | files of one Kartograf job (also PL and CZ); `/groups` belongs to permission groups |
-| `GET /compare?a=…&b=…` | comparison of `ref` metadata of two versions, own files or snapshots (8.5, level 1) |
+| `GET /compare?a=…&b=…` | comparison of `ref` metadata of two versions, own files or snapshots (8.5, level 1), with `attribution` and `terms_notice` of both sides' versions merged (9.1; none for own data) |
 | `GET /map/footprints` | footprints in the view (`bbox`, `zoom`, filters) or aggregation |
 | `GET /map/sheets` | sheet grid in the view (`system`, `scale`): each sheet with its zone and outline; a PL-2000 sheet that a zone boundary cuts is outlined inside its zone (zones of powiats, Kartograf ADR-055) |
-| `GET /map/stations` | the located stations of the view (`bbox` in WGS84, required; `area_id` with `boundary`, the filters of `GET /stations`, `limit`, `grid_columns`) as points, each with the state and label of each variable when `dataset` is given (its colour and tooltip), or above `limit` a grid of counts; `counts` as in `GET /stations` (the stations without a location are counted, never drawn). Unlike `GET /stations`, `dataset` alone labels and keeps every station of the other filters: one without a series of it is drawn with no data of it, so a station catalog downloaded without series shows its stations (2026-11-06); with `variable`, `coverage` or `min_complete_years` it keeps only the stations with its series |
-| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `meteo_kind` (repeatable: `synoptic`, `climate`, `precipitation`, the station types of the map's chips; the counts follow it, ADR 0045 decision 1), `years`, `year_type` (by default the type remembered for the data's family, `year_types` of `GET /settings`, and for a list of both families, without `dataset`, `kind` or `meteo_kind`, hydro's; P15, ADR 0045 decision 3), `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `q` (a station whose name or river contains the text, case-folded, or whose code begins with it; no character is a wildcard), `sort` (`river`, the default: along rivers, by the hydrographic code, then the provider's order on the river, then the name, 6.8; or `name`; both bound to `cursor`, ADR 0045 decision 4), `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while Obserwator is not available |
-| `GET /stations/datasets` | the datasets with station series in the index (`store` optional): each with its key, the producer's name of its segment, provider, family, time unit, the year type of its labels (the one remembered for its family; hydrological for half-year characteristics), R by default in it (`years`), the label of its current series version and its variables (key, variable, unit, half-year period: the distinct keys of its stations' series, the first the default "Kolor punktów"); `503` without Obserwator (ADR 0045 decision 1) |
-| `GET /stations/timeline` | a page of the stations of one dataset year by year, the "Oś czasu" (Timeline) tab of the Catalog (6.5 j): the filters, order and cursor of `GET /stations` with `dataset` required; each item the station (code, name, kind, river with its hydrographic code, active, location) and its series as `GET /stations/{code}/coverage` gives it for the same `variable`, `years` and `year_type`; `variable` (repeatable) keeps the stations with a value of each variable and only their rows; the years of the whole page are read from the index at once; `503` without Obserwator (ADR 0045 decision 6) |
-| `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the IMGW formula (the input archives are not built yet), `paths`: each series file by dataset on this computer and as mounted on others (path aliases, 4.6), and `charts`: the charts of `GET /stations/{code}/series` its series give (`dataset`, `time_unit`, `resolution`, `variables` with their unit and first and last day; days, then months, then the annual charts of half-year characteristics; A-ADR-051); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
-| `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `dataset`, `year_type`, `years`) — the Timeline: every year of R with its units, the known ones and those with a value, and its cell (`full`, `fraction`, `none`, `unknown`) |
-| `GET /stations/{code}/series` | chart data, for display only (`variable` once or twice, `store`, `provider`, `dataset` — by default the one series of the station with every variable, one of days before one of months —, `resolution`, `from`, `to` — by default the variables' known span —, `year_type`, `max_points` ≤ 2,000, `version` — the index's current one, else `409`): the current series version read through the producer; each unit's value up to `max_points` units, else the least, mean and greatest value of each interval of `ceil(units / max_points)` units (`null` without a value, never interpolated); a variable of a monthly series (`Q`, not `Q_max`) gives each month's published minimum, mean and maximum, an interval the least minimum, the mean of the means and the greatest maximum; `gaps` the gaps each variable's label counts in `year_type` (4.8.4) cut at the range's ends; `markers` the accumulated sums and the extremes IMGW published in the half-year characteristics (with their dates); half-year characteristics are not drawn as a line (`400 half_year_chart`). `resolution=annual` (A-ADR-051) reads the station's half-year characteristics instead (`400 no_annual_source` without them; `variable` optional, by default each variable with a value; hydrological years only, else `400 annual_year_type`): a point a hydrological year with `max` and `min`, the greater of the winter and summer maxima and the lesser of their minima, each with `value`, `start`, `end`, `occurrences`, `halves` and `partial` (the half without a value), `null` when neither half has one; `derived` `annual_extremes`, found for display and never stored |
-| `GET /stations/{code}/handoff` | a variable of a station's series as a hand-off to Hydrolog's statistics (A-ADR-052): `nogat-handoff/1` around `hydrolog-series/1`; the station, `dataset`, `variable` (one), `resolution`, `from` and `to` as for the chart; `unit`: every day of a series of days over the range, `null` without a value (a series not of days is `400 no_daily_series`); `annual`: the annual maxima of the annual chart, a year missing a half `null` and named in `provenance.series.left_out` |
-| `GET /stations/compare` | 2–5 stations of one variable on a common time axis (`station` repeatable as `<store>/<provider>/<code>`, `dataset`, `variable`, `from`, `to` — by default the variable's known spans at the stations together —, `year_type`, `max_points` ≤ 2,000): one range and one interval for every station; each station with its location, its series version, the variable's label and facts as on its card (`coverage`) and its chart as `GET /stations/{code}/series` gives it for that range (`chart`); a station without the series or the variable keeps its place with `null` ("brak danych", P14); `400` (reason `unknown_variable`) when no station's series has the variable, `404` when none has a series of the dataset |
+| `GET /map/stations` | the located stations of the view (`bbox` in WGS84, required; `area_id` with `boundary`, the filters of `GET /stations`, `limit`, `grid_columns`) as points, each with the state and label of each variable when `dataset` is given (its colour and tooltip), or above `limit` a grid of counts; `counts` as in `GET /stations` (the stations without a location are counted, never drawn). Unlike `GET /stations`, `dataset` alone labels and keeps every station of the other filters: one without a series of it is drawn with no data of it, so a station catalog downloaded without series shows its stations (2026-11-06); with `variable`, `coverage` or `min_complete_years` it keeps only the stations with its series; `attribution` and `terms_notice` (9.1) of the providers of the stations drawn, points or cells: IMGW-PIB S, P, H with N, RD, RH; ČHMÚ C and CP (4.8.5, 4.8.6) |
+| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `meteo_kind` (repeatable: `synoptic`, `climate`, `precipitation`, the station types of the map's chips; the counts follow it, ADR 0045 decision 1), `years`, `year_type` (by default the type remembered for the data's family, `year_types` of `GET /settings`, and for a list of both families, without `dataset`, `kind` or `meteo_kind`, hydro's; P15, ADR 0045 decision 3), `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `q` (a station whose name or river contains the text, case-folded, or whose code begins with it; no character is a wildcard), `sort` (`river`, the default: along rivers, by the hydrographic code, then the provider's order on the river, then the name, 6.8; or `name`; both bound to `cursor`, ADR 0045 decision 4), `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); `attribution` and `terms_notice` (9.1) of the page's stations: IMGW-PIB S, P, N, RD, with H and RH when a row has a point; ČHMÚ C and CP (4.8.5, 4.8.6); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while Obserwator is not available |
+| `GET /stations/datasets` | the datasets with station series in the index (`store` optional): each with its key, the producer's name of its segment, provider, family, time unit, the year type of its labels (the one remembered for its family; hydrological for half-year characteristics), R by default in it (`years`), the label of its current series version and its variables (key, variable, unit, half-year period: the distinct keys of its stations' series, the first the default "Kolor punktów"); `attribution` and `terms_notice` (9.1) of the datasets' providers, without positions (IMGW-PIB S, P, N, RD; ČHMÚ C and CP); `503` without Obserwator (ADR 0045 decision 1) |
+| `GET /stations/timeline` | a page of the stations of one dataset year by year, the "Oś czasu" (Timeline) tab of the Catalog (6.5 j): the filters, order and cursor of `GET /stations` with `dataset` required; each item the station (code, name, kind, river with its hydrographic code, active, location) and its series as `GET /stations/{code}/coverage` gives it for the same `variable`, `years` and `year_type`; `variable` (repeatable) keeps the stations with a value of each variable and only their rows; the years of the whole page are read from the index at once; `attribution` and `terms_notice` as in `GET /stations`; `503` without Obserwator (ADR 0045 decision 6) |
+| `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the attribution of the version's sidecar (`attribution` of an item of `station.series`, a string; the input archives are not built yet), `paths`: each series file by dataset on this computer and as mounted on others (path aliases, 4.6), and `charts`: the charts of `GET /stations/{code}/series` its series give (`dataset`, `time_unit`, `resolution`, `variables` with their unit and first and last day; days, then months, then the annual charts of half-year characteristics; A-ADR-051); `attribution` and `terms_notice` (9.1), the lines to show: IMGW-PIB S, P, N, RD, with H and RH when the station has a point; ČHMÚ C and CP (4.8.5, 4.8.6); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
+| `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `dataset`, `year_type`, `years`) — the Timeline: every year of R with its units, the known ones and those with a value, and its cell (`full`, `fraction`, `none`, `unknown`); `attribution` and `terms_notice` (9.1) of the station's series, without positions (IMGW-PIB S, P, N, RD; ČHMÚ C and CP) |
+| `GET /stations/{code}/series` | chart data, for display only (`variable` once or twice, `store`, `provider`, `dataset` — by default the one series of the station with every variable, one of days before one of months —, `resolution`, `from`, `to` — by default the variables' known span —, `year_type`, `max_points` ≤ 2,000, `version` — the index's current one, else `409`): the current series version read through the producer; each unit's value up to `max_points` units, else the least, mean and greatest value of each interval of `ceil(units / max_points)` units (`null` without a value, never interpolated); a variable of a monthly series (`Q`, not `Q_max`) gives each month's published minimum, mean and maximum, an interval the least minimum, the mean of the means and the greatest maximum; `gaps` the gaps each variable's label counts in `year_type` (4.8.4) cut at the range's ends; `markers` the accumulated sums and the extremes IMGW published in the half-year characteristics (with their dates); half-year characteristics are not drawn as a line (`400 half_year_chart`). `resolution=annual` (A-ADR-051) reads the station's half-year characteristics instead (`400 no_annual_source` without them; `variable` optional, by default each variable with a value; hydrological years only, else `400 annual_year_type`): a point a hydrological year with `max` and `min`, the greater of the winter and summer maxima and the lesser of their minima, each with `value`, `start`, `end`, `occurrences`, `halves` and `partial` (the half without a value), `null` when neither half has one; `derived` `annual_extremes`, found for display and never stored; `attribution` and `terms_notice` (9.1): IMGW-PIB S, P, N, RD; ČHMÚ C and CP; `attribution` is an array since A-ADR-055 (before, the sidecar's formula as a string or `null`) |
+| `GET /stations/{code}/handoff` | a variable of a station's series as a hand-off to Hydrolog's statistics (A-ADR-052): `nogat-handoff/1` around `hydrolog-series/1`; the station, `dataset`, `variable` (one), `resolution`, `from` and `to` as for the chart; `unit`: every day of a series of days over the range, `null` without a value (a series not of days is `400 no_daily_series`); `annual`: the annual maxima of the annual chart, a year missing a half `null` and named in `provenance.series.left_out`; the optional `attribution` and `terms_notice` of the envelope (DEV-20.6, A-ADR-055), each left out when empty: IMGW-PIB S, P with N, RD; ČHMÚ C and CP as Obserwator stores the series, without `terms_notice` (4.8.5, 4.8.6) |
+| `GET /stations/compare` | 2–5 stations of one variable on a common time axis (`station` repeatable as `<store>/<provider>/<code>`, `dataset`, `variable`, `from`, `to` — by default the variable's known spans at the stations together —, `year_type`, `max_points` ≤ 2,000): one range and one interval for every station; each station with its location, its series version, the variable's label and facts as on its card (`coverage`) and its chart as `GET /stations/{code}/series` gives it for that range (`chart`); a station without the series or the variable keeps its place with `null` ("brak danych", P14); `attribution` and `terms_notice` (9.1) of the stations' providers, merged (IMGW-PIB with H and RH when a station has a point), a station's own `attribution` staying its sidecar's string; `400` (reason `unknown_variable`) when no station's series has the variable, `404` when none has a series of the dataset |
 | `POST /areas` | area from GeoJSON or from a geometry file → `id`, surface area, countries (limits: 10.1) |
 | `GET /areas/{id}` | area: geometry (WGS84), surface area, countries |
 | `GET /local-coverage` | store state for an area and product ("lokalnie 83% obszaru"; `area_id`, `product`, `store`) after refreshing the area's slots (4.4); the percentage in the flat coordinate system of the product's country |
@@ -3542,7 +3601,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `DELETE /projects/{id}` | the owner or an administrator removes the project from Archiwista, never data → `204`: under its lock only what Archiwista wrote in the directory goes (`archiwista-project.json`, the area files of `obszary/`, `eksport/`), `dane/` with `.wersje/` and every other file stay, the directory goes only when then empty; the project's access entry and its rows of the index go, no store is touched (the pinned versions stay); refused while a job of the project waits or runs (`409 conflict`, the job in `details.job`) and for a project file Archiwista cannot read (`409 invalid_project_file`, `unsupported_project_schema`); `project.delete` with `kept`, the earlier entries stay (A-ADR-049 erratum 2) |
 | `POST /projects/{id}/jobs` | a job over the project's groups (`kind`: `verify` — the pinned files hashed in the store, no network; `check` — the pins against the source; `repin` — exactly one group anew in the producer's update mode, its pins replaced after the whole run succeeded; `restore` — missing pinned versions downloaded again and kept by `sha256` or `content_sha256`; `groups` optional, every group by default) → `202` with the job; a re-pin and a restore need `project.write` and `store.write`, a check and a verification only visibility; one job per project (`409`); a group whose producer has no commands is `422 no_commands`, one whose versions have no command is refused for a re-pin (`422 command_not_rebuildable`); a re-pin of a closed set is `409 set_closed` before a job and again under the lock (the job then ends `partial`, no pin changed); the store must be configured (`409 unknown_store`); a retry asks the same (A-ADR-049) |
 | `GET /projects/{id}/activity` | whoever sees the project: its entries of the action log newest first, with a cursor — the project's changes (`project.*`) and its jobs (`job.start`, `job.retry`, `job.cancel`), with who, when, the outcome and the details, without the client address or session (D7, A-ADR-049) |
-| `POST /projects/{id}/exports`, `GET /projects/{id}/exports`, `GET /projects/{id}/exports/{name}/zip` | the owner or an administrator writes `eksport/<name>/` (`{name, groups?, zip}`): copies of the pinned files of every group or of `groups` in category folders with `README.txt`, with `zip` also `eksport/<name>.zip`, replacing an export of that name (`project.export`; a pin left out is counted); the list of exports says whether each has a ZIP and whether the project changed after it; the ZIP route sends it to whoever sees the project; the QGIS set from v1.1 (8.4) |
+| `POST /projects/{id}/exports`, `GET /projects/{id}/exports`, `GET /projects/{id}/exports/{name}/zip` | the owner or an administrator writes `eksport/<name>/` (`{name, groups?, zip}`): copies of the pinned files of every group or of `groups` in category folders with `README.txt` and `ATTRIBUTION.txt`, with `zip` also `eksport/<name>.zip`, replacing an export of that name (`project.export`; a pin left out is counted); the list of exports says whether each has a ZIP and whether the project changed after it; the ZIP route sends it to whoever sees the project; the QGIS set from v1.1 (8.4) |
 | `POST /assistant/conversations`, `GET …`, `DELETE …/{id}` | conversations |
 | `POST /assistant/conversations/{id}/messages` | message → SSE stream (text, tool calls, proposals, effects in the interface) |
 | `GET /assistant/proposals/{id}` | proposal |
@@ -3588,7 +3647,9 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
       "pinned_by": [{"project": "raba", "group": "NMT 2023"}]
     }
   ],
-  "next_cursor": null
+  "next_cursor": null,
+  "attribution": [],
+  "terms_notice": []
 }
 ```
 
@@ -3752,6 +3813,16 @@ numbers)
     }
   ],
   "next_cursor": "…",
+  "attribution": [
+    "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy",
+    "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone",
+    "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl"
+  ],
+  "terms_notice": [
+    "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.",
+    "Regulamin: https://danepubliczne.imgw.pl/regulations",
+    "Regulamin: https://hydro.imgw.pl/#/regulamin"
+  ],
   "stale": false,
   "stale_stores": []
 }
@@ -3781,6 +3852,14 @@ the default "Kolor punktów"; `name` is the producer's name of the segment)
         {"key": "T", "variable": "T", "unit": "degC", "period": null}
       ]
     }
+  ],
+  "attribution": [
+    "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy",
+    "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone"
+  ],
+  "terms_notice": [
+    "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.",
+    "Regulamin: https://danepubliczne.imgw.pl/regulations"
   ],
   "stale": false,
   "stale_stores": []
@@ -3845,6 +3924,16 @@ station; one of its variables and three of its 75 years shown)
     }
   ],
   "next_cursor": "…",
+  "attribution": [
+    "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy",
+    "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone",
+    "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl"
+  ],
+  "terms_notice": [
+    "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.",
+    "Regulamin: https://danepubliczne.imgw.pl/regulations",
+    "Regulamin: https://hydro.imgw.pl/#/regulamin"
+  ],
   "stale": false,
   "stale_stores": []
 }
@@ -3883,7 +3972,14 @@ station; one of its variables and three of its 75 years shown)
     }
   ],
   "license": "IMGW-PIB",
-  "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone.",
+  "attribution": [
+    "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy",
+    "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone"
+  ],
+  "terms_notice": [
+    "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.",
+    "Regulamin: https://danepubliczne.imgw.pl/regulations"
+  ],
   "stale": false,
   "stale_stores": []
 }
@@ -3930,6 +4026,16 @@ illustrative values)
       "years": null, "series": null, "series_version": null, "file": null, "sha256": null,
       "license": null, "attribution": null, "coverage": null, "chart": null
     }
+  ],
+  "attribution": [
+    "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy",
+    "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone",
+    "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl"
+  ],
+  "terms_notice": [
+    "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.",
+    "Regulamin: https://danepubliczne.imgw.pl/regulations",
+    "Regulamin: https://hydro.imgw.pl/#/regulamin"
   ],
   "stale": false,
   "stale_stores": []
@@ -5119,7 +5225,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | Windows in the team (UNC paths, signals, hard links on SMB) | different behavior | medium | path aliases, `CTRL_BREAK_EVENT`, `archiwista doctor`, tests on Windows before v1.0 |
 | Load on public services | slowdowns, blocks on the source side | low | Kartograf's cache, assistant limits, 2 network jobs at a time |
 | UI without type checking (A-ADR-028: Preact + htm with no build step) | errors detected only at runtime | medium | browser tests (Playwright), JSDoc annotations, contract tests with OpenAPI; adding Vite and TypeScript later without rewriting components |
-| Data license terms on handover | attribution violation | low | attributions in the file card, the set and the data copy |
+| Data license terms on handover | attribution violation | low | the lines of the providers' terms (A-ADR-055) in every answer and view of the data, the CLI text, the hand-off and the export (`README.txt`, `ATTRIBUTION.txt`); "Kopiuj atrybucję" in the file card, the station card and the station comparison |
 | Dependence on Obserwator (2.1.1, Beta, no store; IMGW-1..IMGW-13, IMGW-21); optional from A-ADR-024 (extra `[obserwator]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for Obserwator; releases v0.1–v0.4 and an installation without Obserwator do not need it | medium | Obserwator is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by Obserwator; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
 | ČHMÚ stations in Obserwator (IMGW-15..IMGW-19; the tool was renamed from IMGWTools in ECO-057) | v0.6, and with it the MVP, waits for Obserwator; a separate package changes the adapter and the extra | medium | requirements reported before v0.5 (section 12.7), the same contracts with the supplier as an additive change, one Obserwator adapter; adapter decision at the Obserwator release (4.8.6, A-ADR-024) |
 | ČHMÚ archives per station (no country-wide archive) | hundreds of requests during synchronization, slow plans | medium | synchronization of selected stations only (area, project), plan with the number of requests, 2 network jobs at a time |
@@ -5130,7 +5236,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | No location for meteo stations (of the 2,149 codes on Obserwator's meteo list the public API has 562) | stations off the map, incomplete selection in a catchment | high | "Katalog" (Catalog) with a "bez położenia" (no location) group and attribute filters (river, hydrographic code with tributaries; 6.8, P13, P19), counter on the map, user coordinates file, request to IMGW-PIB for a list |
 | Coordinate quality (`0,0` for 32 of 913 hydro API stations, 1–3 decimal places for 46; source differences: p90,127 m, max 2.9 km) | station in the wrong catchment | medium | validation in Obserwator (`0,0` and outside the country = none), uncertainty in attributes, "na granicy obszaru" (at the area boundary) badge, source in the station card |
 | IMGW publication delay (10–19 months) and republished archives | incomplete last year, silent data changes | high | published years and publication dates in the interface; `ETag`/`Last-Modified` signal; new versions instead of overwriting; sets with older versions marked |
-| IMGW terms (purpose of use, regulations §3 para. 2; formulas, §5 para. 3–4) | regulations violation | medium | formulas in sidecars, the station card and the set; Obserwator message about the purpose of use in the plan; assumption: private or research use (4.8.5) |
+| IMGW terms (purpose of use, regulations §3 para. 2; formulas, §5 para. 3–4) | regulations violation | medium | formulas in sidecars; the lines of 4.8.5 with the terms notice in every product of IMGW-PIB data (A-ADR-055); Obserwator message about the purpose of use in the plan; assumption: private or research use (4.8.5) |
 | Growth of series versions (full dataset snapshot after each archive change) | Obserwator catalog size (on the order of 0.1 GB per dataset snapshot — an estimate) | medium | `unchanged` for the same inputs, synchronization only on request, measurement in v0.5 |
 | Archiwista's assistant vs. Retman | duplication, unclear division | low | Archiwista only prepares data, calculations in Hydrolog and Retman (P17, user decision of 2026-10-17); the shared language is the producers' commands |
 | One project file written by two versions of Archiwista or by hand | a lost change or a file Archiwista cannot read | low | every change under the lock, after reading the file again; members a reader does not know are kept; a newer schema or an invalid file is shown with its problem and never written over (4.7, A-ADR-049) |

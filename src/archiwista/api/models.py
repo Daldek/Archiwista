@@ -21,7 +21,7 @@ import re
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import replace
 from datetime import date, datetime
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import (
     AwareDatetime,
@@ -33,6 +33,7 @@ from pydantic import (
 )
 
 from archiwista.areas import area_crs
+from archiwista.attribution import Attribution
 from archiwista.auth import PrincipalKind, WritableProjects
 from archiwista.config import (
     AppSettings,
@@ -692,6 +693,31 @@ class IndexAnswer(BaseModel):
     )
 
 
+# The lines the data providers' terms require with the data of an answer
+# (Nogat DEV §20, A-ADR-055), from ``archiwista.attribution``.
+AttributionLines = Annotated[
+    list[str],
+    Field(
+        description=(
+            "The lines the terms of the providers of this answer's data require,"
+            " verbatim and in Polish whatever `Accept-Language` says, in the"
+            " order of Nogat's DEV-20.4 (IMGW-PIB, PMAXTP, ČHMÚ): show them with"
+            " the data and carry them into every product made of it. Empty"
+            " without such data."
+        )
+    ),
+]
+TermsNotice = Annotated[
+    list[str],
+    Field(
+        description=(
+            "The IMGW-PIB terms of use and the terms that apply, one line each"
+            " (DEV-20.7), shown after `attribution`; empty without IMGW-PIB data."
+        )
+    ),
+]
+
+
 def staleness(
     freshness: Iterable[StoreFreshness], stores: Collection[str] | None = None
 ) -> dict[str, Any]:
@@ -1198,6 +1224,8 @@ class CatalogPage(IndexAnswer):
             "items": [_SLOT_ITEM_EXAMPLE],
             "next_cursor": "WzEsImU1Y2Y0…",
             "groups": {"footprint": 412, "country": 3, "none": 27},
+            "attribution": [],
+            "terms_notice": [],
             **_FRESH,
         }
     )
@@ -1210,14 +1238,23 @@ class CatalogPage(IndexAnswer):
         )
     )
     groups: LocationGroups
+    attribution: AttributionLines = Field(
+        description=(
+            "The lines the terms of the providers of the page's versions require"
+            " (Nogat DEV §20), merged in the standard's order; empty when no"
+            " row's producer names its data's origin."
+        )
+    )
+    terms_notice: TermsNotice
 
     @classmethod
-    def of(cls, page: SlotPage, freshness: dict[str, Any]) -> Self:
-        """Return the model of a catalog page."""
+    def of(cls, page: SlotPage, lines: Attribution, freshness: dict[str, Any]) -> Self:
+        """Return the model of a catalog page with the lines of its versions."""
         return cls(
             items=[SlotItem.of(row) for row in page.items],
             next_cursor=page.next_cursor,
             groups=LocationGroups.of(page.groups),
+            **lines.fields(),
             **freshness,
         )
 
@@ -1392,7 +1429,8 @@ class VersionCard(IndexAnswer):
             "coverage": 1.0,
             "parent_request": None,
             "license": "cc-by-4.0",
-            "attribution": "Główny Urząd Geodezji i Kartografii",
+            "attribution": ["Główny Urząd Geodezji i Kartografii"],
+            "terms_notice": [],
             "source_files": [],
             "resolution": "1m",
             "nodata": -9999.0,
@@ -1425,7 +1463,15 @@ class VersionCard(IndexAnswer):
         )
     )
     license: str | None
-    attribution: str | None
+    attribution: AttributionLines = Field(
+        description=(
+            "The lines the terms of the version's provider require (Nogat DEV"
+            " §20), verbatim; for a producer that does not name its data's origin"
+            " the attribution its sidecar gives (`license.attribution`), else"
+            " empty."
+        )
+    )
+    terms_notice: TermsNotice
     source_files: list[str] = Field(
         description="Store paths of the input versions of a derived file."
     )
@@ -1447,9 +1493,10 @@ class VersionCard(IndexAnswer):
         detail: VersionDetail,
         sidecar: dict[str, Any] | None,
         paths: CopyPath | None,
+        lines: Attribution,
         freshness: dict[str, Any],
     ) -> Self:
-        """Return the model of a version."""
+        """Return the model of a version with the lines its data carry."""
         return cls(
             store=detail.store,
             slot=detail.slot,
@@ -1467,7 +1514,7 @@ class VersionCard(IndexAnswer):
             coverage=detail.coverage,
             parent_request=detail.parent_request,
             license=detail.license,
-            attribution=detail.attribution,
+            **lines.fields(),
             source_files=list(detail.source_files),
             resolution=detail.resolution,
             nodata=detail.nodata,

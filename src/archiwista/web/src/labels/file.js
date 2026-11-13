@@ -2,7 +2,8 @@
  * Texts of the file card (views/file.js, docs/SPEC.md UC-04 and 6.5 e):
  * every version of a slot, its metadata for people next to the raw values,
  * the licence, paths to copy, pins, the link check and the tabs of a version
- * (its preview's own texts: labels/previews.js).
+ * (its preview's own texts: labels/previews.js; the lines of its provider's
+ * terms: labels/provider-lines.js).
  */
 
 export const file = {
@@ -99,8 +100,6 @@ export const file = {
   license: {
     title: "Licencja",
     none: "Sidecar nie podaje licencji.",
-    attribution: "Atrybucja",
-    copy_attribution: "Kopiuj atrybucję",
   },
   paths: {
     title: "Ścieżki",

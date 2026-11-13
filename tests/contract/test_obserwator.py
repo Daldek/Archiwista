@@ -3,9 +3,11 @@
 The adapter must see exactly what ``obserwator.iter_store`` sees in the
 producer's own offline fixture stores (``obserwator.testing``): archives,
 series and station catalogs as versions, a version the producer cannot read
-as its problem and nothing parsed, an observation never as a version. It
-judges a directory by the marker file name and schema, and every judgement
-is pinned to what the producer itself does with the same directory.
+as its problem and nothing parsed, an observation never as a version; the
+origin of each version's data follows its tree and the provider the producer
+names (A-ADR-055). It judges a directory by the marker file name and schema,
+and every judgement is pinned to what the producer itself does with the same
+directory.
 """
 
 import json
@@ -46,6 +48,7 @@ from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
 from archiwista.errors import ProducerError, SourceUnavailableError, UnsupportedError
 from archiwista.sources import (
     CurrentVersionAdapter,
+    DataOriginAdapter,
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
@@ -470,6 +473,36 @@ def test_the_canonical_content_of_a_chmi_file_is_kept_and_is_none_for_imgw(
     assert ("cz.chmi.hydro_daily", "chmi-json/1", False) in forms
     assert (HYDRO, None, True) in forms
     assert ("cz.chmi.meteo_daily", None, True) in forms
+
+
+def test_the_origin_of_a_version_is_its_trees_form_of_its_providers_data(
+    obserwator_store: Stores, adapter: ObserwatorAdapter
+) -> None:
+    """An archive is the file as published, a series or catalog a processed form."""
+    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
+
+    origins = {
+        (
+            e.relative_path.parts[0],
+            e.meta.provider,
+            adapter.data_origin(e.relative_path.as_posix(), e.segment),
+        )
+        for e in entries
+        if e.kind == "version" and e.meta is not None
+    }
+
+    assert isinstance(adapter, DataOriginAdapter)
+    assert origins == {
+        ("archives", "IMGW-PIB", "imgw_file"),
+        ("series", "IMGW-PIB", "imgw_processed"),
+        ("stations", "IMGW-PIB", "imgw_stations"),
+        ("archives", "CHMI", "chmi_file"),
+        ("series", "CHMI", "chmi_processed"),
+        ("stations", "CHMI", "chmi_processed"),
+    }
+    cell = "pmaxtp/versions/POT/751_317/2026-10-25_3f9c2a71/cell.json"
+    assert adapter.data_origin(cell, None) == "pmaxtp"
+    assert adapter.data_origin("archives/versions/a/b.zip", "xx.other.data") is None
 
 
 @pytest.mark.parametrize("slot", [ARCHIVE_SLOT, HYDRO_SERIES, PL_CATALOG], ids=str)

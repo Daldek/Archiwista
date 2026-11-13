@@ -9,6 +9,30 @@ command-line interface may change.
 
 ### Added
 
+- The lines the data providers' terms require, with every product of their data
+  (A-ADR-055; Nogat ECO-060, DEV §20): the source of IMGW-PIB's data and, once processed,
+  the mark of processing, with the hydrological service hydro.imgw.pl named where station
+  positions are shown; PMAXTP's source, mark and monograph; ČHMÚ's credit with CC BY 4.0
+  and what was done; then the IMGW-PIB terms of use and the addresses of the terms that
+  apply. They are quoted byte for byte in Polish whatever the language, in the standard's
+  order and each once, and chosen by the data's provider and form, not taken from the
+  sidecars, so stores of older Obserwator versions get them too. The interface shows them
+  visibly in a block „Źródło danych i warunki” under the station chart, on the station
+  card below its tabs, under the Katalog's station list, the map, the station comparison,
+  the Katalog page and the version comparison, and on the file card above its tabs; the
+  station card, the station comparison and the file card copy them with „Kopiuj
+  atrybucję”, and the comparison's CSV gains the trailing columns `attribution` and
+  `terms_notice`. The answers of `GET /stations`, `/stations/datasets`,
+  `/stations/timeline`, `/stations/compare`, `/stations/{code}`,
+  `/stations/{code}/coverage`, `/map/stations`, `/slots` and `/compare` gain the arrays
+  `attribution` and `terms_notice` (empty without such data), and the text output of
+  their commands ends with „Źródła danych i warunki korzystania:” and the lines. The
+  station hand-off to Hydrolog (`nogat-handoff/1`) carries both arrays, each left out when
+  empty. An export folder has `ATTRIBUTION.txt` at its root (also in its ZIP), and the
+  user guide a slide „Źródła danych i warunki”. Source plugins may answer the new
+  optional capability `DataOriginAdapter.data_origin` (`DataOrigin` in
+  `archiwista.sources`); the Obserwator plugin does.
+
 - „Aplikacje” in the top bar (A-ADR-054; Nogat ECO-058, DEV-15.4, plan
   `2026-11-12-gui-links-and-handoff` step 6): Nogat's menu of the ecosystem's GUIs, the
   same in each of them, lists the GUIs the deployment names in the table `gui` of
@@ -1192,6 +1216,19 @@ command-line interface may change.
 
 ### Changed
 
+- **Breaking:** `attribution` of `GET /stations/{code}/series` (`StationChart`) and of
+  `GET /stores/{store}/versions/{version}` (`VersionCard`) is an array of lines, no longer
+  the sidecar's string, and both answers gain `terms_notice` (A-ADR-055, DEV-20.6): the
+  lines of the data's origin (an IMGW-PIB archive as published gives its source alone, a
+  series the source and the mark of processing, a station catalog the hydrological
+  service too), and for a producer that names no origin (Kartograf) the sidecar's
+  attribution as its one line. The station card's section „Licencja i atrybucja” is
+  replaced by „Źródło danych i warunki”, the lines „Licencja …:” of the command line by
+  the block „Źródła danych i warunki korzystania:”, and the export README's section
+  „Źródła danych” by „Źródła danych i warunki korzystania” with the terms after the
+  lines (A-ADR-045 erratum 3, A-ADR-049 erratum 7).
+- The copy of Nogat's `handoff-1.schema.json` is Nogat's of `develop` `55a2d4b`, which
+  allows `attribution` and `terms_notice` (A-ADR-052 erratum 2).
 - „Do Hydrologa” of the station card hands off through Nogat's kit (A-ADR-052 erratum 1,
   A-ADR-054), as Hydrograf and Hydrolog do: „Plik przekazania” saves
   `<subject>.handoff.json` with `\/:*?"<>|` and control characters as `-`, runs of white

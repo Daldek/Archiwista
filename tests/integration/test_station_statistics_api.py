@@ -44,6 +44,12 @@ from tests.fixtures.obserwator_statistics import (
     WITHOUT_Q,
     monthly_value,
 )
+from tests.fixtures.provider_lines import (
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_PUBLIC_DATA,
+)
 
 STORE = "dane"
 DAILY = "pl.imgw.hydro_daily"
@@ -525,7 +531,7 @@ def test_station_chart_command_line_refuses_calendar_years_as_the_route_does(
 def test_station_chart_command_line_writes_each_year_for_a_person(
     served: Served, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Each year's maximum and minimum with their days, halves and occurrences."""
+    """Each year's maximum and minimum with their days, halves, occurrences; lines."""
     # Act
     capsys.readouterr()
     status = main(
@@ -537,7 +543,7 @@ def test_station_chart_command_line_writes_each_year_for_a_person(
     # Assert
     assert status == 0
     assert lines[0].startswith(f"{RABA}: szereg {HALF_YEAR}, wersja ")
-    assert lines[1:10] == [
+    assert lines[1:9] == [
         "Roczne maksimum i minimum wyznaczone przez Archiwistę z charakterystyk"
         " półrocznych IMGW-PIB: lata hydrologiczne 2020–2024 (5 lat)",
         "  Q (m3/s): 4 z 5 lat z wartością, luki: 1",
@@ -553,9 +559,14 @@ def test_station_chart_command_line_writes_each_year_for_a_person(
         " półrocza zimowego); min. 10.0 (2024-09-09, półrocze letnie, niepełny"
         " rok: brak półrocza zimowego)",
         "    luka 2020-11-01 – 2021-10-31 (1 rok)",
-        lines[9],
     ]
-    assert lines[9].startswith("  Licencja IMGW-PIB: Źródłem pochodzenia danych")
+    assert lines[9:] == [
+        "Źródła danych i warunki korzystania:",
+        f"  {IMGW_SOURCE}",
+        f"  {IMGW_PROCESSED}",
+        f"  {IMGW_TERMS}",
+        f"  {IMGW_TERMS_PUBLIC_DATA}",
+    ]
 
 
 # Hand-off to Hydrolog (A-ADR-052) ---------------------------------------------------

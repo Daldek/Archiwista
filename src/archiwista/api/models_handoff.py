@@ -123,6 +123,24 @@ class StationHandoff(BaseModel):
             " their halves."
         )
     )
+    attribution: list[str] = Field(
+        default_factory=list,
+        exclude_if=lambda lines: not lines,
+        description=(
+            "The lines the terms of the series' provider require (Nogat DEV-20.6,"
+            " A-ADR-055), verbatim: for IMGW-PIB its source and the mark of"
+            " processing, for ČHMÚ its credit and licence and what was done."
+            " Hydrolog shows them with the series and carries them on."
+        ),
+    )
+    terms_notice: list[str] = Field(
+        default_factory=list,
+        exclude_if=lambda lines: not lines,
+        description=(
+            "The IMGW-PIB terms of use and the address of its terms (DEV-20.7);"
+            " left out for ČHMÚ's data."
+        ),
+    )
     payload: dict[str, Any] = Field(
         description=(
             "The `hydrolog-series/1` document: `name`, `variable`, `unit`, `step`"

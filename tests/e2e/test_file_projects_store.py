@@ -1,9 +1,12 @@
 """File card, Projects and Store in Chromium on a real server (plan v0.1, step 11).
 
-Every test serves a generated Kartograf store offline, waits for the
+Every test but one serves a generated Kartograf store offline, waits for the
 scheduler's first full scan and checks what a person sees against what the
 producer wrote — Kartograf's own sidecars and segment names — and against
-the generator's manifest of the store and its project files.
+the generator's manifest of the store and its project files. The other serves
+Obserwator's fixture store: the card of an IMGW-PIB archive, kept as published,
+shows the lines of its source and terms above the tabs, without the mark of
+processing (Nogat DEV §20).
 """
 
 import time
@@ -27,6 +30,21 @@ from tests.fixtures.make_store import (
     StoreManifest,
     make_store,
 )
+from tests.fixtures.provider_lines import (
+    IMGW_PROCESSED,
+    IMGW_SOURCE,
+    IMGW_TERMS,
+    IMGW_TERMS_PUBLIC_DATA,
+)
+from tests.fixtures.station_browser import (
+    LINES_TITLE,
+    address,
+    api,
+    open_session,
+    shown_lines,
+    station_settings,
+)
+from tests.fixtures.station_browser import STORE as STATION_STORE
 
 Serve = Callable[..., Served]
 
@@ -34,6 +52,8 @@ STORE = "zespol"
 ALIAS = "Z:\\"
 SHOW = "Pokaż wartość techniczną"
 INDEX_TIMEOUT_S = 60.0
+# An IMGW-PIB archive of Obserwator's fixture store, kept as IMGW-PIB published it.
+ARCHIVE_SLOT = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
 # True once every store has a finished scan and no job runs (the scheduler's
 # first full scan, or a scan started by a test).
 INDEXED = """
@@ -182,9 +202,8 @@ def test_human_labels_expose_raw_values(serve: Serve, tab: Tab, tmp_path: Path) 
     expect(raw(sha, str(current.sha256))).to_be_visible()
     assert sidecar.license is not None
     expect(card.locator(".fc-license")).to_contain_text(sidecar.license["id"])
-    expect(card.locator(".fc-attribution")).to_have_text(
-        f"Atrybucja: {sidecar.license['attribution']}"
-    )
+    lines = card.get_by_role("group", name=LINES_TITLE)
+    assert shown_lines(lines) == [sidecar.license["attribution"]]
     expect(raw(card, str(store.root / current.path))).to_be_visible()
 
     other = open_card(page, served, unknown.path)
@@ -279,6 +298,35 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
     }
     expect(card).to_have_count(0)
     assert query(page) == {"view": "store"}
+    tab.assert_clean()
+
+
+def test_file_version_details_imgw_archive_shows_its_source_without_processing(
+    serve: Serve, tab: Tab, obserwator_store: Callable[[str], Path], tmp_path: Path
+) -> None:
+    """An IMGW-PIB archive: S, N and RD above the tabs, beside the preview too; no P."""
+    # Arrange
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
+    page = open_session(tab, served)
+    slot = api(page, f"/stores/{STATION_STORE}/slots/{ARCHIVE_SLOT}")
+    version = api(page, f"/stores/{STATION_STORE}/versions/{slot['current']}")
+
+    # Act
+    page.goto(address(served, view="catalog", file=f"{STATION_STORE}/{ARCHIVE_SLOT}"))
+    card = page.get_by_role("dialog", name=PurePosixPath(ARCHIVE_SLOT).name)
+    lines = card.get_by_role("group", name=LINES_TITLE)
+    shown = shown_lines(lines)
+    card.get_by_role("tab", name="Podgląd").click()
+    expect(card.get_by_role("tab", name="Podgląd")).to_have_attribute(
+        "aria-selected", "true"
+    )
+    previewed = shown_lines(lines)
+
+    # Assert
+    assert shown == [*version["attribution"], *version["terms_notice"]]
+    assert shown == [IMGW_SOURCE, IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+    assert IMGW_PROCESSED not in shown
+    assert previewed == shown
     tab.assert_clean()
 
 

@@ -41,6 +41,19 @@ type DateRange = tuple[date, date]
 # How an area of Archiwista reaches a command (``AreaCommand.way``): as the
 # producer's geometry file, or as the box that encloses it.
 type AreaWay = Literal["geometry", "bbox"]
+# Where the data of a version come from and in what form, for the lines the
+# providers' terms require with every product of them (Nogat DEV §20, A-ADR-055):
+# a file of IMGW-PIB (danepubliczne.imgw.pl) as published, its data processed,
+# its station catalog (positions of hydro.imgw.pl), PMAXTP, a file of ČHMÚ as
+# published, and its data normalised and reformatted.
+type DataOrigin = Literal[
+    "imgw_file",
+    "imgw_processed",
+    "imgw_stations",
+    "pmaxtp",
+    "chmi_file",
+    "chmi_processed",
+]
 
 # The statuses of a plan's positions in the order the producers define them.
 PLAN_STATUSES: tuple[PlanStatus, ...] = (

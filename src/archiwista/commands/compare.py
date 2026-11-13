@@ -4,12 +4,14 @@ Compares the metadata of two objects as ``GET /compare`` does, by calling
 ``services.compare.compare`` without HTTP as the owner of the installation:
 ``--json`` prints the route's ``Comparison``, without it the sides, one line
 per field, a differing one marked with ``*``, and the layers and fields that
-differ (``schema_diff``).
+differ (``schema_diff``), then the lines the terms of the versions' providers
+require (A-ADR-055).
 """
 
 import argparse
 from typing import TextIO
 
+from archiwista import attribution
 from archiwista.api.models_compare import CompareValue, Comparison, SchemaDiff
 from archiwista.auth import LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
@@ -56,7 +58,9 @@ def main(
         )
     with queries:
         try:
-            comparison = compare(queries, args.a, args.b, visible=visible)
+            comparison = compare(
+                queries, args.a, args.b, visible=visible, registry=registry
+            )
         except ArchiwistaError as error:
             return refuse(describe(error), err)
     text = comparison.model_dump_json() if args.json else _text(comparison)
@@ -87,6 +91,7 @@ def _text(comparison: Comparison) -> str:
     lines.append(
         message("cli.compare_summary", differs=differs, total=len(comparison.rows))
     )
+    lines += attribution.text(comparison.attribution, comparison.terms_notice)
     return "\n".join(lines)
 
 

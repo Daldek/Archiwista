@@ -1,0 +1,28 @@
+/* The lines the data providers' terms require (provider-lines.js, Nogat DEV §20): as
+   legible as the text around them, in dark grey; a long line wraps, none is cut. */
+.provider-lines {
+  display: grid; gap: 4px; justify-items: start; min-width: 0;
+  font-size: 12.5px; line-height: 1.45; color: var(--text-2);
+}
+.provider-lines > .section-title.pl-title { margin: 0; }
+.pl-lines { display: grid; gap: 2px; min-width: 0; max-width: 100%; }
+.pl-line { margin: 0; overflow-wrap: anywhere; }
+.pl-terms { margin-top: 2px; }
+.provider-lines .copy-action { margin-top: 2px; }
+
+/* A strip under a list or a map: the heading beside the lines, which run on
+   separated by a dot, the terms on their own line. */
+.provider-lines.strip {
+  flex: none; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 2px 12px;
+  padding: 6px 14px; border-top: 1px solid var(--line); background: var(--panel-2);
+}
+.provider-lines.strip > .pl-title { grid-row: span 2; white-space: nowrap; }
+.provider-lines.strip > .pl-lines { display: block; grid-column: 2; }
+.provider-lines.strip .pl-line { display: inline; }
+.provider-lines.strip .pl-line + .pl-line::before { content: " · "; color: var(--text-3); }
+
+@media (max-width: 860px) {
+  .provider-lines.strip { grid-template-columns: minmax(0, 1fr); padding: 6px 10px; }
+  .provider-lines.strip > .pl-title { grid-row: auto; }
+  .provider-lines.strip > .pl-lines { grid-column: 1; }
+}
