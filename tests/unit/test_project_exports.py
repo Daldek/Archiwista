@@ -33,7 +33,6 @@ from tests.fixtures.provider_lines import (
     CHMI_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_PUBLIC_DATA,
 )
 
@@ -41,10 +40,8 @@ from tests.fixtures.provider_lines import (
 # attribution of its sidecar is its one line.
 GUGIK = Attribution(("Główny Urząd Geodezji i Kartografii",))
 # A station series of Obserwator, processed; a file of IMGW-PIB as published.
-SERIES = Attribution(
-    (IMGW_SOURCE, IMGW_PROCESSED), (IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA)
-)
-ARCHIVE = Attribution((IMGW_SOURCE,), (IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA))
+SERIES = Attribution((IMGW_SOURCE, IMGW_PROCESSED), (IMGW_TERMS_PUBLIC_DATA,))
+ARCHIVE = Attribution((IMGW_SOURCE,), (IMGW_TERMS_PUBLIC_DATA,))
 CHMI = Attribution((CHMI_SOURCE, CHMI_PROCESSED))
 NO_LINES = Attribution()
 
@@ -254,7 +251,6 @@ def test_exports_write_export_describes_every_file_and_source_in_readme(
         f"- {CHMI_SOURCE}\n"
         f"- {CHMI_PROCESSED}\n"
         "- Główny Urząd Geodezji i Kartografii\n"
-        f"- {IMGW_TERMS}\n"
         f"- {IMGW_TERMS_PUBLIC_DATA}\n"
     )
 
@@ -290,7 +286,6 @@ def test_exports_write_export_writes_the_providers_lines_into_attribution_txt(
     assert written.split("\n") == [
         IMGW_SOURCE,
         IMGW_PROCESSED,
-        IMGW_TERMS,
         IMGW_TERMS_PUBLIC_DATA,
         "",
     ]

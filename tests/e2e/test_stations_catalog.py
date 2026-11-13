@@ -29,10 +29,8 @@ from playwright.sync_api import Locator, Page, Response, Route, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.provider_lines import (
-    IMGW_HYDRO,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_HYDRO,
     IMGW_TERMS_PUBLIC_DATA,
 )
@@ -465,7 +463,7 @@ def test_keys_move_through_the_rows_fold_the_group_open_the_card_and_the_map(
 def test_catalog_stations_lines_of_the_pages_read_stand_under_the_list(
     serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
-    """S and P on screen; S, P, H, N, RD, RH behind; "Bez położenia" without H, RH."""
+    """S and P on screen; S, P, RD, RH behind; "Bez położenia" without RH."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
@@ -488,12 +486,10 @@ def test_catalog_stations_lines_of_the_pages_read_stand_under_the_list(
     assert both == [
         IMGW_SOURCE,
         IMGW_PROCESSED,
-        IMGW_HYDRO,
-        IMGW_TERMS,
         IMGW_TERMS_PUBLIC_DATA,
         IMGW_TERMS_HYDRO,
     ]
     assert without == [*unlocated["attribution"], *unlocated["terms_notice"]]
-    assert without == [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+    assert without == [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS_PUBLIC_DATA]
     expect(page.locator(SOURCES)).to_have_count(1)
     engine_tab.assert_clean()

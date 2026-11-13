@@ -1,13 +1,14 @@
-"""The lines the data providers' terms prescribe (Nogat DEV §20, ECO-060, A-ADR-055).
+"""The lines the data providers' terms prescribe (Nogat DEV §20, ECO-060, ECO-065).
 
 Every product of Archiwista with data of IMGW-PIB or ČHMÚ carries them verbatim:
-the Polish wording of the IMGW-PIB terms (danepubliczne.imgw.pl §5 ust. 3 and 4,
-the terms of hydro.imgw.pl and of the PMAXTP project) and the credit CC BY 4.0
-requires of ČHMÚ, so a line equal byte for byte merges with the same line of
-another tool. They keep that wording in every language: in an English context
-the Polish line stays (DEV §20). The Polish text is the English one by design;
-the guard test allows it for this area only. ``archiwista.attribution`` chooses
-the lines of a product; nothing else holds them.
+the Polish wording the IMGW-PIB terms require (danepubliczne.imgw.pl §5 ust. 3
+and 4, the terms of the PMAXTP project), the links to those terms and the
+credit CC BY 4.0 requires of ČHMÚ, so a line equal byte for byte merges with the
+same line of another tool. They keep that wording in every language: in an
+English context the Polish line stays (DEV §20). The Polish text is the English
+one by design; the guard test allows it for this area only.
+``archiwista.attribution`` chooses the lines of a product; nothing else holds
+them (A-ADR-055).
 """
 
 from archiwista.messages import Text
@@ -26,12 +27,9 @@ def _same(text: str) -> Text:
 
 
 MESSAGES = {
-    # S, P and H: data of danepubliczne.imgw.pl and hydro.imgw.pl.
+    # S and P: data of danepubliczne.imgw.pl and hydro.imgw.pl.
     "imgw_source": _same(f"Źródłem pochodzenia danych jest {_IMGW}"),
     "imgw_processed": _same(f"Dane {_IMGW_OF} zostały przetworzone"),
-    "imgw_hydro": _same(
-        "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl"
-    ),
     # PS, PP and M: PMAXTP, whose terms replace S and P.
     "pmaxtp_source": _same(
         f"Źródłem pochodzenia danych jest {_IMGW}, dane pochodzą ze strony"
@@ -56,16 +54,13 @@ MESSAGES = {
     "chmi_processed_views": _same(
         f"{_CHMI_PROCESSED} (normalizacja i zmiana formatu, zestawienia i wykresy)"
     ),
-    # N, RD, RH and RK: the IMGW-PIB terms of use and the terms that apply.
-    "imgw_terms": _same(
-        "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych"
-        " (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach"
-        " z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w"
-        " gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB."
-    ),
+    # RD, RH and RK: the links to the IMGW-PIB terms that apply, never a summary
+    # of them (ECO-065), each naming whose terms it links.
     "imgw_terms_public_data": _same(
-        "Regulamin: https://danepubliczne.imgw.pl/regulations"
+        "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations"
     ),
-    "imgw_terms_hydro": _same("Regulamin: https://hydro.imgw.pl/#/regulamin"),
-    "imgw_terms_pmaxtp": _same(f"Regulamin: {_PMAXTP_PAGE}"),
+    "imgw_terms_hydro": _same(
+        "Regulamin serwisu hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin"
+    ),
+    "imgw_terms_pmaxtp": _same(f"Regulamin danych PMAXTP: {_PMAXTP_PAGE}"),
 }

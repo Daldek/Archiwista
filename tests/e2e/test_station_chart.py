@@ -52,7 +52,6 @@ from tests.fixtures.provider_lines import (
     CHMI_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_PUBLIC_DATA,
 )
 from tests.fixtures.station_browser import (
@@ -637,7 +636,7 @@ def test_station_chart_series_chart_imgw_lines_join_the_cards_one_strip(
 
     # Assert
     lines = [*chart["attribution"], *chart["terms_notice"]]
-    assert lines == [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+    assert lines == [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS_PUBLIC_DATA]
     assert [line for line in full if line in lines] == lines
     assert shown == [IMGW_SOURCE, IMGW_PROCESSED]
     assert size == 12

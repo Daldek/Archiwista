@@ -33,10 +33,10 @@ from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import NMT, StoreManifest, make_store
 from tests.fixtures.provider_lines import (
-    IMGW_HYDRO,
+    CHMI_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
+    IMGW_TERMS_HYDRO,
     IMGW_TERMS_PUBLIC_DATA,
 )
 from tests.fixtures.station_browser import SOURCES, dialog_lines
@@ -788,8 +788,8 @@ def test_compare_save_csv_joins_the_lines_beyond_the_last_row_into_it(
     served = compare_store.served
     page = open_session(tab, served)
     _, versions = version_pair(page, compare_store.store)
-    attribution = [IMGW_SOURCE, IMGW_PROCESSED, IMGW_HYDRO]
-    terms = [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+    attribution = [IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE]
+    terms = [IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO]
 
     def two_rows(route: Route) -> None:
         answer = route.fetch()
@@ -818,8 +818,8 @@ def test_compare_save_csv_joins_the_lines_beyond_the_last_row_into_it(
     assert shown == [*attribution, *terms]
     assert header[-2:] == ["attribution", "terms_notice"]
     assert [row[-2:] for row in rows] == [
-        [IMGW_SOURCE, IMGW_TERMS],
-        [f"{IMGW_PROCESSED}\n{IMGW_HYDRO}", IMGW_TERMS_PUBLIC_DATA],
+        [IMGW_SOURCE, IMGW_TERMS_PUBLIC_DATA],
+        [f"{IMGW_PROCESSED}\n{CHMI_SOURCE}", IMGW_TERMS_HYDRO],
     ]
     tab.assert_clean()
 

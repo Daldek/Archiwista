@@ -4,12 +4,12 @@ Tests compare what a product carries with these constants, never with
 Archiwista's own catalog (``archiwista.messages.legal``): a line merges with
 the same line of another tool only when equal byte for byte, so a change of
 the wording in the code must fail. The names follow the standard's marks:
-the IMGW-PIB source (S), the mark of processing (P) and of the hydrological
-service (H); PMAXTP's source, mark and monograph (PS, PP, M); the ČHMÚ credit
-(C), its short form on a GUI's strip only (CK), and what was done with its
-data (CP), in Obserwator's stored forms and in Archiwista's tables and
-charts; the IMGW-PIB terms of use (N) and the terms of each service (RD, RH,
-RK).
+the IMGW-PIB source (S) and the mark of processing (P); PMAXTP's source, mark
+and monograph (PS, PP, M); the ČHMÚ credit (C), its short form on a GUI's
+strip only (CK), and what was done with its data (CP), in Obserwator's stored
+forms and in Archiwista's tables and charts; the terms of each service (RD,
+RH, RK), links naming whose terms they are rather than their restatement
+(DEV §20, ECO-065).
 """
 
 IMGW_SOURCE = (
@@ -20,7 +20,6 @@ IMGW_PROCESSED = (
     "Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu"
     " Badawczego zostały przetworzone"
 )
-IMGW_HYDRO = "Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl"
 PMAXTP_SOURCE = (
     "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej"
     " – Państwowy Instytut Badawczy, dane pochodzą ze strony"
@@ -47,12 +46,10 @@ CHMI_PROCESSED_VIEWS = (
     " wykresy)"
 )
 CHMI_SHORT = "Źródło: ČHMÚ, CC BY 4.0"
-IMGW_TERMS = (
-    "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych"
-    " (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z"
-    " reklamami lub do celów wymienionych w regulaminie (m.in. planowanie w"
-    " gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB."
+IMGW_TERMS_PUBLIC_DATA = (
+    "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations"
 )
-IMGW_TERMS_PUBLIC_DATA = "Regulamin: https://danepubliczne.imgw.pl/regulations"
-IMGW_TERMS_HYDRO = "Regulamin: https://hydro.imgw.pl/#/regulamin"
-IMGW_TERMS_PMAXTP = "Regulamin: https://klimat.imgw.pl/opady-maksymalne"
+IMGW_TERMS_HYDRO = (
+    "Regulamin serwisu hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin"
+)
+IMGW_TERMS_PMAXTP = "Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"

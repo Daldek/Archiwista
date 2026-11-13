@@ -34,7 +34,6 @@ from tests.fixtures.make_store import (
 from tests.fixtures.provider_lines import (
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_PUBLIC_DATA,
 )
 from tests.fixtures.station_browser import (
@@ -313,7 +312,7 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
 def test_file_version_details_imgw_archive_shows_its_source_without_processing(
     serve: Serve, tab: Tab, obserwator_store: Callable[[str], Path], tmp_path: Path
 ) -> None:
-    """An IMGW-PIB archive: S in the card's strip, S, N, RD behind, also by Podgląd."""
+    """An IMGW-PIB archive: S in the card's strip, S and RD behind, also by Podgląd."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
@@ -335,7 +334,7 @@ def test_file_version_details_imgw_archive_shows_its_source_without_processing(
     # Assert
     assert shown == [IMGW_SOURCE]
     assert full == [*version["attribution"], *version["terms_notice"]]
-    assert full == [IMGW_SOURCE, IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+    assert full == [IMGW_SOURCE, IMGW_TERMS_PUBLIC_DATA]
     assert IMGW_PROCESSED not in full
     assert previewed == full
     expect(card.locator(SOURCES)).to_have_count(1)

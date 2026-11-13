@@ -3,7 +3,7 @@
 A version of Obserwator's store is a provider's file as published (an
 archive: S, or C, alone) or a form Obserwator processed (a series: S and P,
 or C and CP; the IMGW-PIB station catalog adds the hydrological service's
-H and RH). The version's card (``GET /stores/{store}/versions/{path}``), the
+terms, RH). The version's card (``GET /stores/{store}/versions/{path}``), the
 Katalog's page (``GET /slots``) and a comparison (``GET /compare``) carry
 the lines of that origin, which the producer's adapter names, never the
 attribution a sidecar holds. Offline, over the index of a scanned copy of
@@ -27,10 +27,8 @@ from tests.fixtures.local_server import local_paths
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED,
     CHMI_SOURCE,
-    IMGW_HYDRO,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_HYDRO,
     IMGW_TERMS_PUBLIC_DATA,
 )
@@ -44,7 +42,7 @@ CZ_ARCHIVE = (
 )
 CZ_SERIES = "series/versions/chmi_hydro_daily"
 CZ_CATALOG = "stations/versions/chmi_stations"
-PUBLIC_DATA_TERMS = [IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+PUBLIC_DATA_TERMS = [IMGW_TERMS_PUBLIC_DATA]
 
 type Stores = Callable[[str], Path]
 
@@ -95,7 +93,7 @@ def _current(owner: Caller, slot: str) -> str:
         ),
         pytest.param(
             IMGW_CATALOG,
-            [IMGW_SOURCE, IMGW_PROCESSED, IMGW_HYDRO],
+            [IMGW_SOURCE, IMGW_PROCESSED],
             [*PUBLIC_DATA_TERMS, IMGW_TERMS_HYDRO],
             id="imgw-catalog",
         ),
@@ -125,7 +123,7 @@ def test_the_catalog_page_carries_the_lines_of_its_rows_once_each(
     # Assert
     assert page["next_cursor"] is None
     assert (page["attribution"], page["terms_notice"]) == (
-        [IMGW_SOURCE, IMGW_PROCESSED, IMGW_HYDRO, CHMI_SOURCE, CHMI_PROCESSED],
+        [IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE, CHMI_PROCESSED],
         [*PUBLIC_DATA_TERMS, IMGW_TERMS_HYDRO],
     )
 

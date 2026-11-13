@@ -1216,6 +1216,22 @@ command-line interface may change.
 
 ### Changed
 
+- The providers' terms are linked, no longer restated (A-ADR-055 erratum 2; Nogat ECO-065):
+  the line „Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl” and the
+  summary of the IMGW-PIB terms of use („Dane IMGW-PIB można wykorzystywać
+  nieodpłatnie…”) are gone from every answer, view, command output, hand-off, CSV and
+  export, and the terms lines name whose terms they link: „Regulamin danych IMGW-PIB:
+  https://danepubliczne.imgw.pl/regulations”, „Regulamin serwisu hydrologicznego IMGW-PIB:
+  https://hydro.imgw.pl/#/regulamin” (with station positions) and „Regulamin danych
+  PMAXTP: https://klimat.imgw.pl/opady-maksymalne”. An IMGW-PIB file as published carries
+  its source and „Regulamin danych IMGW-PIB”; processed data the mark of processing too;
+  stations with positions the hydrological service's terms too; PMAXTP its source, mark
+  and monograph with „Regulamin danych PMAXTP”; ČHMÚ's lines are unchanged. The lines are
+  chosen when they are read, so no store or index needs a rebuild (an export written
+  before keeps its `ATTRIBUTION.txt`). The guide's card „Warunki IMGW-PIB” no longer quotes
+  the summary. Nogat's GUI kit 0.6.0 of `b46eb5b` is copied whole into
+  `src/archiwista/web/nogat/`, and `schemas/nogat/handoff-1.schema.json` is Nogat's of
+  `b46eb5b` (A-ADR-054 erratum 2, A-ADR-052 erratum 3).
 - The data providers' lines take less room on screen (A-ADR-055 erratum 1; Nogat DEV-20.5,
   ECO-064): each view and card has one compact strip, Nogat's `<nogat-sources>`, in place
   of the blocks „Źródło danych i warunki”. It shows only the source, the mark of
@@ -1229,9 +1245,9 @@ command-line interface may change.
   file card. Measured in Chromium, the lines of text they take at 1440×900 / 390×844:
   map 7 → 2 / 19 → 5, the station card with its chart 23 → 3 / 28 → 4, the file card
   9 → 2 / 11 → 3. The answers, the command line, the hand-off, the exports and the CSV
-  keep every line in full. Nogat's GUI kit 0.5.1 of `9940bb8` is copied whole into
-  `src/archiwista/web/nogat/`, with `nogat-sources.js` and `.css` and the regulamin
-  files `nogat-terms.*` (A-ADR-054 erratum 1).
+  keep every line in full. Nogat's GUI kit is copied whole into
+  `src/archiwista/web/nogat/` (0.6.0, above), with `nogat-sources.js` and `.css` and the
+  regulamin files `nogat-terms.*` (A-ADR-054 erratum 1).
 - **Breaking:** `attribution` of `GET /stations/{code}/series` (`StationChart`) and of
   `GET /stores/{store}/versions/{version}` (`VersionCard`) is an array of lines, no longer
   the sidecar's string, and both answers gain `terms_notice` (A-ADR-055, DEV-20.6): the

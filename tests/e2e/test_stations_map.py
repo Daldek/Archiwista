@@ -28,10 +28,8 @@ from playwright.sync_api import Locator, Page, Request, Response, Route, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.provider_lines import (
-    IMGW_HYDRO,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_HYDRO,
     IMGW_TERMS_PUBLIC_DATA,
 )
@@ -336,8 +334,6 @@ def test_map_screen_station_lines_stand_in_a_strip_under_the_map(
     assert full == [
         IMGW_SOURCE,
         IMGW_PROCESSED,
-        IMGW_HYDRO,
-        IMGW_TERMS,
         IMGW_TERMS_PUBLIC_DATA,
         IMGW_TERMS_HYDRO,
     ]

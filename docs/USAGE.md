@@ -419,7 +419,7 @@ and a directory holding only one of them is no project.
   `README.txt`, which describes each file — its folder and name, product, year or label,
   coordinate systems, size, SHA-256 and the set it came from — and ends with „Źródła
   danych i warunki korzystania”: the lines the terms of the data's providers require,
-  each once, then the terms (A-ADR-055); `ATTRIBUTION.txt` beside it holds the same
+  each once, then the links to the terms (A-ADR-055); `ATTRIBUTION.txt` beside it holds the same
   lines, one a line, to carry on with the data. The files are copies, never links
   into the store, so opening them in QGIS changes no version. A version stored as a
   ZIP that holds exactly one raster
@@ -711,9 +711,10 @@ opens the Catalog with the stations that have no position; a click on a point op
 the station card (below). While stations are drawn, the strip of sources under the map
 gives the lines the terms of their providers require (A-ADR-055): for IMGW-PIB its
 source and the mark of processing, for ČHMÚ „Źródło: ČHMÚ, CC BY 4.0”; „Źródła i
-warunki” opens every line (the hydrological service of the positions, ČHMÚ's full
-credit with what was done) and the terms. With the Catalog beside the map, its
-lines join the Catalog's strip.
+warunki” opens every line (ČHMÚ's full credit with what was done) and the links to
+the terms (for IMGW-PIB „Regulamin danych IMGW-PIB”, and for the positions „Regulamin
+serwisu hydrologicznego IMGW-PIB”). With the Catalog beside the map, its lines join
+the Catalog's strip.
 
 ![Stations on the map with the legend and a tooltip](reports/v0.5-screenshots/01-stacje-na-mapie.webp)
 
@@ -767,8 +768,8 @@ version with the station's file, its SHA-256 and the series index, and the catal
 version) and "Szczegóły techniczne" (the API's answer) follow. At the card's foot,
 outside its scrolling part, the strip of sources gives the lines the terms of the
 station's provider require, with those of the chart; „Źródła i warunki” opens every
-line (the hydrological service too for a position of IMGW-PIB) and the terms, with
-„Kopiuj atrybucję”.
+line and the links to the terms (for a position of IMGW-PIB the hydrological
+service's terms too), with „Kopiuj atrybucję”.
 
 ![The station card](reports/v0.5-screenshots/04-karta-stacji.webp)
 

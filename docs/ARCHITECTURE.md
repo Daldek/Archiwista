@@ -237,9 +237,9 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `wal.py` | the switch of the index, the state database, the preview cache and the Kartograf adapter's unit cache to WAL, tried again while another process switches a new file | `use_wal` |
 | `errors.py` | application exceptions | `ArchiwistaError`, `SourceUnavailableError`, `SourceIncompatibleError`, `ProducerError`, `BrokenContractError`, `CheckFailedError`, `RunFailedError`, `CommandRequestError`, `PathOutsideRootError`, `IndexQueryError`, `PermissionDeniedError`, `NotFoundError`, `ConflictError`, `JobConflictError`, `ProjectLockedError`, `ProjectFileError`, `ProjectFileWriteError`, `ProjectAreaError`, `OfflineModeError`, `AreaTooLargeError`, `AreaUnreadableError`, `AreaTooComplexError`, `StateError`, `SnapshotError` |
 | `error_document.py` | one description of an error for every interface: `Problem`, the `archiwista-error/1` document and the refusal of a command | `Problem`, `describe`, `refuse`, `error_document`, `validation_problem`, `language_of` |
-| `attribution.py` | the lines the data providers' terms require with every product (Nogat DEV §20, ECO-060, A-ADR-055): a product names the origins of its data (`DataOrigin`, or `chmi_views` for ČHMÚ data in Archiwista's station tables and charts) and gets `attribution` (DEV-20.4) and `terms_notice` (DEV-20.7) in the standard's order, each line once; a station answer's origin by provider and whether it shows positions, a hand-off's by provider, a stored version's by its producer's `DataOriginAdapter` (`Origins`), else its sidecar's attribution; the CLI block „Źródła danych i warunki korzystania:” | `Attribution` (`lines`, `fields`), `Origin`, `of`, `merge`, `station_origin`, `series_origin`, `version`, `text`, `Origins` |
+| `attribution.py` | the lines the data providers' terms require with every product (Nogat DEV §20, ECO-060, ECO-065, A-ADR-055): a product names the origins of its data (`DataOrigin`, or `chmi_views` for ČHMÚ data in Archiwista's station tables and charts) and gets `attribution` (DEV-20.4) and `terms_notice` (DEV-20.7, the links to the IMGW-PIB terms that apply) in the standard's order, each line once; a station answer's origin by provider and whether it shows positions, a hand-off's by provider, a stored version's by its producer's `DataOriginAdapter` (`Origins`), else its sidecar's attribution; the CLI block „Źródła danych i warunki korzystania:” | `Attribution` (`lines`, `fields`), `Origin`, `of`, `merge`, `station_origin`, `series_origin`, `version`, `text`, `Origins` |
 | `messages/` | the message catalog: every text for a person in English and Polish, one module per area; rendered in the language of the request or of the command | `Text`, `Message`, `message`, `localize`, `localize_json`, `dump`, `load`, `language`, `STORED_LANG` |
-| `messages/legal.py` | the area `legal`: the lines of IMGW-PIB (S, P, H), PMAXTP (PS, PP, M), ČHMÚ (C and the two forms of CP) and the terms (N, RD, RH, RK) as the terms word them, the Polish wording in both languages (DEV §20); only `attribution.py` reads them | `MESSAGES` |
+| `messages/legal.py` | the area `legal`: the lines of IMGW-PIB (S, P), PMAXTP (PS, PP, M), ČHMÚ (C and the two forms of CP) and the links to the IMGW-PIB terms (RD, RH, RK; ECO-065: links, never a summary of the terms) as the standard words them, the Polish wording in both languages (DEV §20); only `attribution.py` reads them | `MESSAGES` |
 
 ### 2.2 Direction of dependencies
 
@@ -1330,8 +1330,8 @@ Sans Regular from openmaptiles/fonts 2.0 (OFL-1.1; ranges U+0000–U+02FF,
 U+0400–U+04FF and U+2000–U+20FF). `vendor/vendor.json` lists every file
 with its SHA-256 sum, source and license; `tests/unit/test_vendor_integrity.py`
 rejects a file that is changed, missing or not listed (the same for
-`api/swagger/`). `nogat/` is Nogat's GUI kit 0.5.1 of Nogat `9940bb8` (A-ADR-054
-erratum 1, Nogat DEV-15.4 to DEV-15.7, DEV-20.5, ECO-064), copied whole, byte for byte
+`api/swagger/`). `nogat/` is Nogat's GUI kit 0.6.0 of Nogat `b46eb5b` (A-ADR-054
+errata 1 and 2, Nogat DEV-15.4 to DEV-15.7, DEV-20.5, ECO-064, ECO-065), copied whole, byte for byte
 and never edited: `nogat-app-menu.js` and `.css` (the element `<nogat-app-menu>`, the
 menu „Aplikacje”), `nogat-handoff.js` (the hand-off's labels, file name and text, the
 clipboard with its field, the download, the envelope check), `nogat-sources.js` and

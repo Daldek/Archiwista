@@ -29,10 +29,8 @@ from tests.fixtures.api_session import Caller, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import NoSources, local_paths
 from tests.fixtures.provider_lines import (
-    IMGW_HYDRO,
     IMGW_PROCESSED,
     IMGW_SOURCE,
-    IMGW_TERMS,
     IMGW_TERMS_HYDRO,
     IMGW_TERMS_PUBLIC_DATA,
 )
@@ -43,15 +41,8 @@ RABA = "149190310"
 # The title of the providers' lines of a person's text, and the lines of IMGW-PIB
 # stations with a position (from the hydrological service) and without one.
 LINES_TITLE = "Źródła danych i warunki korzystania:"
-LOCATED = [
-    IMGW_SOURCE,
-    IMGW_PROCESSED,
-    IMGW_HYDRO,
-    IMGW_TERMS,
-    IMGW_TERMS_PUBLIC_DATA,
-    IMGW_TERMS_HYDRO,
-]
-UNLOCATED = [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+LOCATED = [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO]
+UNLOCATED = [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS_PUBLIC_DATA]
 AREA = AreaRecord(
     id="zlewnia",
     source="drawn",
@@ -347,7 +338,7 @@ def test_stations_cli_writes_polish_lines_for_a_person(doors: Doors) -> None:
         f"  {DAILY} (szeregi 2026-10-19, lata hydrologiczne 1951–2024): H: luki 91%"
     )
     assert "bez położenia (źródło podało 0,0)" in lines[2]
-    assert lines[-8:] == [
+    assert lines[-6:] == [
         "Stacje na stronie: 2. Z położeniem: 1 (na granicy obszaru: 0), bez"
         " położenia: 1, ukryte filtrem: 0.",
         LINES_TITLE,
@@ -355,9 +346,9 @@ def test_stations_cli_writes_polish_lines_for_a_person(doors: Doors) -> None:
     ]
     assert "czynna: tak" in card
     assert "Położenie: 20.1, 49.7 (źródło api_hydro, niepewność 5566.0 m" in card
-    assert card.splitlines()[-7:] == [LINES_TITLE, *(f"  {line}" for line in LOCATED)]
+    assert card.splitlines()[-5:] == [LINES_TITLE, *(f"  {line}" for line in LOCATED)]
     assert "Bez położenia: źródło podało 0,0" in unlocated
-    assert unlocated.splitlines()[-5:] == [
+    assert unlocated.splitlines()[-4:] == [
         LINES_TITLE,
         *(f"  {line}" for line in UNLOCATED),
     ]
