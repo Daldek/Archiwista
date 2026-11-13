@@ -1216,6 +1216,22 @@ command-line interface may change.
 
 ### Changed
 
+- The data providers' lines take less room on screen (A-ADR-055 erratum 1; Nogat DEV-20.5,
+  ECO-064): each view and card has one compact strip, Nogat's `<nogat-sources>`, in place
+  of the blocks „Źródło danych i warunki”. It shows only the source, the mark of
+  processing (and PMAXTP's) and „Źródło: ČHMÚ, CC BY 4.0” with „ČHMÚ” and „CC BY 4.0”
+  as links, each once, then „Źródła i warunki”, which opens „Źródła danych i warunki
+  korzystania” with every line and the terms, and there „Kopiuj atrybucję”; `Esc` closes
+  that window only. The strip stands under the map, under the Katalog's lists of files
+  and of stations (above the keys, with the lines of the map beside them), under the
+  version comparison's maps and the station comparison's facts, and at the foot of the
+  station card (with its chart's lines; the chart has no block of its own) and of the
+  file card. Measured in Chromium, the lines of text they take at 1440×900 / 390×844:
+  map 7 → 2 / 19 → 5, the station card with its chart 23 → 3 / 28 → 4, the file card
+  9 → 2 / 11 → 3. The answers, the command line, the hand-off, the exports and the CSV
+  keep every line in full. Nogat's GUI kit 0.5.1 of `9940bb8` is copied whole into
+  `src/archiwista/web/nogat/`, with `nogat-sources.js` and `.css` and the regulamin
+  files `nogat-terms.*` (A-ADR-054 erratum 1).
 - **Breaking:** `attribution` of `GET /stations/{code}/series` (`StationChart`) and of
   `GET /stores/{store}/versions/{version}` (`VersionCard`) is an array of lines, no longer
   the sidecar's string, and both answers gain `terms_notice` (A-ADR-055, DEV-20.6): the

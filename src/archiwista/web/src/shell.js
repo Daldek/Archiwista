@@ -27,6 +27,7 @@ import { FeedbackButton } from "./feedback.js";
 import { stamp } from "./format.js";
 import { account as A } from "./labels/account.js";
 import { T, t } from "./labels/index.js";
+import { SourcesScope } from "./provider-lines.js";
 import { Link, navigate, readRoute, setParams, useRoute } from "./router.js";
 import { findView, OVERLAYS, startView, VIEWS } from "./routes.js";
 import { SearchButton } from "./search.js";
@@ -600,7 +601,9 @@ function ViewHost({ view, route }) {
   }
   if (!state.module) return html`<div class="page"><${Spinner} label=${L.view.loading} /></div>`;
   const Component = state.module.default;
-  return html`<${Boundary} name=${name}><${Component} route=${route} /></${Boundary}>`;
+  return html`<${Boundary} name=${name}>
+    <${SourcesScope}><${Component} route=${route} /></${SourcesScope}>
+  </${Boundary}>`;
 }
 
 function OverlayHost({ overlay, route, value, onClose }) {
@@ -615,7 +618,7 @@ function OverlayHost({ overlay, route, value, onClose }) {
   if (!module) return null;
   const Component = module.default;
   return html`<${Boundary} name=${overlay.param}>
-    <${Component} route=${route} value=${value} onClose=${onClose} />
+    <${SourcesScope}><${Component} route=${route} value=${value} onClose=${onClose} /></${SourcesScope}>
   </${Boundary}>`;
 }
 

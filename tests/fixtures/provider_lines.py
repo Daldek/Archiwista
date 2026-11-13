@@ -6,9 +6,10 @@ the same line of another tool only when equal byte for byte, so a change of
 the wording in the code must fail. The names follow the standard's marks:
 the IMGW-PIB source (S), the mark of processing (P) and of the hydrological
 service (H); PMAXTP's source, mark and monograph (PS, PP, M); the ČHMÚ credit
-(C) and what was done with its data (CP), in Obserwator's stored forms and in
-Archiwista's tables and charts; the IMGW-PIB terms of use (N) and the terms
-of each service (RD, RH, RK).
+(C), its short form on a GUI's strip only (CK), and what was done with its
+data (CP), in Obserwator's stored forms and in Archiwista's tables and
+charts; the IMGW-PIB terms of use (N) and the terms of each service (RD, RH,
+RK).
 """
 
 IMGW_SOURCE = (
@@ -45,6 +46,7 @@ CHMI_PROCESSED_VIEWS = (
     "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu, zestawienia i"
     " wykresy)"
 )
+CHMI_SHORT = "Źródło: ČHMÚ, CC BY 4.0"
 IMGW_TERMS = (
     "Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych"
     " (niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach z"

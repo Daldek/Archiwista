@@ -1,18 +1,36 @@
 /**
  * The lines the data providers' terms require with their data (Nogat DEV §20,
- * A-ADR-055): an answer's `attribution`, then its `terms_notice`, each line
- * exactly as the API gives it — never paraphrased, translated or cut — under
- * „Źródło danych i warunki”, visible wherever the data are, never in a tooltip
- * or a folded panel. An address in a line to another computer is a link
- * whose text is the address (a line may be a sidecar's, from the store).
- * The station card and its chart, the comparison of stations, the Catalog's
- * lists of files and stations, the map's stations, the file card and the
- * comparison of versions show them; without lines nothing shows. The
- * comparison's CSV carries them in its last two columns (`lineColumns`).
+ * DEV-20.5, A-ADR-055): an answer's `attribution`, then its `terms_notice`,
+ * each line exactly as the API gives it. On screen a view or a card has one
+ * strip, the kit's `<nogat-sources>` (nogat/nogat-sources.js): 12 px, the
+ * lines S, P, PS, PP and the short ČHMÚ line CK, then „Źródła i warunki”,
+ * which opens a dialog with every line and the terms, and there „Kopiuj
+ * atrybucję” (every line, one a line). The shell gives each view and each
+ * overlay a `SourcesScope`; its parts report their answers' lines with
+ * `useProviderLines` and its `SourcesStrip` shows them merged: the station
+ * card with its chart, the comparison of stations, the Catalog's lists of
+ * files and stations (with the map beside them), the map's stations, the
+ * file card and the comparison of versions. Without lines nothing shows.
+ * The comparison's CSV carries them in full in its last two columns
+ * (`lineColumns`).
  */
 
+import "../nogat/nogat-sources.js";
 import { providerLines as L } from "./labels/provider-lines.js";
-import { html, loadStylesheet, outsideLink, useId } from "./ui.js";
+import {
+  createContext,
+  html,
+  loadStylesheet,
+  render,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "./ui.js";
 import { CopyAction, loadCardStyles } from "./views/cards.js";
 
 await Promise.all([
@@ -24,8 +42,9 @@ await Promise.all([
 export const NO_LINES = Object.freeze({ attribution: [], terms_notice: [] });
 /** The CSV columns of the lines (DEV-20.5), named as the API's fields. */
 export const LINE_COLUMNS = ["attribution", "terms_notice"];
-// An address in a line, without the punctuation that ends its sentence or parenthesis.
-const ADDRESS = /https?:\/\/[^\s()<>]*[^\s()<>.,;:!?]/g;
+
+/** The scope of a view or an overlay: `report(key, lines)` and the merged `lines`. */
+const Scope = createContext(null);
 
 /**
  * The lines of an answer: its `attribution` and `terms_notice`, none without them.
@@ -38,56 +57,88 @@ function linesOf(answer) {
 }
 
 /**
- * The lines of an answer under „Źródło danych i warunki”: each line a
- * paragraph as the API gives it, the attribution first, then the terms;
- * nothing without lines.
+ * One view's or overlay's lines: what its parts report, merged in the order
+ * they first reported, for its one `SourcesStrip`.
  *
- * @param {object} props
- * @param {Partial<import("./types.js").ProviderLines>|null|undefined} props.answer - An
- *   answer of the API, or the lines of several (`mergeLines`).
- * @param {boolean} [props.copy] - With „Kopiuj atrybucję”: every line, one per line.
- * @param {boolean} [props.strip] - A strip under a list or a map: the heading beside
- *   the lines, which run on.
- * @param {3|4} [props.level] - The heading's level.
- * @param {string} [props.className] - The place's own classes.
+ * @param {{children: unknown}} props
  */
-export function ProviderLines({ answer, copy = false, strip = false, level = 4, className = "" }) {
-  const id = useId();
-  const { attribution, terms_notice: terms } = linesOf(answer);
-  if (!attribution.length && !terms.length) return null;
-  const Heading = `h${level}`;
-  const classes = ["provider-lines", strip ? "strip" : "", className].filter(Boolean).join(" ");
-  const text = [...attribution, ...terms].join("\n");
-  return html`<div class=${classes} role="group" aria-labelledby=${id}>
-    <${Heading} class="section-title pl-title" id=${id}>${L.title}</${Heading}>
-    <${Lines} lines=${attribution} />
-    <${Lines} lines=${terms} terms />
-    ${copy ? html`<${CopyAction} text=${text} label=${L.copy} />` : null}
-  </div>`;
+export function SourcesScope({ children }) {
+  const [parts, setParts] = useState(() => new Map());
+  const report = useCallback(
+    (key, lines) =>
+      setParts((previous) => {
+        const next = new Map(previous);
+        if (lines) next.set(key, lines);
+        else next.delete(key);
+        return next;
+      }),
+    [],
+  );
+  const value = useMemo(() => ({ report, lines: mergeLines([...parts.values()]) }), [report, parts]);
+  return html`<${Scope.Provider} value=${value}>${children}</${Scope.Provider}>`;
 }
 
-/** The lines of one kind, each a paragraph; nothing without them. */
-function Lines({ lines, terms = false }) {
-  if (!lines.length) return null;
-  return html`<div class=${terms ? "pl-lines pl-terms" : "pl-lines"}>
-    ${lines.map((line) => html`<p class="pl-line" key=${line}>${linked(line)}</p>`)}
-  </div>`;
+/**
+ * Report an answer's lines to the scope's strip while the part is shown;
+ * none (`null`) while its data are not on screen.
+ *
+ * @param {Partial<import("./types.js").ProviderLines>|null|undefined} answer - An
+ *   answer of the API, or the lines of several (`mergeLines`).
+ */
+export function useProviderLines(answer) {
+  const report = useContext(Scope)?.report;
+  const key = useId();
+  const lines = linesOf(answer);
+  const text = JSON.stringify(lines);
+  // Before the paint, so the strip appears with the data and does not move the view after.
+  useLayoutEffect(() => {
+    report?.(key, lines.attribution.length || lines.terms_notice.length ? lines : null);
+  }, [report, key, text]);
+  useLayoutEffect(() => () => report?.(key, null), [report, key]);
 }
 
-/** A line as text, each outside address in it a link whose text is the address. */
-function linked(line) {
-  const parts = [];
-  let last = 0;
-  for (const match of line.matchAll(ADDRESS)) {
-    const target = outsideLink(match[0]);
-    if (target === null) continue;
-    if (match.index > last) parts.push(line.slice(last, match.index));
-    parts.push(html`<a key=${match.index} href=${target} target="_blank"
-      rel="noopener noreferrer">${match[0]}</a>`);
-    last = match.index + match[0].length;
-  }
-  if (last < line.length) parts.push(line.slice(last));
-  return parts;
+/**
+ * The one strip of a view or an overlay: `<nogat-sources>` with the scope's
+ * lines, and „Kopiuj atrybucję” in its dialog; hidden without lines. Esc in
+ * the dialog closes it only.
+ */
+export function SourcesStrip() {
+  const lines = useContext(Scope)?.lines ?? NO_LINES;
+  const element = useRef(null);
+  const text = useRef("");
+  const shown = JSON.stringify(lines);
+  text.current = [...lines.attribution, ...lines.terms_notice].join("\n");
+  useLayoutEffect(() => {
+    // Set once per change, before the browser paints: the element draws its strip and
+    // dialog again, and the view's layout does not shift a frame later.
+    element.current.attribution = lines.attribution;
+    element.current.termsNotice = lines.terms_notice;
+  }, [shown]);
+  useEffect(() => {
+    const node = element.current;
+    const open = () => {
+      const content = node.querySelector("dialog .nogat-sources-content");
+      if (!content) return;
+      let place = content.querySelector(":scope > .sources-copy");
+      if (!place) {
+        place = document.createElement("p");
+        place.className = "sources-copy";
+        content.append(place);
+      }
+      render(html`<${CopyAction} text=${text.current} label=${L.copy} />`, place);
+    };
+    // Esc closes the dialog only, not the card or the overlay under it (shell.js).
+    const key = (event) => {
+      if (event.key === "Escape" && node.isOpen) event.stopPropagation();
+    };
+    node.addEventListener("nogat-sources-open", open);
+    node.addEventListener("keydown", key);
+    return () => {
+      node.removeEventListener("nogat-sources-open", open);
+      node.removeEventListener("keydown", key);
+    };
+  }, []);
+  return html`<nogat-sources class="view-sources" ref=${element}></nogat-sources>`;
 }
 
 /**

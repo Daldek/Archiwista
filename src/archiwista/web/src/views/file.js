@@ -6,9 +6,9 @@
  *
  * It shows every version of the slot on an axis, newest first, marking the
  * current one (the standard path) and the `full_sheet/` one, with the pins
- * of the projects the session sees — older versions too. The chosen version
- * has the lines its provider's terms require above its tabs, beside „Pobierz
- * plik” (provider-lines.js, with „Kopiuj atrybucję”), and two tabs:
+ * of the projects the session sees — older versions too. The chosen
+ * version's provider lines stand in the card's one strip at its foot
+ * (provider-lines.js, „Kopiuj atrybucję” in the strip's dialog), and it has two tabs:
  * „Metadane” — its metadata for people next to the raw values (criterion 6),
  * its licence, the paths to copy (this version and the standard path, also
  * as mounted on other computers), the files of the same producer request and
@@ -45,7 +45,7 @@ import { T, t } from "../labels/index.js";
 import { pins as P } from "../labels/pins.js";
 import { PREVIEW_PARAM, PREVIEW_STYLE_PARAM } from "../map/previews.js";
 import { PreviewPane } from "../previews.js";
-import { ProviderLines } from "../provider-lines.js";
+import { SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { Link, readRoute, setParams, useRoute } from "../router.js";
 import { startView } from "../routes.js";
 import {
@@ -136,6 +136,7 @@ export default function FileCard({ route, value, onClose }) {
             style=${route.params[STYLE_PARAM] ?? null} />`
         : html`<p class="hint warn">${t(L.bad_address, { value })}</p>`}
     </div>
+    <${SourcesStrip} />
   </section>`;
 }
 
@@ -305,6 +306,7 @@ function VersionDetails({ store, card, version, versions, tab, style, onPinned }
     (signal) => getVersion(store, version.path, { signal }),
     [store, version.path],
   );
+  useProviderLines(details.data);
   const title = version.label
     ? t(L.version.title, { label: version.label })
     : L.version.title_plain;
@@ -324,7 +326,6 @@ function VersionDetails({ store, card, version, versions, tab, style, onPinned }
           })} />
       </div>
     </div>
-    <${ProviderLines} answer=${details.data} copy />
     <${VersionTabs} tab=${tab} panel=${panel} />
     <div class="fc-panel" role="tabpanel" id=${panel} aria-labelledby=${`${panel}-${tab}`}>
       ${tab === "preview"

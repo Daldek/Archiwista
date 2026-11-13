@@ -26,8 +26,9 @@
  * address's, else the product's first) in one cursor of the address's
  * location group, drawn as stations × years
  * (views/catalog-station-timeline.js), whose station names open the card too.
- * Under either stand the lines the providers' terms require with the
- * stations read so far, those of every page (provider-lines.js).
+ * Under either stands the view's one strip of the lines the providers' terms
+ * require with the stations read so far, those of every page, and with the
+ * map's beside them (provider-lines.js).
  */
 
 import { listStations, listStationTimeline } from "../api.js";
@@ -45,7 +46,7 @@ import {
   stationShape,
   stationType,
 } from "../map/stations.js";
-import { mergeLines, NO_LINES, ProviderLines } from "../provider-lines.js";
+import { mergeLines, NO_LINES, SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { href, Link, navigate, setParams } from "../router.js";
 import { findView } from "../routes.js";
 import {
@@ -200,6 +201,7 @@ export function CatalogStations(props) {
   const pages = useStationPages(stable, key, order, timeline ? listStationTimeline : listStations, {
     enabled: !timeline || (datasetKey !== null && datasetsRead),
   });
+  useProviderLines(pages.lines);
   const [folded, setFolded] = useState({ key: null, open: true });
   const counts = pages.counts;
   const area = Boolean(query.area_id || query.bbox);
@@ -346,7 +348,7 @@ export function CatalogStations(props) {
       <${Notes} counts=${counts} location=${location} pages=${pages} />
     </div>
     <div class="cat-body">${body}</div>
-    <${ProviderLines} answer=${pages.lines} strip />
+    <${SourcesStrip} />
     <footer class="cat-foot">
       ${pages.moreError
         ? html`<span class="cat-more-error" role="alert">${L.result.more_failed}

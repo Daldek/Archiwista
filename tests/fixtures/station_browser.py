@@ -8,9 +8,9 @@ is offline. Helpers start a session, read the API in the interface's
 language (Polish labels), find where a position of the map lies on the
 screen (MapLibre draws Web Mercator with 512 px tiles around the centre and
 zoom the address holds) and where the days of a chart's plot lie, to select
-them by dragging, and read the lines of the providers' terms a view shows
-(„Źródło danych i warunki”); ``tests.fixtures.provider_lines`` gives those
-lines byte for byte.
+them by dragging, and read the providers' lines of a view's strip, the
+kit's ``<nogat-sources>``: those on screen and every line of its dialog;
+``tests.fixtures.provider_lines`` gives those lines byte for byte.
 """
 
 import math
@@ -51,8 +51,10 @@ API_GET = """async (path) => {
   const answer = await fetch(`/api/v1${path}`, { headers });
   return { status: answer.status, body: await answer.json() };
 }"""
-# The heading of the lines of the providers' terms in every view.
-LINES_TITLE = "Źródło danych i warunki"
+# The kit's strip of the providers' lines (Nogat DEV-20.5), its button and its dialog.
+SOURCES = "nogat-sources:not([hidden])"
+SOURCES_BUTTON = "Źródła i warunki"
+SOURCES_DIALOG = "Źródła danych i warunki korzystania"
 
 
 def station_settings(source: Path, base: Path) -> AppSettings:
@@ -87,17 +89,33 @@ def api(page: Page, path: str) -> Any:
     return answer["body"]
 
 
-def shown_lines(block: Locator) -> list[str]:
-    """Return the lines of the providers' terms a block shows, each line's text.
+def strip_lines(strip: Locator) -> list[str]:
+    """Return the lines a strip of the providers' lines shows on screen.
 
-    The block and every line of it are visible; the texts are the page's own,
-    no whitespace normalised, to compare byte for byte.
+    The strip (the kit's ``<nogat-sources>``) and each of its lines are
+    visible; the texts are the page's own, to compare byte for byte.
     """
-    expect(block).to_be_visible()
-    lines = block.locator(".pl-line").all()
+    expect(strip).to_be_visible()
+    lines = strip.locator(".nogat-sources-strip .nogat-sources-line").all()
     for line in lines:
         expect(line).to_be_visible()
     return [line.text_content() or "" for line in lines]
+
+
+def dialog_lines(strip: Locator) -> list[str]:
+    """Return every line the dialog behind a strip lists, then close it.
+
+    „Źródła i warunki” opens the dialog; its items are the attribution lines
+    and then the terms, each the page's own text.
+    """
+    expect(strip).to_be_visible()
+    strip.get_by_role("button", name=SOURCES_BUTTON).click()
+    dialog = strip.page.get_by_role("dialog", name=SOURCES_DIALOG)
+    expect(dialog).to_be_visible()
+    lines = [item.text_content() or "" for item in dialog.locator("li").all()]
+    dialog.get_by_role("button", name="Zamknij", exact=True).click()
+    expect(dialog).to_be_hidden()
+    return lines
 
 
 def address(served: Served, **params: str) -> str:

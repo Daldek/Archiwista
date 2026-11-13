@@ -283,7 +283,7 @@ Ola opens the sheet `N-34-130-D-d-2-4`. The "Karta pliku" (File card) shows the 
 timeline (flights 2019, 2023, 2025), which version is current, which is full
 (`full_sheet/`), which projects pin which version, metadata in
 plain language ("laser scanning, mean height error 0.06 m, full sheet"),
-the license, the lines its provider's terms require with a "Kopiuj atrybucję" (Copy attribution) button (4.8.5), a preview and the actions: "Kopiuj
+the license, the lines its provider's terms require in a strip at the card's foot, whose dialog has a "Kopiuj atrybucję" (Copy attribution) button (4.8.5), a preview and the actions: "Kopiuj
 ścieżkę wersji" (Copy version path), "Polecenie Kartografa" (Kartograf command: the
 command that selects this version, KB-6), "Sprawdź aktualność" (Check for updates), "Porównaj
 wersje" (Compare versions), "Dodaj do projektu…" (Add to project: the version chosen on the
@@ -458,7 +458,7 @@ Ola opens the station "Stróża": the station card has metadata (code, river and
 hydrographic code, location with source and uncertainty), coverage of H, Q and T,
 a chart of daily Q (gaps as breaks with a grey band, annual maxima published by
 IMGW as points), versions of series and archives, and the lines the IMGW-PIB terms require (4.8.5)
-with "Kopiuj atrybucję" (Copy attribution). "Porównaj z…" (Compare with…) adds Q from Gdów and Proszówki as
+in a strip at the card's foot, whose dialog has "Kopiuj atrybucję" (Copy attribution). "Porównaj z…" (Compare with…) adds Q from Gdów and Proszówki as
 panels stacked under that of Stróża on a common time axis, with a table of facts (6.7, M11).
 Archiwista does not compute statistics (1.3).
 
@@ -1301,8 +1301,8 @@ The ČHMÚ lines C and CP follow M (4.8.6).
 |---|---|
 | archive and station catalog sidecar (`license.attribution`, IMGW-3; Obserwator's text) | §5 para. 3 |
 | dataset series sidecar and CSV export (processed data: normalization and format change; Obserwator's text) | §5 para. 3 and 4 |
-| a stored version as it is: the file card ("Kopiuj atrybucję" (Copy attribution)), `GET /stores/{store}/versions/{version}`, the version comparison (`GET /compare`, 8.5), the "Katalog" (Catalog) list of files (a page of `GET /slots`, 9.2) | an archive S; a dataset series S, P; the station catalog S, P, H; a PMAXTP cell PS, PP, M; each with N and its service's terms (RD; RD and RH for the catalog; RK for PMAXTP) |
-| stations with their positions: the map, the "Katalog" (Catalog) list and "Oś czasu" (Timeline) of stations, the station card and the station comparison ("Kopiuj atrybucję" in both) | S, P, H, N, RD, RH; when none of the stations has a position, as the next row |
+| a stored version as it is: the file card ("Kopiuj atrybucję" (Copy attribution) in its strip's dialog), `GET /stores/{store}/versions/{version}`, the version comparison (`GET /compare`, 8.5), the "Katalog" (Catalog) list of files (a page of `GET /slots`, 9.2) | an archive S; a dataset series S, P; the station catalog S, P, H; a PMAXTP cell PS, PP, M; each with N and its service's terms (RD; RD and RH for the catalog; RK for PMAXTP) |
+| stations with their positions: the map, the "Katalog" (Catalog) list and "Oś czasu" (Timeline) of stations, the station card and the station comparison ("Kopiuj atrybucję" in the strip's dialog of both) | S, P, H, N, RD, RH; when none of the stations has a position, as the next row |
 | a station's series without positions: the chart (values simplified for display), the coverage of `GET /stations/{code}/coverage`, the datasets of stations | S, P, N, RD |
 | hand-off `nogat-handoff/1` (`GET /stations/{code}/handoff`, 9.2) | S, P, N, RD |
 | export (the section "Źródła danych i warunki korzystania" of its `README.txt` and `ATTRIBUTION.txt`, 8.4) | the lines of all versions of the export, each once |
@@ -1314,6 +1314,10 @@ origin of a version's data (`DataOriginAdapter`, 5.3), so versions written by ol
 releases carry the same lines. A version whose producer names no origin (Kartograf) carries
 the attribution of its sidecar (`license.attribution`) as its one line, without a terms
 notice. The PNG previews draw no lines, an open point against DEV-20.5 (A-ADR-055).
+On screen a view or a card has one strip of Nogat's kit (`<nogat-sources>`, DEV-20.5,
+A-ADR-055 erratum 1): S, P, PS, PP and the short ČHMÚ line CK, each once, then
+"Źródła i warunki" (Sources and terms), which opens every line and the terms (6.7,
+"Licence"); the answers, the CSV, the hand-off and the exports keep every line in full.
 Archiwista informs about the terms but does not enforce them — it does not know the purpose of use.
 
 #### 4.8.6 ČHMÚ stations (CZ, from v0.6)
@@ -2217,15 +2221,19 @@ Wersje:      2019-06-11_61234     2023-05-02_80011     2025-04-26_82710
              o--------------------o--------------------O  bieżąca, pełna
 Przypięta w: -                    Wisła-2026 (dem)     Raba (teren)
 -----------------------------------------------------------------------------
-Źródło danych i warunki                                   [Kopiuj atrybucję]
-Główny Urząd Geodezji i Kartografii
 [Podgląd] [Metadane] [Pochodzenie] [Szczegóły techniczne]
  Kampania 82710 · lot 2025.04.26 · skaning laserowy · błąd wys. 0,06 m
  Arkusz pełny · 37,8 MB · EPSG:2180 · EPSG:9651 · nodata -9999
 -----------------------------------------------------------------------------
 [Kopiuj ścieżkę wersji] [Polecenie Kartografa] [Sprawdź aktualność]
 [Porównaj wersje] [Dodaj do projektu]
+-----------------------------------------------------------------------------
+[Źródła i warunki]
 ```
+
+The strip at the card's foot shows on screen only the lines S, P, PS, PP and CK (4.8.5), so
+for GUGiK's data only its button: the sidecar's line "Główny Urząd Geodezji i Kartografii"
+is in its dialog "Źródła danych i warunki korzystania", with "Kopiuj atrybucję".
 
 **f) "Zadania" (Jobs)** (from v0.4 the team's queue: every person's jobs with who runs them;
 "Anuluj" for whoever started a job and administrators; "Ponów" disabled with the reason
@@ -2385,18 +2393,10 @@ Szeregi: hydro dobowe · wersja 2026-08-31_ab12cd34 · z 867 archiwów [Lista]
 -----------------------------------------------------------------------------
 [Kopiuj ścieżkę pliku] [Polecenie Obserwatora] [Sprawdź aktualność]
 [Przygotuj szeregi...] [Dodaj do zestawu]
-Źródło danych i warunki                                   [Kopiuj atrybucję]
+-----------------------------------------------------------------------------
 Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej –
-Państwowy Instytut Badawczy
-Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu
-Badawczego zostały przetworzone
-Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl
-Dane IMGW-PIB można wykorzystywać nieodpłatnie do celów prywatnych
-(niezarobkowych). Wykorzystanie w działalności gospodarczej, na stronach
-z reklamami lub do celów wymienionych w regulaminie (m.in. planowanie
-w gospodarowaniu wodami, art. 317 Prawa wodnego) wymaga umowy z IMGW-PIB.
-Regulamin: https://danepubliczne.imgw.pl/regulations
-Regulamin: https://hydro.imgw.pl/#/regulamin
+Państwowy Instytut Badawczy  Dane Instytutu Meteorologii i Gospodarki Wodnej –
+Państwowego Instytutu Badawczego zostały przetworzone  [Źródła i warunki]
 ```
 
 **l) "Okno planu" (Plan window) for IMGW archives**
@@ -2669,7 +2669,7 @@ confirmed by the user on 2026-10-26, M11):
   for the missing location, coverage
   of each variable separately (label, full years, longest gap; no
   aggregate station label, P16), chart, versions of series and input archives
-  (`sha256`, `ETag`, `Last-Modified`), the lines of the provider's terms with "Kopiuj atrybucję" (Copy attribution)
+  (`sha256`, `ETag`, `Last-Modified`), the lines of the provider's terms in a strip at the card's foot (6.7, "Licence")
   and the link "Strona stacji IMGW" (IMGW station page) (`https://hydro.imgw.pl/#/station/hydro/<code>`
   — a plain link, no background requests). Actions: "Kopiuj ścieżkę pliku" (Copy file path),
   "Polecenie Obserwatora" (Obserwator command), "Sprawdź aktualność" (Check freshness), "Przygotuj szeregi…" (Prepare series…),
@@ -2712,12 +2712,17 @@ confirmed by the user on 2026-10-26, M11):
   the slots and stations of the area, and the set (8.4) combines the layers of both producers
   with the lines of both providers' terms (4.8.5). Optionally, later (M11 did not decide it): a common timeline of the years of
   NMT flights and series coverage.
-- **Licence.** The lines the providers' terms require (4.8.5, 4.8.6; A-ADR-055) stand under
-  the heading "Źródło danych i warunki" (Data source and terms), one paragraph per line, addresses as links:
-  in the station card below its tabs and in the station comparison, both with "Kopiuj atrybucję"
-  (Copy attribution: every line, one per line), in the footer of the chart, and in a strip under
-  the map and under the "Katalog" (Catalog) station list (the lines of the pages read, merged);
-  an answer without lines shows none.
+- **Licence.** The lines the providers' terms require (4.8.5, 4.8.6; A-ADR-055 and its
+  erratum 1) stand in one strip of Nogat's kit (`<nogat-sources>`, Nogat DEV-20.5) per view or
+  card, at the foot of its data: 12 px, muted, on screen only S, P, PS, PP and CK ("Źródło:
+  ČHMÚ, CC BY 4.0", with "ČHMÚ" and "CC BY 4.0" linked), each once, then "Źródła i warunki"
+  (Sources and terms), which opens the dialog "Źródła danych i warunki korzystania" (Data
+  sources and terms of use) with every line (H, M, C and CP too) and the terms (N, RD, RH, RK),
+  addresses as links, and at its end "Kopiuj atrybucję" (Copy attribution: every line, one per
+  line); Esc closes the dialog only. The strip stands at the foot of the station card (with the
+  lines of its chart, which has none of its own), under the station comparison's facts, under
+  the map and under the "Katalog" (Catalog) lists (the lines of the pages read and of the map
+  beside, merged); an answer without lines shows none.
 - **ČHMÚ stations (from v0.6, 4.8.6).** The same views and rules; the point, row
   and card have a supplier badge ("IMGW-PIB", "ČHMÚ" — the display name
   for the identifier `CHMI`), the "Dostawca" (Supplier) filter works in the map,
@@ -3351,7 +3356,7 @@ from the "Zestawienie" (Summary) (dataset versions).
    accuracies (`height_rmse_m`, `position_rmse_m`), full sheet
    and coverage, resolution, CRS, `sha256`, size, source address,
    license, Kartograf version; with the lines of both versions' providers' terms
-   (`attribution`, `terms_notice`, 4.8.5, A-ADR-055) in a strip under the table, and in the
+   (`attribution`, `terms_notice`, 4.8.5, A-ADR-055) in the strip under the maps, and in the
    CSV made in the browser as the last columns `attribution` and `terms_notice`, one line
    per cell from the first data row down (DEV-20.5).
 2. **Visual** (from previews): the curtain and cross-fade on the map, two views
@@ -4187,8 +4192,9 @@ over TLS.
   the network that every file in these directories is in the manifest and has a recorded sum;
   an unknown or changed file is an error. Archiwista's own files
   (`vendor.json`, `archiwista-docs.js`) are excluded by name. Nogat's GUI kit
-  (`src/archiwista/web/nogat/`: the menu "Aplikacje", the hand-off module and the
-  marks of the GUIs) is copied from Nogat byte for byte and never edited; the same
+  (`src/archiwista/web/nogat/`: the menu "Aplikacje", the hand-off module, the strip of
+  the providers' lines `<nogat-sources>`, the regulamin files and the marks of the GUIs;
+  kit 0.5.1) is copied from Nogat whole, byte for byte and never edited; the same
   test checks each kit file against the kit's own manifest `nogat-kit.json`
   (A-ADR-054). The Python
   environment is pinned by `requirements.lock` with sha256 sums (`pip install
@@ -5225,7 +5231,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | Windows in the team (UNC paths, signals, hard links on SMB) | different behavior | medium | path aliases, `CTRL_BREAK_EVENT`, `archiwista doctor`, tests on Windows before v1.0 |
 | Load on public services | slowdowns, blocks on the source side | low | Kartograf's cache, assistant limits, 2 network jobs at a time |
 | UI without type checking (A-ADR-028: Preact + htm with no build step) | errors detected only at runtime | medium | browser tests (Playwright), JSDoc annotations, contract tests with OpenAPI; adding Vite and TypeScript later without rewriting components |
-| Data license terms on handover | attribution violation | low | the lines of the providers' terms (A-ADR-055) in every answer and view of the data, the CLI text, the hand-off and the export (`README.txt`, `ATTRIBUTION.txt`); "Kopiuj atrybucję" in the file card, the station card and the station comparison |
+| Data license terms on handover | attribution violation | low | the lines of the providers' terms (A-ADR-055) in every answer and view of the data, the CLI text, the hand-off and the export (`README.txt`, `ATTRIBUTION.txt`); on screen one strip a view with every line in its dialog, and there "Kopiuj atrybucję" |
 | Dependence on Obserwator (2.1.1, Beta, no store; IMGW-1..IMGW-13, IMGW-21); optional from A-ADR-024 (extra `[obserwator]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for Obserwator; releases v0.1–v0.4 and an installation without Obserwator do not need it | medium | Obserwator is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by Obserwator; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
 | ČHMÚ stations in Obserwator (IMGW-15..IMGW-19; the tool was renamed from IMGWTools in ECO-057) | v0.6, and with it the MVP, waits for Obserwator; a separate package changes the adapter and the extra | medium | requirements reported before v0.5 (section 12.7), the same contracts with the supplier as an additive change, one Obserwator adapter; adapter decision at the Obserwator release (4.8.6, A-ADR-024) |
 | ČHMÚ archives per station (no country-wide archive) | hundreds of requests during synchronization, slow plans | medium | synchronization of selected stations only (area, project), plan with the number of requests, 2 network jobs at a time |

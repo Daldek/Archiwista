@@ -21,9 +21,10 @@
  * the default (views/station-chart.js: the series drawn over the address's
  * `from` and `to`), „Metadane”, „Pochodzenie” (the series versions with their
  * files and SHA-256, the catalog) and „Szczegóły techniczne” (the API's
- * answer), the chosen one in the address (`station_tab`); and last, outside
- * the tabs, the lines the providers' terms require with the card's data and
- * „Kopiuj atrybucję” (provider-lines.js). A point on the map, a row of the
+ * answer), the chosen one in the address (`station_tab`); and at the foot of
+ * the card, under its scrolling body, its one strip of the lines the
+ * providers' terms require with the card's and its chart's data, „Kopiuj
+ * atrybucję” in the strip's dialog (provider-lines.js). A point on the map, a row of the
  * Catalog's list and a station of its Timeline open the card; its parameters
  * go with it.
  */
@@ -45,7 +46,7 @@ import {
   stationShape,
   stationType,
 } from "../map/stations.js";
-import { ProviderLines } from "../provider-lines.js";
+import { SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { navigate, readRoute, setParams } from "../router.js";
 import { findView } from "../routes.js";
 import {
@@ -136,6 +137,7 @@ export default function StationCard({ route, value, onClose }) {
         aria-label=${L.close}><${Icon} name="x" /></button>
     </header>
     <div class="drawer-body">${body}</div>
+    <${SourcesStrip} />
   </section>`;
 }
 
@@ -163,6 +165,7 @@ function CardBody({ card, params, error, loading }) {
   const tab = TABS.includes(params[TAB_PARAM]) ? params[TAB_PARAM] : TABS[0];
   const panel = useId();
   const annual = tab === "chart" && chosenChart(card.charts, params)?.resolution === "annual";
+  useProviderLines(card);
   return html`
     <${Heading} station=${station} params=${params} annual=${annual} />
     ${error ? html`<${ProblemView} problem=${error.problem} compact />` : null}
@@ -182,7 +185,6 @@ function CardBody({ card, params, error, loading }) {
                   names=${names} actions=${compareAction(station, params)} />`}
       </div>
     </section>
-    <${ProviderLines} answer=${card} copy level=${3} className="det-sec sc-lines" />
     ${loading ? html`<${Spinner} quiet />` : null}
   `;
 }

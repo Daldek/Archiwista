@@ -20,8 +20,9 @@ https://archiwista-test.debever.pl, user unit `archiwista-public.service`) runs 
 
 | Component | State | Note |
 |---|---|---|
-| The providers' lines with every product (`fix/provider-attribution`, A-ADR-055; Nogat ECO-060, DEV §20, plan `2026-11-13-provider-attribution` step 5) | committed on the topic branch (no upstream, not pushed), not merged or deployed; gate: see Gate | `attribution` and `terms_notice` on every station, map, Katalog, version and comparison answer, by the data's origin (`attribution.py`, catalog area `legal`, the capability `DataOriginAdapter`); **breaking**: the chart's and the version card's `attribution` is an array; the block „Źródło danych i warunki” in every view with such data, the CLI block, `ATTRIBUTION.txt` in exports, the hand-off's arrays (`handoff-1` of Nogat `develop` `55a2d4b`), guide slide 10 of 13 |
-| Nogat's GUI kit: the menu „Aplikacje” and the hand-off through the kit (`feature/nogat-kit`, A-ADR-054; Nogat ECO-058, plan `2026-11-12-gui-links-and-handoff` step 6) | merged into `develop` (`bd754b6`) and deployed on :8090 on 2026-11-12 (the author's request); its `nogat.toml` lists the four public GUIs | Kit 0.1.0 and the marks of Nogat `7786271` in `web/nogat/` (byte for byte, checked against `nogat-kit.json`); `[nogat.gui]` of `nogat.toml` read with the other keys and answered by `GET /session` as `gui`, the doctor names it; the station card's „Do Hydrologa” through `nogat-handoff.js` (subject file name rule, final newline, a selected field where there is no Clipboard API, „Otwórz Hydrologa”); `handoff-1` and `error_registry.json` copied again. Smoke on 2026-11-12: a server of the worktree with three GUIs in a temporary `nogat.toml`, the menu and both copies in Chromium. Gate (`scripts/gate.sh`, Python 3.12, 74 min): 2881 passed, 1 failed, the new menu test, whose click raced the first-run wizard taking the focus (which closes the kit's list); it now waits for the wizard and passes three times alone and with its files (`test_shell.py`, `test_station_chart.py`: 36 passed); the full gate did not run again. To show the menu on :8090 its `nogat.toml` needs `[nogat.gui]` (the author's list of 2026-11-12) |
+| The providers' lines in one compact strip (`feature/compact-sources`, A-ADR-055 erratum 1, A-ADR-054 erratum 1; Nogat DEV-20.5, ECO-064, kit 0.5.1 of `9940bb8`) | committed on the topic branch (not pushed), not merged or deployed; gate: see Gate | Nogat's `<nogat-sources>` once per view or overlay (`SourcesScope`, `useProviderLines`, `SourcesStrip` of `provider-lines.js`) in place of `ProviderLines`: S, P, PS, PP and CK on screen, then „Źródła i warunki”, every line and the terms in its dialog with „Kopiuj atrybucję”; the station chart reports into the card's strip; kit 0.5.1 copied whole into `web/nogat/`. Lines of text measured in Chromium at 1440×900 / 390×844, before → after: map 7 → 2 / 19 → 5; Katalog stations 7 → 2 / 19 → 5; Katalog files 7 → 2 / 18 → 5; station card (Raba Górna, chart) 10 + 13 → 3 / 12 + 16 → 4; ČHMÚ card 4 + 5 → 1 / 6 + 7 → 1; file card 9 → 2 / 11 → 3; station comparison (ČHMÚ) 4 → 1 / 5 → 1; version comparison 6 → 2 / 13 → 4 |
+| The providers' lines with every product (`fix/provider-attribution`, A-ADR-055; Nogat ECO-060, DEV §20, plan `2026-11-13-provider-attribution` step 5) | merged into `develop` (`3a02da8`); gate: see Gate | `attribution` and `terms_notice` on every station, map, Katalog, version and comparison answer, by the data's origin (`attribution.py`, catalog area `legal`, the capability `DataOriginAdapter`); **breaking**: the chart's and the version card's `attribution` is an array; the block „Źródło danych i warunki” in every view with such data (replaced by the strip of `feature/compact-sources`, above), the CLI block, `ATTRIBUTION.txt` in exports, the hand-off's arrays (`handoff-1` of Nogat `develop` `55a2d4b`), guide slide 10 of 13 |
+| Nogat's GUI kit: the menu „Aplikacje” and the hand-off through the kit (`feature/nogat-kit`, A-ADR-054; Nogat ECO-058, plan `2026-11-12-gui-links-and-handoff` step 6) | merged into `develop` (`bd754b6`) and deployed on :8090 on 2026-11-12 (the author's request); its `nogat.toml` lists the four public GUIs | Kit 0.1.0 and the marks of Nogat `7786271` in `web/nogat/` (byte for byte, checked against `nogat-kit.json`; kit 0.5.1 of `9940bb8` on `feature/compact-sources`, above); `[nogat.gui]` of `nogat.toml` read with the other keys and answered by `GET /session` as `gui`, the doctor names it; the station card's „Do Hydrologa” through `nogat-handoff.js` (subject file name rule, final newline, a selected field where there is no Clipboard API, „Otwórz Hydrologa”); `handoff-1` and `error_registry.json` copied again. Smoke on 2026-11-12: a server of the worktree with three GUIs in a temporary `nogat.toml`, the menu and both copies in Chromium. Gate (`scripts/gate.sh`, Python 3.12, 74 min): 2881 passed, 1 failed, the new menu test, whose click raced the first-run wizard taking the focus (which closes the kit's list); it now waits for the wizard and passes three times alone and with its files (`test_shell.py`, `test_station_chart.py`: 36 passed); the full gate did not run again. To show the menu on :8090 its `nogat.toml` needs `[nogat.gui]` (the author's list of 2026-11-12) |
 | Pins of Nogat's release set candidate-2 (`chore/pins-candidate-2`, Nogat `587c909`) | merged (`a656ee1`), deployed on :8090 on 2026-11-12 | Kartograf `9deaa314` → `d0990c89`, Obserwator `1ee5457` → `f9f4ee79` (`ecosystem.py set apply`; `uv lock --check` passes). Targeted tests: `tests/contract` 380 passed; the Obserwator and source integration tests 55 passed; `tests/unit tests/integration -k "kartograf or obserwator"` 75 passed. The adapter's catalog offers `soil hsg --depth-rule` without `--depth`. The full gate (about an hour) did not run on the branch |
 | The project card's re-pin and restore through the plan window of the set's check (`feature/project-plan-window`, ADR-042 erratum 2) | merged into `develop` on 2026-11-10, deployed on :8090 on 2026-11-12 | „Przepnij” and „Przywróć brakujące” of a set open a window that runs the set's check (`project_check`), shows the set's plan and starts the job with `plan_job` when it is confirmed; `POST /projects/{project}/jobs` and `project-repin`/`project-restore --plan` refuse a check without its plan (`404`) and one of another kind, project or set, or of a set changed since (`409 plan_mismatch`; the check's pin rows carry the pinned `sha256`). The worker plans again. Targeted tests: the project jobs' integration tests (65 passed) and the e2e of the card, UC-06, the sets in the making and the projects view (18 passed, Playwright); full gate: see Gate |
 | Archiwista reads `nogat.toml` (`feature/nogat-settings`, A-ADR-053) | merged into `develop` on 2026-11-10, deployed on :8090 on 2026-11-12 | `data_dir` puts the local data in `<data_dir>/archiwista`, `cache_dir` the caches in `<cache_dir>/archiwista`, `lang` sets the command line's language for a person (`[archiwista]` before `[nogat]`; no `NOGAT_<KEY>` variable); an unusable file stops every command but `archiwista doctor`, which names each value's source. The `nogat.toml` of :8090 (in its `XDG_CONFIG_HOME`) holds only the table `gui`, so its directories stay. Full gate: see Gate |
@@ -86,7 +87,9 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
    unclosed `sqlite3` connection that `test_store_commands.py` left to the garbage collector
    (`with sqlite3.connect(…)` commits, it does not close); it may be the Python 3.15 e2e
    warning of CI too (not rerun).
-4. A welcome dialog for a first visit and its slide in the guide `/instrukcja`.
+4. A welcome dialog for a first visit and its slide in the guide `/instrukcja`; it shows
+   the full lines and terms of the data on screen with the kit's `fillSources` (Nogat
+   DEV-20.5). Until then the dialog of each view's strip is the only place for them.
 5. Release preparation (the author): `archiwista-state/2` back to `/1` (a format
    identifier not yet released on `main` stays at `/1`), then the release below.
 6. Release, per decisions D2 and D3 of Nogat's plan
@@ -116,7 +119,8 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
    attribution fix (Obserwator `fix/provider-attribution`, `1358e20`) is merged (Archiwista
    does not read the sidecars' texts, so nothing waits on it); draw the lines in PNG
    previews (DEV-20.5; today they are shown only inside views that carry the lines); the
-   regulamin of DEV-15.7 (ECO-061, kit 0.2.0). Hydrolog shows and carries on the
+   regulamin of DEV-15.7 (ECO-061; its files are in the kit's copy, but Archiwista serves no
+   `regulamin.html`, as it runs without `[nogat.operator]`). Hydrolog shows and carries on the
    hand-off's lines in its own repository.
 
 Known gaps:
@@ -153,10 +157,11 @@ Known gaps:
 Decisions awaiting the author:
 
 - The providers' lines (A-ADR-055), choices made by the agents: the guide gained a slide
-  (13, not 12) because a card could not hold the terms notice; on a 420 px phone the
-  map's lines take about 40% of the screen, left uncapped so nothing is hidden; the
-  Katalog's paged station list merges its lines in the browser, so their order can slip
-  across pages (every line is still shown).
+  (13, not 12) because a card could not hold the terms notice; the Katalog's paged
+  station list merges its lines in the browser, so their order can slip across pages
+  (every line is still in the strip's dialog). The 40% of a phone's screen the map's
+  lines took is gone with the compact strip (`feature/compact-sources`: 5 lines at
+  390 px).
 
 Open outside this repository:
 

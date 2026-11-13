@@ -5,9 +5,10 @@ local tile server on another origin. „Porównaj z…” in the file card opens
 the comparison of two versions of a slot: the rows of ``GET /compare`` in a
 table with the differences marked, „tylko różnice” and the CSV of the rows
 shown, whose last two columns carry the lines of the providers' terms (Nogat
-DEV-20.5) that a strip under the maps shows; both versions' tiles on two maps
-at one position — the curtain (moved with a mouse, a finger and the arrows),
-the fade (a slider) and two maps side by side. Two year layers of an area
+DEV-20.5) that the dialog of the view's one strip under the maps lists; both
+versions' tiles on two maps at one position — the curtain (moved with a
+mouse, a finger and the arrows), the fade (a slider) and two maps side by
+side. Two year layers of an area
 compare the same way, with their summaries side by side.
 """
 
@@ -38,7 +39,7 @@ from tests.fixtures.provider_lines import (
     IMGW_TERMS,
     IMGW_TERMS_PUBLIC_DATA,
 )
-from tests.fixtures.station_browser import LINES_TITLE, shown_lines
+from tests.fixtures.station_browser import SOURCES, dialog_lines
 from tests.fixtures.tile_server import TileServer, tile_server
 
 STORE = "zespol"
@@ -803,8 +804,8 @@ def test_compare_save_csv_joins_the_lines_beyond_the_last_row_into_it(
     # Act
     page.goto(compare_address(served, versions))
     expect(page.locator(".cmp-table tbody tr:not(.cmp-group)")).to_have_count(2)
-    strip = page.locator(".cmp-view").get_by_role("group", name=LINES_TITLE)
-    shown = shown_lines(strip)
+    strip = page.locator(".cmp-view").locator(SOURCES)
+    shown = dialog_lines(strip)
     with page.expect_download() as started:
         panel(page).get_by_role("button", name="Eksportuj CSV").click()
     saved = tmp_path / "comparison.csv"

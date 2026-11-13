@@ -5,8 +5,9 @@ scheduler's first full scan and checks what a person sees against what the
 producer wrote — Kartograf's own sidecars and segment names — and against
 the generator's manifest of the store and its project files. The other serves
 Obserwator's fixture store: the card of an IMGW-PIB archive, kept as published,
-shows the lines of its source and terms above the tabs, without the mark of
-processing (Nogat DEV §20).
+has the lines of its source and terms in its one strip at its foot (the
+source on screen, every line in the dialog), without the mark of processing
+(Nogat DEV §20, DEV-20.5).
 """
 
 import time
@@ -37,12 +38,15 @@ from tests.fixtures.provider_lines import (
     IMGW_TERMS_PUBLIC_DATA,
 )
 from tests.fixtures.station_browser import (
-    LINES_TITLE,
+    SOURCES,
+    SOURCES_BUTTON,
+    SOURCES_DIALOG,
     address,
     api,
+    dialog_lines,
     open_session,
-    shown_lines,
     station_settings,
+    strip_lines,
 )
 from tests.fixtures.station_browser import STORE as STATION_STORE
 
@@ -202,8 +206,9 @@ def test_human_labels_expose_raw_values(serve: Serve, tab: Tab, tmp_path: Path) 
     expect(raw(sha, str(current.sha256))).to_be_visible()
     assert sidecar.license is not None
     expect(card.locator(".fc-license")).to_contain_text(sidecar.license["id"])
-    lines = card.get_by_role("group", name=LINES_TITLE)
-    assert shown_lines(lines) == [sidecar.license["attribution"]]
+    strip = card.locator(SOURCES)
+    assert strip_lines(strip) == []
+    assert dialog_lines(strip) == [sidecar.license["attribution"]]
     expect(raw(card, str(store.root / current.path))).to_be_visible()
 
     other = open_card(page, served, unknown.path)
@@ -258,7 +263,7 @@ def test_pinned_old_version_visible(serve: Serve, tab: Tab, tmp_path: Path) -> N
 
 
 def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> None:
-    """The attribution, the version's path, the standard path and its alias copy."""
+    """The attribution (in the strip's dialog), the paths and the alias; Esc twice."""
     store, served, page = served_store(serve, tab, tmp_path)
     page.context.grant_permissions(
         ["clipboard-read", "clipboard-write"], origin=served.base
@@ -272,11 +277,7 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
     copied: dict[str, str] = {}
 
     card = open_card(page, served, slot, version=current.path)
-    for name in (
-        "Kopiuj atrybucję",
-        "Kopiuj ścieżkę wersji",
-        "Kopiuj ścieżkę standardową",
-    ):
+    for name in ("Kopiuj ścieżkę wersji", "Kopiuj ścieżkę standardową"):
         action = card.locator(".copy-action").filter(
             has=page.get_by_role("button", name=name, exact=True)
         )
@@ -288,6 +289,14 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
         card.get_by_role("button", name=f"Skopiowano: {alias}", exact=True)
     ).to_be_visible()
     copied["alias"] = page.evaluate("navigator.clipboard.readText()")
+    card.locator(SOURCES).get_by_role("button", name=SOURCES_BUTTON).click()
+    sources = page.get_by_role("dialog", name=SOURCES_DIALOG)
+    sources.get_by_role("button", name="Kopiuj atrybucję", exact=True).click()
+    expect(sources.get_by_role("status")).to_have_text("Skopiowano")
+    copied["Kopiuj atrybucję"] = page.evaluate("navigator.clipboard.readText()")
+    page.keyboard.press("Escape")
+    expect(sources).to_be_hidden()
+    expect(card).to_be_visible()
     page.keyboard.press("Escape")
 
     assert copied == {
@@ -304,7 +313,7 @@ def test_copy_attribution_and_path(serve: Serve, tab: Tab, tmp_path: Path) -> No
 def test_file_version_details_imgw_archive_shows_its_source_without_processing(
     serve: Serve, tab: Tab, obserwator_store: Callable[[str], Path], tmp_path: Path
 ) -> None:
-    """An IMGW-PIB archive: S, N and RD above the tabs, beside the preview too; no P."""
+    """An IMGW-PIB archive: S in the card's strip, S, N, RD behind, also by Podgląd."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
@@ -314,19 +323,22 @@ def test_file_version_details_imgw_archive_shows_its_source_without_processing(
     # Act
     page.goto(address(served, view="catalog", file=f"{STATION_STORE}/{ARCHIVE_SLOT}"))
     card = page.get_by_role("dialog", name=PurePosixPath(ARCHIVE_SLOT).name)
-    lines = card.get_by_role("group", name=LINES_TITLE)
-    shown = shown_lines(lines)
+    strip = card.locator(SOURCES)
+    shown = strip_lines(strip)
+    full = dialog_lines(strip)
     card.get_by_role("tab", name="Podgląd").click()
     expect(card.get_by_role("tab", name="Podgląd")).to_have_attribute(
         "aria-selected", "true"
     )
-    previewed = shown_lines(lines)
+    previewed = dialog_lines(strip)
 
     # Assert
-    assert shown == [*version["attribution"], *version["terms_notice"]]
-    assert shown == [IMGW_SOURCE, IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
-    assert IMGW_PROCESSED not in shown
-    assert previewed == shown
+    assert shown == [IMGW_SOURCE]
+    assert full == [*version["attribution"], *version["terms_notice"]]
+    assert full == [IMGW_SOURCE, IMGW_TERMS, IMGW_TERMS_PUBLIC_DATA]
+    assert IMGW_PROCESSED not in full
+    assert previewed == full
+    expect(card.locator(SOURCES)).to_have_count(1)
     tab.assert_clean()
 
 

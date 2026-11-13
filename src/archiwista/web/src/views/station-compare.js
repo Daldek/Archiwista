@@ -16,8 +16,8 @@
  * move all. A station without the series or the variable keeps its panel
  * with „brak danych”. Below the panels the facts of each station as on its
  * card (years with a value, the label with its gap share, the longest gap,
- * full years, the location's source) and the lines the providers' terms
- * require with the comparison's data (provider-lines.js).
+ * full years, the location's source) and the view's one strip of the lines
+ * the providers' terms require with the comparison's data (provider-lines.js).
  * „Dodaj stację” finds a station with a series of the dataset by name, river
  * or code (`GET /stations` with `q` and `dataset`); it is disabled at five.
  */
@@ -29,7 +29,7 @@ import { catalog as CL } from "../labels/catalog.js";
 import { t } from "../labels/index.js";
 import { station as L } from "../labels/station.js";
 import { COMPARE_PARAM, MAX_COMPARED, stationAddress } from "../map/stations.js";
-import { ProviderLines } from "../provider-lines.js";
+import { SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { setParams } from "../router.js";
 import {
   html,
@@ -234,6 +234,7 @@ function Comparison({ params, stations, dataset, datasetName, variable, onRemove
     [key, from ?? "", to ?? "", maxPoints],
   );
   const data = answer.data ?? null;
+  useProviderLines(data);
   // The comparison as the API gave it without a range: the bound of a zoom out.
   // While another query loads, the last answer stays: it is not this one's.
   const whole = useRef(null);
@@ -272,7 +273,7 @@ function Comparison({ params, stations, dataset, datasetName, variable, onRemove
           : html`<div class="sch-wait"><${Spinner} /></div>`}
     </div>
     ${data ? html`<${Facts} answer=${data} />` : null}
-    <${ProviderLines} answer=${data} copy level=${3} className="scmp-lines" />
+    <${SourcesStrip} />
     <p class="sch-api faint"><${Tech} value=${[[C.api, api]]}>${C.api}</${Tech}></p>
   `;
 }
