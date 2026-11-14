@@ -92,9 +92,9 @@ requires-dist = [
     { name = "affine", specifier = ">=3,<4" },
     { name = "argon2-cffi", specifier = ">=23.1,<26" },
     { name = "fastapi", specifier = ">=0.115,<1" },
-    { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=d0990c89da88e73b9081fe33a151ba9d27b4f820" },
+    { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1" },
     { name = "laspy", extras = ["lazrs"], specifier = ">=2.7,<3" },
-    { name = "obserwator", extras = ["store"], marker = "extra == 'obserwator'", git = "https://github.com/Daldek/Obserwator?rev=0591b82328e389f282622e5658caae2f4c2eb310" },
+    { name = "obserwator", extras = ["store"], marker = "extra == 'obserwator'", git = "https://github.com/Daldek/Obserwator?rev=0394af7c66b60cccb88f14b6118893b78443dc21" },
     { name = "packaging", specifier = ">=24" },
     { name = "platformdirs", specifier = ">=4,<5" },
     { name = "pydantic", specifier = ">=2,<3" },
@@ -812,7 +812,7 @@ wheels = [
 [[package]]
 name = "kartograf"
 version = "0.8.0.dev0"
-source = { git = "https://github.com/Daldek/Kartograf?rev=d0990c89da88e73b9081fe33a151ba9d27b4f820#d0990c89da88e73b9081fe33a151ba9d27b4f820" }
+source = { git = "https://github.com/Daldek/Kartograf?rev=c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1#c9afdd3f85b164b21e3ab2ce1b8cc02c050712f1" }
 dependencies = [
     { name = "numpy" },
     { name = "platformdirs" },
@@ -1159,7 +1159,7 @@ wheels = [
 [[package]]
 name = "obserwator"
 version = "3.0.0.dev0"
-source = { git = "https://github.com/Daldek/Obserwator?rev=0591b82328e389f282622e5658caae2f4c2eb310#0591b82328e389f282622e5658caae2f4c2eb310" }
+source = { git = "https://github.com/Daldek/Obserwator?rev=0394af7c66b60cccb88f14b6118893b78443dc21#0394af7c66b60cccb88f14b6118893b78443dc21" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },
