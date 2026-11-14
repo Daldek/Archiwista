@@ -77,6 +77,21 @@ def rewrite_sidecar(root: Path, version: str, **fields: object) -> None:
     _write(sidecar, document)
 
 
+def name_borders(root: Path, lines: dict[str, str]) -> None:
+    """Add a line to the attribution of every station catalog, by its provider.
+
+    Obserwator's catalogs name the state borders their places were checked
+    against (G of PRG for IMGW-PIB, Z of RÚIAN for ČHMÚ) in their sidecar's
+    attribution, joined to the provider's lines by ``. ``, as a catalog
+    written since Obserwator's borders of the national registers does.
+    """
+    for sidecar in root.glob("stations/versions/**/*" + META_SUFFIX):
+        document = _read(sidecar)
+        license_ = document["license"]
+        license_["attribution"] += f". {lines[document['provider']]}"
+        _write(sidecar, document)
+
+
 def _version_directories(slot: Path) -> list[str]:
     return sorted(
         path.name

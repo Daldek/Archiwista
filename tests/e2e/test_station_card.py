@@ -26,7 +26,9 @@ from urllib.parse import urlencode
 from playwright.sync_api import Locator, Page, Response, expect
 
 from tests.fixtures.browser import Served, Tab
+from tests.fixtures.obserwator_edits import name_borders
 from tests.fixtures.provider_lines import (
+    GUGIK_PRG,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_HYDRO,
@@ -325,4 +327,28 @@ def test_the_lines_and_the_file_path_are_copied_as_the_card_gives_them(
     expect(sources).to_be_hidden()
     expect(card).to_be_visible()
     expect(card.locator(SOURCES)).to_have_count(1)
+    tab.assert_clean()
+
+
+def test_the_strip_of_a_station_shows_its_catalogs_border_line_short(
+    serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
+) -> None:
+    """The catalog's G on screen as GK „Źródło: GUGiK (PRG)”, in full in the dialog."""
+    # Arrange
+    settings = station_settings(obserwator_store("complete"), tmp_path)
+    name_borders(tmp_path / "obserwator", {PROVIDER: GUGIK_PRG})
+    served = serve(settings)
+    page = open_session(tab, served)
+    page.goto(
+        address(served, view="catalog", product="hydro", station=station_of(UNLOCATED))
+    )
+    strip = dialog(page, "Stacja Bez Q").locator(SOURCES)
+
+    # Act
+    shown = strip_lines(strip)
+    full = dialog_lines(strip)
+
+    # Assert
+    assert shown == [IMGW_SOURCE, IMGW_PROCESSED, "Źródło: GUGiK (PRG)"]
+    assert full == [IMGW_SOURCE, IMGW_PROCESSED, GUGIK_PRG, IMGW_TERMS_PUBLIC_DATA]
     tab.assert_clean()

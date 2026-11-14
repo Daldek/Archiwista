@@ -4,11 +4,14 @@ Any session sends a report ("Zgłoś uwagę" in the top bar; ``201`` with its
 number). An administrator (``feedback.manage``; the local owner is one)
 reads them newest first with the counts of all and of the unread ones
 (``GET /admin/feedback``), marks one read or unread (``PATCH``, answering the
-report) and deletes one (``DELETE``, ``204``); anyone else is refused ``403
-permission_denied``, which the action log records, and an unknown number is
-``404 not_found`` (reason ``feedback_not_found``). Hydrograf's mechanism and
-limits; the routes only translate: ``archiwista.services.feedback`` decides
-and keeps the reports in the state database.
+report) and deletes one (``DELETE``, answering ``{"status": "deleted"}``): the
+core API of Nogat DEV-15.13 behind Archiwista's own role check, which the
+kit's ``<nogat-admin-feedback>`` of the view „Zgłoszenia” reads. Anyone else
+is refused ``403 permission_denied``, which the action log records, and an
+unknown number is ``404 not_found`` (reason ``feedback_not_found``).
+Hydrograf's mechanism and limits; the routes only translate:
+``archiwista.services.feedback`` decides and keeps the reports in the state
+database.
 """
 
 from typing import Annotated
@@ -20,6 +23,7 @@ from archiwista.api.errors import problem_responses
 from archiwista.api.models_feedback import (
     FeedbackChange,
     FeedbackCreated,
+    FeedbackDeleted,
     FeedbackItem,
     FeedbackList,
     FeedbackListQuery,
@@ -101,11 +105,12 @@ def update_feedback(
 
 @router.delete(
     "/admin/feedback/{feedback_id}",
-    status_code=204,
+    response_model=FeedbackDeleted,
     responses=problem_responses(404),
 )
 def delete_feedback(
     feedback_id: _FeedbackId, principal: _Principal, decisions: _Authorizer
-) -> None:
+) -> FeedbackDeleted:
     """Delete a report for good (administrators)."""
     feedback_service.delete(decisions, principal, feedback_id)
+    return FeedbackDeleted()

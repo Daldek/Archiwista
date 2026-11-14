@@ -4,10 +4,11 @@ The owner of a local installation (an administrator) opens the window from
 the top bar: the counter follows the text, a blank description is refused
 in the window, the preview shows the diagnostics that are sent — the view
 and its parameters and the calls of the API, never the session's token —,
-and „Wyślij” thanks and closes the window two seconds later. In
-„Zgłoszenia” the report is unread; opening it shows the whole report and
-marks it read, „Oznacz nieprzeczytane” undoes that, and „Usuń” deletes it
-after a confirmation.
+and „Wyślij” thanks and closes the window two seconds later. „Zgłoszenia” is
+Nogat's kit view ``<nogat-admin-feedback>`` with Archiwista's session: the
+report is unread, its context (the contact, the account, the diagnostics) is
+folded under „Kontekst”, „Oznacz jako przeczytane” and back change it, and
+„Usuń” deletes it after a confirmation.
 """
 
 import json
@@ -83,24 +84,25 @@ def test_a_report_is_sent_with_its_diagnostics_and_read_by_the_administrator(
 
     page.get_by_role("link", name="Zgłoszenia").click()
     expect(page.get_by_role("heading", name="Zgłoszenia")).to_be_visible()
-    row = page.locator("tr.feedback-row")
-    expect(row).to_have_count(1)
-    expect(row.get_by_text("nowe", exact=True)).to_be_visible()
-    expect(page.get_by_text("nowe: 1")).to_be_visible()
-    row.get_by_role("button", name="Szczegóły zgłoszenia").click()
-    details = page.locator(".feedback-details")
-    expect(details.locator(".feedback-message")).to_have_text(MESSAGE)
-    expect(details.get_by_text("ola@example.com")).to_be_visible()
-    expect(details.get_by_text("właściciel instalacji")).to_be_visible()
-    expect(details.locator(".feedback-events")).to_contain_text("wywołanie API")
-    expect(row.get_by_text("nowe", exact=True)).to_have_count(0)
-    expect(page.get_by_text("nowe: 1")).to_have_count(0)
-    row.get_by_role("button", name="Oznacz nieprzeczytane").click()
-    expect(row.get_by_text("nowe", exact=True)).to_be_visible()
+    report = page.locator("li.nogat-admin-report")
+    expect(report).to_have_count(1)
+    expect(report.get_by_text("nowe", exact=True)).to_be_visible()
+    expect(page.get_by_text("Nieprzeczytane: 1 z 1")).to_be_visible()
+    expect(report.locator(".nogat-admin-message")).to_have_text(MESSAGE)
+    report.get_by_text("Kontekst").click()
+    context = report.locator(".nogat-admin-context")
+    expect(context.get_by_text("ola@example.com")).to_be_visible()
+    expect(context.locator(".nogat-admin-json")).to_contain_text('"api_call"')
+    report.get_by_role("button", name="Oznacz jako przeczytane").click()
+    expect(report.get_by_text("nowe", exact=True)).to_have_count(0)
+    expect(page.get_by_text("Nieprzeczytane: 0 z 1")).to_be_visible()
+    report.get_by_role("button", name="Oznacz jako nieprzeczytane").click()
+    expect(report.get_by_text("nowe", exact=True)).to_be_visible()
     page.reload()
-    expect(page.get_by_text("nowe: 1")).to_be_visible()
-    row.get_by_role("button", name="Usuń zgłoszenie").click()
-    row.get_by_role("button", name="Usuń", exact=True).click()
+    expect(page.get_by_text("Nieprzeczytane: 1 z 1")).to_be_visible()
+    report.get_by_role("button", name="Usuń").click()
+    confirmation = page.get_by_role("dialog", name="Usunąć zgłoszenie #1?")
+    confirmation.get_by_role("button", name="Usuń").click()
     expect(page.get_by_text("Brak zgłoszeń.")).to_be_visible()
 
     reports = StateStore(served.paths.state_file).feedback(limit=1)
@@ -109,22 +111,21 @@ def test_a_report_is_sent_with_its_diagnostics_and_read_by_the_administrator(
 
 
 def test_a_report_is_shown_as_text_whatever_it_holds(serve: Serve, tab: Tab) -> None:
-    """Markup stays text and diagnostics of another shape show no events."""
+    """Markup stays text, and diagnostics of any shape show as JSON."""
     served = serve()
     page = tab.page
     open_shell(page, served.token_url())
     status = page.evaluate(SEND, HOSTILE)
 
     page.get_by_role("link", name="Zgłoszenia").click()
-    row = page.locator("tr.feedback-row")
-    row.get_by_role("button", name="Szczegóły zgłoszenia").click()
-    details = page.locator(".feedback-details")
+    report = page.locator("li.nogat-admin-report")
+    report.get_by_text("Kontekst").click()
+    context = report.locator(".nogat-admin-context")
 
     assert status == 201
-    expect(details.locator(".feedback-message")).to_have_text(str(HOSTILE["message"]))
-    expect(details.get_by_text(str(HOSTILE["contact"]))).to_be_visible()
-    expect(details.get_by_text('"<i>x</i>"')).to_be_visible()
-    expect(details.get_by_text("Brak dziennika zdarzeń.")).to_be_visible()
-    expect(details.locator("img, b, script, i")).to_have_count(0)
+    expect(report.locator(".nogat-admin-message")).to_have_text(str(HOSTILE["message"]))
+    expect(context.get_by_text(str(HOSTILE["contact"]))).to_be_visible()
+    expect(context.locator(".nogat-admin-json")).to_contain_text('"<i>x</i>"')
+    expect(report.locator("img, b, script, i")).to_have_count(0)
     assert page.evaluate("() => window.__pwned") is None
     tab.assert_clean()

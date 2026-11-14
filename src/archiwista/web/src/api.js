@@ -115,8 +115,6 @@ import { T, t } from "./labels/index.js";
 /** @typedef {import("./types.js").PinOutcome} PinOutcome */
 /** @typedef {import("./types.js").FeedbackRequest} FeedbackRequest */
 /** @typedef {import("./types.js").FeedbackCreated} FeedbackCreated */
-/** @typedef {import("./types.js").FeedbackList} FeedbackList */
-/** @typedef {import("./types.js").FeedbackItem} FeedbackItem */
 
 /**
  * Abort a read: every function takes these options last.
@@ -1916,39 +1914,27 @@ export function submitFeedback(report) {
 }
 
 /**
- * A page of the reports, newest first, with the counts of all and of the
- * unread ones (`GET /admin/feedback`; administrators).
+ * The `fetch` of the kit's admin views (`element.adminFetch` of
+ * `<nogat-admin-feedback>`, nogat/nogat-admin.js): a request to this server's
+ * API with the session's CSRF header, kept among the diagnostics like every
+ * other, a lost session told to the `onSessionLost` listeners; the view reads
+ * the `Response` itself, a refusal included.
  *
- * @param {{limit?: number, offset?: number}} [page]
- * @param {RequestOptions} [options]
- * @returns {Promise<FeedbackList>}
- * @throws {ApiError} `403 permission_denied` for anyone but an administrator.
+ * @param {string} address - An address under `/api/v1/` of this server, e.g.
+ *   `/api/v1/admin/feedback?limit=50&offset=0`.
+ * @param {RequestInit} [init] - The view's `method`, `headers`, `body`, `signal`.
+ * @returns {Promise<Response>} The answer, whatever its status.
+ * @throws {ApiError} No answer came (`network_error`); aborting rejects with `AbortError`.
  */
-export function listFeedback(page = {}, { signal } = {}) {
-  return request("GET", "/admin/feedback", { query: page, signal });
-}
-
-/**
- * Mark a report read or unread (`PATCH /admin/feedback/{id}`; administrators).
- *
- * @param {number} id
- * @param {{is_read: boolean}} change
- * @returns {Promise<FeedbackItem>} The report as changed.
- * @throws {ApiError} `404 not_found` (reason `feedback_not_found`) for a deleted one.
- */
-export function updateFeedback(id, change) {
-  return request("PATCH", `/admin/feedback/${one(String(id))}`, { json: change });
-}
-
-/**
- * Delete a report for good (`DELETE /admin/feedback/{id}`; administrators).
- *
- * @param {number} id
- * @returns {Promise<null>}
- * @throws {ApiError} `404 not_found` (reason `feedback_not_found`) for a deleted one.
- */
-export function deleteFeedback(id) {
-  return request("DELETE", `/admin/feedback/${one(String(id))}`);
+export async function adminFetch(address, init = {}) {
+  const url = apiUrl(address);
+  const headers = { Accept: JSON_ANSWERS, ...init.headers };
+  const { response } = await exchange(init.method ?? "GET", url.pathname + url.search, {
+    headers,
+    body: init.body,
+    signal: init.signal ?? undefined,
+  });
+  return response;
 }
 
 // Helpers ---------------------------------------------------------------------
@@ -1981,10 +1967,22 @@ function apiUrl(address) {
 /**
  * Send a request with the session's CSRF token; answer the response, or
  * throw the server's problem (a lost session told to the listeners first).
- * A refusal of a token that a new session has replaced meanwhile (a password
- * change, a sign-in in another tab) tells nobody: the new session goes on.
  */
-async function send(method, address, { headers, body, signal }) {
+async function send(method, address, options) {
+  const { response, problem } = await exchange(method, address, options);
+  if (problem !== null) throw new ApiError(problem);
+  return response;
+}
+
+/**
+ * Send a request with the session's CSRF token and keep it among the
+ * diagnostics; answer the response with the server's problem (`null` for a
+ * success), the response's body left unread. A refusal of the session tells
+ * the listeners; one of a token that a new session has replaced meanwhile (a
+ * password change, a sign-in in another tab) tells nobody: the new session
+ * goes on. No answer throws the network's problem.
+ */
+async function exchange(method, address, { headers, body, signal }) {
   const token = storedToken();
   if (token !== null) headers[CSRF_HEADER] = token;
   headers["Accept-Language"] = LANGUAGE;
@@ -2000,9 +1998,9 @@ async function send(method, address, { headers, body, signal }) {
   }
   if (response.ok) {
     recordCall(method, address, response.status, started);
-    return response;
+    return { response, problem: null };
   }
-  const problem = await readProblem(response);
+  const problem = await readProblem(response.clone());
   recordCall(method, address, response.status, started, problem);
   const refused = problem.status === 401 || problem.details?.reason === "csrf_rejected";
   if (refused && current !== null && storedToken() === token) {
@@ -2010,7 +2008,7 @@ async function send(method, address, { headers, body, signal }) {
     sessionStorage.removeItem(TOKEN_KEY);
     for (const listener of [...sessionLost]) listener(problem);
   }
-  throw new ApiError(problem);
+  return { response, problem };
 }
 
 /** Ask the open tabs of this origin for the session's token (or `null`). */

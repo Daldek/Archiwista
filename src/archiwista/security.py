@@ -98,6 +98,8 @@ LOGIN_PATH = f"{SESSION_PATH}/login"
 METHODS_PATH = f"{SESSION_PATH}/methods"
 PASSWORD_PATH = f"{SESSION_PATH}/password"
 PROXY_PATH = f"{SESSION_PATH}/proxy"
+# The administrators' API, whose every answer is ``no-store`` (Nogat DEV-15.13).
+ADMIN_PATH = f"{API_PREFIX}/admin"
 # What a session signed in with a temporary password may do until it changes
 # it: read itself, change the password, sign out (ASVS 6.4.1).
 PASSWORD_CHANGE_ROUTES = frozenset(
@@ -1126,8 +1128,12 @@ def _is_api(path: str) -> bool:
     return path == "/api" or path.startswith("/api/")
 
 
-def _is_session_path(path: str) -> bool:
-    return path == SESSION_PATH or path.startswith(f"{SESSION_PATH}/")
+def _is_unstored(path: str) -> bool:
+    """Return whether no answer of a path may be kept: the session's, the admin's."""
+    return any(
+        path == prefix or path.startswith(f"{prefix}/")
+        for prefix in (SESSION_PATH, ADMIN_PATH)
+    )
 
 
 def _is_public(method: str, path: str) -> bool:
@@ -1234,8 +1240,9 @@ class SecurityMiddleware:
     ``current_principal``. Every response, including these problems, gets
     the CSP of the current settings, ``Referrer-Policy: no-referrer`` and
     ``X-Content-Type-Options: nosniff``, in team mode
-    ``Strict-Transport-Security``; ``/api/v1/session*`` also
-    ``Cache-Control: no-store``. ``X-Forwarded-Host`` is never read.
+    ``Strict-Transport-Security``; ``/api/v1/session*`` and
+    ``/api/v1/admin/*`` also ``Cache-Control: no-store`` (Nogat DEV-15.13).
+    ``X-Forwarded-Host`` is never read.
 
     Parameters
     ----------
@@ -1288,7 +1295,7 @@ class SecurityMiddleware:
         ]
         if self._transport.team:
             security_headers.append(("strict-transport-security", HSTS))
-        if _is_session_path(path):
+        if _is_unstored(path):
             security_headers.append(("cache-control", "no-store"))
 
         async def send_secured(message: Message) -> None:

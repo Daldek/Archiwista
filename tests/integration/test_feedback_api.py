@@ -3,8 +3,9 @@
 ``POST /feedback`` keeps a report of any session with Hydrograf's limits and
 the account that sent it (none for the owner of a local installation);
 ``GET``, ``PATCH`` and ``DELETE /admin/feedback[/{id}]`` are an
-administrator's. Each session comes from a one-time token minted by the
-identity under test, as the server would see it.
+administrator's and answer the shapes of Nogat DEV-15.13, which the kit's
+``<nogat-admin-feedback>`` reads. Each session comes from a one-time token
+minted by the identity under test, as the server would see it.
 """
 
 from collections.abc import Iterator
@@ -90,16 +91,24 @@ def test_feedback_api_keeps_a_report_of_every_kind_of_session(api: Api) -> None:
     assert (page["total"], page["unread_count"]) == (3, 3)
     assert [item["id"] for item in page["items"]] == [third, second, first]
     newest, middle, oldest = page["items"]
-    assert (oldest["user_id"], oldest["message"]) == (None, "Mapa się nie wczytuje.")
-    assert (oldest["contact"], oldest["page_url"], oldest["diagnostics"]) == (
-        None,
-        None,
-        None,
-    )
-    assert oldest["user_agent"] == "Firefox/144.0"
-    assert {key: middle[key] for key in REPORT} == REPORT
-    assert (middle["user_id"], middle["user_agent"]) == (OTHER, "x" * 500)
-    assert (newest["user_id"], newest["contact"]) == (OTHER, None)
+    assert set(oldest) == {"id", "created_at", "message", "context", "is_read"}
+    assert oldest["message"] == "Mapa się nie wczytuje."
+    assert oldest["context"] == {
+        "user_id": None,
+        "contact": None,
+        "page_url": None,
+        "user_agent": "Firefox/144.0",
+        "diagnostics": None,
+    }
+    assert middle["message"] == REPORT["message"]
+    assert middle["context"] == {
+        "user_id": OTHER,
+        "contact": REPORT["contact"],
+        "page_url": REPORT["page_url"],
+        "user_agent": "x" * 500,
+        "diagnostics": DIAGNOSTICS,
+    }
+    assert (newest["context"]["user_id"], newest["context"]["contact"]) == (OTHER, None)
     assert not any(item["is_read"] for item in page["items"])
 
 
@@ -252,11 +261,14 @@ def test_feedback_api_administrator_pages_marks_and_deletes(api: Api) -> None:
     assert (first["total"], first["unread_count"]) == (3, 3)
     assert [item["id"] for item in rest["items"]] == [ids[0]]
     assert read.status_code == 200, read.text
-    assert (read.json()["id"], read.json()["is_read"]) == (ids[1], True)
+    assert read.json() == {**first["items"][1], "is_read": True}
     assert after_read["unread_count"] == 2
     assert [item["is_read"] for item in after_read["items"]] == [False, True, False]
     assert unread.json()["is_read"] is False
-    assert deleted.status_code == 204
+    assert (deleted.status_code, deleted.json()) == (200, {"status": "deleted"})
+    assert {response.headers["cache-control"] for response in (read, deleted)} == {
+        "no-store"
+    }
     assert [item["id"] for item in after_delete["items"]] == [ids[2], ids[1]]
     assert (after_delete["total"], after_delete["unread_count"]) == (2, 2)
     for response in gone:

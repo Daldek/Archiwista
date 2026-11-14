@@ -6,8 +6,10 @@ refused), the contact at most 200, the page's address at most 500 and the
 diagnostics at most 100,000 characters as compact JSON. ``FeedbackItem`` is a
 report as an administrator reads it (``GET /admin/feedback``, a page of
 ``FeedbackList`` with the counts of all reports) and as ``PATCH
-/admin/feedback/{id}`` answers it. The request models refuse unknown fields
-and parameters.
+/admin/feedback/{id}`` answers it: the report of Nogat DEV-15.12 and DEV-15.13,
+whose ``context`` holds who sent it, from where and what they attached
+(``FeedbackContext``). ``DELETE /admin/feedback/{id}`` answers
+``FeedbackDeleted``. The request models refuse unknown fields and parameters.
 """
 
 import json
@@ -58,12 +60,14 @@ _DIAGNOSTICS_EXAMPLE: dict[str, Any] = {
 _ITEM_EXAMPLE: dict[str, Any] = {
     "id": 12,
     "created_at": "2026-11-03T09:14:12Z",
-    "user_id": "marek.lis",
     "message": "The catalog shows no sheets after a search by code.",
-    "contact": "marek.lis@example.com",
-    "page_url": "http://127.0.0.1:8090/?view=catalog&q=N-34-130-D",
-    "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Firefox/144.0",
-    "diagnostics": _DIAGNOSTICS_EXAMPLE,
+    "context": {
+        "user_id": "marek.lis",
+        "contact": "marek.lis@example.com",
+        "page_url": "http://127.0.0.1:8090/?view=catalog&q=N-34-130-D",
+        "user_agent": "Mozilla/5.0 (X11; Linux x86_64; rv:144.0) Firefox/144.0",
+        "diagnostics": _DIAGNOSTICS_EXAMPLE,
+    },
     "is_read": False,
 }
 
@@ -77,8 +81,8 @@ class NewFeedback(BaseModel):
             "examples": [
                 {
                     "message": _ITEM_EXAMPLE["message"],
-                    "contact": _ITEM_EXAMPLE["contact"],
-                    "page_url": _ITEM_EXAMPLE["page_url"],
+                    "contact": _ITEM_EXAMPLE["context"]["contact"],
+                    "page_url": _ITEM_EXAMPLE["context"]["page_url"],
                     "diagnostics": _DIAGNOSTICS_EXAMPLE,
                 }
             ]
@@ -147,20 +151,15 @@ class FeedbackCreated(BaseModel):
     status: Literal["ok"] = Field(default="ok", description="Always `ok`.")
 
 
-class FeedbackItem(BaseModel):
-    """A report as an administrator reads it."""
+class FeedbackContext(BaseModel):
+    """Who sent a report, from where, and what they attached."""
 
-    model_config = ConfigDict(json_schema_extra={"examples": [_ITEM_EXAMPLE]})
-
-    id: int = Field(description="The report's number; a later one is greater.")
-    created_at: datetime = Field(description="When it was sent (UTC).")
     user_id: str | None = Field(
         description=(
             "The account that sent it (an agent's: its person's); null for the"
             " owner of a local installation."
         )
     )
-    message: str = Field(description="What the person wrote.")
     contact: str | None = Field(description="A name or an e-mail address.")
     page_url: str | None = Field(description="The page it was sent from.")
     user_agent: str | None = Field(
@@ -168,6 +167,19 @@ class FeedbackItem(BaseModel):
     )
     diagnostics: dict[str, Any] | None = Field(
         description="The attached diagnostics; null when the person attached none."
+    )
+
+
+class FeedbackItem(BaseModel):
+    """A report as an administrator reads it (Nogat DEV-15.12)."""
+
+    model_config = ConfigDict(json_schema_extra={"examples": [_ITEM_EXAMPLE]})
+
+    id: int = Field(description="The report's number; a later one is greater.")
+    created_at: datetime = Field(description="When it was sent (UTC).")
+    message: str = Field(description="What the person wrote.")
+    context: FeedbackContext = Field(
+        description="Who sent it, from where, and what they attached."
     )
     is_read: bool = Field(description="Whether an administrator marked it read.")
 
@@ -177,14 +189,26 @@ class FeedbackItem(BaseModel):
         return cls(
             id=record.id,
             created_at=record.created_at,
-            user_id=record.user_id,
             message=record.message,
-            contact=record.contact,
-            page_url=record.page_url,
-            user_agent=record.user_agent,
-            diagnostics=record.diagnostics,
+            context=FeedbackContext(
+                user_id=record.user_id,
+                contact=record.contact,
+                page_url=record.page_url,
+                user_agent=record.user_agent,
+                diagnostics=record.diagnostics,
+            ),
             is_read=record.is_read,
         )
+
+
+class FeedbackDeleted(BaseModel):
+    """The answer of a deleted report (Nogat DEV-15.13)."""
+
+    model_config = ConfigDict(json_schema_extra={"examples": [{"status": "deleted"}]})
+
+    status: Literal["deleted"] = Field(
+        default="deleted", description="Always `deleted`."
+    )
 
 
 class FeedbackList(BaseModel):

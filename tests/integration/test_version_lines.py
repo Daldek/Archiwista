@@ -6,8 +6,9 @@ or C and CP; the IMGW-PIB station catalog adds the hydrological service's
 terms, RH). The version's card (``GET /stores/{store}/versions/{path}``), the
 Katalog's page (``GET /slots``) and a comparison (``GET /compare``) carry
 the lines of that origin, which the producer's adapter names, never the
-attribution a sidecar holds. Offline, over the index of a scanned copy of
-``complete_pl_cz``.
+attribution a sidecar holds, but for the G and Z a station catalog names
+(its sidecars here name them as Obserwator's catalogs checked against PRG and
+RÚIAN do). Offline, over the index of a scanned copy of ``complete_pl_cz``.
 """
 
 import shutil
@@ -24,9 +25,12 @@ from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Caller, running_api
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.obserwator_edits import name_borders
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED,
     CHMI_SOURCE,
+    CUZK_RUIAN,
+    GUGIK_PRG,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_HYDRO,
@@ -55,9 +59,12 @@ def owner(
     base = tmp_path_factory.mktemp("version-lines")
     root = base / "store"
     shutil.copytree(obserwator_store("complete_pl_cz"), root)
+    name_borders(root, {"IMGW-PIB": GUGIK_PRG, "CHMI": CUZK_RUIAN})
     paths = local_paths(base)
+    projects = base / "projekty"
+    projects.mkdir()
     config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
-    settings = AppSettings(stores=(config,))
+    settings = AppSettings(stores=(config,), project_dirs=(projects,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
@@ -93,19 +100,24 @@ def _current(owner: Caller, slot: str) -> str:
         ),
         pytest.param(
             IMGW_CATALOG,
-            [IMGW_SOURCE, IMGW_PROCESSED],
+            [IMGW_SOURCE, IMGW_PROCESSED, GUGIK_PRG],
             [*PUBLIC_DATA_TERMS, IMGW_TERMS_HYDRO],
             id="imgw-catalog",
         ),
         pytest.param(CZ_ARCHIVE, [CHMI_SOURCE], [], id="chmi-archive"),
         pytest.param(CZ_SERIES, [CHMI_SOURCE, CHMI_PROCESSED], [], id="chmi-series"),
-        pytest.param(CZ_CATALOG, [CHMI_SOURCE, CHMI_PROCESSED], [], id="chmi-catalog"),
+        pytest.param(
+            CZ_CATALOG,
+            [CHMI_SOURCE, CHMI_PROCESSED, CUZK_RUIAN],
+            [],
+            id="chmi-catalog",
+        ),
     ],
 )
 def test_a_versions_card_carries_the_lines_of_its_datas_origin(
     owner: Caller, slot: str, attribution: list[str], terms_notice: list[str]
 ) -> None:
-    """A file as published: S or C alone; Obserwator's forms: processed."""
+    """A file as published: S or C alone; Obserwator's forms: processed; G, Z."""
     # Act
     card = _get(owner, f"/stores/{STORE}/versions/{_current(owner, slot)}")
 
@@ -123,7 +135,14 @@ def test_the_catalog_page_carries_the_lines_of_its_rows_once_each(
     # Assert
     assert page["next_cursor"] is None
     assert (page["attribution"], page["terms_notice"]) == (
-        [IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE, CHMI_PROCESSED],
+        [
+            IMGW_SOURCE,
+            IMGW_PROCESSED,
+            CHMI_SOURCE,
+            CHMI_PROCESSED,
+            GUGIK_PRG,
+            CUZK_RUIAN,
+        ],
         [*PUBLIC_DATA_TERMS, IMGW_TERMS_HYDRO],
     )
 
@@ -141,4 +160,33 @@ def test_a_comparison_carries_the_lines_of_both_sides(owner: Caller) -> None:
     assert (comparison["attribution"], comparison["terms_notice"]) == (
         [IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE],
         PUBLIC_DATA_TERMS,
+    )
+
+
+def test_an_export_of_a_catalog_writes_its_border_line(owner: Caller) -> None:
+    """``ATTRIBUTION.txt`` of a ČHMÚ catalog: C, CP and the catalog's Z."""
+    # Arrange
+    (projects,) = _get(owner, "/settings")["project_dirs"]
+    directory = Path(projects) / "stacje"
+    created = owner.request("POST", "/projects", json={"path": str(directory)})
+    assert created.status_code == 201, created.text
+    project = created.json()["project"]
+    version = {"store": STORE, "version": _current(owner, CZ_CATALOG)}
+    grouped = owner.request(
+        "POST",
+        f"/projects/{project}/groups",
+        json={"name": "Stacje", "from": "file", "versions": [version]},
+    )
+    assert grouped.status_code == 201, grouped.text
+
+    # Act
+    written = owner.request(
+        "POST", f"/projects/{project}/exports", json={"name": "stacje"}
+    )
+
+    # Assert
+    assert written.status_code == 201, written.text
+    target = Path(written.json()["path"]["local"])
+    assert (target / "ATTRIBUTION.txt").read_text(encoding="utf-8") == (
+        f"{CHMI_SOURCE}\n{CHMI_PROCESSED}\n{CUZK_RUIAN}\n"
     )

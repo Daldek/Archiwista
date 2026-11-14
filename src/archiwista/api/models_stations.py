@@ -1725,9 +1725,9 @@ class StationMapView(IndexAnswer):
             ],
             cells=[Cell.of(cell) for cell in found.cells],
             counts=StationCountsItem.of(found.counts),
-            **attribution.of(
-                attribution.station_origin(provider, positions=True)
-                for provider in found.providers
+            **attribution.merge(
+                attribution.station(provider, catalog, positions=True)
+                for provider, catalog in found.catalogs
             ).fields(),
             **freshness,
         )
@@ -2261,10 +2261,14 @@ def _station_lines(rows: Iterable[StationRow]) -> dict[str, Any]:
     """Return the lines of an answer that gives these stations with their places.
 
     The positions of the IMGW-PIB catalog come from the hydrological service
-    (A-ADR-055); a station without a position gives its other data.
+    (A-ADR-055); a station without a position gives its other data. Every
+    place, a position or the reason there is none, carries the G and Z of its
+    catalog.
     """
-    return attribution.of(
-        attribution.station_origin(row.provider, positions=row.point is not None)
+    return attribution.merge(
+        attribution.station(
+            row.provider, row.catalog_attribution, positions=row.point is not None
+        )
         for row in rows
     ).fields()
 

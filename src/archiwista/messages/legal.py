@@ -6,7 +6,10 @@ and 4, the terms of the PMAXTP project), the links to those terms and the
 credit CC BY 4.0 requires of ČHMÚ, so a line equal byte for byte merges with the
 same line of another tool. They keep that wording in every language: in an
 English context the Polish line stays (DEV §20). The Polish text is the English
-one by design; the guard test allows it for this area only.
+one by design; the guard test allows it for this area only. GUGiK's G and
+ČÚZK's Z (DEV-20.9, DEV-20.11) are templates: the products and days of the
+data they credit are a producer's, so Archiwista never fills them itself and
+uses them only to recognise the lines a station catalog carries.
 ``archiwista.attribution`` chooses the lines of a product; nothing else holds
 them (A-ADR-055).
 """
@@ -53,6 +56,17 @@ MESSAGES = {
     "chmi_processed": _same(f"{_CHMI_PROCESSED} (normalizacja i zmiana formatu)"),
     "chmi_processed_views": _same(
         f"{_CHMI_PROCESSED} (normalizacja i zmiana formatu, zestawienia i wykresy)"
+    ),
+    # G and Z: GUGiK and ČÚZK data, here the state borders against which
+    # Obserwator's station catalogs check every position (PRG, RÚIAN).
+    "gugik_source": _same(
+        "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, {products}"
+        " (wytworzono {period}, pozyskano {date}); dane przetworzone"
+    ),
+    "cuzk_source": _same(
+        "Źródło: Český úřad zeměměřický a katastrální (ČÚZK), {products}"
+        " (pozyskano {date}), licencja CC BY 4.0"
+        " (https://creativecommons.org/licenses/by/4.0/); dane przetworzone"
     ),
     # RD, RH and RK: the links to the IMGW-PIB terms that apply, never a summary
     # of them (ECO-065), each naming whose terms it links.

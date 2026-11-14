@@ -30,9 +30,12 @@ from archiwista.sources.registry import PluginRegistry, load_registry
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.local_server import NoSources, local_paths
 from tests.fixtures.missing_package import hide_packages
+from tests.fixtures.obserwator_edits import name_borders
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED_VIEWS,
     CHMI_SOURCE,
+    CUZK_RUIAN,
+    GUGIK_PRG,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_HYDRO,
@@ -428,6 +431,52 @@ def test_station_answers_carry_the_lines_their_providers_terms_require(
         attribution,
         terms_notice,
     )
+
+
+def test_station_places_carry_the_border_lines_their_catalog_names(
+    obserwator_store: Stores, tmp_path: Path
+) -> None:
+    """G and Z of the catalogs, as written, with every place; none with series."""
+    # Arrange
+    root = tmp_path / "store"
+    shutil.copytree(obserwator_store("complete_pl_cz"), root)
+    name_borders(root, {"IMGW-PIB": GUGIK_PRG, "CHMI": CUZK_RUIAN})
+    paths = local_paths(tmp_path)
+    registry = load_registry(cache_dir=paths.cache_dir)
+    _scanned(paths, {STORE: root}, registry)
+    routes = {
+        "card": f"/stations/{RABA}",
+        "card-unlocated": "/stations/149190311",
+        "card-chmi": "/stations/0-203-1-900001",
+        "list": "/stations?limit=50",
+        "timeline": f"/stations/timeline?dataset={DAILY}",
+        "map": "/map/stations?bbox=14,48,24,55",
+        "map-grid": "/map/stations?bbox=14,48,24,55&limit=3&grid_columns=4",
+        "compare": f"/stations/compare?station={STORE}/IMGW-PIB/{RABA}"
+        f"&station={STORE}/IMGW-PIB/149190311&dataset={DAILY}&variable=H",
+        "coverage": f"/stations/{RABA}/coverage",
+        "datasets": "/stations/datasets",
+    }
+
+    # Act
+    with running_api(paths, registry) as api:
+        owner = api.session(LOCAL_OWNER)
+        answers = {name: owner.request("GET", path) for name, path in routes.items()}
+
+    # Assert
+    lines = {name: answer.json()["attribution"] for name, answer in answers.items()}
+    assert lines == {
+        "card": [*IMGW, GUGIK_PRG],
+        "card-unlocated": [*IMGW, GUGIK_PRG],
+        "card-chmi": [*CZECH, CUZK_RUIAN],
+        "list": [*IMGW, *CZECH, GUGIK_PRG, CUZK_RUIAN],
+        "timeline": [*IMGW, GUGIK_PRG],
+        "map": [*IMGW, *CZECH, GUGIK_PRG, CUZK_RUIAN],
+        "map-grid": [*IMGW, *CZECH, GUGIK_PRG, CUZK_RUIAN],
+        "compare": [*IMGW, GUGIK_PRG],
+        "coverage": IMGW,
+        "datasets": IMGW + CZECH,
+    }
 
 
 def test_a_code_of_two_stations_names_them_until_store_and_provider_choose(

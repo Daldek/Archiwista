@@ -9,6 +9,16 @@ command-line interface may change.
 
 ### Added
 
+- The lines of the state borders a station catalog was checked against (Nogat DEV-20.9,
+  DEV-20.11, ECO-068; A-ADR-055 erratum 3): where a station's place (a position or the
+  reason it has none) comes from Obserwator's catalog, its GUGiK line „Źródło: Główny
+  Urząd Geodezji i Kartografii – GUGiK, PRG (wytworzono …, pozyskano …); dane
+  przetworzone” and its ČÚZK line for RÚIAN are carried as the catalog writes them, with
+  the catalog's products and days: in `attribution` of `GET /stations`,
+  `/stations/timeline`, `/stations/compare`, `/stations/{code}`, `/map/stations`, the
+  catalog version's card, `/slots`, the exports' `ATTRIBUTION.txt` and README.txt, and in
+  the strip, which shows them short („Źródło: GUGiK (PRG)”, „Źródło: ČÚZK, CC BY 4.0”).
+
 - The lines the data providers' terms require, with every product of their data
   (A-ADR-055; Nogat ECO-060, DEV §20): the source of IMGW-PIB's data and, once processed,
   the mark of processing, with the hydrological service hydro.imgw.pl named where station
@@ -1215,6 +1225,17 @@ command-line interface may change.
   AGENT_API describe 0.3. (SPEC 13 v0.3; plan A14)
 
 ### Changed
+
+- „Zgłoszenia” is Nogat's kit view `<nogat-admin-feedback>` (kit 0.7.0, Nogat DEV-15.13,
+  ECO-067; A-ADR-054 erratum 3) with Archiwista's sign-in and roles: „Nieprzeczytane: N z
+  M”, „Tylko nieprzeczytane”, „Oznacz jako przeczytane” and back, „Usuń” after a
+  confirmation, each report's context folded under „Kontekst”. **Breaking (API):** a
+  report of `GET /admin/feedback` and `PATCH /admin/feedback/{id}` is `{id, created_at,
+  message, context, is_read}`, its `user_id`, `contact`, `page_url`, `user_agent` and
+  `diagnostics` now inside `context`; `DELETE /admin/feedback/{id}` answers `200
+  {"status": "deleted"}` instead of `204`; every answer under `/api/v1/admin/` carries
+  `Cache-Control: no-store`. Nogat's GUI kit 0.7.0 of `229ade3` is copied whole into
+  `src/archiwista/web/nogat/`.
 
 - The providers' terms are linked, no longer restated (A-ADR-055 erratum 2; Nogat ECO-065):
   the line „Dane pochodzą z serwisu hydrologicznego IMGW-PIB https://hydro.imgw.pl” and the

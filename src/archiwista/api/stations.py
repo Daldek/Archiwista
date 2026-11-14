@@ -248,8 +248,8 @@ def station_card(
         if isinstance(adapter, SeriesValuesAdapter)
         else []
     )
-    lines = attribution.of(
-        [attribution.station_origin(row.provider, positions=row.point is not None)]
+    lines = attribution.station(
+        row.provider, row.catalog_attribution, positions=row.point is not None
     )
     return StationCard(
         station=StationItem.of(row, found),
@@ -590,8 +590,10 @@ def station_comparison(
         if span is None
         else series_chart.chart_range(first.time_unit, *span, query.max_points)
     )
-    lines = attribution.of(
-        attribution.station_origin(row.provider, positions=row.point is not None)
+    lines = attribution.merge(
+        attribution.station(
+            row.provider, row.catalog_attribution, positions=row.point is not None
+        )
         for row, _ in found
     )
     return StationComparison.model_validate(

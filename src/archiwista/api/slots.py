@@ -136,13 +136,18 @@ def search_slots(
         area = bbox_area(registry, bbox, filters.bbox_crs)
     page = queries.slots(filters.slot_query(area), visible=visible)
     origins = attribution.Origins(registry)
+    # Each row's origin, and the G and Z its sidecar names (a station catalog's).
     lines = attribution.merge(
-        attribution.version(
-            origins.of(row.segment.producer, row.version.path, row.segment.segment),
-            None,
-        )
+        part
         for row in page.items
         if row.version is not None
+        for part in (
+            attribution.version(
+                origins.of(row.segment.producer, row.version.path, row.segment.segment),
+                None,
+            ),
+            attribution.filled(row.version.attribution),
+        )
     )
     return CatalogPage.of(page, lines, staleness(freshness, stores))
 
