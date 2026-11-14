@@ -1262,6 +1262,17 @@ command-line interface may change.
 
 ### Changed
 
+- ČHMÚ's processing line no longer says how the data were processed (Nogat ECO-071,
+  DEV-20.3, DEV-20.4; A-ADR-055 erratum 4): every answer, view, command output, hand-off,
+  CSV and export with processed ČHMÚ data carries „Dane ČHMÚ zostały przetworzone” once,
+  instead of „… (normalizacja i zmiana formatu)” or „… (normalizacja i zmiana formatu,
+  zestawienia i wykresy)”. A line „Dane ČHMÚ zostały przetworzone (…)” of an older product,
+  whatever its words in parentheses, is read as that line and merges with it. The lines are
+  chosen when they are read, so no store or index needs a rebuild (an export written
+  before keeps its `ATTRIBUTION.txt`). Nogat's GUI kit 0.7.1 of `f5e9697` is copied whole
+  into `src/archiwista/web/nogat/` (A-ADR-054 erratum 4): its strip reads an older ČHMÚ
+  line as the new one, and its regulamin template stays version 1.0, corrected in place.
+
 - Documentation audited against the code of 2026-11-14: README, `CLAUDE.md`'s maps,
   SPEC, ARCHITECTURE, USAGE, AGENT_API, PRD and SCOPE state what the code does (the Nogat
   standard 1.0, the routes, models, commands, exit codes, job kinds, index and state

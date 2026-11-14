@@ -45,7 +45,7 @@ type AreaWay = Literal["geometry", "bbox"]
 # providers' terms require with every product of them (Nogat DEV §20, A-ADR-055):
 # a file of IMGW-PIB (danepubliczne.imgw.pl) as published, its data processed,
 # its station catalog (positions of hydro.imgw.pl), PMAXTP, a file of ČHMÚ as
-# published, and its data normalised and reformatted.
+# published, and its data processed.
 type DataOrigin = Literal[
     "imgw_file",
     "imgw_processed",

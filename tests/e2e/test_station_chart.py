@@ -48,7 +48,7 @@ from playwright.sync_api import Locator, Route, expect
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.obserwator_statistics import HALF_YEARS_ONLY, MONTHLY
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED_VIEWS,
+    CHMI_PROCESSED,
     CHMI_SHORT,
     CHMI_SOURCE,
     CUZK_RUIAN,
@@ -670,7 +670,7 @@ def test_station_chart_series_chart_chmi_lines_join_the_cards_one_strip(
 
     # Assert
     lines = [*chart["attribution"], *chart["terms_notice"]]
-    assert lines == [CHMI_SOURCE, CHMI_PROCESSED_VIEWS]
+    assert lines == [CHMI_SOURCE, CHMI_PROCESSED]
     assert [line for line in full if line in lines] == lines
     assert shown == [CHMI_SHORT, "Źródło: ČÚZK, CC BY 4.0"]
     assert CUZK_RUIAN in full

@@ -62,7 +62,7 @@ Regulamin danych PMAXTP: <https://klimat.imgw.pl/opady-maksymalne>
 ### ČHMÚ
 
 > Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
-> Dane ČHMÚ zostały przetworzone (…)
+> Dane ČHMÚ zostały przetworzone
 <!-- /block -->
 
 <!-- block: gugik -->

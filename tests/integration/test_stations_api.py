@@ -32,7 +32,7 @@ from tests.fixtures.local_server import NoSources, local_paths
 from tests.fixtures.missing_package import hide_packages
 from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED_VIEWS,
+    CHMI_PROCESSED,
     CHMI_SOURCE,
     CUZK_RUIAN,
     GUGIK_PRG,
@@ -78,7 +78,7 @@ ROUTES = (
 IMGW = [IMGW_SOURCE, IMGW_PROCESSED]
 LOCATED_TERMS = [IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO]
 UNLOCATED_TERMS = [IMGW_TERMS_PUBLIC_DATA]
-CZECH = [CHMI_SOURCE, CHMI_PROCESSED_VIEWS]
+CZECH = [CHMI_SOURCE, CHMI_PROCESSED]
 
 
 @dataclass(frozen=True)

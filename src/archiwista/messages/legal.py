@@ -21,7 +21,6 @@ _IMGW_OF = (
     "Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego"
 )
 _PMAXTP_PAGE = "https://klimat.imgw.pl/opady-maksymalne"
-_CHMI_PROCESSED = "Dane ČHMÚ zostały przetworzone"
 
 
 def _same(text: str) -> Text:
@@ -46,17 +45,14 @@ MESSAGES = {
         " i prawdopodobieństwie przewyższenia – Projekt PMAXTP”, red. Bogdan"
         f" Ozga-Zieliński, {_IMGW}, Warszawa 2022"
     ),
-    # C and CP: ČHMÚ under CC BY 4.0. CP names what was done: Obserwator's
-    # stored forms (its own wording), and Archiwista's tables and charts of them.
+    # C and CP: ČHMÚ under CC BY 4.0. CP states that the data were processed,
+    # never how (ECO-071).
     "chmi_source": _same(
         "Źródło danych: Český hydrometeorologický ústav (ČHMÚ),"
         " https://opendata.chmi.cz, licencja CC BY 4.0"
         " (https://creativecommons.org/licenses/by/4.0/)"
     ),
-    "chmi_processed": _same(f"{_CHMI_PROCESSED} (normalizacja i zmiana formatu)"),
-    "chmi_processed_views": _same(
-        f"{_CHMI_PROCESSED} (normalizacja i zmiana formatu, zestawienia i wykresy)"
-    ),
+    "chmi_processed": _same("Dane ČHMÚ zostały przetworzone"),
     # G and Z: GUGiK and ČÚZK data, here the state borders against which
     # Obserwator's station catalogs check every position (PRG, RÚIAN).
     "gugik_source": _same(

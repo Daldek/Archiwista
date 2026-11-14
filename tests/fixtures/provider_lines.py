@@ -6,11 +6,12 @@ the same line of another tool only when equal byte for byte, so a change of
 the wording in the code must fail. The names follow the standard's marks:
 the IMGW-PIB source (S) and the mark of processing (P); PMAXTP's source, mark
 and monograph (PS, PP, M); the ČHMÚ credit (C), its short form on a GUI's
-strip only (CK), and what was done with its data (CP), in Obserwator's stored
-forms and in Archiwista's tables and charts; GUGiK's (G) and ČÚZK's (Z) lines
-with the products and days a producer fills, here those of the state borders
-of PRG and RÚIAN; the terms of each service (RD, RH, RK), links naming whose
-terms they are rather than their restatement (DEV §20, ECO-065, ECO-068).
+strip only (CK), and the mark of processing of its data (CP), which never says
+how (ECO-071), with the form an older product carried; GUGiK's (G) and
+ČÚZK's (Z) lines with the products and days a producer fills, here those of
+the state borders of PRG and RÚIAN; the terms of each service (RD, RH, RK),
+links naming whose terms they are rather than their restatement (DEV §20,
+ECO-065, ECO-068).
 """
 
 IMGW_SOURCE = (
@@ -41,11 +42,9 @@ CHMI_SOURCE = (
     "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz,"
     " licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
 )
-CHMI_PROCESSED = "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
-CHMI_PROCESSED_VIEWS = (
-    "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu, zestawienia i"
-    " wykresy)"
-)
+CHMI_PROCESSED = "Dane ČHMÚ zostały przetworzone"
+# CP as an older product wrote it, naming what was done (before ECO-071).
+CHMI_PROCESSED_OLD = "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
 CHMI_SHORT = "Źródło: ČHMÚ, CC BY 4.0"
 IMGW_TERMS_PUBLIC_DATA = (
     "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations"
