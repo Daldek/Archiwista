@@ -207,7 +207,9 @@ export const map = {
     crs: "układ płaski",
     no_country: "kraj nieznany",
     reason: {
-      no_planar_crs: "Procent nie jest liczony: ten kraj nie ma układu płaskiego w Archiwiście.",
+      no_planar_crs:
+        "Procent nie jest liczony: udział powierzchni liczy się tylko w układach płaskich " +
+        "PL i CZ.",
       empty_area: "Obszar nie ma powierzchni w tym kraju.",
     },
     stale: {

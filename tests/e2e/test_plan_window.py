@@ -605,7 +605,7 @@ def test_offline_mode_keeps_the_report_and_disables_the_network_actions(
     step.get_by_label("Produkt u źródła").select_option(PRODUCT)
 
     # Assert
-    expect(step).to_contain_text("Brak sieci — pokazuję tylko magazyn.")
+    expect(step).to_contain_text("Brak sieci — widać tylko magazyn.")
     rows = step.get_by_role("list", name="Lata u źródła").locator("> li")
     expect(rows).to_have_count(2)
     expect(rows.nth(0).get_by_role("button", name="Pobierz…")).to_be_disabled()

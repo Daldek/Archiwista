@@ -263,7 +263,7 @@ from the CLI.
 produkty" (All products). Archiwista shows only the store (index): files intersecting the
 area, grouped by product and data year, with local coverage of the
 area. The check at the source is disabled with the message "Brak sieci —
-pokazuję tylko magazyn"; if this area was checked earlier, the
+widać tylko magazyn"; if this area was checked earlier, the
 last report is shown with its date.
 From v0.5 the IMGW stations of the area are also shown, with coverage labels from local
 series (4.8.4).
@@ -2745,8 +2745,7 @@ confirmed by the user on 2026-10-26, M11):
   holds each in the tooltip; a year with one half only shows that half's value as a
   hollow point with "niepełny rok: brak półrocza zimowego" (or "letniego"), a year
   with neither half is a gap. Archiwista finds these two values for display, says so
-  in the chart's note ("roczne maksimum i minimum wyznaczone przez Archiwistę z
-  charakterystyk półrocznych IMGW-PIB") and stores none of them; the chart numbers
+  in the chart's note ("roczne maksimum i minimum wyznaczone z charakterystyk półrocznych IMGW-PIB") and stores none of them; the chart numbers
   hydrological years only, which the card says beside its year-type switch. A station
   with none of the three charts shows "Stacja nie ma szeregu, który można narysować na
   wykresie".

@@ -88,8 +88,7 @@ export const station = {
       month: ["miesiąca", "miesięcy", "miesięcy"],
     },
     annual_note:
-      "roczne maksimum i minimum wyznaczone przez Archiwistę z charakterystyk półrocznych " +
-      "{provider}",
+      "roczne maksimum i minimum wyznaczone z charakterystyk półrocznych {provider}",
     annual_legend:
       "● maksimum (linia ciągła) i minimum (przerywana) roku hydrologicznego, większe " +
       "i mniejsze z obu półroczy · ○ niepełny rok: wartość jedynego półrocza",

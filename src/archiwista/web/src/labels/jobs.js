@@ -18,7 +18,7 @@ export const jobs = {
     all: "Każde zadanie kolejki i historii",
     active: "Zadania, które trwają albo czekają w kolejce",
     errors: "Zadania zakończone błędem, częściowo albo przerwane",
-    mine: "Zadania uruchomione przez ciebie (także przez twoich agentów)",
+    mine: "Zadania uruchomione z tego konta, także przez jego agentów",
   },
   empty: {
     all: "Nie ma jeszcze żadnych zadań.",
@@ -41,7 +41,8 @@ export const jobs = {
   /** A job of a project the session does not see: its kind, who and progress only. */
   hidden: "bez dostępu",
   hidden_title:
-    "Zadanie danych projektu, którego nie widzisz: widać tylko rodzaj, kto je uruchomił i postęp.",
+    "Zadanie danych projektu, do którego to konto nie ma dostępu: widać tylko rodzaj, " +
+    "kto je uruchomił i postęp.",
   progress: "{current} z {total}",
   time: {
     queued: "w kolejce od {time}",

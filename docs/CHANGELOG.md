@@ -1269,6 +1269,19 @@ command-line interface may change.
   questions (Nogat DOC-6.1); ADRs whose facts changed have errata dated 2026-11-14, and the
   decisions accepted by the merge of 2026-11-03 say so in the index.
 
+- The info texts of the interface follow Nogat DEV-15.14 (ECO-069): titles, hints and notes
+  are impersonal, address the user only in an instruction and name no program, file format,
+  internal symbol or development status. The offline note at the source reads „Brak sieci —
+  widać tylko magazyn.”, the annual chart's note „roczne maksimum i minimum wyznaczone z
+  charakterystyk półrocznych IMGW-PIB”, and a producer without commands „nie udostępnia
+  poleceń” without „jeszcze”; the hint of „Zakres lat etykiet” names the range instead of
+  the symbol R, and a local coverage without a percentage says that the share of the area
+  is computed only in the planar systems of PL and CZ. The hint of the rectangle, the
+  wizard's indexing note, the preview texts and the hint of „Pamięć podglądów” no longer
+  name the producer's transformation, the server's scheduler or „(COG)”; the titles of
+  „Moje” in „Zadania” and of a job without access, the hint of the company sign-in, the
+  texts of a set in the making and the introduction of „Polecenia producenta” no longer
+  address the user.
 - **Breaking:** Obserwator is re-pinned from `f9f4ee79` to `0591b82`, which keeps a store
   in two roots (its ADR-015 and ADR-017; A-ADR-056). Archiwista runs only Obserwator's
   `store sync`, into the raw root: `series build` and `store catalog` leave

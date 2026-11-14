@@ -460,7 +460,7 @@ def test_offline_without_a_report_shows_the_banner_and_the_local_share(
     step = open_area(page, served, "kartograf/nmt")
 
     # Assert: the banner and the reason at the source, no check and no job.
-    expect(step).to_contain_text("Brak sieci — pokazuję tylko magazyn.")
+    expect(step).to_contain_text("Brak sieci — widać tylko magazyn.")
     expect(step).to_contain_text(
         "Archiwista nie ma raportu źródła dla tego obszaru i produktu, a bez sieci"
         " go nie sprawdzi. Co z obszaru jest już w magazynie, pokazuje krok „Stan"
