@@ -5,11 +5,12 @@ factory (``SourceFactory``) that receives a ``SourceContext`` and returns a
 ``SourceAdapter``. Segments (and the description of segments), the current
 version of a slot, station catalogs, the series indexes of stations, the
 values of a station's series, their parts, coordinate operations, link
-confirmation, sheet grids, the default store root, the producer's commands
-with the availability at the source, a command over an area of Archiwista,
-the command of a stored version, the folder of a version in a project's
-export and the origin of a version's data are optional capabilities: a
-producer without them still satisfies ``SourceAdapter``.
+confirmation, sheet grids, the default store root, a data root beside the
+store root, the producer's commands with the availability at the source, a
+command over an area of Archiwista, the command of a stored version, the
+folder of a version in a project's export and the origin of a version's data
+are optional capabilities: a producer without them still satisfies
+``SourceAdapter``.
 """
 
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
@@ -362,6 +363,35 @@ class DefaultRootAdapter(Protocol):
         A report only: Archiwista names the store in every call, so it never
         uses this directory itself. The producer may read the whole directory
         to size it, so ask for an answer a person waits for, never on a poll.
+        """
+        ...
+
+
+@runtime_checkable
+class DataRootAdapter(Protocol):
+    """Optional capability: a data root of what the producer builds (A-ADR-056).
+
+    Obserwator's store is two roots (its ADR-017): the store root its
+    downloads write, which ``probe`` judges, and a data root of the series,
+    station catalogs and analyses it builds from them. ``iter_entries``,
+    ``read_meta``, ``current_version`` and the readers of versions take either
+    root; a path lies in the data root when its first part is a tree of
+    ``archiwista.sources.markers.DATA_TREES``, and Archiwista gives every call
+    the root the path lies in.
+    """
+
+    def probe_data(self, root: Path) -> SourceState:
+        """Report whether ``root`` is a data root of the producer it reads.
+
+        As ``SourceAdapter.probe`` for the store root: a store root given as
+        a data root is ``incompatible`` with the reason ``wrong_root``.
+        """
+        ...
+
+    def default_data_root(self) -> DefaultRoot:
+        """Return the producer's default data root and where it comes from.
+
+        A report only, as ``DefaultRootAdapter.default_root``.
         """
         ...
 

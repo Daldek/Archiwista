@@ -106,8 +106,9 @@ def scan_projects(
     project_dirs : Sequence[Path]
         Configured project directories (``AppSettings.project_dirs``).
     stores : Sequence[StoreConfig]
-        All configured stores: their producer directories are not searched,
-        and a project's store of a producer is matched to one of them.
+        All configured stores: their directories (store roots and data
+        roots) are not searched, and a project's store of a producer is
+        matched to one of them.
     geo : GeoAdapter or None
         A producer's countries and pinned operations, to read a project's
         area; ``None``: the areas are not read.
@@ -118,7 +119,9 @@ def scan_projects(
         Counts of found, read, unchanged, invalid and removed projects.
     """
     skipped = {
-        os.path.normpath(root) for config in stores for root in config.roots().values()
+        os.path.normpath(directory.path)
+        for config in stores
+        for directory in config.directories()
     }
     unreadable: list[str] = []
     outside: set[str] = set()
@@ -198,12 +201,15 @@ def record_project(
 def match_store(
     root: str, directory: Path, producer: str, stores: Sequence[StoreConfig]
 ) -> str | None:
-    r"""Return the configured store whose directory of ``producer`` is ``root``.
+    r"""Return the configured store with ``root`` among its directories of ``producer``.
 
     ``root`` as the project file writes it: relative to the project
     ``directory`` or absolute. It matches by its resolved path or through a
     store's path aliases (SPEC 4.6); a path written on another system
-    (``Z:\dane\kartograf`` read on Linux) is matched by its text.
+    (``Z:\dane\kartograf`` read on Linux) is matched by its text. Any of the
+    producer's directories matches, its store root or its data root
+    (A-ADR-056): a file names the store by one of them
+    (``StoreConfig.producer_root``).
 
     Returns
     -------
@@ -214,14 +220,12 @@ def match_store(
     if not os.path.isabs(root):
         candidates.insert(0, os.path.normpath(os.path.join(directory, root)))
     for config in stores:
-        configured = config.roots().get(producer)
-        if configured is None:
-            continue
-        for candidate in candidates:
-            if _same_directory(candidate, configured) or _same_directory(
-                str(config.local_path(candidate)), configured
-            ):
-                return config.id
+        for configured in config.producer_directories(producer):
+            for candidate in candidates:
+                if _same_directory(candidate, configured.path) or _same_directory(
+                    str(config.local_path(candidate)), configured.path
+                ):
+                    return config.id
     return None
 
 

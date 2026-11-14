@@ -67,10 +67,11 @@ type MeteoKind = Literal["synoptic", "climate", "precipitation"]
 # The order of a list of stations (SPEC 6.8): along rivers, or by name.
 type StationSort = Literal["river", "name"]
 type TransformerFactory = Callable[[str, str], CoordinateTransformer]
-# A producer's current version of a slot, asked by the slot's key at the end of
-# a pass: a path relative to the store, ``None`` without one
-# (``CurrentVersionAdapter.current_version``).
-type CurrentVersionLookup = Callable[[str], Path | None]
+# A producer's current version of a slot, asked by the slot's path and key at the
+# end of a pass: a path relative to the producer's directory the slot lies in,
+# ``None`` without one (``CurrentVersionAdapter.current_version``; the path
+# tells the directory, A-ADR-056).
+type CurrentVersionLookup = Callable[[str, str], Path | None]
 # Own data of projects (plan v0.2, decision 8).
 type OwnFolderState = Literal["ok", "missing", "unreadable", "invalid"]
 type OwnReadState = Literal["ok", "unrecognized", "unreadable"]

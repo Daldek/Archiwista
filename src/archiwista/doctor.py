@@ -28,6 +28,7 @@ from archiwista.messages import current_language, localize, message, with_detail
 from archiwista.security import LOOPBACK_HOST, tls_problem
 from archiwista.shared_settings import CONFIG_ENV, SharedSettings, SharedValue
 from archiwista.sources import DefaultRoot, SourceState
+from archiwista.sources.markers import field_producer
 from archiwista.sources.registry import (
     PluginRegistry,
     install_requirement,
@@ -119,8 +120,8 @@ def run_doctor(
     paths : AppPaths
         Configuration file and local data directory.
     registry : PluginRegistry
-        Producer plugins, their states and, for a producer that has one, its
-        default store root.
+        Producer plugins, their states and, for a producer that has them, its
+        default store root and its default data root (A-ADR-056).
     port_available : callable, optional
         Port check, replaceable in tests.
     shared : SharedSettings or None, optional
@@ -141,7 +142,9 @@ def run_doctor(
     checks.append(shared_file_check(shared))
     states = {state.producer: state for state in registry.states()}
     used = {
-        producer: store.id for store in settings.stores for producer in store.roots()
+        producer: store.id
+        for store in settings.stores
+        for producer in store.producers()
     }
     for producer in sorted(states):
         required = producer in REQUIRED_PRODUCERS or producer in used
@@ -149,6 +152,9 @@ def run_doctor(
         root = read_default_root(registry, producer)
         if root is not None:
             checks.append(default_root_check(producer, root))
+        data_root = read_default_root(registry, producer, data=True)
+        if data_root is not None:
+            checks.append(default_root_check(producer, data_root, data=True))
     for producer, store_id in sorted(used.items()):
         if producer not in states:
             checks.append(
@@ -239,8 +245,10 @@ def source_check(state: SourceState, *, required: bool) -> DoctorCheck:
     return DoctorCheck(level, text, source_fix(state))
 
 
-def default_root_check(producer: str, root: DefaultRoot) -> DoctorCheck:
-    """Describe the default store root of a producer; it is a report, no problem.
+def default_root_check(
+    producer: str, root: DefaultRoot, *, data: bool = False
+) -> DoctorCheck:
+    """Describe a default root of a producer; it is a report, no problem.
 
     Parameters
     ----------
@@ -248,21 +256,25 @@ def default_root_check(producer: str, root: DefaultRoot) -> DoctorCheck:
         Producer id.
     root : DefaultRoot
         What the producer's adapter reports.
+    data : bool, default False
+        Whether it is the producer's default data root (A-ADR-056), not its
+        default store root.
 
     Returns
     -------
     DoctorCheck
         ``ok`` with the directory, the layer of the settings that gave it and
-        what is there (nothing, a directory, a store with its marker); it has
+        what is there (nothing, a directory, a root with its marker); it has
         no fix.
     """
+    kind = "data_root" if data else "root"
     state = "marked" if root.marked else "unmarked" if root.exists else "absent"
     text = message(
-        "doctor.default_root",
+        f"doctor.default_{kind}",
         producer=producer,
         path=root.path,
         origin=message(f"doctor.default_root_{root.source}", name=root.name),
-        state=message(f"doctor.default_root_{state}"),
+        state=message(f"doctor.default_{kind}_{state}"),
     )
     return DoctorCheck("ok", text)
 
@@ -284,15 +296,15 @@ def _store_checks(
         DoctorCheck("error", problem.message, _fix(problem)) for problem in problems
     ]
     for index, store in enumerate(settings.stores):
-        for producer, root in store.roots().items():
-            if f"stores[{index}].{producer}" in failed:
+        for directory in store.directories():
+            if f"stores[{index}].{directory.field}" in failed:
                 continue
             text = message(
                 "doctor.store_ok",
                 store=store.id,
-                producer=producer,
+                producer=directory.field,
                 kind=message(f"store.kind_{store.kind}"),
-                path=root,
+                path=directory.path,
             )
             checks.append(DoctorCheck("ok", text))
     for index, path in enumerate(settings.project_dirs):
@@ -306,7 +318,7 @@ def _fix(problem: SettingsProblem) -> str:
     if problem.hint is not None:
         return problem.hint
     if problem.code == "source_not_installed":
-        producer = problem.field.rpartition(".")[2]
+        producer = field_producer(problem.field.rpartition(".")[2])
         return _install_fix(producer)
     return message(_FIX_BY_CODE.get(problem.code, "fix.source"))
 

@@ -154,6 +154,7 @@ from archiwista.sources import (
     VariableCoverage,
     YearType,
 )
+from archiwista.sources.markers import directory_field
 
 _IDS = "SELECT value FROM json_each(?)"
 _CURSOR_VERSION = 1
@@ -1079,8 +1080,9 @@ class IndexQueries:
 
         The ``footprints`` job passes them to ``SourceAdapter.footprint``
         with the network allowed; versions without a readable sidecar are
-        left out. Each entry's ``store`` is the producer directory recorded
-        by ``IndexWriter.sync_stores``.
+        left out. Each entry's ``store`` is the directory recorded by
+        ``IndexWriter.sync_stores`` that its path lies in: the producer's
+        store root, or its data root (``directory_field``, A-ADR-056).
         """
         with self._read() as connection:
             stores = _stores(connection)
@@ -1106,7 +1108,7 @@ class IndexQueries:
         return tuple(
             SourceEntry(
                 producer=producer,
-                store=str(roots.get(producer, "")),
+                store=str(roots.get(directory_field(producer, version), "")),
                 relative_path=Path(version),
                 kind="link" if version == slot else "version",
                 segment=segment_name or None,

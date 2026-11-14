@@ -10,7 +10,7 @@ import threading
 import tomllib
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import Annotated, Literal, Protocol, Self
 from urllib.parse import urlsplit
 
@@ -30,7 +30,14 @@ from archiwista.errors import ArchiwistaError
 from archiwista.messages import join, message, with_detail
 from archiwista.shared_settings import SharedSettings
 from archiwista.sources import SourceState
-from archiwista.sources.markers import store_around, store_below
+from archiwista.sources.markers import (
+    DATA_MARKERS,
+    data_field,
+    directory_field,
+    field_producer,
+    store_around,
+    store_below,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +102,18 @@ _STORE_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 # Producers whose directory a store can name, in the order of its settings: the
 # first one found decides the detected kind and the order of ``roots()``.
 STORE_PRODUCERS = ("kartograf", "obserwator")
+# Every directory a store can name, by its settings field: each producer's store
+# root, then the data roots of the producers that keep one (A-ADR-056).
+STORE_DIRECTORIES = (
+    *STORE_PRODUCERS,
+    *(data_field(producer) for producer in STORE_PRODUCERS if producer in DATA_MARKERS),
+)
+
+
+def _directory_owner(field: str) -> tuple[str, bool]:
+    """Return the producer of a field of ``STORE_DIRECTORIES`` and its data flag."""
+    producer = field_producer(field)
+    return producer, producer != field
 
 
 class SourceRegistryView(Protocol):
@@ -108,8 +127,8 @@ class SourceRegistryView(Protocol):
         """Return the state of every registered producer plugin."""
         ...
 
-    def probe(self, producer: str, root: Path) -> SourceState:
-        """Probe a producer directory, or return the plugin's unavailable state."""
+    def probe(self, producer: str, root: Path, *, data: bool = False) -> SourceState:
+        """Probe a producer directory (``data``: its data root, A-ADR-056)."""
         ...
 
 
@@ -253,6 +272,28 @@ def _is_windows_path(path: str) -> bool:
     return _is_unc(path) or re.match(r"[A-Za-z]:[\\/]", path) is not None
 
 
+@dataclass(frozen=True, slots=True)
+class StoreDirectory:
+    """One directory a store names: a producer's store root or its data root.
+
+    Attributes
+    ----------
+    field : str
+        The settings field: ``kartograf``, ``obserwator`` or ``obserwator_data``.
+    producer : str
+        The producer whose directory it is.
+    data : bool
+        Whether it is the producer's data root (A-ADR-056), not its store root.
+    path : Path
+        The directory.
+    """
+
+    field: str
+    producer: str
+    data: bool
+    path: Path
+
+
 class StoreConfig(BaseModel):
     r"""One configured store: a short id and its producer directories.
 
@@ -266,9 +307,13 @@ class StoreConfig(BaseModel):
         Store root of Kartograf: the directory that holds ``kartograf-store.json``
         and the product directories (usually called ``data``).
     obserwator : Path or None
-        Obserwator store root, the directory that holds ``obserwator-store.json``.
-        At least one of the two directories is required; one of them left out
-        is ``None``, never an empty path.
+        Obserwator's raw root, the directory that holds ``obserwator-store.json``:
+        the archives Archiwista downloads into (A-ADR-056).
+    obserwator_data : Path or None
+        Obserwator's data root, the directory that holds ``obserwator-data.json``:
+        the series, station catalogs and analyses Obserwator builds from the
+        raw root, which Archiwista only reads. At least one of the three
+        directories is required; one left out is ``None``, never an empty path.
     kind : {"local", "share"}
         Detected from the file system when omitted; editable afterwards.
     path_aliases : dict[str, str]
@@ -282,6 +327,7 @@ class StoreConfig(BaseModel):
     name: str
     kartograf: AbsolutePath | None = None
     obserwator: AbsolutePath | None = None
+    obserwator_data: AbsolutePath | None = None
     kind: StoreKind
     path_aliases: dict[str, str] = Field(default_factory=dict)
 
@@ -290,7 +336,7 @@ class StoreConfig(BaseModel):
     def _require_a_directory(cls, data: object) -> object:
         # Before the kind is looked for: a store without a directory has none.
         if isinstance(data, Mapping) and all(
-            data.get(producer) is None for producer in STORE_PRODUCERS
+            data.get(field) is None for field in STORE_DIRECTORIES
         ):
             raise ValueError(message("settings.store_needs_directory"))
         return data
@@ -299,8 +345,8 @@ class StoreConfig(BaseModel):
     @classmethod
     def _detect_kind(cls, data: object) -> object:
         if isinstance(data, Mapping) and data.get("kind") is None:
-            for producer in STORE_PRODUCERS:
-                root = data.get(producer)
+            for field in STORE_DIRECTORIES:
+                root = data.get(field)
                 if isinstance(root, str | Path):
                     return {**data, "kind": detect_store_kind(Path(root))}
         return data
@@ -326,9 +372,84 @@ class StoreConfig(BaseModel):
         return value
 
     def roots(self) -> dict[str, Path]:
-        """Return the configured producer directories keyed by producer id."""
+        """Return the producers' store roots keyed by producer id.
+
+        A store root is the directory a producer's commands write and its
+        probe judges: Kartograf's store, Obserwator's raw root.
+        """
         found = {"kartograf": self.kartograf, "obserwator": self.obserwator}
         return {producer: root for producer, root in found.items() if root is not None}
+
+    def directories(self) -> tuple[StoreDirectory, ...]:
+        """Return every configured directory, in the order of ``STORE_DIRECTORIES``."""
+        found = {
+            "kartograf": self.kartograf,
+            "obserwator": self.obserwator,
+            "obserwator_data": self.obserwator_data,
+        }
+        return tuple(
+            StoreDirectory(field, *_directory_owner(field), path)
+            for field in STORE_DIRECTORIES
+            if (path := found[field]) is not None
+        )
+
+    def directory_paths(self) -> dict[str, Path]:
+        """Return every configured directory keyed by its settings field."""
+        return {directory.field: directory.path for directory in self.directories()}
+
+    def producers(self) -> tuple[str, ...]:
+        """Return the producers with a directory (store or data root) in the store."""
+        return tuple(
+            dict.fromkeys(directory.producer for directory in self.directories())
+        )
+
+    def producer_directories(self, producer: str) -> tuple[StoreDirectory, ...]:
+        """Return a producer's directories: its store root, then its data root."""
+        return tuple(
+            directory
+            for directory in self.directories()
+            if directory.producer == producer
+        )
+
+    def directory(self, field: str) -> StoreDirectory | None:
+        """Return the directory of a settings field, ``None`` when not configured.
+
+        ``directory(directory_field(producer, path))`` is the one a path lies
+        in, with its kind (a data root is probed by its own rules).
+        """
+        return next(
+            (found for found in self.directories() if found.field == field), None
+        )
+
+    def producer_root(self, producer: str) -> Path | None:
+        """Return the directory that stands for a producer in the store.
+
+        Its store root, else its data root (A-ADR-056): a project file names
+        the producer's store by one directory (A-ADR-049), which matches any
+        of the producer's directories (``index.projects.match_store``).
+        """
+        found = self.producer_directories(producer)
+        return found[0].path if found else None
+
+    def root_of(self, producer: str, path: str | PurePath) -> Path | None:
+        """Return the directory a producer's path lies in (A-ADR-056).
+
+        Parameters
+        ----------
+        producer : str
+            Producer id.
+        path : str or PurePath
+            A version, slot or file path relative to the producer's
+            directories, as the index keeps it.
+
+        Returns
+        -------
+        Path or None
+            The data root for a path in a tree of the producer's data root
+            (``sources.markers.DATA_TREES``), else its store root; ``None`` when
+            that directory is not configured.
+        """
+        return self.directory_paths().get(directory_field(producer, path))
 
     def local_path(self, path: str) -> Path:
         r"""Translate a path written on another computer to this computer.
@@ -1004,7 +1125,8 @@ def validate_settings(
         Candidate settings.
     registry : SourceRegistryView
         Producer plugins; each new or moved store directory is probed for
-        a supported producer version and schema.
+        a supported producer version and schema, a data root as one
+        (A-ADR-056).
     previous : AppSettings, optional
         Settings in effect; directories unchanged since then are neither
         probed nor searched for store markers, so a disconnected share does
@@ -1016,24 +1138,24 @@ def validate_settings(
         Empty when the settings can be saved.
     """
     old_roots = {
-        (store.id, producer): root
+        (store.id, directory.field): directory.path
         for store in (previous.stores if previous else ())
-        for producer, root in store.roots().items()
+        for directory in store.directories()
     }
     old_project_dirs = set(previous.project_dirs) if previous else set()
     problems: list[SettingsProblem] = []
     labelled: list[tuple[str, Path]] = []
     unchanged: set[str] = set()
     for index, store in enumerate(settings.stores):
-        for producer, root in store.roots().items():
-            field = f"stores[{index}].{producer}"
-            labelled.append((field, root))
-            if old_roots.get((store.id, producer)) == root:
+        for directory in store.directories():
+            field = f"stores[{index}].{directory.field}"
+            labelled.append((field, directory.path))
+            if old_roots.get((store.id, directory.field)) == directory.path:
                 unchanged.add(field)
                 continue
-            root_problems = check_store_root(store, producer, field)
+            root_problems = check_store_root(store, directory, field)
             problems.extend(
-                root_problems or _probe_root(store, producer, field, registry)
+                root_problems or _probe_root(store, directory, field, registry)
             )
     problems.extend(check_nesting(labelled, skip_markers=unchanged))
     for index, path in enumerate(settings.project_dirs):
@@ -1068,7 +1190,9 @@ def check_own_data_dirs(
         At most one problem per folder.
     """
     old = previous.own_data_dirs if previous is not None else {}
-    stores = [root for store in settings.stores for root in store.roots().values()]
+    stores = [
+        directory.path for store in settings.stores for directory in store.directories()
+    ]
     problems: list[SettingsProblem] = []
     for project, folder in settings.own_data_dirs.items():
         field = f"own_data_dirs.{project}"
@@ -1152,7 +1276,7 @@ def _overlap(first: Path, second: Path) -> bool:
 
 
 def check_store_root(
-    store: StoreConfig, producer: str, field: str
+    store: StoreConfig, directory: StoreDirectory, field: str
 ) -> tuple[SettingsProblem, ...]:
     """Check that a producer directory exists and can be listed and read.
 
@@ -1160,8 +1284,8 @@ def check_store_root(
     ----------
     store : StoreConfig
         Store owning the directory.
-    producer : str
-        Producer id, a key of ``store.roots()``.
+    directory : StoreDirectory
+        One of ``store.directories()``; a problem names its settings field.
     field : str
         Settings location reported with a problem.
 
@@ -1170,11 +1294,13 @@ def check_store_root(
     tuple[SettingsProblem, ...]
         At most one problem; nothing is created in the directory.
     """
-    root = store.roots()[producer]
+    root = directory.path
     problem = _directory_problem(root)
     if problem is None:
         return ()
-    text = message(f"root.{problem}", producer=producer, store=store.id, path=root)
+    text = message(
+        f"root.{problem}", producer=directory.field, store=store.id, path=root
+    )
     return (SettingsProblem(f"root_{problem}", field, text),)
 
 
@@ -1264,14 +1390,17 @@ def _nested_by_markers(
 
 
 def _probe_root(
-    store: StoreConfig, producer: str, field: str, registry: SourceRegistryView
+    store: StoreConfig,
+    directory: StoreDirectory,
+    field: str,
+    registry: SourceRegistryView,
 ) -> tuple[SettingsProblem, ...]:
-    state = registry.probe(producer, store.roots()[producer])
+    state = registry.probe(directory.producer, directory.path, data=directory.data)
     if state.status == "available":
         return ()
     text = message(
         "root.source",
-        producer=producer,
+        producer=directory.field,
         store=store.id,
         status=message(f"source.status_{state.status}"),
     )

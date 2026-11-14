@@ -25,7 +25,7 @@ import json
 import re
 import sqlite3
 import unicodedata
-from collections.abc import Collection, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -503,9 +503,10 @@ class IndexWriter:
         Parameters
         ----------
         stores : Mapping[str, Mapping[str, str | Path]]
-            Configured store id → producer → producer directory
-            (``StoreConfig.roots()``). Stores missing from it are removed
-            with everything indexed for them.
+            Configured store id → settings field → directory
+            (``StoreConfig.directory_paths()``: each producer's store root and
+            data root, A-ADR-056). Stores missing from it are removed with
+            everything indexed for them.
         """
         with self._transaction() as connection:
             existing = {
@@ -770,8 +771,14 @@ class IndexWriter:
             return {}
         return state.settled.get(found.id, {})
 
-    def holds_entries(self) -> bool:
+    def holds_entries(self, within: Callable[[str], bool] | None = None) -> bool:
         """Whether the index holds versions or slots in the active pass's scope.
+
+        Parameters
+        ----------
+        within : callable, optional
+            Count only the slots and versions whose path it accepts: those of
+            one directory of a producer that keeps two (A-ADR-056).
 
         Raises
         ------
@@ -779,7 +786,9 @@ class IndexWriter:
             No pass is active.
         """
         state = self._active()
-        return bool(state.versions or state.slots)
+        if within is None:
+            return bool(state.versions or state.slots)
+        return any(map(within, state.slots)) or any(map(within, state.versions))
 
     def slots_beside(self, store: str, slots: Collection[str]) -> frozenset[str]:
         """Return the slots and every indexed slot in the same directories.
@@ -857,20 +866,21 @@ class IndexWriter:
         available.
 
         A producer without links names the current version of a slot itself
-        (``current``), asked by the slot's key before anything is written: for
-        the slots the pass touched (a version written, back or gone, a problem
-        found or resolved) and for the slots that have none while the pass saw a
-        version of them (a pass that did not finish leaves such slots), so a
-        pass that changed nothing asks for none. A version the pass did not see
-        is not taken: the next pass sees it. A slot with a key keeps its current
-        version through a pass: no link is seen for it.
+        (``current``), asked by the slot's path and key before anything is
+        written: for the slots the pass touched (a version written, back or
+        gone, a problem found or resolved) and for the slots that have none
+        while the pass saw a version of them (a pass that did not finish leaves
+        such slots), so a pass that changed nothing asks for none. A version the
+        pass did not see is not taken: the next pass sees it. A slot with a key
+        keeps its current version through a pass: no link is seen for it.
 
         Parameters
         ----------
         current : CurrentVersionLookup or None, optional
-            The producer's answer for a slot key
-            (``CurrentVersionAdapter.current_version``). Without it the
-            current version of a slot with a key stays as it is.
+            The producer's answer for a slot's path and key
+            (``CurrentVersionAdapter.current_version`` in the directory the
+            path lies in). Without it the current version of a slot with a key
+            stays as it is.
 
         Returns
         -------
@@ -2532,7 +2542,11 @@ def _current_versions(
         The new ``current_path`` of each slot (by id) whose answer differs
         from the index's; ``None`` clears it.
     """
-    keyed = [(slot, slot.key) for slot in state.slots.values() if slot.key is not None]
+    keyed = [
+        (path, slot, slot.key)
+        for path, slot in state.slots.items()
+        if slot.key is not None
+    ]
     if not keyed:
         return {}
     seen = {
@@ -2541,11 +2555,11 @@ def _current_versions(
         if (version := state.versions.get(path)) is not None
     }
     changes: dict[int, str | None] = {}
-    for slot, key in keyed:
+    for path, slot, key in keyed:
         unnamed = slot.current_path is None and slot.id in seen
         if slot.id not in touched and not unnamed:
             continue
-        found = current(key)
+        found = current(path, key)
         target = None if found is None else found.as_posix()
         if target is not None and target not in state.seen_versions:
             continue

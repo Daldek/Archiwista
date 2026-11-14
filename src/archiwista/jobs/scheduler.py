@@ -39,10 +39,11 @@ from archiwista.config import (
     SettingsService,
     SourceRegistryView,
     StoreConfig,
+    StoreDirectory,
 )
 from archiwista.errors import JobConflictError, NotFoundError, OfflineModeError
 from archiwista.index import IndexQueries, ScanMode
-from archiwista.jobs.availability import store_unreachable
+from archiwista.jobs.availability import all_empty, store_unreachable
 from archiwista.jobs.supervisor import JobRecord, JobSupervisor, ScanHistory
 from archiwista.state import StateStore
 
@@ -260,7 +261,7 @@ class ScanScheduler:
             config = settings.store(planned.store)
             if config is None:  # pragma: no cover - planned from these settings
                 continue
-            if not self._available_roots(config):
+            if not self._available_directories(config):
                 logger.debug("Store %s: no source is available, no scan", config.id)
                 continue
             state = states.get(planned.store)
@@ -334,7 +335,7 @@ class ScanScheduler:
             logger.info("Scheduled scan of store %s not submitted: %s", store, error)
             return None
 
-    def _available_roots(self, config: StoreConfig) -> dict[str, Path]:
+    def _available_directories(self, config: StoreConfig) -> tuple[StoreDirectory, ...]:
         """Return the store's directories whose source can scan them (SPEC 5.8).
 
         A directory of a source that is not available (not installed,
@@ -346,18 +347,20 @@ class ScanScheduler:
             for state in self._registry.states()
             if state.status == "available"
         }
-        return {
-            producer: root
-            for producer, root in config.roots().items()
-            if producer in available
-        }
+        return tuple(
+            directory
+            for directory in config.directories()
+            if directory.producer in available
+        )
 
     def _probe(self, config: StoreConfig, *, indexed: bool) -> bool:
         """Probe a store in a thread of its own, waiting ``probe_timeout_s``.
 
         A probe of a hung share does not stop the planning; the store is not
         probed again until that probe returns. Only the directories of
-        available sources are probed.
+        available sources are probed, each by its kind (a data root by its
+        own rules, A-ADR-056); a store the index holds entries of is not
+        reachable when all of them are empty (``all_empty``).
         """
         with self._probing_lock:
             if config.id in self._probing:
@@ -367,14 +370,21 @@ class ScanScheduler:
 
         def probe() -> None:
             try:
-                found.append(
-                    all(
-                        store_unreachable(
-                            self._registry.probe(producer, root), root, indexed=indexed
-                        )
-                        is None
-                        for producer, root in self._available_roots(config).items()
+                directories = self._available_directories(config)
+                reachable = all(
+                    store_unreachable(
+                        self._registry.probe(
+                            directory.producer, directory.path, data=directory.data
+                        ),
+                        directory.path,
+                        indexed=False,
                     )
+                    is None
+                    for directory in directories
+                )
+                found.append(
+                    reachable
+                    and not (indexed and all_empty(item.path for item in directories))
                 )
             except Exception:  # a faulty plugin counts as unavailable
                 logger.exception("Probing store %s failed", config.id)
@@ -391,7 +401,7 @@ class ScanScheduler:
 
     def _settings_changed(self, previous: AppSettings, current: AppSettings) -> None:
         """Fully scan the stores added to the settings or moved."""
-        before = {store.id: store.roots() for store in previous.stores}
+        before = {store.id: store.directory_paths() for store in previous.stores}
         for store in current.stores:
-            if before.get(store.id) != store.roots():
+            if before.get(store.id) != store.directory_paths():
                 self._submit(store.id, "full")

@@ -33,6 +33,9 @@ export const setup = {
     default_root:
       "{producer} zapisuje domyślnie w katalogu {path} ({origin}); jest tam magazyn " +
       "ze znacznikiem. Archiwista niczego w nim nie zapisze.",
+    default_data_root:
+      "{producer} buduje domyślnie dane w katalogu {path} ({origin}); jest tam katalog " +
+      "danych ze znacznikiem. Archiwista tylko go czyta.",
     default_root_origin: {
       default: "w katalogu danych",
       env: "zmienna {name}",
@@ -46,10 +49,21 @@ export const setup = {
     remove: "Usuń magazyn",
     name_required: "Wpisz nazwę magazynu.",
     kartograf_required: "Wpisz pełną ścieżkę katalogu Kartografa.",
-    obserwator: "Katalog Obserwatora",
+    obserwator: "Katalog surowy Obserwatora",
     obserwator_hint:
-      "Pełna ścieżka katalogu głównego magazynu Obserwatora, w którym leży plik obserwator-store.json, np. /mnt/nas/obserwator albo Z:\\obserwator. Zostaw puste, jeśli magazyn nie ma danych IMGW.",
-    directory_required: "Wpisz pełną ścieżkę katalogu Kartografa albo katalogu Obserwatora.",
+      "Pełna ścieżka katalogu surowego Obserwatora, czyli katalogu z plikiem " +
+      "obserwator-store.json, do którego Archiwista pobiera archiwa, np. " +
+      "/mnt/nas/obserwator-raw albo Z:\\obserwator-raw. Zostaw puste, jeśli magazyn nie ma " +
+      "danych IMGW.",
+    obserwator_data: "Katalog danych Obserwatora",
+    obserwator_data_hint:
+      "Pełna ścieżka katalogu danych Obserwatora, czyli katalogu z plikiem " +
+      "obserwator-data.json, w którym są serie, katalogi stacji i analizy budowane przez " +
+      "Obserwatora z katalogu surowego. Archiwista tylko go czyta, np. /mnt/nas/obserwator " +
+      "albo Z:\\obserwator.",
+    directory_required:
+      "Wpisz pełną ścieżkę katalogu Kartografa, katalogu surowego Obserwatora albo " +
+      "katalogu danych Obserwatora.",
     id_invalid: "Identyfikator: małe litery, cyfry, „-” i „_” (najwyżej 32 znaki), na początku litera albo cyfra.",
     id_duplicate: "Dwa magazyny mają ten sam identyfikator „{id}”.",
   },
@@ -85,7 +99,8 @@ export const setup = {
     legend: "Podsumowanie",
     stores: "Magazyny:",
     kartograf: "Kartograf:",
-    obserwator: "Obserwator:",
+    obserwator: "Obserwator (katalog surowy):",
+    obserwator_data: "Obserwator (katalog danych):",
     projects: "Katalogi projektów:",
     mode: "Tryb pracy:",
     online: "z podkładami online",

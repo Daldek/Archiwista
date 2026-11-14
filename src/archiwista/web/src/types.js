@@ -220,7 +220,8 @@
  *   network_error, http_error, server_busy (a bare `503`) and stream_closed.
  * @property {Array<{code: string, field: string, message: string, reason?: string,
  *   hint?: string}>} [problems] - Invalid settings, field by field (`field` like
- *   `stores[0].kartograf`); `reason` and `hint` when a producer refuses a directory.
+ *   `stores[0].kartograf` or `stores[0].obserwator_data`); `reason` (e.g. `wrong_root`: a
+ *   root of the other kind) and `hint` when a producer refuses a directory.
  * @property {{id: string, state: string, package_version: string|null,
  *   supported_versions: string|null, requirement: string}} [source] - An unavailable
  *   producer plugin and the pip requirement fixing it.
@@ -289,8 +290,9 @@
  */
 
 /**
- * The directory a producer uses for a store when a call names none (`GET /sources`).
- * Archiwista never uses it; the wizard offers it when it is a store.
+ * The directory a producer uses for a store when a call names none, or for the data it
+ * builds (Obserwator's data root, A-ADR-056) (`GET /sources`). Archiwista never uses it;
+ * the wizard offers it when it holds the producer's marker.
  *
  * @typedef {object} DefaultRoot
  * @property {string} path - The directory; it may not exist.
@@ -299,17 +301,19 @@
  *   same variable in a `.env` file) or `file` (`nogat.toml`).
  * @property {string|null} name - The variable or the table that gave it.
  * @property {boolean} exists - Whether it is a directory.
- * @property {boolean} marked - Whether it holds the producer's store marker.
+ * @property {boolean} marked - Whether it holds the producer's marker of its kind (a store
+ *   root's or a data root's).
  * @property {string} message - Description of the root, in the language of the request.
  */
 
 /**
- * A producer plugin of `GET /sources`: its state, its default store root and the
- * products whose availability at the source it checks (`POST /availability`), in
+ * A producer plugin of `GET /sources`: its state, its default store root, its default
+ * data root (null for a producer without one, as Kartograf, or an unavailable plugin) and
+ * the products whose availability at the source it checks (`POST /availability`), in
  * its order; none when the plugin is not available or checks none.
  *
- * @typedef {SourceInfo & {default_root: DefaultRoot|null, availability: string[]}}
- *   SourceListItem
+ * @typedef {SourceInfo & {default_root: DefaultRoot|null, default_data_root: DefaultRoot|null,
+ *   availability: string[]}} SourceListItem
  */
 
 /**
@@ -1714,10 +1718,14 @@
  * @property {string} name
  * @property {string|null} [kartograf] - Kartograf's store root: the directory that holds
  *   `kartograf-store.json` and the product directories (usually called `data`); null when
- *   the store has only `obserwator`.
- * @property {string|null} [obserwator] - Obserwator's store root, the directory with
- *   `obserwator-store.json`; null when the store has only `kartograf`. One of the two is
- *   required.
+ *   the store has no Kartograf data.
+ * @property {string|null} [obserwator] - Obserwator's raw root, the directory with
+ *   `obserwator-store.json` (archives and PMAXTP, where its `store sync` downloads); null
+ *   when the store has none.
+ * @property {string|null} [obserwator_data] - Obserwator's data root, the directory with
+ *   `obserwator-data.json` (series, station catalogs and analyses Obserwator builds from
+ *   the raw root; read-only for Archiwista, A-ADR-056); null when the store has none. One
+ *   of the three directories is required.
  * @property {StoreKind|null} [kind] - `local` or `share`; detected from the file system
  *   when omitted.
  * @property {Object<string, string>} [path_aliases] - Local path prefix → the same

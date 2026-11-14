@@ -7,6 +7,7 @@ is.
 """
 
 import os
+from collections.abc import Iterable
 from pathlib import Path
 
 from archiwista.errors import SourceUnavailableError
@@ -44,6 +45,17 @@ def store_unreachable(
     if indexed and _empty(root):
         return SourceUnavailableError(message("scan.store_empty", path=root))
     return None
+
+
+def all_empty(roots: Iterable[Path]) -> bool:
+    """Whether every directory lists nothing; one that cannot be listed counts.
+
+    For a store the index holds entries of, every directory empty is a share
+    that is not mounted; one empty directory beside the others of a producer
+    (a data root, A-ADR-056) may be a root nothing was written to yet, which
+    a scan judges by the entries the index holds in it (``scan_store``).
+    """
+    return all(_empty(root) for root in roots)
 
 
 def _empty(root: Path) -> bool:

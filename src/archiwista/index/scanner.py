@@ -24,7 +24,10 @@ its own key) names the current version of a slot itself
 finishes. After a pass over the whole store, the stations of each provider's
 station catalog (``StationCatalogAdapter``) and the coverage of each
 dataset's series (``SeriesIndexAdapter``) are read again when the current
-version of the catalog or the series changed.
+version of the catalog or the series changed. A producer that keeps a data
+root beside its store root (``DataRootAdapter``, A-ADR-056) has both of a
+store's directories read in one pass, each probed by its kind; a path is
+relative to the directory it lies in (``StoreConfig.root_of``).
 
 Every complete pass without units marks unseen versions missing (with the
 date); a full pass removes the versions an earlier pass already marked. A
@@ -49,7 +52,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-from archiwista.config import AppSettings
+from archiwista.config import AppSettings, StoreConfig, StoreDirectory
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.index.geometry import (
     WGS84,
@@ -87,6 +90,8 @@ from archiwista.sources import (
     SourcePartition,
     StationCatalogAdapter,
 )
+from archiwista.sources.markers import directory_field
+from archiwista.sources.registry import probe_root
 
 type ScanMode = Literal["incremental", "full"]
 type NoticeLevel = Literal["info", "warning"]
@@ -221,7 +226,7 @@ def scan_store(
     on_event: ScanListener | None = None,
     geo: GeoAdapter | None = None,
 ) -> ScanSummary:
-    """Scan the adapter's directory of a configured store into the index.
+    """Scan the adapter's directories of a configured store into the index.
 
     Segments of a store on a share are read in parallel, in parts where the
     producer splits them (``AppSettings.scan_threads``), those of a local
@@ -241,7 +246,8 @@ def scan_store(
     Parameters
     ----------
     adapter : SourceAdapter
-        The producer of the scanned directory (``StoreConfig.roots``).
+        The producer whose directories of the store are read: its store root
+        and its data root (``StoreConfig.producer_directories``, A-ADR-056).
     writer : IndexWriter
         Writer of the local index, used only by the calling thread. The
         store must be in the index (``IndexWriter.sync_stores``).
@@ -286,7 +292,6 @@ def scan_store(
     if mode not in SCAN_MODES:
         raise ValueError(f"unknown scan mode {mode!r}")
     target = _target(settings, store, adapter.producer)
-    root = target.root
     if segment is not None and not isinstance(adapter, SegmentedAdapter):
         raise ValueError(f"producer {adapter.producer!r} has no segments")
     emit: ScanListener = on_event or _ignore
@@ -294,7 +299,7 @@ def scan_store(
     clock = time.perf_counter()
     full = mode == "full"
     try:
-        listed = _reachable_segments(adapter, root)
+        listed = _reachable_segments(adapter, target.directories)
     except SourceUnavailableError as error:
         writer.set_store_status(store, "unavailable", detail=str(error))
         raise
@@ -312,14 +317,13 @@ def scan_store(
         writer.begin_pass(store, adapter.producer, segment=segment, full=full)
         try:
             if listed == () and writer.holds_entries():
-                raise _empty_store(root)
+                raise _empty_store(*target.directories)
             known = {name: writer.known_versions(name) for name in segments}
-            scopes = _scopes(
-                adapter, root, known, full=full, threads=target.reading_threads
-            )
+            calls = _calls(adapter, target, known, full=full)
             emit(ScanProgress(segment=None, current=0, total=len(segments), entries=0))
-            readers = _Readers(adapter, root, scopes, target.reading_threads)
+            readers = _Readers(adapter, calls, target.reading_threads)
             try:
+                scopes = [scope for _, scope in calls]
                 _stream(writer, readers, footprints, totals, emit, scopes)
             finally:
                 readers.close()
@@ -335,20 +339,25 @@ def scan_store(
                         for name in sorted(totals.segments_seen)
                     ],
                 )
-            # Listings of a share unmounted mid-scan end empty without an error.
-            if segment is None and totals.entries == 0 and writer.holds_entries():
-                raise _empty_store(root)
-            if _reachable_segments(adapter, root) == () and writer.holds_entries():
-                raise _empty_store(root)
-            finished = writer.finish_pass(current=_current_lookup(adapter, root))
+            # Listings of a share unmounted mid-scan end empty without an error;
+            # each directory may lie on a share of its own.
+            if segment is None:
+                for directory in target.directories:
+                    within = _within(target, directory)
+                    if totals.read[directory.path] == 0 and writer.holds_entries(
+                        within
+                    ):
+                        raise _empty_store(directory)
+            if (
+                _reachable_segments(adapter, target.directories) == ()
+                and writer.holds_entries()
+            ):
+                raise _empty_store(*target.directories)
+            finished = writer.finish_pass(current=_current_lookup(adapter, target))
             if segment is None and isinstance(adapter, StationCatalogAdapter):
-                _index_stations(
-                    adapter, adapter.producer, writer, store, root, full=full, emit=emit
-                )
+                _index_stations(adapter, writer, store, target, full=full, emit=emit)
             if segment is None and isinstance(adapter, SeriesIndexAdapter):
-                _index_series(
-                    adapter, adapter.producer, writer, store, root, full=full, emit=emit
-                )
+                _index_series(adapter, writer, store, target, full=full, emit=emit)
         except SourceUnavailableError as error:
             writer.abandon_pass()
             writer.set_store_status(store, "unavailable", detail=str(error))
@@ -366,8 +375,8 @@ def scan_store(
             stores=settings.stores,
             geo=geo,
         )
-        for directory in projects.unreadable_dirs:
-            text = message("project.dir_unreadable", path=directory)
+        for unreadable in projects.unreadable_dirs:
+            text = message("project.dir_unreadable", path=unreadable)
             emit(ScanNotice("warning", "project_dir_unreadable", text))
     else:
         writer.set_store_status(store, "available")
@@ -420,7 +429,8 @@ def refresh_view(
     Parameters
     ----------
     adapter : SourceAdapter
-        The producer of the store directory.
+        The producer whose directories of the store are read (as
+        ``scan_store``).
     writer : IndexWriter
         Writer of the local index, used only by the calling thread.
     queries : IndexQueries
@@ -461,7 +471,6 @@ def refresh_view(
         Unknown store or more than ``REFRESH_VIEW_MAX_UNITS`` units.
     """
     target = _target(settings, store, adapter.producer)
-    root = target.root
     wanted = tuple(dict.fromkeys(units))
     if len(wanted) > REFRESH_VIEW_MAX_UNITS:
         raise ValueError(
@@ -472,20 +481,32 @@ def refresh_view(
         return queries.status()
     deadline = None if timeout_s is None else time.monotonic() + timeout_s
     try:
-        if _reachable_segments(adapter, root) == () and _indexed(queries, store):
-            raise _empty_store(root)
+        if _reachable_segments(adapter, target.directories) == () and _indexed(
+            queries, store
+        ):
+            raise _empty_store(*target.directories)
         known = _slot_versions(writer, store, adapter.producer, segment, known_slots)
-        scopes = [
-            ScanScope(segment=segment, units=batch, known_versions=known)
+        calls = [
+            (
+                directory.path,
+                ScanScope(
+                    segment=segment,
+                    units=batch,
+                    known_versions=_in_directory(known, target, directory),
+                ),
+            )
+            for directory in target.directories
             for batch in _unit_batches(wanted, target.reading_threads)
         ]
-        readers = _Readers(adapter, root, scopes, target.reading_threads)
+        readers = _Readers(adapter, calls, target.reading_threads)
         try:
             entries = _collect(readers, deadline, timeout_s)
         finally:
             readers.close()
-        if _reachable_segments(adapter, root) == () and _indexed(queries, store):
-            raise _empty_store(root)
+        if _reachable_segments(adapter, target.directories) == () and _indexed(
+            queries, store
+        ):
+            raise _empty_store(*target.directories)
     except SourceUnavailableError as error:
         writer.set_store_status(store, "unavailable", detail=str(error))
         return queries.status()
@@ -549,11 +570,21 @@ def outline_footprints(
 
 @dataclass(frozen=True, slots=True)
 class _Target:
-    """The scanned directory of a store and the threads that read it."""
+    """The scanned directories of a store and the threads that read them.
 
-    root: Path
+    ``directories`` are the producer's ones the store names: its store root
+    and its data root (A-ADR-056).
+    """
+
+    config: StoreConfig
+    producer: str
+    directories: tuple[StoreDirectory, ...]
     reading_threads: int
     footprint_threads: int
+
+    def root_of(self, path: str) -> Path | None:
+        """Return the directory a path of the producer lies in, if configured."""
+        return self.config.root_of(self.producer, path)
 
 
 @dataclass(slots=True)
@@ -567,6 +598,8 @@ class _Totals:
     segments: list[SegmentScan] = field(default_factory=list)
     # Segments the entries named: for a producer that lists none.
     segments_seen: set[str] = field(default_factory=set)
+    # Entries the finished calls read, by directory.
+    read: Counter[Path] = field(default_factory=Counter)
 
     def add(self, result: BatchResult) -> None:
         self.versions_written += result.versions_written
@@ -576,8 +609,9 @@ class _Totals:
 
 @dataclass(frozen=True, slots=True)
 class _ReadDone:
-    """A reading thread finished its ``iter_entries`` call."""
+    """A reading thread finished its ``iter_entries`` call in a directory."""
 
+    root: Path
     segment: str | None
     entries: int
     seconds: float
@@ -596,31 +630,30 @@ type _QueueItem = list[SourceEntry] | _ReadDone | _ReadFailed
 class _Readers:
     """``iter_entries`` calls in a thread pool feeding one bounded queue.
 
-    Each call runs in one thread, from the first entry to the last. The
-    writing thread takes chunks of entries with ``get``; ``close`` stops the
-    calls (each at its next entry) and waits for the threads.
+    Each call, a directory with a scope, runs in one thread, from the first
+    entry to the last. The writing thread takes chunks of entries with
+    ``get``; ``close`` stops the calls (each at its next entry) and waits for
+    the threads.
     """
 
     def __init__(
         self,
         adapter: SourceAdapter,
-        root: Path,
-        scopes: Sequence[ScanScope],
+        calls: Sequence[tuple[Path, ScanScope]],
         threads: int,
     ) -> None:
         self._adapter = adapter
-        self._root = root
-        workers = max(1, min(threads, len(scopes)))
+        workers = max(1, min(threads, len(calls)))
         self._queue: queue.Queue[_QueueItem] = queue.Queue(
             maxsize=_QUEUE_CHUNKS_PER_THREAD * workers
         )
         self._stop = threading.Event()
-        self.pending = len(scopes)
+        self.pending = len(calls)
         self._pool = ThreadPoolExecutor(
             max_workers=workers, thread_name_prefix="archiwista-scan"
         )
-        for scope in scopes:
-            self._pool.submit(self._read, scope)
+        for root, scope in calls:
+            self._pool.submit(self._read, root, scope)
 
     def get(self, timeout: float | None) -> list[SourceEntry] | _ReadDone | None:
         """Return the next chunk or finished call; ``None`` after ``timeout``.
@@ -645,13 +678,13 @@ class _Readers:
         self._stop.set()
         self._pool.shutdown(wait=True, cancel_futures=True)
 
-    def _read(self, scope: ScanScope) -> None:
+    def _read(self, root: Path, scope: ScanScope) -> None:
         started = time.perf_counter()
         count = 0
         chunk: list[SourceEntry] = []
         entries = None
         try:
-            entries = self._adapter.iter_entries(self._root, scope=scope)
+            entries = self._adapter.iter_entries(root, scope=scope)
             for entry in entries:
                 if self._stop.is_set():
                     return
@@ -664,7 +697,8 @@ class _Readers:
             count += len(chunk)
             if chunk and not self._put(chunk):
                 return
-            self._put(_ReadDone(scope.segment, count, time.perf_counter() - started))
+            seconds = time.perf_counter() - started
+            self._put(_ReadDone(root, scope.segment, count, seconds))
         except Exception as error:  # handed to the writing thread
             self._put(_ReadFailed(error))
         finally:
@@ -812,7 +846,8 @@ def _stream(
 ) -> None:
     """Write what the reading threads give, in batches, until they finish.
 
-    A segment read in parts is read when its last part is.
+    A segment read in parts, or in several directories, is read when its
+    last call is.
     """
     remaining = Counter(scope.segment for scope in scopes)
     entries: Counter[str | None] = Counter()
@@ -826,6 +861,7 @@ def _stream(
         item = readers.get(wait)
         if isinstance(item, _ReadDone):
             segment = item.segment
+            totals.read[item.root] += item.entries
             entries[segment] += item.entries
             seconds[segment] += item.seconds
             remaining[segment] -= 1
@@ -907,7 +943,7 @@ def _write_view(
             batch = entries[start : start + BATCH_ENTRIES]
             _write_batch(writer, batch, footprints, totals)
         footprints.finish()
-        writer.finish_pass(current=_current_lookup(adapter, target.root))
+        writer.finish_pass(current=_current_lookup(adapter, target))
     except BaseException:
         writer.abandon_pass()
         raise
@@ -946,6 +982,35 @@ def _slot_versions(
         writer.abandon_pass()
 
 
+def _calls(
+    adapter: SourceAdapter,
+    target: _Target,
+    known: Mapping[str | None, Mapping[str, tuple[str, ...]]],
+    *,
+    full: bool,
+) -> list[tuple[Path, ScanScope]]:
+    """Return the ``iter_entries`` calls of a scan, the heaviest first.
+
+    Each of the producer's directories is read with the settled version
+    directories that lie in it (``_in_directory``).
+    """
+    work: list[tuple[int, Path, ScanScope]] = []
+    for directory in target.directories:
+        mine = {
+            name: _in_directory(versions, target, directory)
+            for name, versions in known.items()
+        }
+        work.extend(
+            (weight, directory.path, scope)
+            for weight, scope in _scopes(
+                adapter, directory.path, mine, full=full, threads=target.reading_threads
+            )
+        )
+    # Stable: parts of equal weight keep the producer's order.
+    work.sort(key=lambda item: -item[0])
+    return [(root, scope) for _, root, scope in work]
+
+
 def _scopes(
     adapter: SourceAdapter,
     root: Path,
@@ -953,8 +1018,8 @@ def _scopes(
     *,
     full: bool,
     threads: int,
-) -> list[ScanScope]:
-    """Return the ``iter_entries`` calls of a scan, the heaviest first.
+) -> list[tuple[int, ScanScope]]:
+    """Return the ``iter_entries`` calls of one directory with their weights.
 
     With several threads (a share) each segment of a ``PartitionedAdapter``
     is read in parts, split in parallel; one thread reads whole segments.
@@ -989,9 +1054,30 @@ def _scopes(
         else:
             weight = sum(map(len, versions.values()))
             work.append((weight, ScanScope(segment=name, known_versions=skip)))
-    # Stable: parts of equal weight keep the producer's order.
-    work.sort(key=lambda item: -item[0])
-    return [scope for _, scope in work]
+    return work
+
+
+def _within(target: _Target, directory: StoreDirectory) -> Callable[[str], bool] | None:
+    """Return the test of a path lying in one of the producer's directories.
+
+    A path lies in the directory of its first part (``directory_field``,
+    A-ADR-056); ``None`` for a producer with one directory, where every path
+    lies.
+    """
+    if len(target.directories) == 1:
+        return None
+    producer, field = target.producer, directory.field
+    return lambda path: directory_field(producer, path) == field
+
+
+def _in_directory(
+    known: Mapping[str, tuple[str, ...]], target: _Target, directory: StoreDirectory
+) -> Mapping[str, tuple[str, ...]]:
+    """Return the settled version directories of ``known`` in one directory."""
+    within = _within(target, directory)
+    if within is None:
+        return known
+    return {path: names for path, names in known.items() if within(path)}
 
 
 def _unit_batches(units: Sequence[str], threads: int) -> list[tuple[str, ...]]:
@@ -1004,44 +1090,63 @@ def _unit_batches(units: Sequence[str], threads: int) -> list[tuple[str, ...]]:
     return [tuple(units[start : start + size]) for start in range(0, len(units), size)]
 
 
-def _reachable_segments(adapter: SourceAdapter, root: Path) -> tuple[str, ...] | None:
-    """Probe the store and list its segments (``None`` without segments).
+def _reachable_segments(
+    adapter: SourceAdapter, directories: Sequence[StoreDirectory]
+) -> tuple[str, ...] | None:
+    """Probe the producer's directories and list its segments (``None`` without).
+
+    Each directory is probed by its kind (``probe_root``: a data root by
+    ``DataRootAdapter.probe_data``, A-ADR-056); the segments are those any
+    of them lists, in their order.
 
     Raises
     ------
     SourceUnavailableError
-        The probe is not ``available`` (with its reason and hint when the
-        producer gave them) or the store cannot be listed.
+        A probe is not ``available`` (with its reason and hint when the
+        producer gave them) or a directory cannot be listed.
     """
-    state = adapter.probe(root)
-    if state.status != "available":
-        text = message("store.unreadable", path=root)
-        raise SourceUnavailableError(
-            with_detail(text, state.detail), reason=state.reason, hint=state.hint
+    for directory in directories:
+        state = probe_root(adapter, directory.path, data=directory.data)
+        if state.status != "available":
+            text = message("store.unreadable", path=directory.path)
+            raise SourceUnavailableError(
+                with_detail(text, state.detail), reason=state.reason, hint=state.hint
+            )
+    if not isinstance(adapter, SegmentedAdapter):
+        return None
+    return tuple(
+        dict.fromkeys(
+            name
+            for directory in directories
+            for name in adapter.segments(directory.path)
         )
-    if isinstance(adapter, SegmentedAdapter):
-        return tuple(adapter.segments(root))
-    return None
+    )
 
 
-def _current_lookup(adapter: SourceAdapter, root: Path) -> CurrentVersionLookup | None:
-    """Return the producer's answer for a slot's current version, if it gives one."""
+def _current_lookup(
+    adapter: SourceAdapter, target: _Target
+) -> CurrentVersionLookup | None:
+    """Return the producer's answer for a slot's current version, if it gives one.
+
+    It is asked in the directory the slot's path lies in; a slot of a
+    directory the store no longer names has none.
+    """
     if not isinstance(adapter, CurrentVersionAdapter):
         return None
     producer: CurrentVersionAdapter = adapter
 
-    def lookup(key: str) -> Path | None:
-        return producer.current_version(root, key)
+    def lookup(path: str, key: str) -> Path | None:
+        root = target.root_of(path)
+        return None if root is None else producer.current_version(root, key)
 
     return lookup
 
 
 def _index_stations(
     catalogs: StationCatalogAdapter,
-    producer: str,
     writer: IndexWriter,
     store: str,
-    root: Path,
+    target: _Target,
     *,
     full: bool,
     emit: ScanListener,
@@ -1050,25 +1155,30 @@ def _index_stations(
 
     Run after the pass, outside its transaction: a catalog is read only when
     the current version of its slot is not the one its stations were read from
-    (a full scan reads every catalog again). A provider whose catalog has no
-    slot or no current version anymore has no stations; one whose current
-    version the producer refuses has none either, and the scan says so.
+    (a full scan reads every catalog again), in the directory the version
+    lies in. A provider whose catalog has no slot or no current version
+    anymore has no stations; one whose current version the producer refuses
+    has none either, and the scan says so.
 
     Raises
     ------
     SourceUnavailableError
         The system cannot read a catalog.
     """
-    current: dict[str, tuple[KeyedSlot, str]] = {}
+    producer = target.producer
+    current: dict[str, tuple[KeyedSlot, str, Path]] = {}
     for slot in writer.keyed_slots(store, producer):
         provider = catalogs.station_catalog(slot.key)
-        if provider is not None and slot.current is not None:
-            current[provider] = (slot, slot.current)
+        if provider is None or slot.current is None:
+            continue
+        root = target.root_of(slot.current)
+        if root is not None:
+            current[provider] = (slot, slot.current, root)
     read = writer.station_catalogs(store, producer)
     for provider in sorted(read.keys() - current.keys()):
         writer.drop_stations(store, provider)
     for provider in sorted(current):
-        slot, version = current[provider]
+        slot, version, root = current[provider]
         known = read.get(provider)
         unchanged = known is not None and (known.slot, known.version) == (
             slot.path,
@@ -1100,10 +1210,9 @@ def _index_stations(
 
 def _index_series(
     series: SeriesIndexAdapter,
-    producer: str,
     writer: IndexWriter,
     store: str,
-    root: Path,
+    target: _Target,
     *,
     full: bool,
     emit: ScanListener,
@@ -1112,26 +1221,30 @@ def _index_series(
 
     Run after the pass, outside its transaction, as ``_index_stations``: a
     series index is read only when the current version of its slot is not the
-    one its coverage was read from (a full scan reads every one again). A
-    dataset whose series has no slot or no current version anymore has no
-    coverage; one whose current version the producer refuses has none
-    either, and the scan says so.
+    one its coverage was read from (a full scan reads every one again), in
+    the directory the version lies in. A dataset whose series has no slot or
+    no current version anymore has no coverage; one whose current version
+    the producer refuses has none either, and the scan says so.
 
     Raises
     ------
     SourceUnavailableError
         The system cannot read a series index.
     """
-    current: dict[str, tuple[KeyedSlot, str]] = {}
+    producer = target.producer
+    current: dict[str, tuple[KeyedSlot, str, Path]] = {}
     for slot in writer.keyed_slots(store, producer):
         dataset = series.series_dataset(slot.key)
-        if dataset is not None and slot.current is not None:
-            current[dataset] = (slot, slot.current)
+        if dataset is None or slot.current is None:
+            continue
+        root = target.root_of(slot.current)
+        if root is not None:
+            current[dataset] = (slot, slot.current, root)
     read = writer.series_catalogs(store, producer)
     for dataset in sorted(read.keys() - current.keys()):
         writer.drop_series(store, dataset)
     for dataset in sorted(current):
-        slot, version = current[dataset]
+        slot, version, root = current[dataset]
         known = read.get(dataset)
         unchanged = known is not None and (known.slot, known.version) == (
             slot.path,
@@ -1164,12 +1277,13 @@ def _indexed(queries: IndexQueries, store: str) -> bool:
     )
 
 
-def _empty_store(root: Path) -> SourceUnavailableError:
-    return SourceUnavailableError(message("scan.store_empty", path=root))
+def _empty_store(*directories: StoreDirectory) -> SourceUnavailableError:
+    paths = ", ".join(str(directory.path) for directory in directories)
+    return SourceUnavailableError(message("scan.store_empty", path=paths))
 
 
 def _target(settings: AppSettings, store: str, producer: str) -> _Target:
-    """Resolve the producer's directory of a store and its threads.
+    """Resolve the producer's directories of a store and their threads.
 
     Threads hide the latency of a share. On a local disk the scan is CPU
     under the GIL and more threads only contend: an unchanged incremental
@@ -1180,12 +1294,14 @@ def _target(settings: AppSettings, store: str, producer: str) -> _Target:
     config = settings.store(store)
     if config is None:
         raise ValueError(f"store {store!r} is not configured")
-    root = config.roots().get(producer)
-    if root is None:
+    directories = config.producer_directories(producer)
+    if not directories:
         raise ValueError(f"store {store!r} has no {producer} directory")
     if config.kind == "share":
-        return _Target(root, settings.scan_threads, FOOTPRINT_THREADS)
-    return _Target(root, 1, 1)
+        return _Target(
+            config, producer, directories, settings.scan_threads, FOOTPRINT_THREADS
+        )
+    return _Target(config, producer, directories, 1, 1)
 
 
 @contextmanager

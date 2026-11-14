@@ -94,7 +94,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=d0990c89da88e73b9081fe33a151ba9d27b4f820" },
     { name = "laspy", extras = ["lazrs"], specifier = ">=2.7,<3" },
-    { name = "obserwator", extras = ["store"], marker = "extra == 'obserwator'", git = "https://github.com/Daldek/Obserwator?rev=f9f4ee7927ba520d3e82d3e289872090ae24e2ec" },
+    { name = "obserwator", extras = ["store"], marker = "extra == 'obserwator'", git = "https://github.com/Daldek/Obserwator?rev=0591b82328e389f282622e5658caae2f4c2eb310" },
     { name = "packaging", specifier = ">=24" },
     { name = "platformdirs", specifier = ">=4,<5" },
     { name = "pydantic", specifier = ">=2,<3" },
@@ -1159,7 +1159,7 @@ wheels = [
 [[package]]
 name = "obserwator"
 version = "3.0.0.dev0"
-source = { git = "https://github.com/Daldek/Obserwator?rev=f9f4ee7927ba520d3e82d3e289872090ae24e2ec#f9f4ee7927ba520d3e82d3e289872090ae24e2ec" }
+source = { git = "https://github.com/Daldek/Obserwator?rev=0591b82328e389f282622e5658caae2f4c2eb310#0591b82328e389f282622e5658caae2f4c2eb310" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },

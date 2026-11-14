@@ -456,7 +456,8 @@ def set_store(
 
     For a store that moved or is mounted at another path: the pins are
     relative to the store, so they stay (A-ADR-049 decision 7). The root is
-    written as ``written_root`` says. Logged as ``project.store``.
+    the producer's directory that stands for it (``StoreConfig.producer_root``,
+    A-ADR-056), written as ``written_root`` says. Logged as ``project.store``.
 
     Raises
     ------
@@ -476,7 +477,7 @@ def set_store(
     config = settings.store(store)
     if config is None:
         raise NotFoundError(message("api.store_not_configured", store=store))
-    root = config.roots().get(producer)
+    root = config.producer_root(producer)
     if root is None:
         raise CommandRequestError(
             message("command.store_without_producer", store=store, producer=producer),
@@ -748,7 +749,7 @@ def _export_items(
     no_store = missing = 0
     for identity, pin in pins.items():
         config = None if pin.store is None else settings.store(pin.store)
-        root = None if config is None else config.roots().get(pin.producer)
+        root = None if config is None else config.root_of(pin.producer, pin.version)
         if pin.store is None or pin.state == "unknown" or root is None:
             no_store += 1
             continue
@@ -1004,9 +1005,9 @@ def _require_discoverable(base: Path, directory: Path, settings: AppSettings) ->
     """
     parts = directory.relative_to(base).parts
     stores = {
-        os.path.normpath(root)
+        os.path.normpath(found.path)
         for config in settings.stores
-        for root in config.roots().values()
+        for found in config.directories()
     }
     places = [base.joinpath(*parts[:count]) for count in range(len(parts) + 1)]
     if (

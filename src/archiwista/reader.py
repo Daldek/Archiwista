@@ -249,8 +249,11 @@ def _sources(args: argparse.Namespace, reader: _Reader) -> _Output:
             message=item.message,
         )
         lines.append(f"{line} {item.fix}" if item.fix else line)
-        if item.default_root is not None:
-            lines.append(f"  {item.default_root.message}")
+        lines.extend(
+            f"  {root.message}"
+            for root in (item.default_root, item.default_data_root)
+            if root is not None
+        )
     return _Output(sources, "\n".join(lines))
 
 

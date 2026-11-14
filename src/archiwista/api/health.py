@@ -9,9 +9,10 @@ status --json`` prints the same model (``read_health``; without previews and
 own data: the command runs no render pool and no jobs).
 ``/sources`` lists the producer plugins with a description of their state and
 of its fix, the directory a producer uses for a store when a call names none
-(``default_root``: the first-run wizard offers it) and the products whose
-availability at the source it checks (``availability``). It is asked for on
-demand only, so ``/health``, which is polled, leaves it out.
+(``default_root``: the first-run wizard offers it) and for its data root
+(``default_data_root``, A-ADR-056) and the products whose availability at the
+source it checks (``availability``). It is asked for on demand only, so
+``/health``, which is polled, leaves it out.
 """
 
 from importlib.metadata import version
@@ -37,6 +38,7 @@ from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
 from archiwista.previews.pool import RenderPool
 from archiwista.security import current_principal
+from archiwista.sources import DefaultRoot
 from archiwista.sources.registry import (
     APP_DISTRIBUTION,
     PluginRegistry,
@@ -62,26 +64,37 @@ def source_infos(registry: PluginRegistry) -> list[SourceInfo]:
 
 
 def source_list(registry: PluginRegistry) -> SourceList:
-    """Return every producer plugin with its state, fix, default root and products.
+    """Return every producer plugin with its state, fix, default roots and products.
 
-    The root and the products are asked of each available plugin that has
+    The roots and the products are asked of each available plugin that has
     them: unlike ``source_infos``, which the polled ``/health`` uses, this
     asks the producer for its reports (``store_root()`` of Kartograf and
-    Obserwator: two ``stat`` calls; the products of its catalog).
+    Obserwator's two roots: two ``stat`` calls each; the products of its
+    catalog).
     """
     items = []
     for info in source_infos(registry):
-        root = read_default_root(registry, info.producer)
-        shown = (
-            None
-            if root is None
-            else DefaultRootInfo.of(
-                root, default_root_check(info.producer, root).message
+        producer = info.producer
+        root = read_default_root(registry, producer)
+        data_root = read_default_root(registry, producer, data=True)
+        items.append(
+            SourceListItem.listed(
+                info,
+                None if root is None else _root_info(producer, root, data=False),
+                None
+                if data_root is None
+                else _root_info(producer, data_root, data=True),
+                read_availability_products(registry, producer),
             )
         )
-        products = read_availability_products(registry, info.producer)
-        items.append(SourceListItem.listed(info, shown, products))
     return SourceList(items=items)
+
+
+def _root_info(producer: str, root: DefaultRoot, *, data: bool) -> DefaultRootInfo:
+    """Return the model of a producer's default root with the doctor's line."""
+    return DefaultRootInfo.of(
+        root, default_root_check(producer, root, data=data).message
+    )
 
 
 def read_health(
@@ -150,6 +163,8 @@ def list_sources(principal: _Principal, registry: _Registry) -> SourceList:
     needing it answer `503 source_unavailable` or `503 source_incompatible`.
     `default_root` is the directory the producer uses for a store when a call
     names none (path, where its settings found it, whether it exists and holds
-    the store marker): the first-run wizard offers it, Archiwista never uses it.
+    the store marker), `default_data_root` the one for its data root
+    (Obserwator's, A-ADR-056): the first-run wizard offers them, Archiwista
+    never uses them.
     """
     return source_list(registry)

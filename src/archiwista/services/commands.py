@@ -359,7 +359,10 @@ def command_info(adapter: ActionAdapter, call: CommandCall) -> CommandInfo:
 
 
 def store_root(settings: AppSettings, store: str | None, call: CommandCall) -> Path:
-    """Return the producer directory of the configured store a call names.
+    """Return the store root of the configured store a call names.
+
+    The directory the producer's commands write: Kartograf's store,
+    Obserwator's raw root (A-ADR-056).
 
     Raises
     ------
@@ -420,7 +423,7 @@ def version_command(
     if config is None:
         raise NotFoundError(message("api.store_not_configured", store=store))
     detail = queries.version(store, version, visible=ProjectVisibility())
-    root = None if detail is None else config.roots().get(detail.segment.producer)
+    root = None if detail is None else config.root_of(detail.segment.producer, version)
     if detail is None or root is None:
         raise NotFoundError(
             message("api.version_unknown", version=version, store=store)
@@ -478,9 +481,10 @@ def version_calls(
 
     The index's answers of ``producer_version`` stand; each other version is
     asked of the producer once (``command_for_version`` below ``root``, the
-    store's producer directory) and its answer is kept: the call, or the
-    producer's text of a ``command_not_rebuildable`` refusal. The answers
-    asked before another refusal are kept all the same.
+    store's directory the paths lie in: the producer's store root or its data
+    root, A-ADR-056) and its answer is kept: the call, or the producer's text
+    of a ``command_not_rebuildable`` refusal. The answers asked before another
+    refusal are kept all the same.
 
     Raises
     ------

@@ -57,14 +57,15 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057). The
-# commit is on the Obserwator branch `develop` (REL-5.3; Nogat release set
-# candidate-2), which has the default root (`store_root()`), no projects,
-# `command_for_version` (IMGW-21, A-ADR-049) and the names of its ADR-009; the
-# release pull request replaces it with the tag `v3.0.0`. `[store]` brings `pyarrow`
-# for the Parquet series. The versions the adapter reads are `SUPPORTED_VERSIONS` in
-# `archiwista.adapter.obserwator`.
+# commit is on the Obserwator branch `develop` (REL-5.3), which keeps a store in two
+# roots, the raw root `store sync` downloads into and the data root of the series,
+# catalogs and analyses it builds offline (its ADR-015, ADR-017; A-ADR-056), with
+# the default root of each (`store_root(kind=…)`) and `command_for_version`
+# (IMGW-21, A-ADR-049); the release pull request replaces it with the tag `v3.0.0`.
+# `[store]` brings `pyarrow` for the Parquet series. The versions the adapter reads
+# are `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator`.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@f9f4ee7927ba520d3e82d3e289872090ae24e2ec",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@0591b82328e389f282622e5658caae2f4c2eb310",
 ]
 
 [dependency-groups]

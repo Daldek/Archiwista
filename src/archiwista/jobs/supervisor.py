@@ -2049,7 +2049,9 @@ class JobSupervisor:
         if settings is self._synced:
             return
         with IndexWriter(self._paths.index_file) as writer:
-            writer.sync_stores({store.id: store.roots() for store in settings.stores})
+            writer.sync_stores(
+                {store.id: store.directory_paths() for store in settings.stores}
+            )
         self._synced = settings
 
     def _open_db(self) -> sqlite3.Connection:
