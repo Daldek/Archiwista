@@ -59,6 +59,7 @@ from tests.fixtures.jobs import (
 )
 from tests.fixtures.local_server import NoSources, serving
 from tests.fixtures.make_store import ExpectedEntry, make_store
+from tests.fixtures.server_logs import records
 from tests.fixtures.store_edits import add_version, remove_version, sidecar_path
 
 # Headers of the synthetic JPEG sheets carry no geotransform (their outline
@@ -213,6 +214,51 @@ def test_worker_crash_fails_job(env: JobsEnv, monkeypatch: pytest.MonkeyPatch) -
     assert after == before
     assert env.state().status == "available"
     assert rescan.result is not None and rescan.result["missing"] == 0
+
+
+def test_worker_logs_warnings_and_errors_as_app_records_and_deletes_nothing(
+    env: JobsEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A worker's error and warning are app records in the server's logs.
+
+    The job's own log keeps the worker's lines and gets no record, not even
+    an error's reduced form; a log file of long ago stays, since only the
+    server deletes old files.
+    """
+    # Arrange
+    logs = env.paths.logs_dir
+    logs.mkdir(parents=True)
+    old = logs / "app-2026-01-01.jsonl"
+    old.touch()
+    monkeypatch.setenv(DELAY_ENV, str(SLOW_ENTRY_S))
+
+    # Act
+    failed = env.run("link_check", slot="no/such/slot")
+    slow = env.jobs.submit(
+        "scan", store=STORE, params={"mode": "full"}, actor=LOCAL_OWNER
+    )
+    env.follow(slow.id, lambda event: event.type == "progress")
+    env.jobs.cancel(slow.id)
+    cancelled = env.wait(slow.id)
+    written = [
+        record
+        for record in records(logs, "app")
+        if record["event"] == "archiwista.jobs.worker"
+    ]
+    job_log = env.jobs.log(failed.id)
+
+    # Assert
+    assert (failed.state, cancelled.state) == ("failed", "cancelled")
+    assert [(record["level"], record["request_id"]) for record in written] == [
+        ("error", None),
+        ("warning", None),
+    ]
+    assert written[0]["message"].startswith(f"Job {failed.id} failed (")
+    assert written[1]["message"] == f"Job {slow.id} interrupted"
+    assert old.exists()
+    assert job_log is not None
+    assert f"ERROR archiwista.jobs.worker: Job {failed.id} failed (" in job_log.text
+    assert '"kind"' not in job_log.text
 
 
 def test_close_interrupts_running_and_waiting_jobs(

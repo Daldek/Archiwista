@@ -3,7 +3,7 @@
 The tools of the ecosystem keep their shared settings in one file, ``nogat.toml``
 (Nogat ECO-028, DEV-18.1): the path in ``NOGAT_CONFIG``, else the file in the user
 configuration directory of ``nogat`` (``platformdirs.user_config_path("nogat")``).
-Archiwista keeps its own settings in its ``config.toml`` and reads four keys of
+Archiwista keeps its own settings in its ``config.toml`` and reads five keys of
 that file, each from the table ``[archiwista]`` before the table ``[nogat]``. A
 value comes from the first of: Archiwista's own setting, ``nogat.toml``, the
 built-in default.
@@ -16,6 +16,10 @@ built-in default.
 - ``cache_dir``: the caches (the preview cache ``previews/`` and the producers'
   ``cache/``) lie in ``<cache_dir>/archiwista``; by default in the local data
   directory.
+- ``state_dir``: the state kept between runs, the server's logs (Nogat DEV-12.6:
+  access, application and lifecycle records), lies in ``<state_dir>/archiwista``;
+  by default in the user state directory of ``nogat``
+  (``platformdirs.user_state_path("nogat")``, ``~/.local/state/nogat`` on Linux).
 - ``lang``: the language of the text for a person on the command line, ``pl`` or
   ``en``; Polish by default. Archiwista's own settings come first: ``--json``
   output is English, and the API follows each request's ``Accept-Language``
@@ -57,8 +61,13 @@ TABLES: Final = (TOOL, "nogat")
 PERSON_LANG: Final[Lang] = "pl"
 """The language of the text for a person when ``nogat.toml`` gives none."""
 
-type SharedKey = Literal["data_dir", "cache_dir", "lang"]
-SHARED_KEYS: Final[tuple[SharedKey, ...]] = ("data_dir", "cache_dir", "lang")
+type SharedKey = Literal["data_dir", "cache_dir", "state_dir", "lang"]
+SHARED_KEYS: Final[tuple[SharedKey, ...]] = (
+    "data_dir",
+    "cache_dir",
+    "state_dir",
+    "lang",
+)
 GUI_KEY: Final = "gui"
 """The table of the GUIs' addresses (Nogat DEV-15.4, DEV-18.1)."""
 
@@ -69,7 +78,7 @@ class SharedValue:
 
     Attributes
     ----------
-    key : {"data_dir", "cache_dir", "lang"}
+    key : {"data_dir", "cache_dir", "state_dir", "lang"}
         The key.
     value : str
         The directory (absolute, ``~`` expanded) or the language.

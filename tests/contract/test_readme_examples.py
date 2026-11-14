@@ -26,6 +26,7 @@ NOT_RUN = {
     ("uv", "sync"): "builds the environment the tests run in",
     ("uv", "run", "playwright"): "downloads a browser",
     ("scripts/gate.sh",): "is the gate that runs this test",
+    ("jq",): "reads the logs a running server wrote",
 }
 # Commands that serve until stopped (``tests/integration/test_serve.py`` starts
 # them): here only the options of the example must exist.

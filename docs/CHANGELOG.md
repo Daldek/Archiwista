@@ -9,6 +9,26 @@ command-line interface may change.
 
 ### Added
 
+- Nogat's server logs (Nogat DEV-12.4 to DEV-12.9, ECO-066; A-ADR-057): `archiwista serve`
+  keeps an access, an application and a lifecycle log as JSON Lines of `nogat-log/1` in
+  `<state_dir>/archiwista/logs/<kind>-YYYY-MM-DD.jsonl` (UTC dates) and deletes each file
+  14 days after its date, at the start and at every midnight UTC. `state_dir` is a new key
+  of `nogat.toml` (`[archiwista]` before `[nogat]`; default the user state directory of
+  `nogat`, `~/.local/state/nogat` on Linux), which `archiwista doctor` reports. The access
+  log has one record per request, the refusals of the security checks included (`method`,
+  `path` with its query, the values of tokens, keys, search texts and names dropped,
+  `status`, `bytes`, `duration_ms`, `agent` the class of the client, a random `request_id`
+  the client never gets); the interface's files and the map tiles answered below 400 are
+  left out, and no log holds an IP address, a cookie or the User-Agent. The application log
+  has the warnings and errors of the server and of its job and render processes (a job's
+  own log is unchanged). Standard error, and so a service's journal, gets only the
+  lifecycle records (`start` with the origin alone, never the startup token;
+  `stop`; `prune`) and the errors reduced to their type, whatever `--verbose`, `--quiet`
+  or `ARCHIWISTA_LOG_LEVEL` say. Nogat's reference module is copied byte for byte into
+  `src/archiwista/nogat_logging.py` and its schema into
+  `schemas/nogat/record-1.schema.json`, both from Nogat `f370afe`; the README gives the
+  `jq` command that reads the logs.
+
 - Obserwator's data root beside its raw root in a store (A-ADR-056; Obserwator's ADR-017,
   Nogat plan `2026-11-12-station-data-and-analyses` D5, R2): the new store field
   `obserwator_data` (`config.toml`, `GET`/`PUT /settings` `StoreSettings.obserwator_data`,
@@ -1257,6 +1277,14 @@ command-line interface may change.
   and series are not shown until it is split (Obserwator's `docs/USAGE.md` "Splitting a
   store") and `obserwator_data` is set; entered as `obserwator_data` it is refused
   (`wrong_root`). The `stores.roots` JSON of the index is keyed by settings field.
+- **Breaking (`archiwista serve`):** the option `--access-log` is removed with Uvicorn's
+  access log and its `token=` redaction: the server always writes its own access log
+  (Added, A-ADR-057). Drop the option from a command line or a service unit; the logs are
+  in `<state_dir>/archiwista/logs/`. The one-time address
+  (`http://127.0.0.1:<port>/#token=…`), and in team mode the origin, goes to standard
+  output only when it is a terminal: run by a service manager, whose journal keeps
+  standard output, the server prints nothing there; the browser it opens, or an address
+  from `archiwista token`, starts a session.
 - „Zgłoszenia” is Nogat's kit view `<nogat-admin-feedback>` (kit 0.7.0, Nogat DEV-15.13,
   ECO-067; A-ADR-054 erratum 3) with Archiwista's sign-in and roles: „Nieprzeczytane: N z
   M”, „Tylko nieprzeczytane”, „Oznacz jako przeczytane” and back, „Usuń” after a

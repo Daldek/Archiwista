@@ -118,7 +118,9 @@ def local_previews(
             )
         )
         pool = stack.enter_context(
-            RenderPool(workers=1, cache=cache, work_dir=paths.work_dir)
+            RenderPool(
+                workers=1, cache=cache, work_dir=paths.work_dir, log_dir=paths.logs_dir
+            )
         )
         resolver = ObjectResolver(
             queries, lambda: settings, visible=visible, paths=paths

@@ -504,9 +504,9 @@ def test_api_openapi_documents_routes_examples_and_problems(
 
 
 def test_api_agent_with_cookie_jar_sees_state(tmp_path: Path) -> None:
-    """A client without Origin exchanges the printed token and reads /health."""
-    with serving(local_paths(tmp_path)) as (server, printed):
-        token = re.search(r"#token=(\S+)", printed)
+    """A client without Origin exchanges the one-time token and reads /health."""
+    with serving(local_paths(tmp_path)) as (server, _):
+        token = re.search(r"#token=(\S+)", server.url)
         assert token is not None
         base = f"http://127.0.0.1:{server.port}/api/v1"
         with httpx.Client() as agent, httpx.Client() as stranger:

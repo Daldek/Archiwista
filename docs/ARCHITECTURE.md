@@ -81,7 +81,8 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | Module | Role | Key symbols |
 |---|---|---|
 | `cli.py` | the `archiwista` command (`[project.scripts]`); `umask 077` on POSIX; dispatches subcommands | `main` |
-| `server.py` | `archiwista serve` (where it may listen, `team_refusal`: `127.0.0.1` in local mode, team mode with TLS or trusted proxies; team mode only with an administrator who can sign in, `admin_refusal`; socket, startup token in local mode, Uvicorn with the TLS files of team mode, job supervisor and scheduler) and `archiwista token` (for the local owner, or with `--user` for an enabled account, which team mode requires; `token.issue` and `token.revoke_all` in the action log) | `serve_main`, `token_main`, `team_refusal`, `admin_refusal`, `Refusal`, `AppServer`, `LaunchFile`, `bind_address`, `open_in_browser`, `uvicorn_log_config`, `LIMIT_CONCURRENCY` |
+| `server.py` | `archiwista serve` (where it may listen, `team_refusal`: `127.0.0.1` in local mode, team mode with TLS or trusted proxies; team mode only with an administrator who can sign in, `admin_refusal`; socket, startup token in local mode, the address printed on a terminal only, Uvicorn with the TLS files of team mode and no logging of its own, Nogat's logs with `AccessLog` outside the application, job supervisor and scheduler) and `archiwista token` (for the local owner, or with `--user` for an enabled account, which team mode requires; `token.issue` and `token.revoke_all` in the action log) | `serve_main`, `token_main`, `team_refusal`, `admin_refusal`, `Refusal`, `AppServer`, `LaunchFile`, `bind_address`, `open_in_browser`, `ACCESS_QUIET`, `LIMIT_CONCURRENCY` |
+| `logs.py`, `nogat_logging.py` | the command line's log on stderr (`--verbose`, `--quiet`, `ARCHIWISTA_LOG_LEVEL`) and the server's logs (Nogat DEV-12.4 to DEV-12.9, A-ADR-057): `nogat_logging.py` is Nogat's reference module copied byte for byte (`ServerLog`, `AccessLog`); `server_logging` sets the package's handler aside while the server serves, `log_to_server` gives a job or render process its app records | `configure_logging`, `server_log`, `server_logging`, `log_to_server` |
 | `app.py` | FastAPI application factory: shared objects in `app.state` (the `Transport` built once from the settings), routers under `/api/v1`, the OpenAPI document, `/api/docs` in local mode only, interface files, `SecurityMiddleware` | `create_app`, `WEB_DIR` |
 | `reader.py` | read commands `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` built on API functions and models | `add_read_commands`, `read_main`, `search_filters`, `READ_COMMANDS` |
 | `admin.py` | commands `users`, `groups`, `share`, `state export` and `state import`, run as `LOCAL_OWNER` | `add_admin_commands`, `admin_main`, `ADMIN_COMMANDS` |
@@ -347,9 +348,9 @@ an adapter with a public API.
 
 | Process | Started by | What it does | Communication |
 |---|---|---|---|
-| server `archiwista serve` | user | Uvicorn with the `create_app` application, `JobSupervisor`, `ScanScheduler`; index reads and short, bounded store reads | HTTP on `127.0.0.1:<port>` |
-| job worker process | `JobSupervisor`, one per job, in its own process group (`python -P -m archiwista.jobs.worker`) | `RUNNERS`: `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_preview`, `run_availability` (the producer's `check_availability` with its metadata cache under `cache/<producer>/`, ADR-035), `run_check` (the producer's `check_command` with `root=` the store's directory and the same cache, ADR-036), `run_download` (the producer's `run_command` with `root=`, the same cache and a kept plan, then `refresh_view` of its files' scopes, also of the units it named when interrupted, ADR-037) | stdin: `JobSpec`; stdout: JSON Lines `WorkerMessage`; stderr: `jobs/<id>.log` |
-| rendering pool | `RenderPool`, by default `min(4, cpu)` long-lived processes `python -P -m archiwista.previews.worker` | GDAL, OGR, laspy and ZIP: open attempt, thumbnail, tile, objects, ZIP and layer composition; time and memory limit, process restart after an error | queue ≤ 64, a shared request counted once, files in `previews/` |
+| server `archiwista serve` | user | Uvicorn with the `create_app` application, `JobSupervisor`, `ScanScheduler`; index reads and short, bounded store reads | HTTP on `127.0.0.1:<port>`; Nogat's logs in `<state_dir>/archiwista/logs/`, on stderr only lifecycle records and reduced errors |
+| job worker process | `JobSupervisor`, one per job, in its own process group (`python -P -m archiwista.jobs.worker`) | `RUNNERS`: `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_preview`, `run_availability` (the producer's `check_availability` with its metadata cache under `cache/<producer>/`, ADR-035), `run_check` (the producer's `check_command` with `root=` the store's directory and the same cache, ADR-036), `run_download` (the producer's `run_command` with `root=`, the same cache and a kept plan, then `refresh_view` of its files' scopes, also of the units it named when interrupted, ADR-037) | stdin: `JobSpec`; stdout: JSON Lines `WorkerMessage`; stderr: `jobs/<id>.log`; warnings and errors also app records in `JobSpec.log_dir` |
+| rendering pool | `RenderPool`, by default `min(4, cpu)` long-lived processes `python -P -m archiwista.previews.worker` | GDAL, OGR, laspy and ZIP: open attempt, thumbnail, tile, objects, ZIP and layer composition; time and memory limit, process restart after an error | queue ≤ 64, a shared request counted once, files in `previews/`; warnings and errors app records in `--log-dir` |
 | own-data reader | `OwnReader` (`owndata/reader.py`) | one file from the folder at a time, GDAL in an isolated process; GeoPackage read consistently without writing at the source | response with metadata for the scan |
 | area reader | `read_area_file` (`AREA_READER_COMMAND`: `python -P -m archiwista.area_reader`) | GDAL reads an untrusted area file, 30 s limit | one JSON line on stdout |
 | CLI commands | human, script, agent | `reader.py`, `commands/`, `admin.py`, `reindex`, `token`, `doctor`; for the build and the snapshot its own supervisor | stdout, stderr; no server needed |
@@ -426,6 +427,10 @@ user configuration directory of `archiwista` (`platformdirs`; Linux `~/.config/a
 the data in `<data_dir>/archiwista/` and the caches (`cache/`, `previews/`) in
 `<cache_dir>/archiwista/` when `nogat.toml` names those keys, else both in the user data
 directory (Linux `~/.local/share/archiwista/`; `archiwista.shared_settings`, A-ADR-053).
+The server's logs (`logs/`) lie in `<state_dir>/archiwista/` (`AppPaths.state_home`), by
+default in the user state directory of `nogat` (`platformdirs.user_state_path("nogat")`,
+Linux `~/.local/state/nogat/archiwista/`; A-ADR-057); paths built without it (the tests)
+keep them in the data directory.
 The same file gives the table `gui`, the ecosystem's GUIs of the deployment
 (`SharedSettings.gui`), which `archiwista serve` keeps in `app.state.gui` and
 `GET /session` hands to the interface's menu „Aplikacje” (A-ADR-054).
@@ -442,6 +447,7 @@ and its area files in the project directory, on the command of a person with
 | `state_file` = `state.sqlite` | accounts, groups, roles, project access, passwords, each person's preferences, the action log | **no** — backup with `archiwista state export` | `StateStore` |
 | `cache_dir` = `cache/<producer>/` (beside `previews/`, in `cache_home` when set) | plugin cache (`SourceContext.cache_dir`); Kartograf: `unit_bboxes.sqlite` (`UnitBBoxCache`) | yes, from the network | adapter |
 | `jobs_dir` = `jobs/` | `<id>.log` (stderr of the worker process), `owner-<pid>.lock` (job supervisor lock), `<id>.cancel` (a cancel request for the job's supervisor, ADR-038) | logs not needed for operation | `JobSupervisor`, worker processes |
+| `logs_dir` = `logs/` (in `state_home`, else the data directory) | `access-`, `app-` and `lifecycle-YYYY-MM-DD.jsonl`: the server's logs, `nogat-log/1` (A-ADR-057) | not needed for operation; deleted 14 days after their date | the server's `ServerLog` (`server_logging`), job and render processes (`log_to_server`) |
 | `areas_dir` = `areas/` | `<id>/area.*` (copy of the area file), `.incoming/<random>/` (file being read) | load the file again | `AreaFiles` |
 | `open-<random>.html` in the data directory | start page with the token address for the browser (`LaunchFile`, `0600` file) | — | `serve_main`; disappears after the token is used, after 10 min and on shutdown |
 | `previews_dir` = `previews/` (in `cache_home` when set) | `cache.sqlite`, `objects/<key>/<renderer>-r<version>/`: detection, thumbnails, tiles, COG, copies for consistent SQLite reads; local LRU | yes | `PreviewCache`, `RenderPool`, `preview` job |
@@ -801,7 +807,11 @@ An on-demand refresh is performed by `GET /api/v1/local-coverage?area_id&product
 
 ### 5.3 HTTP request lifecycle
 
-The outermost layer is `LanguageMiddleware` (`api/language.py`): from the
+Outside the application `serve_main` puts Nogat's `AccessLog` (`nogat_logging.py`,
+A-ADR-057): it gives each request a random id it never sends and writes the request's
+access record after its last byte, so the refusals of the layers below are logged too;
+the interface's files and map tiles answered below 400 are not (`ACCESS_QUIET`).
+The outermost layer of the application is `LanguageMiddleware` (`api/language.py`): from the
 `Accept-Language` header (`language_of`: Polish when it has the highest weight,
 otherwise English, also when there is no header) it sets the language of the message catalog
 (`messages.language`) for the duration of the whole request, so the refusals of
@@ -877,7 +887,8 @@ startup token (`issue_one_time_token(…, "startup", minted_by=LOCAL_OWNER)`,
 token in the fragment, which does not reach the server,
 the log or `Referer`; the browser opened by `archiwista serve`
 gets it through the private `LaunchFile` file (`open_in_browser`), not through the
-command line. `startSession` from `api.js` (called by `main.js`) removes the
+command line, and `archiwista serve` prints it only on a terminal (`isatty`), never
+into a service's journal. `startSession` from `api.js` (called by `main.js`) removes the
 token from the address (`history.replaceState`) and exchanges it
 (`POST /api/v1/session` → `redeem_one_time_token`, once only, before
 expiry). The response sets the session cookie (`HttpOnly`,
@@ -1131,9 +1142,12 @@ with errata. State of the code in brief:
   and writing next to the source. Area files, previews and own data are read by
   processes with time and memory limits; `ObjectResolver` checks the root
   and the project visibility before reaching into the shared cache for content.
-- **Logs.** The Uvicorn access log is disabled by default;
-  `archiwista serve --access-log` enables it with redaction of `token=` values
-  (`TokenRedactionFilter`, `redact_tokens`).
+- **Logs** (Nogat DEV-12.4 to DEV-12.9, A-ADR-057). The access log holds no client
+  address, cookie, header or body, the User-Agent only as its class (`agent`); a
+  query keeps the names of credentials and personal parameters (`token`, `key`, `q`…
+  of `REDACTED`) without their values, and a token in the fragment never reaches the
+  server. The record `start` names the origin, never the startup token; an IP address
+  in a message or a traceback is written `[ip]`. Uvicorn keeps no log of its own.
 - **Local data** is private (`0700`, `umask 077`, section 4); UI libraries
   and Swagger UI are bundled with SHA-256 checksums (section 9).
 
@@ -1301,7 +1315,7 @@ with the unchanged message (`<producer>_error`).
 
 | Commands | Module | Notes |
 |---|---|---|
-| `serve [--host] [--port] [--no-browser] [--access-log]`, `token [--port] [--user ID] [--json \| --revoke-all]` | `server.py` | `--port 0` picks a free port; `token --user ID` issues a token for an enabled account (required in team mode) |
+| `serve [--host] [--port] [--no-browser]`, `token [--port] [--user ID] [--json \| --revoke-all]` | `server.py` | `--port 0` picks a free port; the address printed on a terminal only; `token --user ID` issues a token for an enabled account (required in team mode) |
 | `status`, `sources`, `search [ZAPYTANIE]`, `entry MAGAZYN SLOT`, `version MAGAZYN WERSJA`, `projects`, `project PROJEKT` | `reader.py` | without the server, on the local index; `--json` prints the API response model, an error as an RFC 9457 problem with exit code 1; the `search` options have the parameter names of `/slots` (`search_filters` → `CatalogFilters`) |
 | `users list\|add\|roles\|remove\|password\|disable\|enable\|end-sessions`, `groups list\|add\|members\|remove`, `share`, `state export\|import` | `admin.py` | `users`, `groups` and `share` with `--json` use the API model; `users password ID [--temporary] [--stdin]` (typed twice without echo, or one line of standard input); `users end-sessions ID` ends the account's sessions, also of a running server; `state export [--output PLIK]`; `state import PLIK` accepts only an empty state database |
 | `reindex [--store ID]` | `jobs/reindex.py` | full scan as a `local` job in the foreground; progress on stderr, summary on stdout; exit 0, 1 (error, interruption, `conflict`), 2 (unknown store); Ctrl+C cancels |

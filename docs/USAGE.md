@@ -18,7 +18,8 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
 
 1. `archiwista serve` opens the browser at a one-time address with a token
    (valid for 10 minutes). If the browser does not open, copy the address from
-   the terminal.
+   the terminal; started without one (by a service manager) the server prints
+   nothing, and `archiwista token` issues an address.
 2. The wizard "Pierwsze uruchomienie" (first run) has four steps:
    - **Stores** ("Magazyny"): a name for people, a short identifier (used in
      addresses and in the API), the full path of the Kartograf store root (the
@@ -972,7 +973,7 @@ In local mode (a team server: below) Archiwista works only on this computer
 (`127.0.0.1`) and shows nothing without a session. The session expires after
 24 hours without use and ends when the server stops; the screen "Wymagana
 sesja" (session required) then appears. A new session is opened by the address
-`archiwista serve` printed or a new address from `archiwista token`. Another
+`archiwista serve` printed on its terminal or a new address from `archiwista token`. Another
 browser tab gets its session from an open Archiwista tab.
 
 ## Team server
@@ -999,7 +1000,8 @@ tls_key = "/etc/archiwista/tls/privkey.pem"
 Every request comes over TLS and every answer carries
 `Strict-Transport-Security: max-age=31536000`; `Host` must be the host of
 `origin`, the session cookie is `__Host-archiwista_session` (`Secure`), and
-`/api/docs` is not served. `archiwista serve` prints `origin` and issues no
+`/api/docs` is not served. `archiwista serve` prints `origin` on a terminal (its
+lifecycle record `start` on standard error names it anyway) and issues no
 startup address. It refuses to start (exit 2) when team mode is off and `--host`
 is not `127.0.0.1` (`host_refused`), without TLS files and trusted proxies
 (`tls_required`), with files that do not load as a pair or an encrypted key
@@ -1275,10 +1277,16 @@ Restoring is putting the copy back in place while the server is stopped.
 - `archiwista doctor` checks the installation, the Kartograf plugin, the
   stores and the port, and gives a repair for every problem. It also names
   `nogat.toml`, the settings file the Nogat tools share, and where the data
-  directory, the caches, the language of the command line and the GUIs of the
-  menu „Aplikacje” come from (`data_dir`, `cache_dir`, `lang` and `gui` of the
-  file, else the defaults; README, A-ADR-053, A-ADR-054). A file Archiwista cannot
-  use stops every other command until it is corrected.
+  directory, the caches, the server's logs, the language of the command line and
+  the GUIs of the menu „Aplikacje” come from (`data_dir`, `cache_dir`,
+  `state_dir`, `lang` and `gui` of the file, else the defaults; README,
+  A-ADR-053, A-ADR-054, A-ADR-057). A file Archiwista cannot use stops every
+  other command until it is corrected.
+- **The server's logs** (A-ADR-057): `<state_dir>/archiwista/logs/`, by default
+  `~/.local/state/nogat/archiwista/logs/`, keeps for 14 days the access,
+  application and lifecycle records of `archiwista serve` and the warnings and
+  errors of its job and render processes; the README gives the `jq` command that
+  reads them. A job's own log is its „Dziennik”.
 - **Store unavailable** (for example a disconnected share): the views show the
   state of the index, the status bar gives its time; after reconnecting, the
   next scan completes the changes without rebuilding the index.

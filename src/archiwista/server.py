@@ -5,18 +5,31 @@ only on ``127.0.0.1``; in team mode (the table ``[team]``, ADR-046) on an IP
 address of this computer with TLS in the server, or behind trusted reverse
 proxies on a specific address. Team mode also needs an administrator who can
 sign in (``admin_refusal``). It then binds the port and, in local mode,
-issues the one-time startup token, prints
-``http://127.0.0.1:<port>/#token=…`` and optionally opens it in the browser;
-in team mode it issues no token, opens no browser and prints the team's
-``origin``. It serves until Ctrl+C. The browser gets the address through a
-private file (``LaunchFile``), never on its command line, which other
-accounts of the computer can read. Uvicorn's access log is off unless asked
-for; when on, ``token=`` values are redacted; it serves at most
-``LIMIT_CONCURRENCY`` connections at once. While it serves, background jobs
-run under its ``JobSupervisor`` (the jobs people start go to the action log),
-the ``ScanScheduler`` scans the stores and prunes the action log, and
+issues the one-time startup token and optionally opens
+``http://127.0.0.1:<port>/#token=…`` in the browser; in team mode it issues no
+token and opens no browser. On a terminal it prints that address, or the
+team's ``origin``; anywhere else (a service manager, whose journal keeps
+standard output) it prints nothing. It serves until Ctrl+C. The browser gets
+the address through a private file (``LaunchFile``), never on its command
+line, which other accounts of the computer can read. It serves at most
+``LIMIT_CONCURRENCY`` connections at once.
+
+The server keeps Nogat's logs (DEV-12.4 to DEV-12.9, A-ADR-057) in
+``AppPaths.logs_dir`` (``<state_dir>/archiwista/logs``) with
+``archiwista.logs.server_logging``: ``AccessLog``, outside every middleware of
+the application, writes one access record per request (no client address,
+the values of credentials and personal parameters dropped from the query,
+the interface's files and map tiles answered below 400 left out:
+``ACCESS_QUIET``); warnings and errors of every logger become app records; the
+lifecycle records ``start``, with the origin alone (never the token nor the
+address that carries it), and ``stop`` frame serving; standard error gets
+only the lifecycle records and the errors reduced to their type. Uvicorn runs
+with ``log_config=None`` and ``access_log=False``. While it serves, background
+jobs run under its ``JobSupervisor`` (the jobs people start go to the action
+log), the ``ScanScheduler`` scans the stores and prunes the action log, and
 the ``RenderPool`` renders previews into the preview cache (reconciled at the
-start); stopping ends the open job event streams first (they would hold it
+start); the job and render processes write their warnings and errors to the
+same logs. Stopping ends the open job event streams first (they would hold it
 until their jobs end), then interrupts running jobs and ends the render
 processes. ``token`` prints the one-time address of an agent's session, or
 ends every agent session (``--revoke-all``).
@@ -24,7 +37,6 @@ ends every agent session (``--revoke-all``).
 
 import asyncio
 import contextlib
-import copy
 import html
 import ipaddress
 import os
@@ -37,11 +49,10 @@ import webbrowser
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import TextIO
 
 import uvicorn
 from starlette.types import ASGIApp
-from uvicorn.config import LOGGING_CONFIG
 
 from archiwista.api.session import OneTimeToken
 from archiwista.app import create_app
@@ -59,8 +70,9 @@ from archiwista.error_document import describe, exception_problem, fail, refuse
 from archiwista.errors import NotFoundError, StateError
 from archiwista.index.schema import IndexUnsupportedError, initialize
 from archiwista.jobs import JobSupervisor, ScanScheduler
-from archiwista.logs import DEFAULT_LOG_LEVEL
+from archiwista.logs import server_log, server_logging
 from archiwista.messages import message, with_detail
+from archiwista.nogat_logging import AccessLog
 from archiwista.paths import private_directory
 from archiwista.previews.cache import PreviewCache
 from archiwista.previews.pool import RenderPool, default_render_workers
@@ -69,7 +81,6 @@ from archiwista.security import (
     LOOPBACK_HOST,
     TOKEN_TTL,
     TokenKind,
-    TokenRedactionFilter,
     Transport,
     fragment_url,
     issue_one_time_token,
@@ -82,28 +93,14 @@ from archiwista.state import StateStore, UserRecord
 
 # Connections and tasks served at once; more are answered ``503``.
 LIMIT_CONCURRENCY = 100
+ACCESS_QUIET = r"^/static/|/tiles/\d+/\d+/\d+\.png$"
+"""The requests the access log leaves out when answered below 400 (DEV-12.5).
 
-_REDACT_FILTER = "archiwista_redact_tokens"
-
-
-def uvicorn_log_config(level: str = DEFAULT_LOG_LEVEL) -> dict[str, Any]:
-    """Return Uvicorn's logging setup at ``level`` with ``token=`` values hidden.
-
-    The filter sits on the ``uvicorn.access`` logger, so the request line is
-    redacted before any handler sees it. Only the server's own messages follow
-    ``level``: the access log, when asked for, keeps writing every request.
-
-    Parameters
-    ----------
-    level : str, optional
-        A key of ``archiwista.logs.LOG_LEVELS``.
-    """
-    config = copy.deepcopy(LOGGING_CONFIG)
-    config["filters"] = {_REDACT_FILTER: {"()": TokenRedactionFilter}}
-    config["loggers"]["uvicorn.access"]["filters"] = [_REDACT_FILTER]
-    for name in ("uvicorn", "uvicorn.error"):
-        config["loggers"][name]["level"] = level.upper()
-    return config
+The interface's files (``/static/…``) and the map tiles of the previews and
+the layers (``…/tiles/{z}/{x}/{y}.png``): the same for every client and
+fetched by the hundred; ``/``, ``/instrukcja`` and every API request are
+logged.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,26 +345,29 @@ class AppServer:
     sock : socket.socket
         Socket from ``bind_address``; the server closes it when it stops.
     app : ASGIApp
-        The application.
+        The application, in ``serve_main`` wrapped in the access log
+        (``AccessLog``).
     url : str
         One-time address of the first session in local mode; the team's
         ``origin`` in team mode.
     launch : LaunchFile or None
         Where ``open_in_browser`` puts the address for the browser; ``None``
         in team mode, which opens no browser.
-    access_log : bool
-        Write Uvicorn's access log, with ``token=`` values redacted.
     on_stop : Callable[[], None]
         Called as the server starts to stop, before it waits for open
         connections; ends the application's long-lived responses (event
         streams).
-    log_level : str, optional
-        Level of Uvicorn's own messages (``archiwista.logs.LOG_LEVELS``).
     tls : tuple[Path, Path] or None, optional
         The certificate chain and the private key of TLS in the server (team
         mode), served with ``security.tls_context``: TLS 1.2 or newer, and
         in TLS 1.2 ECDHE with AEAD ciphers only. ``None`` serves plain HTTP:
         local mode, or behind a proxy.
+
+    Notes
+    -----
+    Uvicorn configures no logging and keeps no access log of its own
+    (``log_config=None``, ``access_log=False``): the server's logs are
+    Nogat's (``archiwista.logs.server_logging``, DEV-12.8).
     """
 
     def __init__(
@@ -377,9 +377,7 @@ class AppServer:
         *,
         url: str,
         launch: LaunchFile | None,
-        access_log: bool,
         on_stop: Callable[[], None],
-        log_level: str = DEFAULT_LOG_LEVEL,
         tls: tuple[Path, Path] | None = None,
     ) -> None:
         self.url = url
@@ -391,8 +389,8 @@ class AppServer:
             app,
             host=address[0],
             port=self.port,
-            log_config=uvicorn_log_config(log_level),
-            access_log=access_log,
+            log_config=None,
+            access_log=False,
             # Archiwista reads forwarded headers itself, from trusted proxies.
             proxy_headers=False,
             server_header=False,
@@ -446,8 +444,6 @@ def serve_main(
     *,
     host: str = LOOPBACK_HOST,
     port: int | None = None,
-    access_log: bool = False,
-    log_level: str = DEFAULT_LOG_LEVEL,
     on_ready: Callable[[AppServer], object] | None = None,
     gui: Mapping[str, str] | None = None,
 ) -> int:
@@ -460,23 +456,24 @@ def serve_main(
     registry : PluginRegistry
         Producer plugins: settings validation, the scan scheduler and the
         API's requests needing a producer.
-    out, err : TextIO
-        Streams for the address and for errors.
+    out : TextIO
+        Standard output: the one-time address (in team mode the origin) for
+        a person, written only when it is a terminal (``isatty``).
+    err : TextIO
+        Standard error: the error document of a refusal and, while the
+        server serves, the lifecycle records of its logs and its errors
+        reduced to their type (``archiwista.logs.server_logging``).
     host : str, optional
         Listening address: ``127.0.0.1`` in local mode; in team mode an IP
         address that ``team_refusal`` accepts. A refused one ends the command
         before anything is created or bound.
     port : int or None, optional
         Port; the configured one when omitted, a free one for ``0``.
-    access_log : bool, optional
-        Write the access log (``token=`` values redacted); off by default.
-    log_level : str, optional
-        Level of Uvicorn's own messages; ``warning`` unless the command line
-        asked for another (``archiwista.logs``).
     on_ready : Callable[[AppServer], object] or None, optional
-        Called with the server after the address is printed and before it
-        serves, e.g. ``open_in_browser``. The launch file goes once the
-        startup token is used, when it expires, and when the server stops.
+        Called with the server once its logs started and the address is
+        printed (on a terminal), before it serves, e.g. ``open_in_browser``.
+        The launch file goes once the startup token is used, when it expires,
+        and when the server stops.
     gui : Mapping of str to str or None, optional
         The GUIs of the deployment by registry name (``[nogat.gui]`` of
         ``nogat.toml``, A-ADR-054), which ``GET /api/v1/session`` gives the
@@ -555,6 +552,11 @@ def serve_main(
         # Team mode issues no startup token: people sign in at its origin.
         team = settings.get().team
         origin = team.origin if team.enabled else None
+        transport = Transport.of(settings.get(), bound_port)
+        listening = _listening(host, bound_port)
+        tls = None
+        if team.enabled and team.tls_cert is not None and team.tls_key is not None:
+            tls = (team.tls_cert, team.tls_key)
         launch = LaunchFile(paths.data_dir) if origin is None else None
         expiry: threading.Timer | None = None
         if launch is not None:
@@ -567,64 +569,66 @@ def serve_main(
             if kind == "startup" and launch is not None:
                 launch.remove()
 
-        try:
-            app = create_app(
-                port=bound_port,
-                settings=settings,
-                index_path=paths.index_file,
-                state=state,
-                registry=registry,
-                areas_dir=paths.areas_dir,
-                jobs=jobs,
-                previews=previews,
-                on_redeem=redeemed,
-                cache_home=paths.cache_home,
-                gui=gui,
-            )
-            if origin is None:
-                issued = issue_one_time_token(
-                    paths.index_file, "startup", minted_by=LOCAL_OWNER
+        log = server_log(paths.logs_dir, stream=err)
+        # The record ``start`` names the origin alone, never the token.
+        summary = {"origin": transport.origin}
+        with server_logging(log, summary):
+            try:
+                app = create_app(
+                    port=bound_port,
+                    settings=settings,
+                    index_path=paths.index_file,
+                    state=state,
+                    registry=registry,
+                    areas_dir=paths.areas_dir,
+                    jobs=jobs,
+                    previews=previews,
+                    on_redeem=redeemed,
+                    cache_home=paths.cache_home,
+                    gui=gui,
                 )
-                transport: Transport = app.state.transport
-                url = fragment_url(transport.origin, issued.token)
-                started = message("serve.started", url=url, minutes=_minutes("startup"))
-            else:
-                url = origin
-                listening = _listening(host, bound_port)
-                started = message(
-                    "serve.started_team", origin=origin, address=listening
+                if origin is None:
+                    issued = issue_one_time_token(
+                        paths.index_file, "startup", minted_by=LOCAL_OWNER
+                    )
+                    url = fragment_url(transport.origin, issued.token)
+                    minutes = _minutes("startup")
+                    started = message("serve.started", url=url, minutes=minutes)
+                else:
+                    url = origin
+                    started = message(
+                        "serve.started_team", origin=origin, address=listening
+                    )
+                server = AppServer(
+                    sock,
+                    # Outermost: the answers of every middleware are logged too.
+                    AccessLog(app, log=log, quiet=ACCESS_QUIET),
+                    url=url,
+                    launch=launch,
+                    on_stop=app.state.job_streams.close,
+                    tls=tls,
                 )
-            tls = None
-            if team.enabled and team.tls_cert is not None and team.tls_key is not None:
-                tls = (team.tls_cert, team.tls_key)
-            server = AppServer(
-                sock,
-                app,
-                url=url,
-                launch=launch,
-                access_log=access_log,
-                log_level=log_level,
-                on_stop=app.state.job_streams.close,
-                tls=tls,
-            )
-            out.write(started + "\n")
-            out.flush()
-            if expiry is not None:
-                expiry.start()
-            if on_ready is not None:
-                on_ready(server)
-            scheduler.start()
-            server.run()
-        finally:
-            if expiry is not None:
-                expiry.cancel()
-            if launch is not None:
-                launch.remove()
-            scheduler.stop()
-            jobs.close()
-            unsubscribe()
-            previews.close()
-            previews.cache.close()
+                if out.isatty():
+                    # A service manager keeps standard output in its journal,
+                    # where the one-time address would outlive its use.
+                    out.write(started + "\n")
+                    out.flush()
+                if expiry is not None:
+                    expiry.start()
+                if on_ready is not None:
+                    on_ready(server)
+                scheduler.start()
+                server.run()
+            finally:
+                if expiry is not None:
+                    expiry.cancel()
+                if launch is not None:
+                    launch.remove()
+                scheduler.stop()
+                jobs.close()
+                unsubscribe()
+                previews.close()
+                previews.cache.close()
     return 0
 
 

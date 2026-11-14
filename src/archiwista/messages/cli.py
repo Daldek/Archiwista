@@ -46,12 +46,8 @@ MESSAGES = {
         "port (domyślnie z ustawień; 0 — dowolny wolny)",
     ),
     "serve_no_browser_help": Text(
-        "do not open the browser, only print the address",
-        "nie otwieraj przeglądarki, tylko wypisz adres",
-    ),
-    "serve_access_log_help": Text(
-        "enable the access log (token= values are hidden in it)",
-        "włącz dziennik dostępu (wartości token= są w nim ukryte)",
+        "do not open the browser, only print the address (on a terminal)",
+        "nie otwieraj przeglądarki, tylko wypisz adres (w terminalu)",
     ),
     "token_help": Text(
         (

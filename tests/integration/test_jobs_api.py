@@ -491,7 +491,6 @@ def _serving(env: JobsEnv) -> Iterator[tuple[AppServer, threading.Thread, str]]:
         app,
         url="",
         launch=LaunchFile(env.paths.data_dir),
-        access_log=False,
         on_stop=app.state.job_streams.close,
     )
     serving = threading.Thread(target=server.run, daemon=True)

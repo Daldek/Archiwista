@@ -4,9 +4,13 @@ The text for a person (help, usage errors, the output of a command and the
 line before an error document) is in ``lang`` of ``nogat.toml``, Polish by
 default (A-ADR-053); ``--json`` output and the error document on the last line
 of standard error are English (AGI-9.2). ``nogat.toml`` also gives the data
-directory and the caches (``AppPaths.default``), and ``archiwista serve`` the
-GUIs of the interface's menu „Aplikacje” (``gui``, A-ADR-054): every command
-but ``archiwista doctor``, which reports it, refuses a file that cannot be used.
+directory, the caches and the directory of the server's logs
+(``AppPaths.default``), and ``archiwista serve`` the GUIs of the interface's
+menu „Aplikacje” (``gui``, A-ADR-054): every command but ``archiwista
+doctor``, which reports it, refuses a file that cannot be used. The level of
+the log (``--verbose``, ``--quiet``, ``ARCHIWISTA_LOG_LEVEL``) is that of the
+command's own log on standard error; ``archiwista serve`` follows it until it
+serves, then keeps the server's logs (``archiwista.logs.server_logging``).
 """
 
 import argparse
@@ -174,11 +178,6 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help=message("cli.serve_no_browser_help"),
     )
-    serve.add_argument(
-        "--access-log",
-        action="store_true",
-        help=message("cli.serve_access_log_help"),
-    )
     token = commands.add_parser(
         "token",
         help=message("cli.token_help"),
@@ -231,7 +230,7 @@ def _run(
         return refuse(_unusable_shared_settings(shared, shared.problem), sys.stderr)
     paths = paths or AppPaths.default(shared)
     try:
-        return _dispatch(args, paths, registry, level, shared)
+        return _dispatch(args, paths, registry, shared)
     except Exception:
         # A defect: the traceback for the maintainer, the document for agents.
         traceback.print_exc()
@@ -269,7 +268,6 @@ def _dispatch(
     args: argparse.Namespace,
     paths: AppPaths,
     registry: PluginRegistry | None,
-    log_level: str,
     shared: SharedSettings,
 ) -> int:
     """Run the command ``args`` names and return its exit status."""
@@ -295,8 +293,6 @@ def _dispatch(
             sys.stderr,
             host=args.host,
             port=args.port,
-            access_log=args.access_log,
-            log_level=log_level,
             on_ready=None if args.no_browser else open_in_browser,
             gui=None if shared.gui is None else shared.gui.addresses,
         )

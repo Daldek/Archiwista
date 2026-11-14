@@ -69,8 +69,20 @@ def server_nodelay(client: socket.socket) -> int:
     raise AssertionError(f"no socket of this process is connected to {local}")
 
 
+class Terminal(io.StringIO):
+    """Standard output that is a terminal, as a person's shell (``isatty``)."""
+
+    def isatty(self) -> bool:
+        """Return ``True``: ``archiwista serve`` prints its address here."""
+        return True
+
+
 def local_paths(tmp_path: Path) -> AppPaths:
-    """Place configuration and local data inside the test directory."""
+    """Place configuration and local data inside the test directory.
+
+    The server's logs lie in the data directory too (``AppPaths.logs_dir``),
+    never in the user's state directory.
+    """
     return AppPaths(
         config_file=tmp_path / "config" / "config.toml",
         data_dir=tmp_path / "data",
@@ -81,12 +93,13 @@ def local_paths(tmp_path: Path) -> AppPaths:
 def serving(
     paths: AppPaths,
     *,
-    access_log: bool = False,
     registry: PluginRegistry | None = None,
     on_ready: Callable[[AppServer], object] | None = None,
     port: int = 0,
     web_dir: Path | None = None,
     gui: Mapping[str, str] | None = None,
+    terminal: bool = False,
+    err: io.StringIO | None = None,
 ) -> Iterator[tuple[AppServer, str]]:
     """Run ``serve_main`` on ``port``; yield the server and what it printed.
 
@@ -95,11 +108,14 @@ def serving(
     browser). ``port`` ``0`` is a free one; the port of a stopped server
     serves the same address again. ``web_dir`` replaces the package's
     interface files (an upgrade of the interface); ``gui`` is the table of
-    the GUIs ``nogat.toml`` would give. The server stops when the block ends
+    the GUIs ``nogat.toml`` would give. Standard output is a terminal with
+    ``terminal`` (the server prints its address only there; ``server.url``
+    holds it anyway); ``err`` receives standard error, the lifecycle records
+    of the server's logs among them. The server stops when the block ends
     and must then exit with status 0.
     """
-    out = io.StringIO()
-    err = io.StringIO()
+    out = Terminal() if terminal else io.StringIO()
+    err = io.StringIO() if err is None else err
     ready: queue.Queue[AppServer] = queue.Queue()
     statuses: list[int] = []
 
@@ -116,7 +132,6 @@ def serving(
                 out,
                 err,
                 port=port,
-                access_log=access_log,
                 on_ready=ready_now,
                 gui=gui,
             )

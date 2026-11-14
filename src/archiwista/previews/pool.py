@@ -225,9 +225,13 @@ class RenderPool:
     command : Sequence[str], optional
         Command of a render process (tests give one with test renderers);
         ``--previews-dir`` (the cache's root, for ``worker.cached_file``) is
-        appended, and ``--work-dir`` when ``work_dir`` is given.
+        appended, ``--work-dir`` when ``work_dir`` is given and ``--log-dir``
+        when ``log_dir`` is.
     work_dir : Path or None, optional
         Root of the processes' work directories (``AppPaths.work_dir``).
+    log_dir : Path or None, optional
+        The server's logs (``AppPaths.logs_dir``), where the processes write
+        their warnings and errors as app records; none without it.
     queue_size : int, default 64
         Requests waiting at most.
     idle_s : float, default 300
@@ -252,6 +256,7 @@ class RenderPool:
         timeouts: Mapping[str, float] | None = None,
         command: Sequence[str] = RENDER_WORKER_COMMAND,
         work_dir: Path | None = None,
+        log_dir: Path | None = None,
         queue_size: int = QUEUE_SIZE,
         idle_s: float = IDLE_S,
         memory_bytes: int | None = RENDER_MEMORY_BYTES,
@@ -269,6 +274,7 @@ class RenderPool:
         }
         self._command = tuple(command)
         self._work_dir = work_dir
+        self._log_dir = log_dir
         self._queue_size = queue_size
         self._idle_s = idle_s
         self._memory_bytes = memory_bytes
@@ -766,6 +772,8 @@ class RenderPool:
             argv = [*self._command, "--previews-dir", str(self._cache.root)]
             if self._work_dir is not None:
                 argv += ["--work-dir", str(self._work_dir)]
+            if self._log_dir is not None:
+                argv += ["--log-dir", str(self._log_dir)]
             try:
                 process = subprocess.Popen(
                     argv,

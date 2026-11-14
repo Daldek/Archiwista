@@ -29,8 +29,10 @@ answers on its standard output with JSON Lines, one ``WorkerMessage`` each:
   whoever reads the job (``archiwista.jobs.error.JobError``).
 
 Everything else the worker or a library writes goes to standard error, the
-job's log. The supervisor keeps ``progress`` and ``notice`` as job events
-and turns ``result``, ``partial`` and ``error`` into the job's final state.
+job's log; the worker's warnings and errors also go to the server's
+application log in ``log_dir`` (A-ADR-057). The supervisor keeps ``progress``
+and ``notice`` as job events and turns ``result``, ``partial`` and ``error``
+into the job's final state.
 """
 
 import json
@@ -45,7 +47,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppPaths, AppSettings
 
-PROTOCOL_VERSION = 14
+PROTOCOL_VERSION = 15
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and
@@ -179,6 +181,10 @@ class JobSpec:
         ``areas.write_area_geojson``): ``availability`` writes its area's
         there, and a ``download`` that pins puts those its calls name into
         the project.
+    log_dir : Path
+        The directory of the server's logs (``AppPaths.logs_dir``): the
+        worker and its render processes write their warnings and errors there
+        as app records (``archiwista.logs.log_to_server``), and delete nothing.
     settings : AppSettings
         Settings in effect when the job started.
     claimed : tuple of str or None, optional
@@ -203,6 +209,7 @@ class JobSpec:
     previews_dir: Path
     work_dir: Path
     areas_dir: Path
+    log_dir: Path
     settings: AppSettings
     claimed: tuple[str, ...] | None = None
     taken: tuple[JsonObject, ...] = ()
@@ -213,12 +220,13 @@ class JobSpec:
 
         The index lies in the data directory and the preview cache in the
         directory of the caches (``AppPaths.previews_dir``), which may lie apart
-        from it (A-ADR-053); a job reads no settings file.
+        from it (A-ADR-053), as may the logs; a job reads no settings file.
         """
         return AppPaths(
             config_file=Path(os.devnull),
             data_dir=self.index_path.parent,
             cache_home=self.previews_dir.parent,
+            state_home=self.log_dir.parent,
         )
 
 
@@ -276,6 +284,7 @@ def encode_spec(spec: JobSpec) -> str:
             "previews_dir": str(spec.previews_dir),
             "work_dir": str(spec.work_dir),
             "areas_dir": str(spec.areas_dir),
+            "log_dir": str(spec.log_dir),
             "settings": spec.settings.model_dump(mode="json"),
         }
     )
@@ -332,6 +341,7 @@ def decode_spec(line: str) -> JobSpec:
             previews_dir=Path(value["previews_dir"]),
             work_dir=Path(value["work_dir"]),
             areas_dir=Path(value["areas_dir"]),
+            log_dir=Path(value["log_dir"]),
             settings=AppSettings.model_validate(value["settings"]),
             claimed=None if claimed is None else tuple(claimed),
             taken=tuple(taken),

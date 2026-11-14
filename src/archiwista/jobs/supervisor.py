@@ -54,8 +54,10 @@ A job whose supervising process is gone (a server stopped or crashed) becomes
 locks ``<jobs>/owner-<pid>.lock``, which the system releases when the
 process ends, and records its pid with each of its jobs. A worker whose
 supervisor is gone interrupts itself. Each worker's standard error is its
-job's log, ``<jobs>/<id>.log``; logs and finished jobs are kept 90 days (the
-last finished job of each store and kind stays) and logs while under 1 GB.
+job's log, ``<jobs>/<id>.log``, and its warnings and errors also go to the
+server's application log (``AppPaths.logs_dir``, A-ADR-057); logs and
+finished jobs are kept 90 days (the last finished job of each store and kind
+stays) and logs while under 1 GB.
 Routine scans, the scheduler's incremental scans that succeeded without
 changing anything, go after 48 hours with their events and logs (the newest
 of each store stays); ``prune`` runs at the start and from the scheduler.
@@ -684,7 +686,8 @@ class JobSupervisor:
     ----------
     paths : AppPaths
         The local index and the jobs directory (logs, owner locks); workers
-        get the index and the cache, preview and scratch directories.
+        get the index, the cache, preview and scratch directories and the
+        directory of the server's logs.
     settings : SettingsService
         Settings in effect: stores, offline mode, the network jobs of one
         person (``network_jobs_per_person``). The index's stores follow
@@ -1647,6 +1650,7 @@ class JobSupervisor:
             previews_dir=self._paths.previews_dir,
             work_dir=self._paths.work_dir,
             areas_dir=self._paths.areas_dir,
+            log_dir=self._paths.logs_dir,
             settings=settings,
             claimed=claims.claimed,
             taken=claims.taken,

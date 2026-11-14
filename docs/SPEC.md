@@ -612,7 +612,9 @@ The index (A-ADR-002) is a SQLite file (WAL mode) on the local disk, in the user
 (`platformdirs`: Linux `~/.local/share/archiwista/`, Windows
 `%LOCALAPPDATA%\Archiwista\`; `<data_dir>/archiwista/` when `nogat.toml` names a `data_dir`,
 A-ADR-053); next to it are the preview cache (`previews/`, in `<cache_dir>/archiwista/` when
-`nogat.toml` names a `cache_dir`) and the job logs (`jobs/`). The configuration (stores, project directories,
+`nogat.toml` names a `cache_dir`) and the job logs (`jobs/`); the server's logs lie in
+`<state_dir>/archiwista/logs/` (`~/.local/state/nogat/archiwista/logs/` by default,
+A-ADR-057). The configuration (stores, project directories,
 limits, assistant provider) is in a readable TOML file in the user's
 configuration directory and in the "Ustawienia" (Settings) view; a person's view
 preferences (the kind of years, 6.7, the basemap, path aliases) are in the state
@@ -1584,8 +1586,12 @@ ensures that the layers above do not depend on Kartograf (sections 11 and 13).
 
 `archiwista serve` starts the server on `127.0.0.1` (port from the configuration),
 opens the browser with a one-time token in the address (section 10.1)
-and prints the address in the terminal; in team mode (10.2) it listens on the address of
-`--host`, issues no token and prints the configured `origin`. On first run the wizard asks
+and prints the address on a terminal (not when standard output is a service's journal);
+in team mode (10.2) it listens on the address of `--host`, issues no token and prints the
+configured `origin` on a terminal. It keeps Nogat's logs (DEV-12.4 to DEV-12.9, A-ADR-057)
+in `<state_dir>/archiwista/logs/`: access, application and lifecycle records, deleted
+after 14 days; standard error gets only the lifecycle records and errors reduced to their
+type, whatever the level of the command line's log. On first run the wizard asks
 for the store — Kartograf's store root (the directory with `kartograf-store.json`) and/or
 (only when the Obserwator source is available, 5.8) Obserwator's raw root (the directory
 with `obserwator-store.json`, into which `store sync` downloads) and its data root (the
@@ -4136,14 +4142,14 @@ over TLS.
   --revoke-all` immediately ends all agent sessions and invalidates
   unused agent tokens. Each session has a label (`label`), which
   jobs (`actor_kind`, `session`) and the action log (the permissions log before v0.4) record next to the
-  actor. The server access log is disabled by default, and when enabled
-  it redacts `token=`.
+  actor. The server's access log (A-ADR-057) keeps no client address and drops the values
+  of `token`, keys, search texts and names from a query.
 - **Opening the browser:** `archiwista serve` does not put the address with the token
   on the browser's command line (readable by other accounts through
   `/proc`): it opens a file `open-<random>.html` (mode `0600`) in the private
   data directory, which redirects to the address; the file disappears after the token
   is used, after it expires and when the server stops. The address is also
-  printed in the terminal.
+  printed on a terminal, never when standard output is not one.
 - **Request limits:** request body ≤ 4 KiB for the token exchange, ≤ 16 KiB for a sign-in
   (v0.4) and ≤ 1 MiB for
   the remaining routes (checked before reading the body, also with

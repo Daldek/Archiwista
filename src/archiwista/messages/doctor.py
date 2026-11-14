@@ -148,6 +148,10 @@ MESSAGES = {
         "Caches (previews, producers' caches): {path} ({origin})",
         "Pamięć podręczna (podglądy, pamięć producentów): {path} ({origin})",
     ),
+    "logs_ok": Text(
+        "Server logs (deleted after 14 days): {path} ({origin})",
+        "Dzienniki serwera (usuwane po 14 dniach): {path} ({origin})",
+    ),
     "language": Text(
         "Language of the command line for a person: {language} ({origin})",
         "Język wiersza poleceń dla człowieka: {language} ({origin})",

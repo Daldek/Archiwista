@@ -87,5 +87,6 @@ def availability_spec(
         previews_dir=paths.previews_dir,
         work_dir=paths.work_dir,
         areas_dir=paths.areas_dir,
+        log_dir=paths.logs_dir,
         settings=AppSettings(),
     )

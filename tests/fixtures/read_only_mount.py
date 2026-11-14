@@ -16,12 +16,13 @@ import shutil
 import signal
 import subprocess
 import sys
-import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+
+from tests.fixtures.terminal import Terminal
 
 type Snapshot = dict[str, tuple[int, int, int]]
 
@@ -98,10 +99,10 @@ def mount_options(pid: int, mount_point: Path) -> list[str]:
 def serving_read_only(
     directory: Path, env: dict[str, str], logs: Path
 ) -> Iterator[tuple["subprocess.Popen[bytes]", str]]:
-    """Run ``archiwista serve`` where ``directory`` is mounted read-only.
+    """Run ``archiwista serve`` on a terminal where ``directory`` is mounted read-only.
 
-    Yields the process and the one-time address it printed (its output in
-    ``logs``); afterwards the server gets ``SIGINT`` (Ctrl+C) and must stop
+    Yields the process and the one-time address it printed there (its output
+    in ``logs``); afterwards the server gets ``SIGINT`` (Ctrl+C) and must stop
     by itself.
     """
     console = Path(sys.executable).with_name("archiwista")
@@ -110,20 +111,17 @@ def serving_read_only(
         f"mount --bind {where} {where} && mount -o remount,bind,ro {where}"
         f" && exec {shlex.quote(str(console))} serve --no-browser --port 0"
     )
-    out, err = logs / "serve.out", logs / "serve.err"
-    with out.open("wb") as stdout, err.open("wb") as stderr:
+    err = logs / "serve.err"
+    with Terminal(logs / "serve.out") as terminal, err.open("wb") as stderr:
         process = subprocess.Popen(
             ["unshare", "--user", "--map-root-user", "--mount", "sh", "-c", script],
-            stdout=stdout,
+            stdout=terminal.child,
             stderr=stderr,
             env=env,
         )
+        terminal.started()
         try:
-            deadline = time.monotonic() + START_TIMEOUT_S
-            while (found := SERVE_URL.search(out.read_text(encoding="utf-8"))) is None:
-                assert process.poll() is None, err.read_text(encoding="utf-8")
-                assert time.monotonic() < deadline, err.read_text(encoding="utf-8")
-                time.sleep(0.1)
+            found = terminal.wait_for(SERVE_URL, process, START_TIMEOUT_S, err)
             yield process, found[0]
             process.send_signal(signal.SIGINT)
             process.wait(timeout=STOP_TIMEOUT_S)

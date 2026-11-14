@@ -138,7 +138,9 @@ class AppPaths:
 
     The data directory holds the rebuildable index, job logs and areas, and
     the state database, which cannot be rebuilt (A-ADR-029); the caches lie in
-    it too unless ``nogat.toml`` names a ``cache_dir`` (A-ADR-053).
+    it too unless ``nogat.toml`` names a ``cache_dir`` (A-ADR-053), and the
+    server's logs unless a ``state_home`` is given (``AppPaths.default`` always
+    gives one).
 
     Parameters
     ----------
@@ -150,11 +152,17 @@ class AppPaths:
     cache_home : Path or None, optional
         Directory of the caches (``<cache_dir>/archiwista`` of ``nogat.toml``);
         ``None`` keeps them in ``data_dir``.
+    state_home : Path or None, optional
+        Directory of the state kept between runs, the server's logs
+        (``<state_dir>/archiwista``, Nogat DEV-12.6); ``None`` keeps it in
+        ``data_dir``, so paths built for a test never reach the user's state
+        directory.
     """
 
     config_file: Path
     data_dir: Path
     cache_home: Path | None = None
+    state_home: Path | None = None
 
     @classmethod
     def default(cls, shared: SharedSettings | None = None) -> Self:
@@ -164,20 +172,24 @@ class AppPaths:
         ----------
         shared : SharedSettings or None, optional
             ``nogat.toml`` as read; read now when omitted. Its ``data_dir`` puts
-            the data in ``<data_dir>/archiwista`` and its ``cache_dir`` the
-            caches in ``<cache_dir>/archiwista`` (A-ADR-053); a file that cannot
-            be used gives no value.
+            the data in ``<data_dir>/archiwista``, its ``cache_dir`` the caches
+            in ``<cache_dir>/archiwista`` and its ``state_dir`` the server's
+            logs in ``<state_dir>/archiwista/logs`` (A-ADR-053, A-ADR-057); a
+            file that cannot be used gives no value.
 
         Returns
         -------
         AppPaths
             The settings file in the user configuration directory of
-            ``archiwista``, the data directory and the directory of the caches.
+            ``archiwista``, the data directory, the directory of the caches and
+            that of the state, by default in the user state directory of
+            ``nogat`` (Nogat DEV-18.2).
         """
         shared = SharedSettings.read() if shared is None else shared
         config_dir = platformdirs.user_config_path(APP_NAME, appauthor=False)
         data = shared.value("data_dir")
         cache = shared.value("cache_dir")
+        state = shared.value("state_dir")
         return cls(
             config_file=config_dir / CONFIG_FILE_NAME,
             data_dir=(
@@ -186,6 +198,12 @@ class AppPaths:
                 else Path(data.value) / APP_NAME
             ),
             cache_home=None if cache is None else Path(cache.value) / APP_NAME,
+            state_home=(
+                platformdirs.user_state_path("nogat")
+                if state is None
+                else Path(state.value)
+            )
+            / APP_NAME,
         )
 
     @property
@@ -227,6 +245,17 @@ class AppPaths:
     def previews_dir(self) -> Path:
         """Preview cache: objects by content and their LRU accounting."""
         return self.caches / "previews"
+
+    @property
+    def logs_dir(self) -> Path:
+        """The server's logs (Nogat DEV-12.6): ``state_home``, else the data directory.
+
+        ``archiwista serve`` and its job and render processes write their
+        ``nogat-log/1`` records there (``archiwista.logs``), one file per kind
+        and UTC day; the server deletes each 14 days after its date.
+        """
+        state = self.data_dir if self.state_home is None else self.state_home
+        return state / "logs"
 
     @property
     def own_dirs(self) -> tuple[Path, ...]:

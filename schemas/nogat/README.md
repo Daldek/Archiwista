@@ -23,6 +23,15 @@ Verbatim copies (ERR-3, AGI-4.1, DEV-15.6) of the files below from the
   it, and their payload against Hydrolog's `../hydrolog/hydrolog-series-1.schema.json`
   (Hydrolog `src/hydrolog/schemas/` at commit `35054bf` of `feature/series-handoff`; SHA-256
   `39570da20717c28b482bc66e6ede800714b6b92e810278976a8017736f9053c2`).
+- `record-1.schema.json` (Nogat `schemas/log/record-1.schema.json` at commit `f370afe` of
+  `develop`, the last that changed it; SHA-256
+  `cac452bd338054916d7837820053b0a5ed8f5a076a33f95ed0448ded170984d0`): `nogat-log/1`, one
+  record of the logs of `archiwista serve` (DEV-12.4 to DEV-12.9, A-ADR-057), written by
+  Nogat's reference module `standards/reference/nogat_logging.py`, which is copied from the
+  same commit, unchanged, to `src/archiwista/nogat_logging.py` (SHA-256
+  `66964a5167ab8edd40f5bcae4462bf685bbe2e34456e8bead6722fe8cf0d32b7`).
+  `tests/integration/test_serve.py`, `test_serve_team.py` and `test_jobs.py` validate the
+  records the server and its workers write against this copy.
 
 Nogat's GUI kit and the marks of the GUIs are copied the same way into
 `src/archiwista/web/nogat/` (A-ADR-054).

@@ -16,11 +16,18 @@ from archiwista.config import AppPaths, AppSettings, ConfigStore, TeamSettings
 from archiwista.security import HSTS
 from archiwista.state import StateStore
 from tests.fixtures.cli_errors import refusal
-from tests.fixtures.local_server import NoSources, local_paths, server_nodelay
+from tests.fixtures.local_server import (
+    NoSources,
+    local_paths,
+    server_nodelay,
+    serving,
+)
+from tests.fixtures.server_logs import records
 from tests.fixtures.team_server import (
     ADMIN_ACCOUNT,
     ADMIN_PASSWORD,
     TeamSite,
+    add_admin,
     cheap_hasher,
     free_port,
     team_serving,
@@ -59,11 +66,17 @@ def refused_start(
 
 
 def test_serve_team_answers_its_origin_over_tls_only(tmp_path: Path) -> None:
-    """The origin answers over TLS with HSTS; plain HTTP to the port gets nothing."""
+    """The origin answers over TLS with HSTS; plain HTTP to the port gets nothing.
+
+    On a terminal the server prints its origin, no token; its lifecycle record
+    ``start`` names the origin alone.
+    """
     paths = local_paths(tmp_path)
     site = team_site(tmp_path / "tls")
     trust = ssl.create_default_context(cafile=site.tls.ca_file)
-    with team_serving(paths, site) as (server, output):
+    ConfigStore(paths.config_file).save(site.settings())
+    add_admin(paths)
+    with serving(paths, port=site.port, terminal=True) as (server, output):
         with httpx.Client(base_url=site.origin, verify=trust) as client:
             page = client.get("/")
             api = client.get("/api/v1/health")
@@ -73,6 +86,7 @@ def test_serve_team_answers_its_origin_over_tls_only(tmp_path: Path) -> None:
         ):
             plain.get("/")
         launch_files = sorted(paths.data_dir.glob("open-*.html"))
+    start = records(paths.logs_dir, "lifecycle")[0]
 
     assert page.status_code == 200
     assert page.headers["strict-transport-security"] == HSTS
@@ -83,6 +97,7 @@ def test_serve_team_answers_its_origin_over_tls_only(tmp_path: Path) -> None:
     assert server.url == site.origin
     assert server.launch is None
     assert launch_files == []
+    assert (start["event"], start["settings"]) == ("start", {"origin": site.origin})
 
 
 def test_serve_team_tls_connections_send_without_nagle_delay(tmp_path: Path) -> None:

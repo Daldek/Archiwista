@@ -63,7 +63,7 @@ uv run playwright install chromium firefox  # once, for the interface tests
 scripts/gate.sh                        # ruff format, ruff check, mypy, pytest + coverage, commits
 uv run pytest tests/unit -q           # a part of the tests (coverage is measured by the gate)
 uv run archiwista doctor               # checks the installation
-uv run archiwista serve                # the server (prints a one-time address)
+uv run archiwista serve                # the server (on a terminal prints a one-time address)
 ```
 
 Python 3.12 or newer. The default run and the gate leave out the markers `live` (real
@@ -79,6 +79,7 @@ minutes (the interface tests drive Chromium; those that depend on the engine als
 ```
 src/archiwista/
 ├── app.py cli.py server.py config.py doctor.py   # application, CLI entry, server, settings
+├── logs.py nogat_logging.py   # logs of the CLI and the server (Nogat's module, byte for byte, A-ADR-057)
 ├── api/            # HTTP routes /api/v1, models, problems (errors.py), OpenAPI (docs.py)
 ├── adapter/kartograf/ adapter/obserwator/  # the source plugins: the only importers of kartograf and obserwator
 ├── sources/        # plugin protocol, registry, shared types (archiwista.sources entry points)
@@ -110,7 +111,9 @@ tests/{unit,integration,contract,e2e,perf,fixtures}
   in `tests/conftest.py`): `nogat.toml` is an empty file and `NOGAT_*`, `KARTOGRAF_*` and
   `OBSERWATOR_*` lead every default root and directory into a canary tree that must stay empty,
   so a test after which anything lies there fails (a producer call that names no store
-  root wrote into a default root). A test that needs another value sets it itself.
+  root wrote into a default root). A test that needs another value sets it itself. An
+  `AppPaths` built directly keeps the server's logs in its data directory; a test that
+  runs the real `archiwista serve` sets `XDG_STATE_HOME` beside `XDG_DATA_HOME`.
 - **Public surface**: Archiwista is an application, not a library. Public are the HTTP
   API `/api/v1` (SPEC 9), the `archiwista` command and the source interface for
   plugins (entry-point group `archiwista.sources`, A-ADR-024; `archiwista.sources`
@@ -176,7 +179,7 @@ contract KA-1 to KA-8, SPEC 12); Obserwator is an optional producer behind the e
   `/api` route) and `operationId` is the route function name; there is no command catalog.
 - DEV-18, DEV-19: profile `tool` only; Archiwista keeps its own `config.toml` and writes no
   data files except own-data snapshots and a project's exports. Of DEV-18.1 it reads
-  `data_dir`, `cache_dir`, `lang` and the table `gui` of `nogat.toml` (`[archiwista]`
+  `data_dir`, `cache_dir`, `state_dir`, `lang` and the table `gui` of `nogat.toml` (`[archiwista]`
   before `[nogat]`), not the `NOGAT_<KEY>` variables, and has no `config show`;
   `archiwista doctor` reports the file and each value's source (A-ADR-053, A-ADR-054).
 - ERR-4: a job that does not succeed, `reindex` and `archiwista doctor` end with the

@@ -127,8 +127,8 @@ def run_doctor(
     shared : SharedSettings or None, optional
         ``nogat.toml`` as the command read it; read now when omitted. The
         report names it and where the data directory, the caches, the
-        language and the GUIs of the menu „Aplikacje” come from (A-ADR-053,
-        A-ADR-054).
+        server's logs, the language and the GUIs of the menu „Aplikacje”
+        come from (A-ADR-053, A-ADR-054, A-ADR-057).
 
     Returns
     -------
@@ -178,6 +178,12 @@ def run_doctor(
     checks.append(
         DoctorCheck(
             "ok", message("doctor.caches_ok", path=paths.caches, origin=caches_origin)
+        )
+    )
+    logs_origin = _origin(shared.value("state_dir"), paths.logs_dir.parent)
+    checks.append(
+        DoctorCheck(
+            "ok", message("doctor.logs_ok", path=paths.logs_dir, origin=logs_origin)
         )
     )
     checks.append(_language_check(shared))

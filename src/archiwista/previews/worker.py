@@ -6,7 +6,9 @@ started with the sandbox (``archiwista.sandbox``: no network, no sibling
 files, explicit drivers, ``RLIMIT_AS`` on Linux), reads requests of
 ``archiwista.previews.protocol`` on standard input until it ends and
 answers each in order on standard output; whatever libraries print goes to
-standard error, which the pool discards (it may name paths).
+standard error, which the pool discards (it may name paths). With
+``--log-dir DIR`` (``AppPaths.logs_dir``) its warnings and errors go to the
+server's application log as well (``archiwista.logs.log_to_server``).
 
 ``OPERATIONS`` registers each operation of the pool with its time limit, its
 handler (run here, by the renderer of the source's kind from
@@ -47,7 +49,7 @@ from archiwista.errors import (
     PathOutsideRootError,
     PreviewUnavailableError,
 )
-from archiwista.logs import process_log_level
+from archiwista.logs import log_to_server, process_log_level
 from archiwista.owndata.content import content_identity
 from archiwista.owndata.formats import fileset_members
 from archiwista.paths import open_real_file
@@ -139,7 +141,8 @@ def main(
     argv : Sequence[str] or None, optional
         Arguments (``--work-dir``: root of the processes' work directories,
         ``AppPaths.work_dir``; ``--previews-dir``: the preview cache,
-        ``AppPaths.previews_dir``); ``sys.argv[1:]`` when omitted.
+        ``AppPaths.previews_dir``; ``--log-dir``: the server's logs,
+        ``AppPaths.logs_dir``); ``sys.argv[1:]`` when omitted.
     renderers : Sequence[Renderer] or None, optional
         Renderers to use; ``RENDERERS`` when omitted (tests give their own).
 
@@ -155,6 +158,8 @@ def main(
     _previews_root = arguments.previews_dir
     protocol = _protocol_stream()
     logging.basicConfig(level=process_log_level("warning"), stream=sys.stderr)
+    if arguments.log_dir is not None:
+        log_to_server(arguments.log_dir)
     if renderers is None:
         from archiwista.previews.renderers import RENDERERS
 
@@ -626,6 +631,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="archiwista.previews.worker")
     parser.add_argument("--work-dir", type=Path, default=None)
     parser.add_argument("--previews-dir", type=Path, default=None)
+    parser.add_argument("--log-dir", type=Path, default=None)
     return parser
 
 

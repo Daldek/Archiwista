@@ -79,6 +79,10 @@ services as the HTTP routes, as the owner of the local installation
   (errors only),
   before or after its name, and without them the variable `ARCHIWISTA_LOG_LEVEL`
   (`debug`, `info`, `warning`, `error`) sets the level; the default is `warning`.
+  `archiwista serve` follows that level until it serves; then its standard error
+  gets only the lifecycle records of its logs and its errors reduced to their type
+  (`nogat-log/1`, README), and its one-time address goes to standard output only
+  when that is a terminal;
 
 Without `--json` the commands print a short Polish text for people; an agent
 should always pass `--json`. The text of an answer that carries the lines of the
