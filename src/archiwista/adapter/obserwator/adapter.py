@@ -153,6 +153,9 @@ _SLOT_KINDS = frozenset({"archive", "series", "catalog", "analyses", "pmaxtp"})
 # are no datasets of the registry.
 _CATALOG = "stations"
 _ANALYSES = "analyses"
+# Obserwator's `meteo_kind` values by their name in the index (Obserwator ADR-022
+# D5: a station of the current synop series is `synop`).
+_METEO_KINDS = MappingProxyType({"synop": "synoptic"})
 # The slot of a dataset's series: ``series:<dataset key>``.
 _SERIES = "series"
 # The unit of each series a dataset builds, by the registry's time unit.
@@ -1306,6 +1309,11 @@ def _raw_sidecar(meta: Meta) -> dict[str, object]:
     return raw
 
 
+def _meteo_kind(value: str | None) -> str | None:
+    """Return the index's name of a meteo station's kind (``synop`` → ``synoptic``)."""
+    return None if value is None else _METEO_KINDS.get(value, value)
+
+
 def _station(feature: StationFeature) -> Station:
     """Convert a station of ``stations.geojson`` to the producer-neutral one."""
     properties = feature.properties
@@ -1314,7 +1322,7 @@ def _station(feature: StationFeature) -> Station:
         code=feature.station_code,
         kind=as_text(properties.get("kind")),
         name=as_text(properties.get("name")),
-        meteo_kind=as_text(properties.get("meteo_kind")),
+        meteo_kind=_meteo_kind(as_text(properties.get("meteo_kind"))),
         river=as_text(properties.get("river")),
         hydrographic_code=as_text(properties.get("hydrographic_code")),
         river_order=_year(properties.get("river_order")),

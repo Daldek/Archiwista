@@ -1262,6 +1262,14 @@ command-line interface may change.
 
 ### Changed
 
+- Obserwator moves to `3816b3c` of its `develop` (`pyproject.toml`, `uv.lock`), with the
+  daily synoptic data `pl.imgw.meteo_synop_daily` in its store (Obserwator ADR-022) and
+  the download-only `pl.imgw.meteo_synop_terms`, `pl.imgw.warnings_hydro_archive`,
+  `pl.imgw.warnings_meteo_archive` and `pl.imgw.actinometric` (Obserwator ADR-023; not
+  indexed). A meteo station of the current synop series, `synop` in Obserwator's station
+  catalog, is indexed as `synoptic`, so the map shows it as „stacja synoptyczna” and
+  `meteo_kind=synoptic` finds it (SPEC 4.8).
+
 - ČHMÚ's processing line no longer says how the data were processed (Nogat ECO-071,
   DEV-20.3, DEV-20.4; A-ADR-055 erratum 4): every answer, view, command output, hand-off,
   CSV and export with processed ČHMÚ data carries „Dane ČHMÚ zostały przetworzone” once,
