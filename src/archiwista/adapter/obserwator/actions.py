@@ -253,15 +253,15 @@ def check(
 
     The positions of ``obserwator-plan/1``: each archive of ``items`` and each
     action of ``actions`` (a station source a check could not list, a root a
-    run would refuse: ``nested_store``, ``not_empty`` or ``wrong_root``, a
-    ``conflict``). The size of an archive is the one the source tells
-    (``content_length``).
+    run would refuse: ``nested_store`` or ``not_empty``, a ``conflict``). The
+    size of an archive is the one the source tells (``content_length``).
 
     Raises
     ------
     ProducerError
         Obserwator refused the call (an unknown command, an invalid option, a
-        root it cannot read) or the whole check failed.
+        root it cannot read, Obserwator's data root: ``wrong_root``) or the
+        whole check failed.
     UnsupportedError
         The command is no command of the catalog that plans a download
         (``no_plan``).

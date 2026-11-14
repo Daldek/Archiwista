@@ -651,7 +651,10 @@ def test_config_store_needs_a_directory_and_detects_its_kind_from_any(
 
     problem = error.value.problems[0]
     assert (problem.code, problem.field) == ("invalid_value", "stores[0]")
-    assert "at least one producer directory: kartograf or obserwator" in problem.message
+    assert (
+        "at least one producer directory: kartograf, obserwator or obserwator_data"
+        in problem.message
+    )
     assert [store.kind for store in share.stores] == ["share", "share"]
 
 
