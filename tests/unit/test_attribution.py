@@ -6,7 +6,7 @@ attribution S, P, PS, PP, M, C, CP, G, Z (DEV-20.4), then the terms RD, RH, RK
 published carries S alone; a version whose producer names no origin carries
 its sidecar's attribution. G and Z come from a station catalog's sidecar as
 the producer wrote them, recognised by their fixed text as Nogat's kit
-recognises them.
+recognises them. An older CP, which named what was done, is CP (ECO-071).
 """
 
 import json
@@ -16,11 +16,11 @@ from pathlib import Path
 import pytest
 
 from archiwista import attribution
-from archiwista.attribution import Attribution, Origin
+from archiwista.attribution import Attribution
 from archiwista.sources import DataOrigin
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED,
-    CHMI_PROCESSED_VIEWS,
+    CHMI_PROCESSED_OLD,
     CHMI_SOURCE,
     CUZK_RUIAN,
     GUGIK_PRG,
@@ -69,11 +69,10 @@ KIT_SOURCES = Path(attribution.__file__).parent / "web" / "nogat" / "nogat-sourc
         ),
         ("chmi_file", Attribution((CHMI_SOURCE,))),
         ("chmi_processed", Attribution((CHMI_SOURCE, CHMI_PROCESSED))),
-        ("chmi_views", Attribution((CHMI_SOURCE, CHMI_PROCESSED_VIEWS))),
     ],
 )
 def test_attribution_of_one_origin_gives_the_lines_its_terms_require(
-    origin: Origin, lines: Attribution
+    origin: DataOrigin, lines: Attribution
 ) -> None:
     """S alone for a file as published; PS, PP and M for PMAXTP; no terms for ČHMÚ."""
     assert attribution.of([origin]) == lines
@@ -84,10 +83,9 @@ def test_attribution_of_many_origins_gives_each_line_once_in_order() -> None:
     # Act
     lines = attribution.of(
         [
-            "chmi_views",
+            "chmi_processed",
             "pmaxtp",
             None,
-            "chmi_processed",
             "imgw_stations",
             "imgw_file",
             "chmi_file",
@@ -105,7 +103,6 @@ def test_attribution_of_many_origins_gives_each_line_once_in_order() -> None:
         PMAXTP_MONOGRAPH,
         CHMI_SOURCE,
         CHMI_PROCESSED,
-        CHMI_PROCESSED_VIEWS,
     )
     assert lines.terms_notice == (
         IMGW_TERMS_PUBLIC_DATA,
@@ -134,6 +131,30 @@ def test_attribution_merge_puts_a_sidecars_line_after_the_standards() -> None:
     )
 
 
+def test_attribution_merge_reads_an_older_cp_as_the_canonical_one() -> None:
+    """Whatever its words in parentheses, an older CP merges with CP into one line."""
+    # Act
+    merged = attribution.merge(
+        [
+            Attribution((CHMI_SOURCE, CHMI_PROCESSED_OLD)),
+            Attribution(
+                (
+                    CHMI_SOURCE,
+                    "Dane ČHMÚ zostały przetworzone (obliczenia hydrologiczne"
+                    " programem Hydrolog)",
+                    CHMI_PROCESSED,
+                )
+            ),
+            Attribution((f"{CHMI_PROCESSED} i opisane",)),
+        ]
+    )
+
+    # Assert
+    assert merged == Attribution(
+        (CHMI_SOURCE, CHMI_PROCESSED, f"{CHMI_PROCESSED} i opisane")
+    )
+
+
 @pytest.mark.parametrize(
     ("origin", "sidecar", "lines"),
     [
@@ -149,6 +170,7 @@ def test_attribution_merge_puts_a_sidecars_line_after_the_standards() -> None:
         ),
         (None, f"  {GUGIK} ", Attribution((GUGIK,))),
         (None, " ", Attribution()),
+        (None, CHMI_PROCESSED_OLD, Attribution((CHMI_PROCESSED,))),
         (None, None, Attribution()),
     ],
 )
@@ -159,13 +181,13 @@ def test_attribution_version_takes_the_origins_lines_else_the_sidecars(
     assert attribution.version(origin, sidecar) == lines
 
 
-def test_the_fixtures_g_and_z_are_the_kits_lines_with_their_values() -> None:
-    """The constants the tests compare with are DEV §20's G and Z, filled."""
+def test_the_fixtures_g_z_and_cp_are_the_kits_lines_with_their_values() -> None:
+    """The constants the tests compare with are DEV §20's G and Z, filled, and CP."""
     # Arrange
     source = KIT_SOURCES.read_text(encoding="utf-8")
     lines = {
         mark: json.loads(found)
-        for mark, found in re.findall(r'^  (G|Z): ("[^"\n]*"),$', source, re.M)
+        for mark, found in re.findall(r'^  (G|Z|CP): ("[^"\n]*"),$', source, re.M)
     }
 
     # Act
@@ -178,7 +200,7 @@ def test_the_fixtures_g_and_z_are_the_kits_lines_with_their_values() -> None:
     cuzk = lines["Z"].replace("`<products>`", "RÚIAN").replace("`<date>`", "2026-11-13")
 
     # Assert
-    assert (gugik, cuzk) == (GUGIK_PRG, CUZK_RUIAN)
+    assert (gugik, cuzk, lines["CP"]) == (GUGIK_PRG, CUZK_RUIAN, CHMI_PROCESSED)
 
 
 def test_attribution_filled_finds_g_and_z_whatever_their_values() -> None:
@@ -227,9 +249,9 @@ def test_attribution_filled_finds_g_and_z_whatever_their_values() -> None:
         ),
         pytest.param(
             "CHMI",
-            f"{CHMI_SOURCE}. {CHMI_PROCESSED}. {CUZK_RUIAN}",
+            f"{CHMI_SOURCE}. {CHMI_PROCESSED_OLD}. {CUZK_RUIAN}",
             True,
-            Attribution((CHMI_SOURCE, CHMI_PROCESSED_VIEWS, CUZK_RUIAN)),
+            Attribution((CHMI_SOURCE, CHMI_PROCESSED, CUZK_RUIAN)),
             id="chmi",
         ),
         pytest.param(
@@ -257,7 +279,7 @@ def test_attribution_merge_puts_g_and_z_after_the_fixed_lines() -> None:
         [
             Attribution((CUZK_RUIAN,)),
             Attribution((GUGIK,)),
-            Attribution((CHMI_SOURCE, CHMI_PROCESSED_VIEWS, CUZK_RUIAN)),
+            Attribution((CHMI_SOURCE, CHMI_PROCESSED, CUZK_RUIAN)),
             Attribution((GUGIK_PRG,)),
             Attribution((IMGW_SOURCE, IMGW_PROCESSED, GUGIK_PRG), PUBLIC_DATA_TERMS),
         ]
@@ -269,7 +291,7 @@ def test_attribution_merge_puts_g_and_z_after_the_fixed_lines() -> None:
             IMGW_SOURCE,
             IMGW_PROCESSED,
             CHMI_SOURCE,
-            CHMI_PROCESSED_VIEWS,
+            CHMI_PROCESSED,
             GUGIK_PRG,
             CUZK_RUIAN,
             GUGIK,

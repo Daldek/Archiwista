@@ -3,8 +3,9 @@
 Nogat's standard (DEV §20, ECO-060, ECO-065) lists them: the source of
 IMGW-PIB's data (S) and, once they were processed in any way, the mark of
 processing (P); PMAXTP's source, mark and monograph (PS, PP, M); ČHMÚ's credit
-with its licence (C) and what was done (CP); GUGiK's (G) and ČÚZK's (Z) with
-the products and days of their data; and the links to the IMGW-PIB terms that
+with its licence (C) and the mark of processing (CP), which never says how
+(ECO-071); GUGiK's (G) and ČÚZK's (Z) with the products and days of their
+data; and the links to the IMGW-PIB terms that
 apply (RD, RH for station positions of the hydrological service, RK), never a
 summary of them. A product names the origins of its data and ``of`` gives
 their lines in the standard's order, each once: ``attribution`` (DEV-20.4) and
@@ -24,22 +25,22 @@ Archiwista shows a stored file as it is (a file of IMGW-PIB as published
 carries S alone) and processes everything else: Obserwator's series and
 station catalogs are processed forms, and Archiwista's labels, tables, charts,
 annual extremes and hand-offs process them further.
+
+A line of an older product „Dane ČHMÚ zostały przetworzone (…)”, whatever its
+words in parentheses, is CP (DEV-20.4): ``merge`` and ``version`` carry the
+canonical line instead, once.
 """
 
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import cache
-from typing import Any, Literal
+from typing import Any
 
 from archiwista.errors import SourceStateError
 from archiwista.messages import message
 from archiwista.sources import DataOrigin, DataOriginAdapter
 from archiwista.sources.registry import PluginRegistry
-
-# A product's origin: a version's (``DataOrigin``), or ČHMÚ data in
-# Archiwista's own tables and charts of stations.
-type Origin = DataOrigin | Literal["chmi_views"]
 
 # The keys of the attribution lines in the order of DEV-20.4, and of the
 # terms notice in the order of DEV-20.7. G and Z, whose values a producer
@@ -52,7 +53,6 @@ _ATTRIBUTION = (
     "legal.pmaxtp_monograph",
     "legal.chmi_source",
     "legal.chmi_processed",
-    "legal.chmi_processed_views",
 )
 _TERMS = (
     "legal.imgw_terms_public_data",
@@ -60,7 +60,7 @@ _TERMS = (
     "legal.imgw_terms_pmaxtp",
 )
 # The lines of each origin, attribution and terms together.
-_LINES: dict[Origin, tuple[str, ...]] = {
+_LINES: dict[DataOrigin, tuple[str, ...]] = {
     "imgw_file": (
         "legal.imgw_source",
         "legal.imgw_terms_public_data",
@@ -84,7 +84,6 @@ _LINES: dict[Origin, tuple[str, ...]] = {
     ),
     "chmi_file": ("legal.chmi_source",),
     "chmi_processed": ("legal.chmi_source", "legal.chmi_processed"),
-    "chmi_views": ("legal.chmi_source", "legal.chmi_processed_views"),
 }
 # The station providers of Obserwator's catalogs, as the index names them.
 _IMGW = "IMGW-PIB"
@@ -135,7 +134,7 @@ class Attribution:
         }
 
 
-def of(origins: Iterable[Origin | None]) -> Attribution:
+def of(origins: Iterable[DataOrigin | None]) -> Attribution:
     """Return the lines of a product made of data of these origins.
 
     ``None`` (data no provider's terms are known for) adds nothing.
@@ -152,7 +151,7 @@ def merge(parts: Iterable[Attribution]) -> Attribution:
 
     The lines of the standard keep its order, G and Z after the fixed ones;
     any other line (a sidecar's attribution of another provider) follows them
-    in the order first seen.
+    in the order first seen. An older CP is the canonical one.
     """
     found = list(parts)
     return Attribution(
@@ -202,7 +201,7 @@ def station(provider: str, catalog: str | None, *, positions: bool) -> Attributi
     return merge([of([station_origin(provider, positions=positions)]), filled(catalog)])
 
 
-def station_origin(provider: str, *, positions: bool) -> Origin | None:
+def station_origin(provider: str, *, positions: bool) -> DataOrigin | None:
     """Return the origin of a station's data in Archiwista's tables and charts.
 
     Parameters
@@ -216,11 +215,11 @@ def station_origin(provider: str, *, positions: bool) -> Origin | None:
     if provider == _IMGW:
         return "imgw_stations" if positions else "imgw_processed"
     if provider == _CHMI:
-        return "chmi_views"
+        return "chmi_processed"
     return None
 
 
-def series_origin(provider: str) -> Origin | None:
+def series_origin(provider: str) -> DataOrigin | None:
     """Return the origin of a station's series values handed off as data.
 
     The values the producer reads, written in another format (and, for
@@ -238,12 +237,13 @@ def version(origin: DataOrigin | None, sidecar: str | None) -> Attribution:
 
     The lines of its origin with the G and Z its sidecar names (a station
     catalog's); without an origin, the attribution its sidecar gives (a
-    producer whose providers' terms Archiwista does not know).
+    producer whose providers' terms Archiwista does not know), an older CP
+    as the canonical one.
     """
     if origin is not None:
         return merge([of([origin]), filled(sidecar)])
     formula = (sidecar or "").strip()
-    return Attribution((formula,) if formula else ())
+    return Attribution((_canonical(formula),) if formula else ())
 
 
 def text(attribution: Sequence[str], terms_notice: Sequence[str]) -> list[str]:
@@ -282,6 +282,18 @@ class Origins:
         return None if adapter is None else adapter.data_origin(path, segment)
 
 
+def _canonical(line: str) -> str:
+    """Return the line, or CP for a ČHMÚ processing line of an older product.
+
+    The older line is CP with words in parentheses after it, which named what
+    was done (before Nogat ECO-071).
+    """
+    canonical = str(message("legal.chmi_processed"))
+    if line.startswith(f"{canonical} (") and line.endswith(")") and "\n" not in line:
+        return canonical
+    return line
+
+
 def _ordered(
     lines: Iterable[str],
     keys: tuple[str, ...],
@@ -289,8 +301,9 @@ def _ordered(
 ) -> tuple[str, ...]:
     """Return the lines once each: the standard's in its order, then the rest.
 
-    The lines of ``keys`` come first, then those ``patterns`` match in the
-    patterns' order, then any other line in the order first seen.
+    An older CP counts as the canonical one. The lines of ``keys`` come first,
+    then those ``patterns`` match in the patterns' order, then any other line
+    in the order first seen.
     """
     rank = {str(message(key)): index for index, key in enumerate(keys)}
 
@@ -302,4 +315,4 @@ def _ordered(
         )
         return len(rank) + next(matched, len(patterns))
 
-    return tuple(sorted(dict.fromkeys(lines), key=place))
+    return tuple(sorted(dict.fromkeys(map(_canonical, lines)), key=place))

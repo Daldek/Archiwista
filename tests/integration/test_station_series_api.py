@@ -50,7 +50,6 @@ from tests.fixtures.local_server import local_paths
 from tests.fixtures.obserwator_roots import data_root, store_fields
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED,
-    CHMI_PROCESSED_VIEWS,
     CHMI_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
@@ -373,7 +372,7 @@ def test_the_bands_are_the_gaps_the_label_counts(
             [IMGW_TERMS_PUBLIC_DATA],
             id="imgw",
         ),
-        pytest.param(SPINDLER, "T", [CHMI_SOURCE, CHMI_PROCESSED_VIEWS], [], id="chmi"),
+        pytest.param(SPINDLER, "T", [CHMI_SOURCE, CHMI_PROCESSED], [], id="chmi"),
     ],
 )
 def test_the_chart_carries_the_lines_its_providers_terms_require(

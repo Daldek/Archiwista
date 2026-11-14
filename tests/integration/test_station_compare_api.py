@@ -31,7 +31,7 @@ from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED_VIEWS,
+    CHMI_PROCESSED,
     CHMI_SOURCE,
     CUZK_RUIAN,
     GUGIK_PRG,
@@ -250,7 +250,7 @@ def test_the_facts_of_each_station_are_those_of_its_card(
             [chmi(SPINDLER), chmi(ZAPADLA)],
             CZ_DAILY,
             "T",
-            ([CHMI_SOURCE, CHMI_PROCESSED_VIEWS, CUZK_RUIAN], []),
+            ([CHMI_SOURCE, CHMI_PROCESSED, CUZK_RUIAN], []),
         ),
     ],
 )
