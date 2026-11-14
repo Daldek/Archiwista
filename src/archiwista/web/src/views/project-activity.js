@@ -25,13 +25,15 @@ const PAGE = 20;
  * The activity of a project.
  *
  * @param {{card: import("../types.js").ProjectCard}} props - The project's card;
- *   the activity is read again when the index read the project again.
+ *   the activity is read again each time the card is (after every change). Not
+ *   on `card.scanned_at`: it has whole seconds, so a change in the second of
+ *   the last read would leave the activity as it was.
  */
 export function ProjectActivity({ card }) {
   const id = useId();
   const first = useResource(
     (signal) => getProjectActivity(card.project, { limit: PAGE }, { signal }),
-    [card.project, card.scanned_at],
+    [card],
   );
   const [extra, setExtra] = useState({ items: [], cursor: null, loading: false, problem: null });
   const page = first.data;

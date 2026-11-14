@@ -1697,6 +1697,10 @@ command-line interface may change.
 
 ### Fixed
 
+- „Aktywność” of the project card is read again with every change made on the card: a
+  change in the same second as the project's last read („Usuń zestaw” at once after the
+  card opened, say) left the old entries in the list until the card was opened again.
+
 - „Kopiuj do Hydrologa” of the station card copies on a plain-HTTP address of the
   network too (A-ADR-054): where the browser has no Clipboard API, or refuses it, the
   hand-off's text appears selected in a field under the buttons, with „Przeglądarka nie
@@ -1903,6 +1907,7 @@ command-line interface may change.
 
 ### Security
 
+- `opentelemetry-api` 1.45.2 in `uv.lock` (CVE-2026-126360 in 1.45.1).
 - Security refusals now reach the action log (D7): `request.refused` records
   Host, CSRF, TLS, proxy, session and temporary-password request-rule refusals,
   and paths outside their allowed root. Rejected tokens and missing or refused

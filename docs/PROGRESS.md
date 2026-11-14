@@ -79,10 +79,11 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
 2. The author decides (next session): a `request` to Obserwator to keep the precision of an
    occurrence date IMGW-PIB publishes without a day (`2020-03`), which the store keeps as
    the month's first (plan `2026-11-05-monthly-annual-charts.md`, Risks).
-3. Flaky tests. (a) The activity test of the project card (CI, Status): after „Usuń zestaw”
-   the list kept its old first entry for 30 s. The activity re-reads on `card.scanned_at`,
-   which has one-second precision; whether the card was read again with the same stamp is
-   not established. (b) `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens`
+3. Flaky tests. (a) Fixed on 2026-11-14: the activity test of the project card (CI): after
+   „Usuń zestaw” the list kept its old first entry. The activity re-read on
+   `card.scanned_at`, which has one-second precision, so a change in the second of the
+   project's last read left it unread (reproduced with the index clock cut to minutes);
+   it now re-reads with every read of the card. (b) `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens`
    failed once in the gate of 2026-11-10 (the heading „Logowanie” never showed in 30 s) and
    passes alone and with its file; cause not found. (c) Fixed on 2026-11-10:
    `test_timeline.py::test_timeline_shows_years_without_data` failed in that gate on an
