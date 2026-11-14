@@ -11,8 +11,8 @@ update plan `kartograf-plan/1`, availability report
 `kartograf-availability/1`, the command of a stored file (KB-6); from v0.6 also KF (merged
 PL + CZ surface, 12.5); from v0.5 Obserwator (IMGW data) —
 a release with requirements IMGW-1..IMGW-13 and IMGW-21 (section 12.7; today 2.1.1, Beta,
-no store): catalog `obserwator-store/1`, sidecar `obserwator-meta/1`, series
-`obserwator-series/1` (12.8), and from
+no store): a raw root `obserwator-store/1` and a data root `obserwator-data/1` (Obserwator's
+ADR-017, A-ADR-056), sidecar `obserwator-meta/1`, series `obserwator-series/1` (12.8), and from
 v0.6 a release with ČHMÚ stations (IMGW-15..IMGW-19). Projects are Archiwista's own
 file `archiwista-project/1` (4.7, A-ADR-049); the producers' project manifests
 `kartograf-project/1` and `imgw-project/1` are no longer read
@@ -179,7 +179,7 @@ keep their meaning.
 
 | Term | Meaning | Source |
 |---|---|---|
-| **Store** | A set of producer directories named in Archiwista's configuration: a **Kartograf directory**, the store root of Kartograf (the directory that holds `kartograf-store.json` and the product directories, segments and versions; usually called `data/`) and/or an **Obserwator directory** (an Obserwator store, `obserwator-store/1`); neither lies inside the other. Archiwista handles several stores (e.g. local and team) | ARCH 3.3; A-ADR-019 |
+| **Store** | A set of producer directories named in Archiwista's configuration: a **Kartograf directory**, the store root of Kartograf (the directory that holds `kartograf-store.json` and the product directories, segments and versions; usually called `data/`) and/or the **Obserwator directories**: its **raw root** (`obserwator-store.json`, `obserwator-store/1`: the archives `store sync` downloads, settings field `obserwator`) and its **data root** (`obserwator-data.json`, `obserwator-data/1`: the series, station catalogs and analyses Obserwator builds offline, settings field `obserwator_data`, read only); none lies inside another. Archiwista handles several stores (e.g. local and team) | ARCH 3.3; A-ADR-019; A-ADR-056 |
 | **Producer** | A library that is the only one to write its store directory and owns its format: Kartograf (spatial data) or Obserwator (IMGW data) | A-ADR-019 |
 | **Source interface** | (Archiwista) the common interface of producer adapters: scan, metadata, extent, commands, plan, execution; the Kartograf adapter and the Obserwator adapter are the only places that import their libraries | section 5.3 |
 | **Product** | A kind of data selected with `--product` in a command group (DEM, orthophotomap, BDOT10k, PRG boundaries…); a top-level directory of the store | ARCH 3.3 rule 10 |
@@ -205,9 +205,9 @@ keep their meaning.
 | **Area** | The user's selection: rectangle, polygon, geometry file, sheet code, TERYT, KU or country | — |
 | **Year coverage** | (Archiwista) a coverage label of a year or release for an area: "pełne" (full), "pełne · 2 kampanie" (full, 2 campaigns), "częściowe · 58%" (partial, 58%), "brak danych" (no data), plus a separate store-state badge: "pobrane" (downloaded), "pobrane 5/12" (downloaded 5/12), "niepobrane" (not downloaded) | section 6.4 |
 | **Set** | (Archiwista) "Zestaw" in the Polish interface: a group of a project, a named complete set of pinned data for one purpose (e.g. "2024": NMT, BDOT10k and orthophoto of 2024); `groups` in the code, the API and the project file; "w budowie" (in the making) while open, frozen once closed ("Zamknij zestaw") | section 8.4, A-ADR-049 |
-| **Derived product** | (proposal for Kartograf) the result of merging, saved in the store as a version with a sidecar and a list of inputs (`extra.source_files[]`, the HSG pattern); in the Obserwator directory, the series of a dataset (Obserwator) | sections 8.1, 4.8 |
+| **Derived product** | (proposal for Kartograf) the result of merging, saved in the store as a version with a sidecar and a list of inputs (`extra.source_files[]`, the HSG pattern); in Obserwator's data root, the series of a dataset (Obserwator) | sections 8.1, 4.8 |
 | **IMGW dataset** | A kind of IMGW-PIB archives with a common format, e.g. daily hydro, daily precipitation; the publication unit is a period (year or month) for the whole country | section 4.8 |
-| **IMGW archive** | A file published by IMGW-PIB (e.g. `codz_2024.zip`), saved in the Obserwator directory 1:1 as an immutable version with a sidecar (`sha256`, `ETag`, `Last-Modified`); slot = the file path on the IMGW server | section 4.8.1, IMGW-4 |
+| **IMGW archive** | A file published by IMGW-PIB (e.g. `codz_2024.zip`), saved in Obserwator's raw root 1:1 as an immutable version with a sidecar (`sha256`, `ETag`, `Last-Modified`); slot = the file path on the IMGW server | section 4.8.1, IMGW-4 |
 | **Station** | An IMGW-PIB measuring point: a water gauge (hydro) or a meteorological station (climatological, precipitation); identifier: a 9-digit code, e.g. `149190310`. From v0.6 also a ČHMÚ station (CZ; provider identifier `CHMI`, display name "ČHMÚ") with a WIGOS identifier; station identity = provider + identifier | sections 4.8.1, 4.8.6 |
 | **Unpublished** | (ČHMÚ stations) a station file for a given year or an element that the source does not publish; in the Obserwator plan `unverifiable` with `error` `"nieopublikowany"`, in flat download `not_published`. Information, not a problem: unlike `missing` (file published, absent locally) | section 4.8.6, IMGW-16 |
 | **Station catalog** | A versioned list of stations with location, its source and uncertainty (Obserwator, GeoJSON) | section 4.8.1, IMGW-9 |
@@ -436,7 +436,7 @@ series.
    2025: publication 2026.08.31).
 4. Without archives in the store the labels read "nieznane" (unknown); "Pobierz
    archiwa…" (Download archives…) opens the "Okno planu" (Plan window) with the `obserwator …` command, and after the download
-   Obserwator builds the dataset series and the labels appear.
+   Obserwator builds the dataset series offline in its data root and the labels appear (A-ADR-056).
 5. The list covers all stations of the area, including those with gaps and without Q data
    — each with a label (P14). Ola narrows it with explicit filters: "≥ 30 lat
    pełnych" (≥ 30 full years) or "rzeka: Raba z dopływami" (river: Raba with tributaries) (hydrographic code `2138…`,
@@ -445,12 +445,13 @@ series.
    (the dataset's series version and its archives) in a pin group of the project, with the
    selection (stations as a list of codes, variable, years and their kind) recorded in the group
    (A-ADR-049; the station views offer it with the Obserwator actions of v0.5). The data
-   themselves are fetched and refreshed by Obserwator's commands, from „Polecenia
+   themselves are fetched and refreshed by Obserwator's `store sync`, from „Polecenia
    producenta” of the Store view or a line pasted in the map's step „U źródła”, through
-   the same plan window (A-ADR-050).
+   the same plan window (A-ADR-050); the series and the station catalog are built by
+   Obserwator itself (A-ADR-056).
 
-**Success:** labels consistent with a manual calculation from the archives, and the Obserwator
-directory byte-identical to the one produced by the same `obserwator` command from the CLI.
+**Success:** labels consistent with a manual calculation from the archives, and Obserwator's
+raw root byte-identical to the one produced by the same `obserwator` command from the CLI.
 
 ### UC-17. Station card and comparison (from v0.5)
 
@@ -495,8 +496,8 @@ and what was done with the data (4.8.6), and "Dodaj do projektu…" (Add to proj
 IMGW project — one job per dataset, so separately for IMGW stations
 and ČHMÚ stations (IMGW-19).
 
-**Success:** labels consistent with a manual calculation from the ČHMÚ archives, and the Obserwator
-directory byte-identical to the one produced by the same `obserwator` command from the CLI.
+**Success:** labels consistent with a manual calculation from the ČHMÚ archives, and Obserwator's
+raw root byte-identical to the one produced by the same `obserwator` command from the CLI.
 
 ## 4. Data model and index
 
@@ -513,9 +514,10 @@ for projects, from the project file that Archiwista itself writes (4.7):
 | Sidecar of the standard path and `full_sheet/` | `<segment>/<hierarchy>/<file>.meta.json`, `<segment>/full_sheet/…` | mutable (link repointed to a newer version) | on change of size or modification time; the link target only from `extra.link_target` |
 | Project file | `<project directory>/archiwista-project.json` (`archiwista-project/1`, A-ADR-049) | mutable, written only by Archiwista under its lock `.archiwista-project.lock` | on change of modification time or size, by Archiwista's own reader; the producers' manifests `kartograf-project.json` and `imgw-project.json` are not read |
 | Update plan | a `kartograf-plan/1` file saved with `--plan` | one-off | on demand (import of a plan from the CLI) |
-| Obserwator directory marker | `<katalog Obserwatora>/obserwator-store.json` (`schema`, `tool`, `created_at`, `producer_version`, `created_by`) | changes only with the contract version | at every scan: recognition of the directory and of the `obserwator-store/1` version (IMGW-13) |
-| Obserwator version sidecar (archive, station catalog, dataset series) | `<katalog Obserwatora>/{archives,stations,series}/versions/…/<file>.meta.json` (`obserwator-meta/1`) | immutable | once, through `read_meta` (IMGW-10) |
-| Dataset series listing | `<katalog Obserwatora>/series/versions/<dataset>/<label>_<sha8>/series.json` | immutable | once per version: station coverage into the index (IMGW-8) |
+| Obserwator raw root marker | `<raw root>/obserwator-store.json` (`schema`, `tool`, `created_at`, `producer_version`, `created_by`) | changes only with the contract version | at every scan: recognition of the raw root and of the `obserwator-store/1` version (IMGW-13) |
+| Obserwator data root marker | `<data root>/obserwator-data.json` (`obserwator-data/1`, the same fields) | changes only with the contract version | at every scan: recognition of the data root (Obserwator's ADR-017, A-ADR-056); a root of the other kind is refused with the reason `wrong_root` |
+| Obserwator version sidecar (archive, station catalog, dataset series, analyses) | `<raw root>/archives/versions/…/<file>.meta.json`, `<data root>/{stations,series,analyses}/versions/…/<file>.meta.json` (`obserwator-meta/1`) | immutable | once, through `read_meta` (IMGW-10) |
+| Dataset series listing | `<data root>/series/versions/<dataset>/<label>_<sha8>/series.json` | immutable | once per version: station coverage into the index (IMGW-8) |
 | ZIP archive, station catalog (GeoJSON), station series file (Parquet) | in the version directory | immutable | archive — only `stat`; station catalog — once per version; series — on demand (chart, set) through the Obserwator API |
 
 Leftovers and edge cases are shown, never silently skipped:
@@ -527,11 +529,13 @@ store of the 0.8.0 release live test there are such directories and sidecars
 with old source keys, e.g. `cz.cuzk.hy_net`), files without a sidecar,
 unreadable sidecars and sidecars from before ADR-031 (Polish keys: missing key
 = no information, as in Kartograf).
-In the Obserwator directory analogously: `.incoming/` leftovers older than 24 h,
+In Obserwator's two roots analogously: `.incoming/` leftovers older than 24 h,
 version directories without a main-file sidecar (`missing_sidecar` — an interrupted
 publication or one in progress: not a version, a non-critical problem
 and possibly transient, which the next write of the same content completes;
-IMGW-2), unreadable sidecars, unknown directories and a directory
+IMGW-2), unreadable sidecars, unknown directories (also the `series/` and `stations/`
+of a store written before Obserwator's ADR-017 and configured as the raw root:
+`unknown_entry`, until it is split, A-ADR-056) and a directory
 in an unsupported contract version (e.g. `obserwator-store/2` — reported,
 not read; IMGW-13).
 
@@ -798,7 +802,11 @@ Rules common to all producers and products:
 - **Store unavailable** (missing directory or an empty mount point):
   scan aborted, index unchanged, banner "Magazyn niedostępny od 14:02 —
   pokazuję stan z indeksu"; write actions disabled. We never
-  mark the whole store as deleted because of a disconnected share.
+  mark the whole store as deleted because of a disconnected share. Each directory of a
+  store is judged apart: one that reads nothing while the index holds entries in it is an
+  unmounted share (`scan.store_empty`), and the scheduler counts a store with entries
+  unreachable only when all its directories are empty (an empty Obserwator raw root beside
+  its data root is one nothing was downloaded into yet; A-ADR-056).
 - **Disappearances:** a version that is missing after a full pass gets the state
   "brak pliku" (file missing) (with a date); projects pinning it are marked. The entry
   disappears from the index only after the next full scan.
@@ -985,11 +993,12 @@ IMGW-21). Decisions: A-ADR-049 (D1 to D7 of the author's decision of 2026-10-31)
   disabled with the producer's reason (D5). In a set of calls and hand pins each run pin
   goes by the set's calls and each hand pin by its own command; the calls run with their
   options as written (`year` too), never dropped or changed. A closed set is not re-pinned
-  (`409 set_closed`, before the job and again under the lock). IMGW pins are checked,
-  re-pinned and restored by the calls Obserwator rebuilds of their versions (`store sync`,
-  `store catalog`, `series build`; A-ADR-050); Obserwator has no mode that keeps the
+  (`409 set_closed`, before the job and again under the lock). IMGW pins of archives are
+  checked, re-pinned and restored by the call Obserwator rebuilds of their versions
+  (`store sync`; A-ADR-050); Obserwator has no mode that keeps the
   stored versions, so a restore fetches the source's current file and reports
-  `not_restored` when its bytes differ.
+  `not_restored` when its bytes differ. Pins of series and station catalogs (versions of
+  the data root, which Obserwator builds offline) are `not_checkable` (A-ADR-056).
 - **Activity:** the project card lists the action log's entries of the project (A-ADR-047;
   D7): who created, changed, pinned, unpinned and exported it and which of its jobs ran,
   without the client addresses.
@@ -1064,8 +1073,9 @@ to the project, and snapshots are made by Archiwista in that folder.
 
 ### 4.8 IMGW data: datasets, stations, series
 
-IMGW-PIB measurement data is written by Obserwator to the Obserwator directory of the store
-(A-ADR-019; contract: 12.7–12.8). Archiwista reads it through the Obserwator
+IMGW-PIB measurement data is written by Obserwator to the store: the archives to its raw
+root, the series and station catalogs it builds from them to its data root (Obserwator's
+ADR-017, A-ADR-056; A-ADR-019; contract: 12.7–12.8). Archiwista reads it through the Obserwator
 read API and keeps only a cache in the index (4.3). Scope of v0.5 (MVP v1.0)
 (user decision 2026-10-17; paths relative to
 `https://danepubliczne.imgw.pl/data/dane_pomiarowo_obserwacyjne/`,
@@ -1363,7 +1373,7 @@ flowchart LR
   end
   W["Worker processes<br/>(Kartograf API or Obserwator)"]
   MAG[("Kartograf directory<br/>local disk or SMB")]
-  MIG[("Obserwator directory<br/>local disk or SMB")]
+  MIG[("Obserwator raw root and data root<br/>local disk or SMB")]
   PRJ[("Project directories<br/>archiwista-project.json, obszary/, eksport/, dane/")]
   SRC["GUGiK, CUZK, CLMS, ISRIC"]
   SIM["IMGW-PIB<br/>danepubliczne.imgw.pl"]
@@ -1482,19 +1492,21 @@ which producer wrote the file:
 
 | Operation | Purpose | Kartograf adapter | Obserwator adapter |
 |---|---|---|---|
-| `probe(root)` | recognition of the producer directory and contract version; a refusal has a `reason` and a `hint` | the marker `kartograf-store.json` and the segments of `list_segments` (KA-1; A-ADR-031) | `store_info` (`obserwator-store/1`; IMGW-10, IMGW-13) |
+| `probe(root)` | recognition of the producer directory and contract version; a refusal has a `reason` and a `hint` | the marker `kartograf-store.json` and the segments of `list_segments` (KA-1; A-ADR-031) | `store_info` of the raw root (`obserwator-store/1`; IMGW-10, IMGW-13); its data root (`obserwator-data/1`) is `incompatible` with the reason `wrong_root` (A-ADR-056) |
+| `probe_data(root)` | optional (`DataRootAdapter`): as `probe`, for a producer's data root, the root of what it builds offline; Archiwista only reads it; a store root given there is `incompatible` with the reason `wrong_root`, and a data root of a producer without the capability is an `error` state (A-ADR-056) | — | `store_info` of the data root (`obserwator-data/1`); a raw root, or a store written before Obserwator's ADR-017 and not yet split, is `wrong_root` |
 | `iter_entries(root, *, scope)` | scan: versions, current versions, problems (4.4) | `list_segments`, `list_partitions`, `iter_store` (KA-1; on a share of segment parts in parallel; current version from the link sidecar, without `link_target`) | `iter_store`, `current_version` (IMGW-10) |
 | `read_meta(entry)` | metadata in a shared envelope: dataset, label and its source, dates, `sha256`, size, license, inputs (`source_files`) | `read_sidecar` (KA-2), `describe_segment` (KA-3) | `read_meta` (IMGW-10) — `obserwator-meta/1` (IMGW-3) |
 | `footprint(entry)` | geometry on the map or no location with a reason (4.3, A-ADR-022) | footprint `file_footprint` (KA-4; network only in the `footprints` job); without a source — `no_source` | country for archives and series; station points from the catalog or the reason for absence (IMGW-9) |
-| `commands()`, `validate(…)`, `format_command(…)` | forms and a command to copy | KB-1, KB-3, KB-4 | IMGW-11: `data_commands` and `command_schema` (Polish or English texts); the catalog is the commands that write the store, `store sync`, `store catalog` and `series build` (A-ADR-050) |
-| `plan(command, options)` | "Okno planu" (Plan window) without downloading | `check_command` (KB-5) | `check_command` → `check_store`, `check_catalog`, `check_series`: `obserwator-plan/1` as the producer-neutral plan, each position named by its slot's directory (IMGW-5, A-ADR-050) |
-| `run(command, options, *, on_progress, on_notice, cancel)` | action — only in the worker process (5.6) | `run_command` (KB-5) | `run_command` → `sync_store` (a kept plan as its plan file), `build_catalog`, `build_series` (IMGW-5, IMGW-7, IMGW-11); an interrupt goes through and leaves whole versions only; without a plan it always takes the source's newer versions (A-ADR-050) |
+| `commands()`, `validate(…)`, `format_command(…)` | forms and a command to copy | KB-1, KB-3, KB-4 | IMGW-11: `data_commands` and `command_schema` (Polish or English texts); the catalog is the one command that writes the raw root, `store sync` (A-ADR-050, A-ADR-056: `series build` and `store catalog` build the data root offline and are Obserwator's own) |
+| `plan(command, options)` | "Okno planu" (Plan window) without downloading | `check_command` (KB-5) | `check_command` → `check_store`: `obserwator-plan/1` as the producer-neutral plan, each position named by its slot's directory in the raw root (IMGW-5, A-ADR-050) |
+| `run(command, options, *, on_progress, on_notice, cancel)` | action — only in the worker process (5.6) | `run_command` (KB-5) | `run_command` → `sync_store` into the raw root (a kept plan as its plan file; IMGW-5, IMGW-11); an interrupt goes through and leaves whole versions only; without a plan it always takes the source's newer versions (A-ADR-050) |
 | `with_area(call, *, area_file, geometry, countries)` | optional (`AreaCommandAdapter`): a call of the catalog with an area of Archiwista in place of the options that choose its own (`AreaCommand`: the call, `way` `geometry` or `bbox`, the `replaced` options), offline, no disk access; a command that takes no area is `unsupported` / `no_area_option` (A-ADR-049 erratum 5) | the schema's `one_of` group `area` replaced by `geometry` (the area's GeoJSON), else by `bbox` with `bbox_crs`; the area's `country` when the call gives none (`command_schema`, `pinned_transform`) | every command refused with `no_area_option`: IMGW-PIB's archives are files of the whole country (A-ADR-050) |
-| `command_for_version(version, *, root)` | optional (`VersionCommandAdapter`): the call that selects a stored version, from its metadata, offline; the producer's coded refusal is `unsupported` / `command_not_rebuildable` (4.7, A-ADR-049) | `command_for_file(sidecar)` (KB-6) | `command_for_version(version, root=…)` (IMGW-21) |
+| `command_for_version(version, *, root)` | optional (`VersionCommandAdapter`): the call that selects a stored version, from its metadata, offline; the producer's coded refusal is `unsupported` / `command_not_rebuildable` (4.7, A-ADR-049) | `command_for_file(sidecar)` (KB-6) | `command_for_version(version, root=…)` (IMGW-21) for a version of the raw root; a version of the data root (a series, a station catalog, analyses) is refused as `unsupported` / `command_not_rebuildable` with the text `source.obserwator_data_version`, which names the Obserwator command that builds it (A-ADR-056) |
 | `export_folder(product, dataset_key)` | optional (`ExportFolderAdapter`): the category folder of a version in a project's export (`NMT`, `BDOT`, `ORTO`…), a table in the adapter; without it the upper-cased product id (8.4, A-ADR-049 erratum 1) | a table of Kartograf's products in the adapter | `IMGW` |
 | `product_name(product)` | optional (`ProductNameAdapter`): the Polish name of a product for people, offline; without it, or `None`, the product is named after its biggest segment (6.3) | — | „Stacje hydrologiczne” (`hydro`), „Stacje meteorologiczne” (`meteo`) |
-| `data_origin(path, segment)` | optional (`DataOriginAdapter`): whose data a version holds and in what form (`DataOrigin`: `imgw_file`, `imgw_processed`, `imgw_stations`, `pmaxtp`, `chmi_file`, `chmi_processed`), offline, no disk access; Archiwista chooses the lines of the providers' terms by it (4.8.5); without it, or `None`, a version carries its sidecar's attribution alone (A-ADR-055) | — | by tree and the dataset's provider: `archives/` → `imgw_file`, `chmi_file`; `series/` → `imgw_processed`, `chmi_processed`; `stations/` → `imgw_stations`, `chmi_processed`; `pmaxtp/` → `pmaxtp` |
-| `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-033) | `store_root()` | `store_root()` of `obserwator.config` (`OBSERWATOR_ROOT`, else `<data_dir>/obserwator`) |
+| `data_origin(path, segment)` | optional (`DataOriginAdapter`): whose data a version holds and in what form (`DataOrigin`: `imgw_file`, `imgw_processed`, `imgw_stations`, `pmaxtp`, `chmi_file`, `chmi_processed`), offline, no disk access; Archiwista chooses the lines of the providers' terms by it (4.8.5); without it, or `None`, a version carries its sidecar's attribution alone (A-ADR-055) | — | by tree and the dataset's provider: `archives/` → `imgw_file`, `chmi_file`; `series/` and `analyses/` → `imgw_processed`, `chmi_processed`; `stations/` → `imgw_stations`, `chmi_processed`; `pmaxtp/` → `pmaxtp` |
+| `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-033) | `store_root()` | `store_root(kind="raw")` of `obserwator` (`OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` of `nogat.toml`, else `<data_dir>/obserwator-raw`) |
+| `default_data_root()` | optional (`DataRootAdapter`): as `default_root()`, the producer's default data root and whether it holds the data marker; offered under the empty data-root field, never used (A-ADR-056) | — | `store_root(kind="data")` (`OBSERWATOR_ROOT`, `[obserwator] root` of `nogat.toml`, else `<data_dir>/obserwator`) |
 
 The Obserwator adapter also has the "stations and series" capabilities, which the Kartograf
 adapter does not implement: `StationCatalogAdapter` (`station_catalog(slot_key)`,
@@ -1575,17 +1587,21 @@ opens the browser with a one-time token in the address (section 10.1)
 and prints the address in the terminal; in team mode (10.2) it listens on the address of
 `--host`, issues no token and prints the configured `origin`. On first run the wizard asks
 for the store — Kartograf's store root (the directory with `kartograf-store.json`) and/or
-(only when the Obserwator source is available, 5.8) the Obserwator directory (an Obserwator store,
-A-ADR-019), at least one of them — and for the project
-directories, checks the versions and schemas of the producers (5.8; ranges compatible with the requirements from section 12) and that
+(only when the Obserwator source is available, 5.8) Obserwator's raw root (the directory
+with `obserwator-store.json`, into which `store sync` downloads) and its data root (the
+directory with `obserwator-data.json`, which Obserwator builds offline and Archiwista only
+reads; A-ADR-019, A-ADR-056), at least one of them — and for the project
+directories, checks the versions and schemas of the producers (5.8; ranges compatible with the requirements from section 12), probes each
+directory by its kind (a root of the other kind is refused with the reason `wrong_root`) and checks that
 no producer directory lies inside another one or inside a store of any producer, or
-holds one (the marker `kartograf-store.json` or `obserwator-store.json` in a parent
-directory or up to two levels below; the full search of the tree is done by the
-producer's writer), and creates the index.
-The wizard offers the directory each producer itself would use for a store (`default_root`, 5.3) under an empty field of that producer (Kartograf, Obserwator) when it exists and holds the producer's marker; it is entered only by a click and never written by Archiwista.
+holds one (the marker `kartograf-store.json`, `obserwator-store.json` or
+`obserwator-data.json` in a parent directory or up to two levels below; the full search of
+the tree is done by the producer's writer), and creates the index.
+The wizard offers the directory each producer itself would use for a store (`default_root`, 5.3) under an empty field of that producer (Kartograf, Obserwator's raw root), and Obserwator's default data root (`default_data_root`) under the empty data-root field, when it exists and holds the marker of its kind; it is entered only by a click and never written by Archiwista.
 `archiwista doctor` prints diagnostics in Polish (versions and state of source
 plugins, compatibility of producer schemas, availability of
-stores and producer directories, version of the `obserwator-store/1` contract,
+stores and producer directories by settings field, version of the `obserwator-store/1`
+and `obserwator-data/1` contracts, the producers' default store and data roots,
 permissions, hard links on a share, port). A store entry
 in the configuration (the schema will be set by the implementation plan):
 
@@ -1593,17 +1609,29 @@ in the configuration (the schema will be set by the implementation plan):
 [[stores]]
 id = "zespol"                          # short name in the API and interface
 name = "Zespół"
-kartograf = "/mnt/nas/kartograf"       # Kartograf store root (kartograf-store.json); optional when obserwator is there
-obserwator = "/mnt/nas/obserwator"     # Obserwator directory (obserwator-store/1); optional when kartograf is there
+kartograf = "/mnt/nas/kartograf"            # Kartograf store root (kartograf-store.json)
+obserwator = "/mnt/nas/obserwator-raw"      # Obserwator's raw root (obserwator-store/1), where store sync downloads
+obserwator_data = "/mnt/nas/obserwator"     # Obserwator's data root (obserwator-data/1): series, station catalogs, analyses
 path_aliases = { "/mnt/nas/" = 'Z:\' }  # the same share on another computer (4.6)
 ```
 
-An entry has at least one of the directories `kartograf` and `obserwator` (neither is a
-settings error); an entry with `kartograf` alone, as in the versions before the Obserwator
-source, works unchanged. Saving the settings does not decide on the availability of
-a source: a new or moved `obserwator` directory requires the source `obserwator` in the state
-`available`, and an entry saved earlier stays even when the Obserwator package has
-disappeared (5.8).
+An entry has at least one of the directories `kartograf`, `obserwator` and
+`obserwator_data` (none is a settings error); an entry with `kartograf` alone, as in the
+versions before the Obserwator source, works unchanged. The field `obserwator` has kept
+its meaning since the Obserwator source: the directory of `obserwator-store.json`, which
+Obserwator's ADR-017 calls the raw root; `obserwator_data` was added with it (A-ADR-056).
+One producer, `obserwator`, owns both directories: a scan reads them in one pass, and
+every indexed path lies in the root of its first part (`series/`, `stations/` and
+`analyses/` in the data root, the rest in the raw root), so the paths are those of the
+combined store written before ADR-017 and project pins keep matching. Such a combined
+store entered as `obserwator` is read as a raw root (its `series/` and `stations/` are
+`unknown_entry` problems) and entered as `obserwator_data` is refused (`wrong_root`); it is
+split once as Obserwator's `docs/USAGE.md` "Splitting a store" says. A store with only
+`obserwator_data` is read; `store sync` of it is refused (`store_without_producer`).
+Saving the settings does not decide on the availability of
+a source: a new or moved `obserwator` or `obserwator_data` directory requires the source
+`obserwator` in the state `available`, and an entry saved earlier stays even when the
+Obserwator package has disappeared (5.8).
 
 Team mode (from v0.4, 10.2, A-ADR-046) is the table `[team]` of the same file. The server
 reads it when it starts; the API neither shows nor changes it, so it is edited in the file
@@ -1627,13 +1655,13 @@ proxy_autocreate = false                        # create a missing account on it
 
 | Kind | What it calls | Network | What it writes |
 |---|---|---|---|
-| `scan` | `list_segments`, `iter_store` (KA-1); the project files `archiwista-project.json` of the project directories (Archiwista's own reader, 4.7); Obserwator catalog: Obserwator `iter_store` (IMGW-10) | no | index |
+| `scan` | `list_segments`, `iter_store` (KA-1); the project files `archiwista-project.json` of the project directories (Archiwista's own reader, 4.7); Obserwator: `iter_store` (IMGW-10) of its raw root and of its data root in one pass, each probed by its kind (A-ADR-056) | no | index |
 | `footprints` | `file_footprint(network=True)` (KA-4) for versions without a footprint, with a local unit footprint cache; refused in offline mode | yes | index, unit footprint cache |
 | `link_check` | `link_target` (KA-5) for a single slot, on demand from the "Karta pliku" (File card) | no | index (a problem on mismatch) |
 | `availability` | `check_availability` (heights), for the other products of the KD extension; IMGW datasets: published years from the listing and `HEAD` (`check_store`, IMGW-5) | yes | report in the index |
-| `check` | `check_command` (KB-5) → `check_data`, `check_landcover`, `check_soil`, `check_hsg`, `check_collection` → `kartograf-plan/1` plan; Obserwator: `check_store` (IMGW-5) → archive freshness plan and series state | yes | — |
+| `check` | `check_command` (KB-5) → `check_data`, `check_landcover`, `check_soil`, `check_hsg`, `check_collection` → `kartograf-plan/1` plan; Obserwator: `check_store` (IMGW-5) → the archive freshness plan of the raw root | yes | — |
 | `download` | `run_command` (KB-5) → `download_data`, `download_landcover`, `download_soil`, `calculate_hsg`, `download_collection` with `update` and `plan`; Obserwator: `sync_store` (IMGW-5) | yes | store (through the producer) |
-| `series` | Obserwator `build_series` (IMGW-7) — dataset series from the current archives | no | Obserwator catalog (through Obserwator) |
+| `series` | withdrawn (A-ADR-056): Obserwator builds a dataset's series (`build_series`, IMGW-7) offline in its data root, and Archiwista reads them | — | — |
 | `project_verify`, `project_check`, `project_repin`, `project_restore` | over the groups of a project (A-ADR-049): `project_verify` hashes the pinned files itself; `project_check` runs the producer's `check_command` (KB-5) of each group's calls, or of the command of each version pinned locally (`command_for_version`, KB-6, IMGW-21); `project_repin` runs one group's calls with `run_command` in the update mode; `project_restore` runs them in the default mode; started by `POST /projects/{id}/jobs` | yes; `project_verify` no | `project_repin`: store (through the producer) and the project file (its pins); `project_restore`: store (through the producer); a check and a verification nothing |
 | `compose` | Kartograf's merge functions (KE, KF, KG) | usually no | store (through Kartograf) |
 | `export` | the QGIS set of a project (from v1.1; the exports of copies are written at once, without a job, 8.4), series to CSV through `export_series` (IMGW-12) | no | `eksport/<name>/` in the project |
@@ -2405,12 +2433,11 @@ Państwowego Instytutu Badawczego zostały przetworzone  [Źródła i warunki]
 ```text
 POBRAĆ?  Archiwa IMGW · hydro dobowe · lata hydrologiczne 1951–2025
   867 plików: 720 w magazynie (1951–2010), 147 do pobrania (ok. 30 MB)
-  Potem: szeregi zbioru z bieżących archiwów (ok. 1 300 stacji; obszar: 9)
-  Magazyn: Zespół (katalog Obserwatora)
+  Magazyn: Zespół (katalog surowy Obserwatora)
   Dane IMGW-PIB: cel prywatny lub badawczy; inne cele wymagają umowy
   z IMGW-PIB (regulamin §3 ust. 2)
   Polecenie: obserwator store sync --dataset hydro-daily --years 1951-2025
-    --series --store <katalog Obserwatora>                       [Kopiuj]
+    --root <katalog surowy Obserwatora>                        [Kopiuj]
   [Anuluj]                                         [Pobierz 147 plików]
 ```
 
@@ -3028,10 +3055,10 @@ list, illustrative numbers, Obserwator commands — proposals from 12.7):
 3. `check_availability(product="hydro_daily")` — published years
    1951–2025, the 2025 year published 2026.08.31.
 4. `plan_command(producer="obserwator", command="store sync", …)` — 867
-   files: 720 in the store, 147 to download (about 30 MB), then the series
-   of the dataset.
+   files: 720 in the store, 147 to download (about 30 MB); Obserwator builds
+   the dataset's series from them offline in its data root (A-ADR-056).
 5. `propose_actions` — a proposal card: (1) synchronisation of archives
-   and the dataset series, (2) a pin group "przeplywy" in the Raba project (the dataset's
+   (the series follow from Obserwator), (2) a pin group "przeplywy" in the Raba project (the dataset's
    series version and its archives for 9 stations as a list of codes, Q, hydrological years;
    A-ADR-049), (3) the export "raba-przeplywy" with CSV flows of the 9 stations
    (Obserwator export), a station layer and the attributions of its `README.txt`; warnings:
@@ -3543,7 +3570,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /sessions`, `DELETE /sessions/{label}` | from v0.4: the person's live sessions (label, browser or agent, sign-in method, client address and browser, start, last request, end, the current one) and ending one; an administrator lists and ends any person's (`?user=`) |
 | `POST /session/tokens` | one-time agent session token, valid for 5 min (10.1), acting as the session's account with its roles; in team mode its address is the configured `origin`; an agent session gets `403 permission_denied` |
 | `GET /stores` | stores, availability, statistics |
-| `GET /sources` | data sources (plugins): producer, state (`available`, `not_installed`, `incompatible`, `error`), library version, supported scope, schemas, message in Polish (5.8), and `default_root` (the directory the producer uses when a call names no store: path, layer of the settings, existence, marker; `null` without one; not in `/health`, A-ADR-033) |
+| `GET /sources` | data sources (plugins): producer, state (`available`, `not_installed`, `incompatible`, `error`), library version, supported scope, schemas, message in Polish (5.8), `default_root` (the directory the producer uses when a call names no store: path, layer of the settings, existence, marker; `null` without one; not in `/health`, A-ADR-033) and `default_data_root` of the same shape (the producer's default data root, Obserwator's `store_root(kind="data")`; `null` for a producer without a data root or an unavailable plugin, A-ADR-056) |
 | `GET /stores/{store}` | store state: occupancy by product, problems, last scan |
 | `POST /stores/{store}/scan` | scan (`mode`: `incremental` or `full`, optionally `segment`) → background job; from v0.4 administrators only (`store.scan`; the scheduler scans by itself); `409 conflict` when a job writing the store index is running |
 | `POST /stores/{store}/footprints` | footprints of units (TERYT, KU, SM5) with the network for versions without a footprint → background job (5.6); administrators only (`store.scan`); in offline mode `409 offline_mode` |
@@ -3592,7 +3619,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /commands/validate` | validation without the network (KB-3, IMGW-11) |
 | `POST /commands/format` | options → text of the `kartograf …` or `obserwator …` command (KB-4, IMGW-11) |
 | `POST /commands/area` | a call with an area of `/areas` (drawn, uploaded or a project's) in place of the area options it names: the area's GeoJSON as the command's geometry file (`way` `geometry`), else the box that encloses it (`way` `bbox`); the area's country when the command needs one; the line without a store root, the `replaced` options; `422 unsupported` for a command that takes no area (`no_area_option`) or a producer without the capability `AreaCommandAdapter` (`no_area_commands`); no network (A-ADR-049 erratum 5) |
-| `POST /jobs` | background job: `check`, `download`, `series`, `compose`, `export`, `preview`; `check` and `download` take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); a `download` with `pin` pins its files and the positions of its plan the store held into that project when it succeeds: `{project, group}` a new set written closed, with `open: true` a new set left open, with `add: true` appended with its calls to the open set `group` (`add` and `open` not both: `400`) — it also needs `project.write`, and is refused before a job: a taken name `409 group_exists` (new sets), no such set `404 group_not_found`, a closed one `409 set_closed`, another producer than the set's `409 set_producer`, more than 1,000 calls together `400 too_many_calls` (`add`); a set closed meanwhile ends the job `partial` with the pin's error, the files kept (A-ADR-049 decision 9, erratum 6); a project's jobs start at `POST /projects/{id}/jobs` |
+| `POST /jobs` | background job: `check`, `download`, `compose`, `export`, `preview`; `check` and `download` take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); a `download` with `pin` pins its files and the positions of its plan the store held into that project when it succeeds: `{project, group}` a new set written closed, with `open: true` a new set left open, with `add: true` appended with its calls to the open set `group` (`add` and `open` not both: `400`) — it also needs `project.write`, and is refused before a job: a taken name `409 group_exists` (new sets), no such set `404 group_not_found`, a closed one `409 set_closed`, another producer than the set's `409 set_producer`, more than 1,000 calls together `400 too_many_calls` (`add`); a set closed meanwhile ends the job `partial` with the pin's error, the files kept (A-ADR-049 decision 9, erratum 6); a project's jobs start at `POST /projects/{id}/jobs` |
 | `GET /jobs`, `GET /jobs/{id}` | list and state of jobs with the actor (`actor`), `project` filter; from v0.4 the list holds every job of the queue, and a job only of projects the session does not see shows its kind, store, actor, state and progress counts only (`hidden: true`); such a job at its own address → `404` |
 | `GET /jobs/{id}/events` | SSE of a visible job (`progress`, `notice`, `state`), resumption via `Last-Event-ID`; ends after the final state, about a second after its session ends or its account is disabled or removed (as for `…/file`, from v0.4), or once the session no longer sees the job |
 | `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`, with `pin` also `project.write`; a project's re-pin or restore: `project.write` and `store.write`; from v0.4 a store's scan, outlines or link check and the scan of every project's folder: `store.scan`; the scan of one project's folder: the limits of a person's scans, `429`) (ADR-038, A-ADR-049) |
@@ -3612,7 +3639,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /assistant/conversations/{id}/messages` | message → SSE stream (text, tool calls, proposals, effects in the interface) |
 | `GET /assistant/proposals/{id}` | proposal |
 | `POST /assistant/proposals/{id}/execute`, `…/reject` | execution or rejection — only from the interface, with a CSRF token |
-| `GET /settings`, `PUT /settings` | settings (in team mode: administrator); from v0.4 also `network_jobs_per_person` (2) and `action_log_retention_days` (365); the table `[team]` of `config.toml` is neither shown nor changed here (10.2); the kind of years is each person's preference since v0.4 (`GET /preferences`), and a `year_types` an earlier build wrote into `config.toml` is ignored and named by `archiwista doctor` (A-ADR-047 erratum 1) |
+| `GET /settings`, `PUT /settings` | settings (in team mode: administrator); each store with `kartograf`, `obserwator` (Obserwator's raw root) and `obserwator_data` (its data root, `null` without one; A-ADR-056), each probed by its kind when new or moved (a root of the other kind: a problem with the reason `wrong_root`); from v0.4 also `network_jobs_per_person` (2) and `action_log_retention_days` (365); the table `[team]` of `config.toml` is neither shown nor changed here (10.2); the kind of years is each person's preference since v0.4 (`GET /preferences`), and a `year_types` an earlier build wrote into `config.toml` is ignored and named by `archiwista doctor` (A-ADR-047 erratum 1) |
 | `GET /users`, `POST /users`, `PATCH /users/{id}`, `DELETE /users/{id}` | accounts and their roles (`admin`, `store_writer`) — administrator only; from v0.4 each with the state of its password (`password`: `none`, `set`, `temporary`, `expired`; `password_expires_at`), never a hash; the last administrator who can sign in cannot be removed, disabled or lose the role (`409 last_admin`) |
 | `POST /users/{id}/password` | administrator, from v0.4: a temporary password generated by the server, answered once (`password`, `expires_at`: 72 h), to be changed at the first sign-in; ends the account's sessions |
 | `DELETE /users/{id}/sessions` | administrator, from v0.4: ends every session and agent token of the account (its revocation time) |
@@ -4672,7 +4699,8 @@ did not repeat them.
 ### 12.8 Obserwator format contract (recommendation, A-ADR-020)
 
 State: the contract is implemented in Obserwator 3.0.0 (ADR-001 and ADR-003
-of Obserwator); the description below gives the form from 3.0.0.
+of Obserwator); the description below gives the form from 3.0.0, with the store in two
+roots since Obserwator's ADR-017 (pin `0591b82`, A-ADR-056).
 
 **Sidecar: its own `obserwator-meta/1`, not compatibility with `kartograf-meta/1`.**
 Only its producer knows and develops the format (A-ADR-019), and the schema
@@ -4703,22 +4731,32 @@ sources: URL, time, number of stations, `sha256` of the response; Obserwator doe
 the API responses themselves, because they carry current data). The envelope is also
 a candidate for a common `store-meta/1`, should a third producer appear.
 
-**Obserwator directory layout (`obserwator-store/1`)** — increment only (IMGW-1):
+**Obserwator's raw root (`obserwator-store/1`) and data root (`obserwator-data/1`)** —
+increment only (IMGW-1). Until Obserwator's ADR-017 both trees lay under one root with
+the marker `obserwator-store.json`; the paths below each root are the ones that store had,
+so the index and project pins keep them (A-ADR-056). A root of the other kind is refused
+(`wrong_root`).
 
 ```text
-<Obserwator directory>/
+<raw root>/                        settings field `obserwator`; written by store sync
   obserwator-store.json            {"schema": "obserwator-store/1", "tool": "obserwator", "created_at": "…", "producer_version": "…", "created_by": "obserwator …"}
   archives/versions/<directory on the server>/<file without extension>/<label>_<sha8>/<file>
                                    + <file>.meta.json
     e.g. archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024/2025-08-28_7c41e0b2/codz_2024.zip
   archives/versions/<…>/<file without extension>/observations/<YYYY-MM-DD>_<sha8>.json
                                    observations of the ČHMÚ signal (obserwator-observation/1; not versions)
+  pmaxtp/versions/…                PMAXTP cells (outside the MVP scope)
+  .incoming/<host>_<pid>_<token>/  working directories (cleaned up after 24 h)
+
+<data root>/                       settings field `obserwator_data`; built offline by Obserwator, read by Archiwista
+  obserwator-data.json             {"schema": "obserwator-data/1", …}
   stations/versions/<label>_<sha8>/stations.geojson        + stations.geojson.meta.json
   stations/versions/chmi_stations/<label>_<sha8>/stations.geojson   ČHMÚ station catalog
   series/versions/<dataset slug>/<label>_<sha8>/series.json + series.json.meta.json
                                             stations/<code>.parquet
     e.g. series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet
-  pmaxtp/versions/…                PMAXTP cells (outside the MVP scope)
+  analyses/versions/<pl.imgw|cz.chmi>/<label>_<sha8>/analyses.json + analyses.json.meta.json
+                                   Hydrolog's analyses of the stations (Obserwator's ADR-016)
   .incoming/<host>_<pid>_<token>/  working directories (cleaned up after 24 h)
 ```
 
@@ -4813,7 +4851,7 @@ reports it (UC-13).
   and `kartograf-plan/1` beyond the listed extensions (new fields
   are additive; derived products use the HSG shape).
 - From Obserwator — likewise: no Archiwista fields or files
-  in the Obserwator directory, no interface logic (coverage labels are computed by
+  in Obserwator's roots, no interface logic (coverage labels are computed by
   Archiwista from the gap lists), no dependency on Kartograf (and vice versa);
   the `hydro-back` map API is not required (4.8.1).
 
@@ -4998,7 +5036,8 @@ category folders with `README.txt` in `eksport/<name>/`, also as a ZIP (the QGIS
 v1.1); the guide's slide on projects; sets in the making, closed with the digest of their
 pins and reopened (A-ADR-049 erratum 6, the author's request of 2026-11-02).
 The producers' manifests are not read and none is migrated (D4). The check, re-pin and
-restore of IMGW pins go through Obserwator's commands (A-ADR-050, plan 2026-11-05).
+restore of IMGW pins of archives go through Obserwator's `store sync` (A-ADR-050, plan
+2026-11-05); pins of series and station catalogs are `not_checkable` (A-ADR-056).
 
 Criteria:
 

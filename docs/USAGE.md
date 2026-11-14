@@ -24,19 +24,27 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
      addresses and in the API), the full path of the Kartograf store root (the
      directory that holds `kartograf-store.json` and the product directories,
      usually called `data/`) and the kind: local disk or network share (detected
-     by default). A store needs the Kartograf store root, the root of an Obserwator
-     store (the directory with `obserwator-store.json`, field "Katalog Obserwatora") or
-     both. The Obserwator field is offered while the Obserwator source is installed (`pip
-     install "archiwista[obserwator]"`) or the store already has such a directory; a
-     directory inside another store is refused. A store written by an earlier
+     by default). A store needs the Kartograf store root, a directory of Obserwator
+     or both. Obserwator keeps its store in two directories (its ADR-017): the raw root
+     (the directory with `obserwator-store.json`, field „Katalog surowy Obserwatora”),
+     into which Archiwista downloads the archives, and the data root (the directory with
+     `obserwator-data.json`, field „Katalog danych Obserwatora”) with the series, station
+     catalogs and analyses Obserwator builds from them, which Archiwista only reads (see
+     "Obserwator's raw root and data root" below). The Obserwator fields are offered while
+     the Obserwator source is installed (`pip install "archiwista[obserwator]"`) or the
+     store already has such a directory; a directory inside another store, or a root of
+     the other kind, is refused. A store written by an earlier
      version of its producer has no marker: the wizard then shows the command to
-     run once, `kartograf store init --root <path>` or `obserwator store init --root
-     <path>`. There can be several stores.
+     run once, `kartograf store init --root <path>`, `obserwator store init --root
+     <path>` or `obserwator store init --kind data --root <path>`. There can be several
+     stores.
      If the directory Kartograf or Obserwator itself uses when a call names no store
-     (`KARTOGRAF_ROOT` or `OBSERWATOR_ROOT`, `[kartograf] root` or `[obserwator] root` of
-     `nogat.toml`, else `<data_dir>/kartograf` or `<data_dir>/obserwator`) exists and holds
-     the producer's marker, the wizard offers it under the empty field of that
-     producer with the button "Użyj tego katalogu"; it is entered only by your click.
+     exists and holds the marker of its kind, the wizard offers it under the empty field
+     with the button "Użyj tego katalogu"; it is entered only by your click. These are
+     `KARTOGRAF_ROOT`, `[kartograf] root` of `nogat.toml`, else `<data_dir>/kartograf`;
+     Obserwator's raw root `OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root`, else
+     `<data_dir>/obserwator-raw`; and its data root `OBSERWATOR_ROOT`, `[obserwator] root`,
+     else `<data_dir>/obserwator`.
    - **Projects** ("Projekty"): directories in which Archiwista finds its project
      files (`archiwista-project.json`); they can be added later.
    - **Mode** ("Tryb pracy"): offline mode means the browser sends no request
@@ -47,6 +55,87 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
    every 5 minutes (local disk) or 15 minutes (share), and in full once a day.
 
 ![First-run wizard](reports/v0.1-screenshots/01-wizard.webp)
+
+### Obserwator's raw root and data root
+
+Since Obserwator `0591b82` (its ADR-017; A-ADR-056) a store's Obserwator data lie in two
+directories, and a store names each in a field of its own:
+
+| Field (Settings label) | Directory | Who writes it |
+|---|---|---|
+| `obserwator` („Katalog surowy Obserwatora”) | the raw root: `obserwator-store.json`, `archives/`, `pmaxtp/` | Obserwator's `store sync`, which Archiwista runs from „Polecenia producenta”, the map's step „U źródła” and the project card |
+| `obserwator_data` („Katalog danych Obserwatora”) | the data root: `obserwator-data.json`, `series/`, `stations/`, `analyses/` | Obserwator alone, offline; Archiwista only reads it |
+
+Either field may be empty, but a store keeps at least one directory. A store with only the
+data root shows its stations and series; a download into it is refused, since it has no
+raw root. Set the fields in "Ustawienia" (or `PUT /api/v1/settings`), or in the
+`[[stores]]` table of `config.toml` while the server is stopped:
+
+```toml
+[[stores]]
+id = "zespol"
+name = "Zespół"
+kartograf = "/mnt/nas/kartograf"
+obserwator = "/mnt/nas/obserwator-raw"     # raw root: obserwator-store.json
+obserwator_data = "/mnt/nas/obserwator"    # data root: obserwator-data.json
+kind = "share"
+```
+
+Archiwista reads both directories as one source, `obserwator`, in one scan. A file's path
+in Archiwista (the Katalog, the file card, a project's pins) is relative to the root its
+first part names: `series/`, `stations/` and `analyses/` in the data root, the rest in the
+raw root. These are the paths the single Obserwator store had, so pins made before stay
+valid. Archiwista no longer offers `series build` or `store catalog`: Obserwator builds the
+data root itself, for example
+
+```sh
+obserwator store catalog --root /mnt/nas/obserwator --raw-root /mnt/nas/obserwator-raw
+obserwator series build --root /mnt/nas/obserwator --raw-root /mnt/nas/obserwator-raw \
+  --dataset pl.imgw.hydro_daily
+```
+
+and the next scan (or „Odśwież” in the Store view) shows the new versions. A project's
+pins of series and station catalogs are „bez sprawdzenia” (`not_checkable`) in its
+check: no download rebuilds them; pins of archives are checked, re-pinned and restored
+as before.
+
+**After updating to this version** (administrator):
+
+1. Install it with `uv sync --locked --all-extras` (Obserwator `0591b82`) and restart
+   `archiwista serve`. Nothing is renamed: `obserwator` keeps naming the directory of
+   `obserwator-store.json`, now called the raw root.
+2. Run `archiwista doctor`. It names each directory by its field (`obserwator`,
+   `obserwator_data`) and the default data root Obserwator would use beside its default
+   raw root.
+3. If `obserwator` is a raw root already (or empty), add `obserwator_data` once Obserwator
+   has a data root, and save. Nothing else changes.
+4. If `obserwator` is a store written before Obserwator's ADR-017 (it holds `series/` and
+   `stations/` beside `archives/`), Archiwista now reads it as a raw root: the Store view
+   lists its `series/` and `stations/` as problems `unknown_entry`, and the stations and
+   series disappear from the map and the Katalog until the store is split. Entered as
+   `obserwator_data` it is refused with the reason `wrong_root`. Split it once, as
+   Obserwator's `docs/USAGE.md` "Splitting a store" says: with no job writing the store,
+   copy it with hard links into two new directories and mark each:
+
+   ```sh
+   mkdir RAW DATA
+   cp -al OLD/archives OLD/pmaxtp RAW/            # name only the trees OLD has
+   cp -al OLD/series OLD/stations OLD/analyses DATA/
+   obserwator store init --root RAW
+   obserwator store init --kind data --root DATA
+   obserwator store scan --root RAW --kind problem    # lists nothing
+   obserwator store scan --root DATA --kind problem   # lists nothing
+   ```
+
+   RAW and DATA must lie on the file system of OLD (hard links) and outside every other
+   store. Then set `obserwator` to RAW and `obserwator_data` to DATA and save: the store
+   is scanned anew, and the pins keep their paths. A project file names the Obserwator
+   directory it was written with, and matches a store with that path as either root: to
+   keep projects matching without a change, move OLD aside first and make the old path
+   one of the two roots (Obserwator does so for its default: `mv <data_dir>/obserwator
+   <data_dir>/obserwator-old`, then DATA is `<data_dir>/obserwator`); otherwise choose
+   the store again under „Zmień…” → „Magazyn: obserwator” of each project's card. Remove
+   OLD only after the scan shows the stations and series again.
 
 ## The window
 
