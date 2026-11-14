@@ -13,7 +13,7 @@ export const account = {
     password: "Hasło",
     submit: "Zaloguj",
     proxy: "Zaloguj kontem firmowym",
-    proxy_hint: "Firmowe logowanie rozpoznało cię na tym komputerze.",
+    proxy_hint: "Firmowe logowanie rozpoznało konto na tym komputerze.",
     forgot: "Nie pamiętasz hasła? Administrator ustawi hasło tymczasowe.",
     lost: "Sesja wygasła albo została zakończona. Zaloguj się ponownie.",
     wait: "Zbyt wiele nieudanych prób: spróbuj ponownie za {wait}.",

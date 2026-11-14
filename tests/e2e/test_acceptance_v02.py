@@ -656,16 +656,17 @@ def test_acceptance_v02_read_only_store_previews(
     """The real ``archiwista serve`` on a read-only mount: previews, nothing written.
 
     The store's whole directory (data and projects) is bind-mounted
-    read-only in the server's own mount namespace; the settings, the index
-    and the preview cache live in the test's XDG directories. Thumbnails, a
-    vector's layers, a ZIP's members and an ASC sheet's local COG with its
-    map tile come from there; the store keeps every name, size, time and
-    inode — no ``.aux.xml`` or anything else beside its files.
+    read-only in the server's own mount namespace; the settings, the index,
+    the preview cache and the logs live in the test's XDG directories.
+    Thumbnails, a vector's layers, a ZIP's members and an ASC sheet's local
+    COG with its map tile come from there; the store keeps every name, size,
+    time and inode — no ``.aux.xml`` or anything else beside its files.
     """
     require_read_only_mounts(tmp_path)
     store = make_store(tmp_path / "store", slots=17, seed=7)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
     monkeypatch.setenv("PYTHONUNBUFFERED", "1")
     paths = AppPaths.default()
     ConfigStore(paths.config_file).save(offline_settings(store))

@@ -39,8 +39,8 @@ export const projectJobs = {
       "Przepięcie i przywracanie zapisują magazyn, a ta sesja nie ma uprawnienia " +
       "„zapis do magazynu” (rola store_writer).",
     no_commands:
-      "Producent „{producer}” nie udostępnia jeszcze poleceń: jego wersji nie można " +
-      "sprawdzić, przepiąć ani przywrócić.",
+      "Producent „{producer}” nie udostępnia poleceń: jego wersji nie można sprawdzić, " +
+      "przepiąć ani przywrócić.",
     command_not_rebuildable:
       "Producent nie odtworzy polecenia niektórych wersji (powód przy wersji): ich " +
       "sprawdzanie i przywracanie, a ich zestawów przepięcie, są niedostępne.",

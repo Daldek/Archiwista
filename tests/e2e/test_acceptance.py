@@ -796,13 +796,14 @@ def test_acceptance_serve_on_read_only_mount(
     """The real ``archiwista serve`` on a read-only mount: every view, nothing written.
 
     The store's whole directory (data and projects) is bind-mounted
-    read-only in the server's own mount namespace; the settings and the
-    local index live in the XDG directories of the test.
+    read-only in the server's own mount namespace; the settings, the local
+    index and the server's logs live in the XDG directories of the test.
     """
     require_read_only_mounts(tmp_path)
     store = generate(tmp_path)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg-config"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "xdg-data"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
     monkeypatch.setenv("PYTHONUNBUFFERED", "1")
     ConfigStore(AppPaths.default().config_file).save(offline_settings(store))
     before = tree(store.base)

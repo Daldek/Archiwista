@@ -46,7 +46,6 @@ import hashlib
 import hmac
 import ipaddress
 import json
-import logging
 import re
 import secrets
 import sqlite3
@@ -132,7 +131,6 @@ TOKEN_TTL: Mapping[TokenKind, timedelta] = MappingProxyType(
 SESSION_BODY_LIMIT_BYTES = 4 * 1024
 LOGIN_BODY_LIMIT_BYTES = 16 * 1024
 BODY_LIMIT_BYTES = 1024**2
-REDACTED = "***"
 
 _TOKEN_BYTES = 16  # 128-bit one-time and CSRF tokens
 _SESSION_ID_BYTES = 32
@@ -149,7 +147,6 @@ _FILE_PATH = re.compile(
     r"|projects/[^/]+/files/[0-9a-f]{16}(?:/snapshots/[^/]+)?/file"
     r"|projects/[^/]+/exports/[^/]+/zip)"
 )
-_TOKEN_VALUE = re.compile(r"(?i)(token=)[^&;#\s\"']*")
 # Scheme, host and port only: anything else would break the policy syntax.
 _CSP_SOURCE = re.compile(r"https?://(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?")
 
@@ -1594,35 +1591,3 @@ def tls_problem(cert: Path, key: Path) -> str | None:
     except OSError as error:  # ssl.SSLError and an encrypted key too
         return error.strerror or str(error)
     return None
-
-
-# Logs ----------------------------------------------------------------------
-
-
-def redact_tokens(text: str) -> str:
-    """Replace the value of every ``token=`` parameter (any name ending in it)."""
-    return _TOKEN_VALUE.sub(lambda match: match[1] + REDACTED, text)
-
-
-class TokenRedactionFilter(logging.Filter):
-    """Hide ``token=`` values in log records, e.g. the access log's request line.
-
-    The record is changed in place, so every handler of the logger sees only
-    the redacted text.
-    """
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Redact the message and its string arguments; never drop a record."""
-        if isinstance(record.msg, str):
-            record.msg = redact_tokens(record.msg)
-        if isinstance(record.args, tuple):
-            record.args = tuple(
-                redact_tokens(arg) if isinstance(arg, str) else arg
-                for arg in record.args
-            )
-        elif isinstance(record.args, Mapping):
-            record.args = {
-                key: redact_tokens(value) if isinstance(value, str) else value
-                for key, value in record.args.items()
-            }
-        return True

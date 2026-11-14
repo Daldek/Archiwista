@@ -34,3 +34,5 @@
 - A file whose map needs a local COG is warmed only half-way; the interface's auto-build still runs at its first view.
 - A9 commit 2 adds `archiwista preview-warm`, `POST /previews/warm` and the administrator's setting that starts a warm-up after a scan; the interface has no control for either yet (the setting is kept when the settings form is saved).
 - A scan writes only new and changed versions (`versions_written`), and `since` admits only those first indexed since the scan started (a known version whose sidecar changed keeps its `indexed_at`), so the warm-up after a scan prepares what is new; a scan that only changed sidecars starts a warm-up that selects nothing.
+
+**Erratum 1 (2026-11-14, audit against the code):** `feature/kartograf-data-output` reached `develop` on 2026-11-03 with the stack of `feature/archiwista-projects`, merged by the author's decision (`6f1caef`): the decision is accepted.

@@ -87,7 +87,10 @@ export const setup = {
   },
   previews: {
     legend: "Pamięć podglądów",
-    hint: "Miniatury, kafle map i lokalne kopie plików (COG) Archiwista trzyma na tym komputerze, nigdy w magazynie ani na udziale. Ponad limit znikają najdawniej używane — każdy podgląd da się odtworzyć z pliku.",
+    hint:
+      "Miniatury, kafle map i lokalne kopie plików Archiwista trzyma na tym komputerze, " +
+      "nigdy w magazynie ani na udziale. Ponad limit znikają najdawniej używane — każdy " +
+      "podgląd da się odtworzyć z pliku.",
     limit: "Limit pamięci podglądów (GB)",
     limit_hint: "Liczba całkowita od 1 do 10 000 (1 GB = 1024³ bajtów); domyślnie 20.",
     limit_invalid: "Limit pamięci podglądów to liczba całkowita od 1 do 10 000 GB.",
@@ -118,7 +121,8 @@ export const setup = {
   reloading: "Zapisano ustawienia — przeładowanie strony z nową polityką treści…",
   progress_title: "Indeksowanie",
   progress_note:
-    "Pełny skan nowego albo przeniesionego magazynu zleca harmonogram serwera; postęp pokazuje pasek stanu indeksu nad tą stroną. Możesz przejść dalej — skan trwa w tle.",
+    "Pełny skan nowego albo przeniesionego magazynu rusza samoczynnie i trwa w tle; postęp " +
+    "pokazuje pasek stanu indeksu nad tą stroną. Możesz przejść dalej.",
   scanning: "Trwa skan magazynu „{store}”…",
   indexed: "Magazyn „{store}” zindeksowany: {slots} {files}, {versions} {versions_word}.",
   go_start: "Przejdź do przeglądania",

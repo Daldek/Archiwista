@@ -88,7 +88,6 @@ from archiwista.previews.types import (
 )
 from archiwista.sources import GeoJSONGeometry
 
-REF_KINDS = ("version", "file", "snapshot")
 _STORE = re.compile(r"[a-z0-9][a-z0-9_-]{0,31}")
 _PROJECT = re.compile(r"[a-z0-9-]+")
 _LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")

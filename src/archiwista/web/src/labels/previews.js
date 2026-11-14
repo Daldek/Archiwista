@@ -64,9 +64,12 @@ export const previews = {
   build: {
     title: "Lokalny podgląd",
     auto:
-      "Kafle mapy tego pliku wymagają lokalnej kopii (COG) w pamięci podglądów; Archiwista buduje ją sam przy pierwszym podglądzie.",
+      "Kafle mapy tego pliku wymagają lokalnej kopii w pamięci podglądów; Archiwista buduje " +
+      "ją sam przy pierwszym podglądzie.",
     large:
-      "Plik przekracza progi budowy automatycznej (2 GB pliku, 1 Gpx i 8 GB po rozpakowaniu), więc Archiwista nie buduje jego podglądu sam. Budowa lokalnej kopii (COG) może potrwać kilka minut i zajmie miejsce w pamięci podglądów.",
+      "Plik przekracza progi budowy automatycznej (2 GB pliku, 1 Gpx i 8 GB po " +
+      "rozpakowaniu), więc Archiwista nie buduje jego podglądu sam. Budowa lokalnej kopii " +
+      "może potrwać kilka minut i zajmie miejsce w pamięci podglądów.",
     again:
       "Budowa automatyczna się nie udała. Możesz zbudować podgląd ponownie — także ponad progi budowy automatycznej.",
     action: "Zbuduj podgląd",

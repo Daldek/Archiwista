@@ -279,7 +279,9 @@ def warm_previews(spec: JobSpec, emit: "Emitter") -> JsonObject:
         limit = settings.preview_cache_limit_bytes
         with (
             PreviewCache(spec.previews_dir, limit_bytes=limit) as cache,
-            RenderPool(workers=1, cache=cache, work_dir=spec.work_dir) as pool,
+            RenderPool(
+                workers=1, cache=cache, work_dir=spec.work_dir, log_dir=spec.log_dir
+            ) as pool,
         ):
             resolver = ObjectResolver(
                 queries,

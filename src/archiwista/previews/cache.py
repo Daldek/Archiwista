@@ -770,17 +770,6 @@ class PreviewCache:
         used, cold = int(row[0]), int(row[1])
         return max(0, self._limit - used, int(self._limit * EVICT_TO) - used + cold)
 
-    def evict(self) -> int:
-        """Evict down to ``EVICT_TO`` of the limit when over it.
-
-        Returns
-        -------
-        int
-            Bytes freed.
-        """
-        with self._lock, self._transaction() as db:
-            return self._evict_over_limit(db)
-
     def reconcile(self) -> None:
         """Make ``cache.sqlite`` agree with the files (``serve`` start, new file).
 

@@ -31,3 +31,5 @@
 - Cooperative cancellation (KC-1) changes how the worker stops, not this protocol.
 
 **Erratum 1 (2026-10-26, ADR-047 decision 3, delegated approval; plan `docs/plans/2026-10-26-plan-v0.4.md` T9):** in v0.4 everyone sees every job of the queue: `GET /jobs` lists a job of projects the session does not see with its kind, store, who, state and progress counts only (`hidden`), without parameters, notices, result or error. Its own address, its events, its log, its cancel and its retry still answer `404` to that session.
+
+**Erratum 2 (2026-11-14, audit against the code):** `feature/kartograf-data-output` reached `develop` on 2026-11-03 with the stack of `feature/archiwista-projects`, merged by the author's decision (`6f1caef`): the decision is accepted.

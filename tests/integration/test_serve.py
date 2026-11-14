@@ -1,5 +1,6 @@
 """``archiwista serve`` and ``archiwista token`` with a real server in a thread."""
 
+import io
 import json
 import os
 import re
@@ -8,21 +9,34 @@ import stat
 import threading
 import time
 import webbrowser
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
 
 from archiwista import server as server_module
+from archiwista.api import health
 from archiwista.cli import main
 from archiwista.security import CSRF_HEADER, LOOPBACK_HOST, SESSION_COOKIE, TOKEN_TTL
 from archiwista.server import AppServer, LaunchFile, open_in_browser
+from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import assert_problem
 from tests.fixtures.cli_errors import refusal
 from tests.fixtures.local_server import NoSources, local_paths, server_nodelay, serving
+from tests.fixtures.preview_api import (
+    center_tile_url,
+    entry_of,
+    scanned_store,
+    version_url,
+)
+from tests.fixtures.server_logs import printed, records
 
 FRAGMENT_URL = re.compile(r"http://127\.0\.0\.1:(\d+)/#token=([A-Za-z0-9_-]+)")
+FIREFOX = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 
 
 def free_port() -> int:
@@ -60,9 +74,9 @@ def test_serve_refuses_non_loopback_host(
     assert not paths.data_dir.exists()
 
 
-def test_serve_prints_fragment_url(tmp_path: Path) -> None:
-    """The printed address carries a one-time token the real server exchanges."""
-    with serving(local_paths(tmp_path)) as (server, output):
+def test_serve_prints_fragment_url_on_a_terminal(tmp_path: Path) -> None:
+    """On a terminal the address carries a one-time token the server exchanges."""
+    with serving(local_paths(tmp_path), terminal=True) as (server, output):
         match = FRAGMENT_URL.search(output)
         assert match is not None
         port, token = int(match[1]), match[2]
@@ -78,6 +92,163 @@ def test_serve_prints_fragment_url(tmp_path: Path) -> None:
     assert state.json()["actor"] == "local"
     assert_problem(replayed, 401, "unauthorized", "session_required")
     assert_problem(rebound, 403, "forbidden", "invalid_host")
+
+
+def test_serve_prints_only_its_lifecycle_when_not_on_a_terminal(
+    tmp_path: Path,
+) -> None:
+    """Under a service manager the one-time address stays out of the journal.
+
+    Standard output, which the journal keeps, gets nothing; standard error gets
+    the lifecycle records ``start`` (the origin alone, never the
+    token) and ``stop``, as the lifecycle log does (Nogat DEV-12.7).
+    """
+    paths = local_paths(tmp_path)
+    err = io.StringIO()
+    with serving(paths, err=err) as (server, output):
+        token = server.url.partition("#token=")[2]
+    lines = printed(err.getvalue())
+
+    assert output == ""
+    assert token and token not in err.getvalue()
+    assert [(line["kind"], line["event"]) for line in lines] == [
+        ("lifecycle", "start"),
+        ("lifecycle", "stop"),
+    ]
+    assert lines == records(paths.logs_dir, "lifecycle")
+    assert lines[0]["settings"] == {"origin": f"http://127.0.0.1:{server.port}"}
+
+
+def test_serve_logs_each_request_once_without_its_secrets(tmp_path: Path) -> None:
+    """One access record per request; no token, search text or User-Agent in a log.
+
+    The token is exchanged in a request's body; a query keeps the names of
+    ``token`` and ``q`` without their values; the client is named by the class
+    of its User-Agent only.
+    """
+    paths = local_paths(tmp_path)
+    err = io.StringIO()
+    with (
+        serving(paths, err=err) as (server, _),
+        httpx.Client(
+            base_url=f"http://127.0.0.1:{server.port}",
+            headers={"User-Agent": FIREFOX},
+        ) as browser,
+    ):
+        token = server.url.partition("#token=")[2]
+        exchanged = browser.post("/api/v1/session", json={"token": token})
+        csrf = {CSRF_HEADER: exchanged.json()["csrf_token"]}
+        query = {"token": token, "q": "Kraków", "limit": "5"}
+        queried = browser.get("/api/v1/health", params=query, headers=csrf)
+        missing = browser.get("/api/v1/nothing", headers=csrf)
+    access = records(paths.logs_dir, "access")
+    written = [path.read_text("utf-8") for path in paths.logs_dir.iterdir()]
+    logged = "".join([*written, err.getvalue()])
+
+    assert (exchanged.status_code, queried.status_code, missing.status_code) == (
+        200,
+        200,
+        404,
+    )
+    assert [(r["method"], r["path"], r["status"], r["agent"]) for r in access] == [
+        ("POST", "/api/v1/session", 200, "browser"),
+        ("GET", "/api/v1/health?token=&q=&limit=5", 200, "browser"),
+        ("GET", "/api/v1/nothing", 404, "browser"),
+    ]
+    assert access[1]["bytes"] == len(queried.content)
+    assert len({record["request_id"] for record in access}) == 3
+    assert "x-request-id" not in queried.headers
+    assert token not in logged
+    assert "Krak" not in logged and "Firefox" not in logged
+
+
+# Headers of the synthetic JPEG sheets carry no geotransform (their outline
+# comes from the world file); rasterio says so while reading them.
+@pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
+def test_serve_leaves_tiles_and_interface_files_below_400_out_of_the_access_log(
+    tmp_path: Path,
+) -> None:
+    """A map tile and an interface file, also revalidated: not logged; a 404 is."""
+    store, paths = scanned_store(tmp_path)
+    raster = entry_of(store, "tif_sheet", "regular").path
+    registry = load_registry(cache_dir=paths.cache_dir)
+    with serving(paths, registry=registry) as (server, _), _owner(server) as owner:
+        info = owner.get(version_url(raster)).json()
+        tile = owner.get(center_tile_url(info))
+        same_tile = owner.get(
+            center_tile_url(info), headers={"If-None-Match": tile.headers["etag"]}
+        )
+        beyond = owner.get(center_tile_url(info, info["maxzoom"] + 1))
+        style = owner.get("/static/styles.css")
+        same_style = owner.get(
+            "/static/styles.css", headers={"If-None-Match": style.headers["etag"]}
+        )
+        missing = owner.get("/static/nothing.css")
+    access = records(paths.logs_dir, "access")
+
+    assert [tile.status_code, same_tile.status_code, beyond.status_code] == [
+        200,
+        304,
+        404,
+    ]
+    assert [style.status_code, same_style.status_code, missing.status_code] == [
+        200,
+        304,
+        404,
+    ]
+    assert [(record["path"], record["status"]) for record in access] == [
+        ("/api/v1/session", 200),
+        (version_url(raster), 200),
+        (urlsplit(str(beyond.url)).path, 404),
+        ("/static/nothing.css", 404),
+    ]
+
+
+def test_serve_logs_an_unhandled_exception_as_an_app_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A defect in a route: an app record of its request; its type on stderr.
+
+    The record carries the request's id and the error with its message, an IP
+    address in it written ``[ip]``; standard error gets the error reduced to
+    its type, and Uvicorn's own report of it adds nothing.
+    """
+
+    def broken(*args: object) -> None:
+        raise RuntimeError("the index of 203.0.113.7 is gone")
+
+    monkeypatch.setattr(health, "read_health", broken)
+    paths = local_paths(tmp_path)
+    err = io.StringIO()
+    with serving(paths, err=err) as (server, _), _owner(server) as owner:
+        failed = owner.get("/api/v1/health")
+    (access,) = [
+        record
+        for record in records(paths.logs_dir, "access")
+        if record["path"] == "/api/v1/health"
+    ]
+    (application,) = records(paths.logs_dir, "app")
+    lines = printed(err.getvalue())
+
+    assert_problem(failed, 500, "internal_error")
+    assert access["status"] == 500
+    assert application["request_id"] == access["request_id"]
+    assert (application["level"], application["event"]) == (
+        "error",
+        "unhandled_exception",
+    )
+    assert application["error"]["type"] == "RuntimeError"
+    assert application["error"]["message"] == "the index of [ip] is gone"
+    assert [(line["kind"], line["event"]) for line in lines] == [
+        ("lifecycle", "start"),
+        ("app", "unhandled_exception"),
+        ("lifecycle", "stop"),
+    ]
+    assert (lines[1]["request_id"], lines[1]["message"], lines[1]["error"]) == (
+        None,
+        None,
+        {"type": "RuntimeError"},
+    )
 
 
 def test_serve_reports_busy_port(
@@ -218,8 +389,8 @@ def test_token_revoke_all_ends_agent_sessions_of_running_server(
 ) -> None:
     """``archiwista token --revoke-all`` ends agents' sessions, not the owner's."""
     paths = local_paths(tmp_path)
-    with serving(paths) as (server, output):
-        owner_token = FRAGMENT_URL.search(output)
+    with serving(paths) as (server, _):
+        owner_token = FRAGMENT_URL.fullmatch(server.url)
         assert owner_token is not None
         main(["token", "--port", str(server.port)], paths=paths)
         agent_url = FRAGMENT_URL.fullmatch(capsys.readouterr().out.strip())
@@ -269,3 +440,14 @@ def _session(client: httpx.Client, token: str) -> dict[str, str]:
         "cookie": f"{SESSION_COOKIE}={cookie}",
         CSRF_HEADER: exchanged.json()["csrf_token"],
     }
+
+
+@contextmanager
+def _owner(server: AppServer) -> Iterator[httpx.Client]:
+    """Yield a client of the owner's session, from the server's one-time address."""
+    token = server.url.partition("#token=")[2]
+    with httpx.Client(base_url=f"http://127.0.0.1:{server.port}") as client:
+        exchanged = client.post("/api/v1/session", json={"token": token})
+        assert exchanged.status_code == 200, exchanged.text
+        client.headers[CSRF_HEADER] = exchanged.json()["csrf_token"]
+        yield client

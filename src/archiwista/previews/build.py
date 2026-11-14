@@ -332,7 +332,13 @@ class _Builder:
         A process that cannot be started fails the job with
         ``RendererStartError``: no file could be built.
         """
-        argv = [*BUILD_COMMAND, "--work-dir", str(self._spec.work_dir)]
+        argv = [
+            *BUILD_COMMAND,
+            "--work-dir",
+            str(self._spec.work_dir),
+            "--log-dir",
+            str(self._spec.log_dir),
+        ]
         with self._lock:
             if self._stopped:
                 raise _Interrupted

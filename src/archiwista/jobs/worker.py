@@ -2,7 +2,9 @@
 
 The worker reads its job (``JobSpec``) from the first line of standard
 input, runs it and reports in JSON Lines on standard output
-(``archiwista.jobs.protocol``); its log goes to standard error. Kinds:
+(``archiwista.jobs.protocol``); its log goes to standard error, the job's log,
+and its warnings and errors also to the server's application log in the
+job's ``log_dir`` (``archiwista.logs.log_to_server``, A-ADR-057). Kinds:
 
 - ``scan``: ``scan_store`` of each producer directory of the store (6a; the
   projects follow a pass over the whole store); a ``segment`` is scanned only
@@ -126,7 +128,7 @@ from archiwista.jobs.protocol import (
     decode_spec,
     encode_message,
 )
-from archiwista.logs import process_log_level
+from archiwista.logs import log_to_server, process_log_level
 from archiwista.messages import (
     STORED_LANG,
     language,
@@ -274,6 +276,7 @@ def _run() -> int:
             CODE_INTERNAL_ERROR, str(error), details={"reason": REASON_PROTOCOL_ERROR}
         )
         return _report(emit, unreadable, "ProtocolError", status=2)
+    log_to_server(spec.log_dir)
     _watch_supervisor(_STDIN)
     logger.info(
         "Job %s (%s) of store %s for %s, process %d",

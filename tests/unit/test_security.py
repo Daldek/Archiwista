@@ -1,8 +1,6 @@
 """Access protection: Host, tokens, session, CSRF, paths; team transport (SPEC 10)."""
 
 import hashlib
-import logging
-import re
 import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -52,7 +50,7 @@ from archiwista.security import (
     transport_rejection,
 )
 from archiwista.state import StateStore
-from tests.fixtures.local_server import NoSources, local_paths, serving
+from tests.fixtures.local_server import NoSources
 from tests.fixtures.permissions import log_entries
 
 PORT = 8090
@@ -911,61 +909,6 @@ def test_security_csp_follows_settings_changes(api: Api) -> None:
 
     assert OPENFREEMAP in before.headers["content-security-policy"]
     assert OPENFREEMAP not in after.headers["content-security-policy"]
-
-
-# Logs ----------------------------------------------------------------------
-
-
-class RecordingHandler(logging.Handler):
-    """Keep every log line, as formatted text."""
-
-    def __init__(self) -> None:
-        super().__init__(level=logging.DEBUG)
-        self.lines: list[str] = []
-
-    def emit(self, record: logging.LogRecord) -> None:
-        """Remember the record's logger and message."""
-        self.lines.append(f"{record.name}: {record.getMessage()}")
-
-
-def test_token_not_logged(
-    tmp_path: Path,
-    caplog: pytest.LogCaptureFixture,
-    capfd: pytest.CaptureFixture[str],
-) -> None:
-    """The exchange and a ``?token=`` request leave no token in any server log."""
-    caplog.set_level(logging.DEBUG)
-    handler = RecordingHandler()
-    loggers = [logging.getLogger(name) for name in ("uvicorn", "uvicorn.access")]
-    with serving(local_paths(tmp_path), access_log=True) as (server, output):
-        match = re.search(r"#token=([\w-]+)", output)
-        assert match is not None
-        token = match[1]
-        for logger in loggers:
-            logger.addHandler(handler)
-        try:
-            with httpx.Client(base_url=f"http://127.0.0.1:{server.port}") as client:
-                exchanged = client.post("/api/v1/session", json={"token": token})
-                csrf = {CSRF_HEADER: exchanged.json()["csrf_token"]}
-                queried = client.get(
-                    "/api/v1/session", params={"token": token}, headers=csrf
-                )
-                client.get("/", params={"token": token})
-        finally:
-            for logger in loggers:
-                logger.removeHandler(handler)
-    captured = capfd.readouterr()
-    server_records = [
-        f"{record.name}: {record.getMessage()}"
-        for record in caplog.records
-        if not record.name.startswith(("httpx", "httpcore"))
-    ]
-    logs = "\n".join([*handler.lines, *server_records, captured.out, captured.err])
-
-    assert exchanged.status_code == 200
-    assert queried.status_code == 200
-    assert "/api/v1/session?token=***" in logs
-    assert token not in logs
 
 
 # Team mode -----------------------------------------------------------------

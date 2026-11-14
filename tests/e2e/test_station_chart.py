@@ -412,8 +412,7 @@ def test_a_station_with_half_year_characteristics_only_opens_on_the_annual_chart
     )
     expect(card.locator(".sch-time .sch-tick")).to_have_text(years)
     expect(card.locator(".sch-note")).to_have_text(
-        "roczne maksimum i minimum wyznaczone przez Archiwistę z charakterystyk"
-        " półrocznych IMGW-PIB"
+        "roczne maksimum i minimum wyznaczone z charakterystyk półrocznych IMGW-PIB"
     )
     expect(card.locator(".sc-years-note")).to_have_text(
         "Wykres roczny: zawsze lata hydrologiczne"

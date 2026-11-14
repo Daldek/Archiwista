@@ -18,7 +18,8 @@ Running and the command line: [`README.md`](../README.md); scripts and agents:
 
 1. `archiwista serve` opens the browser at a one-time address with a token
    (valid for 10 minutes). If the browser does not open, copy the address from
-   the terminal.
+   the terminal; started without one (by a service manager) the server prints
+   nothing, and `archiwista token` issues an address.
 2. The wizard "Pierwsze uruchomienie" (first run) has four steps:
    - **Stores** ("Magazyny"): a name for people, a short identifier (used in
      addresses and in the API), the full path of the Kartograf store root (the
@@ -143,10 +144,12 @@ as before.
   Projects ("Projekty"), Jobs ("Zadania", with the number of running jobs),
   Store ("Magazyn") and, at the bottom, Settings ("Ustawienia"), the same form
   as the wizard, and for an administrator Accounts ("Konta"), Groups ("Grupy";
-  see "Team server") and the action log ("Dziennik"). Saving the settings
+  see "Team server"), the reports ("Zgłoszenia"; see "Feedback") and the action
+  log ("Dziennik"). Saving the settings
   replaces all of them at once; a new or moved store is scanned from scratch.
 - **Top bar:** the stores with a state dot, "Szukaj" (search; `Ctrl+K` or `/`
-  in every view), "Instrukcja" (the guide), "Aplikacje" (the ecosystem's other
+  in every view), "Zgłoś uwagę" (feedback, below), "Instrukcja" (the guide),
+  "Aplikacje" (the ecosystem's other
   GUIs, below) and the current session (on a team server the account menu).
 - **The menu „Aplikacje”** lists the GUIs of the Nogat ecosystem this deployment
   names in the table `gui` of `nogat.toml` (README; for example Hydrolog and
@@ -437,11 +440,12 @@ and a directory holding only one of them is no project.
   (a set in the making only). An action that cannot be used now is disabled, and the
   card lists each reason once: changing the project (the owner or an administrator), a
   producer's store that matches no configured one, the right to write the stores, a
-  producer without commands (Obserwator until v0.5), a version without a command,
+  producer without commands, a version without a command,
   offline mode, a job of the project already running, a closed set, and a set with
   nothing missing. One job of a project runs at a time; the card follows
   it and, when it ends, reads the project again and marks each pin with what the job
-  found ("nienaruszona", "jest nowsza: <label>", "przywrócona", …) until the next job.
+  found ("nienaruszona", "jest nowsza" with "nowsza: <label>", "przywrócona", …) until
+  the next job.
   A set's "Przepnij" and "Przywróć brakujące" start nothing at once (ADR-042 erratum
   2): each opens a window ("Przepiąć zestaw „…”?", "Przywrócić brakujące wersje zestawu
   „…”?") that runs the set's check ("Sprawdzanie zestawu u źródła…") and shows the
@@ -629,7 +633,7 @@ and a directory holding only one of them is no project.
   leads out of the project is not read: the card names the problem. Own data is
   on the map and in the project card, outside the `/slots` catalog of the store.
 - **Working file and snapshots:** the card gives metadata, a preview and the
-  history; "Zmieniony od migawki" (changed since the snapshot) means the
+  history; "zmieniony od migawki z …" (changed since the snapshot of …) means the
   content differs from the last saved version. First look at the plan of the
   snapshot (estimated size and any obstacle), then "Zrób migawkę" (make a
   snapshot). The permission `project.write` belongs to the owner of the
@@ -678,7 +682,7 @@ and `terms_notice`, a line a cell from the first row down.
 
 - **State:** available, unavailable (since when) or not yet scanned; local disk
   or share; the last full pass, the content of the index, the last scan with
-  its executor, the last full scan, the Kartograf version and the local
+  its executor, the last full scan, the version of each data source and the local
   index.
 - **Buttons:** "Odśwież" (refresh) is an incremental scan (changes only);
   "Pełny skan" (full scan) covers the whole store, also files removed or added
@@ -692,6 +696,11 @@ and `terms_notice`, a line a cell from the first row down.
 - **Non-current and unpinned:** versions that are neither current, nor in
   `full_sheet/`, nor pinned in projects, and how much space removing them would
   free. Archiwista deletes nothing; the report serves a decision.
+- **"Polecenia producenta"** (producer's commands): the commands that write the
+  store of a producer whose data no area chooses (Obserwator's `store sync`: the
+  IMGW-PIB archives are files of the whole country) with their options;
+  "Zaplanuj…" checks the call against this store and opens the plan window, as on
+  the map.
 - **Store problems** with a repair description (and the file card when they
   concern a file), and the **projects** that use the store.
 
@@ -822,8 +831,8 @@ choice goes into the address and is remembered for hydro or meteo data in the
 person's preferences. "Ukryte przez filtry pokrycia: N" above the list counts the
 stations the coverage chips hide. Enter or a click opens a station's card; M or the
 row's map button shows a station with a position on the map; the arrows, Home and End
-move through the rows, and Enter on "Bez położenia" folds it. „Źródło danych i
-warunki” under the list gives the lines of the stations of every page read, as under
+move through the rows, and Enter on "Bez położenia" folds it. The strip of sources
+under the list gives the lines of the stations of every page read, as under
 the map.
 
 ![The Catalog's list of stations](reports/v0.5-screenshots/02-katalog-stacji.webp)
@@ -972,7 +981,7 @@ In local mode (a team server: below) Archiwista works only on this computer
 (`127.0.0.1`) and shows nothing without a session. The session expires after
 24 hours without use and ends when the server stops; the screen "Wymagana
 sesja" (session required) then appears. A new session is opened by the address
-`archiwista serve` printed or a new address from `archiwista token`. Another
+`archiwista serve` printed on its terminal or a new address from `archiwista token`. Another
 browser tab gets its session from an open Archiwista tab.
 
 ## Team server
@@ -983,9 +992,10 @@ reads when it starts: edit it while the server is stopped ("Ustawienia" neither
 shows nor changes it) and check it with `archiwista doctor`.
 
 The three-computer SMB/TLS deployment and shared-queue acceptance procedure is
-in [`reports/v0.4-lan-runbook.md`](reports/v0.4-lan-runbook.md). It has not
-been performed on the deployment network; this section describes the built
-interface, not a released or live-certified installation.
+in [`reports/v0.4-lan-runbook.md`](reports/v0.4-lan-runbook.md). It ran on the
+LAN on 2026-10-30, on two computers with three people's sessions (a third
+computer remains untested); this section describes the built
+interface, not a released installation.
 
 ```toml
 [team]
@@ -999,7 +1009,8 @@ tls_key = "/etc/archiwista/tls/privkey.pem"
 Every request comes over TLS and every answer carries
 `Strict-Transport-Security: max-age=31536000`; `Host` must be the host of
 `origin`, the session cookie is `__Host-archiwista_session` (`Secure`), and
-`/api/docs` is not served. `archiwista serve` prints `origin` and issues no
+`/api/docs` is not served. `archiwista serve` prints `origin` on a terminal (its
+lifecycle record `start` on standard error names it anyway) and issues no
 startup address. It refuses to start (exit 2) when team mode is off and `--host`
 is not `127.0.0.1` (`host_refused`), without TLS files and trusted proxies
 (`tls_required`), with files that do not load as a pair or an encrypted key
@@ -1272,13 +1283,19 @@ Restoring is putting the copy back in place while the server is stopped.
 
 ## When something does not work
 
-- `archiwista doctor` checks the installation, the Kartograf plugin, the
+- `archiwista doctor` checks the installation, the source plugins, the
   stores and the port, and gives a repair for every problem. It also names
   `nogat.toml`, the settings file the Nogat tools share, and where the data
-  directory, the caches, the language of the command line and the GUIs of the
-  menu „Aplikacje” come from (`data_dir`, `cache_dir`, `lang` and `gui` of the
-  file, else the defaults; README, A-ADR-053, A-ADR-054). A file Archiwista cannot
-  use stops every other command until it is corrected.
+  directory, the caches, the server's logs, the language of the command line and
+  the GUIs of the menu „Aplikacje” come from (`data_dir`, `cache_dir`,
+  `state_dir`, `lang` and `gui` of the file, else the defaults; README,
+  A-ADR-053, A-ADR-054, A-ADR-057). A file Archiwista cannot use stops every
+  other command until it is corrected.
+- **The server's logs** (A-ADR-057): `<state_dir>/archiwista/logs/`, by default
+  `~/.local/state/nogat/archiwista/logs/`, keeps for 14 days the access,
+  application and lifecycle records of `archiwista serve` and the warnings and
+  errors of its job and render processes; the README gives the `jq` command that
+  reads them. A job's own log is its „Dziennik”.
 - **Store unavailable** (for example a disconnected share): the views show the
   state of the index, the status bar gives its time; after reconnecting, the
   next scan completes the changes without rebuilding the index.
@@ -1288,14 +1305,15 @@ Restoring is putting the copy back in place while the server is stopped.
 
 ## What version 0.3 does not do
 
-- It checks availability at the source and downloads only from the step "U
-  źródła" of the map and from the project card, through Kartograf, and an area
+- It checks availability at the source only through Kartograf, in the step "U
+  źródła" of the map; it downloads from that step, from „Polecenia producenta” of
+  the Store view (Obserwator) and from the project card; and an area
   is not chosen by the name of an administrative unit.
 - It does not build a local COG ahead: the warm-up prepares the thumbnail of
   such a file only, and its map preview is built at the first view.
 - It indexes the files of an Obserwator store (archives, series, station
-  catalogs), and shows its stations on the map, in the Catalog and
-  in the station card and through `archiwista stations` and the API, but has no
-  chart or comparison of stations in the interface and no Obserwator actions yet (v0.5).
-- It does not show object differences between snapshots and has no sign-in or
-  team work (v0.4).
+  catalogs), and shows its stations on the map, in the Catalog, in the station
+  card with its chart, in the comparison of stations and through `archiwista
+  stations` and the API, but runs no Obserwator command except `store sync`:
+  Obserwator builds its data root itself (A-ADR-056).
+- It does not show object differences between snapshots.

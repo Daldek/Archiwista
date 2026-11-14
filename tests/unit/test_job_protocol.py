@@ -98,6 +98,7 @@ def test_job_spec_keeps_settings_and_paths(
         previews_dir=data / "previews",
         work_dir=data / "work",
         areas_dir=data / "areas",
+        log_dir=Path("/home/u/.local/state/nogat/archiwista/logs"),
         settings=AppSettings(stores=(config,), offline=True, scan_threads=3),
     )
 

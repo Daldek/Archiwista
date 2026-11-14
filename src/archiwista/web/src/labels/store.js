@@ -14,7 +14,7 @@ export const store = {
     intro:
       "Pobieranie i odświeżanie danych producenta, którego dane nie są wybierane obszarem " +
       "(Obserwator: archiwa IMGW-PIB to pliki całego kraju, po roku albo miesiącu). " +
-      "Najpierw zobaczysz plan: co i ile zostanie pobrane do tego magazynu.",
+      "Najpierw Archiwista pokaże plan: co i ile zostanie pobrane do tego magazynu.",
     command: "Polecenie",
     command_value: "{producer} · {command}",
     required: "(wymagane)",

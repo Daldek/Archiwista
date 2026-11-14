@@ -15,7 +15,6 @@ import os
 import shlex
 from collections import Counter
 from collections.abc import Callable, Collection, Iterator, Mapping
-from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +68,7 @@ from archiwista.sources import (
     SourceStatus,
 )
 from archiwista.sources.markers import STORE_MARKERS
+from archiwista.values import as_date, as_datetime, as_mapping, as_text
 
 UNIT_CACHE_FILE = "unit_bboxes.sqlite"
 
@@ -356,7 +356,7 @@ class KartografAdapter:
         sidecar = store_entry.sidecar or _readable_sidecar(store_entry.path)
         if sidecar is None:
             return Footprint(location="none", reason="unreadable")
-        if _mapping(sidecar.request).get("whole_country") is True:
+        if as_mapping(sidecar.request).get("whole_country") is True:
             return Footprint(location="country", source="country")
         return Footprint(location="none", reason="no_source")
 
@@ -773,9 +773,9 @@ def _entry_meta(
 ) -> EntryMeta:
     """Producer-neutral metadata from a sidecar and its segment's descriptor."""
     info = describe_segment(segment) if segment else None
-    extra = _mapping(sidecar.extra)
-    version = _mapping(extra.get("version"))
-    licence = _mapping(sidecar.license)
+    extra = as_mapping(sidecar.extra)
+    version = as_mapping(extra.get("version"))
+    licence = as_mapping(sidecar.license)
     return EntryMeta(
         producer=PRODUCER,
         store=store,
@@ -783,21 +783,21 @@ def _entry_meta(
         dataset=sidecar.dataset,
         dataset_key=sidecar.dataset_key or (info.dataset_key if info else None),
         product=sidecar.product or (info.product if info else None),
-        label=label or _text(version.get("label")),
-        label_source=_text(version.get("label_source")),
+        label=label or as_text(version.get("label")),
+        label_source=as_text(version.get("label_source")),
         data_year=sidecar.data_year,
-        data_date=_date(sidecar.data_date),
-        downloaded_at=_datetime(sidecar.downloaded_at),
+        data_date=as_date(sidecar.data_date),
+        downloaded_at=as_datetime(sidecar.downloaded_at),
         sha256=sidecar.sha256,
         size_bytes=sidecar.size_bytes,
-        license=_text(licence.get("id")),
-        attribution=_text(licence.get("attribution")),
+        license=as_text(licence.get("id")),
+        attribution=as_text(licence.get("attribution")),
         source_files=_source_files(extra.get("source_files")),
         raw_sidecar=sidecar.raw,
         country=sidecar.country or (info.country if info else None),
         unit=sidecar.unit,
         survey_work_id=sidecar.survey_work_id,
-        campaign=_text(_mapping(sidecar.campaign).get("id")),
+        campaign=as_text(as_mapping(sidecar.campaign).get("id")),
         edition=sidecar.edition,
         full_sheet=sidecar.full_sheet,
         coverage=sidecar.coverage,
@@ -806,12 +806,12 @@ def _entry_meta(
         vertical_crs=sidecar.vertical_crs,
         resolution=sidecar.resolution,
         nodata=sidecar.nodata,
-        provider=_text(sidecar.provider),
+        provider=as_text(sidecar.provider),
         # A sidecar names the Kartograf version that wrote it and, before the
         # data-output convention (DEV-19.16), no ``producer``: only Kartograf
         # writes ``kartograf-meta/1``, so the writer is its package.
         written_by=PACKAGE if sidecar.kartograf_version else None,
-        producer_version=_text(sidecar.kartograf_version),
+        producer_version=as_text(sidecar.kartograf_version),
     )
 
 
@@ -833,7 +833,7 @@ def _rebuilt(entry: SourceEntry) -> Any | None:
     version = None
     if entry.version_path is not None:
         version = Path(entry.store) / entry.version_path
-    label = _text(_mapping(_mapping(sidecar.extra).get("version")).get("label"))
+    label = as_text(as_mapping(as_mapping(sidecar.extra).get("version")).get("label"))
     return StoreEntry(
         kind=entry.kind,
         segment=entry.segment or "",
@@ -870,28 +870,6 @@ def _producer_error(error: Exception) -> ProducerError:
 def _unavailable(root: Path | str, error: OSError) -> SourceUnavailableError:
     text = message("store.unreadable", path=root)
     return SourceUnavailableError(with_detail(text, str(error)))
-
-
-def _mapping(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _text(value: object) -> str | None:
-    return value if isinstance(value, str) and value else None
-
-
-def _date(value: object) -> date | None:
-    try:
-        return date.fromisoformat(value) if isinstance(value, str) else None
-    except ValueError:
-        return None
-
-
-def _datetime(value: object) -> datetime | None:
-    try:
-        return datetime.fromisoformat(value) if isinstance(value, str) else None
-    except ValueError:
-        return None
 
 
 def _source_files(value: object) -> tuple[str, ...]:

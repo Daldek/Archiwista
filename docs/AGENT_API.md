@@ -1,13 +1,14 @@
 # Archiwista API for agents and scripts
 
 For AI agents (for example Claude Code) and scripts using Archiwista without
-a browser: version 0.3 "Actions" is built, not released; v0.4 "Team" is under
-work on `feature/v0.4-team` (also not released). It covers reading the catalog,
+a browser: version 0.3 "Actions" and v0.4 "Team" are built in `develop`, not
+released. It covers reading the catalog,
 previews, layers, comparison, own data and project snapshots, areas, producer
 commands, plans and downloads, projects and jobs. Team mode adds sign-in, agent
 sessions, per-person permissions and preferences, a shared queue, file downloads
 and the action log. The agent uses `/api/v1` or `archiwista … --json`; there is
-no chat tool and no MCP server. The v0.4 live LAN scenario remains unverified
+no chat tool and no MCP server. The v0.4 LAN scenario ran with three people on
+two computers of a LAN; a third computer remains untested
 (`reports/v0.4-lan-runbook.md`).
 
 Until v1.0 the API may change. The full schema with examples is at
@@ -65,25 +66,32 @@ services as the HTTP routes, as the owner of the local installation
   is the error document `archiwista-error/1` as compact JSON (section 7), and
   the exit status is the registry's exit code of its `code`: `2` invalid input
   (also a wrong use of the command line, for example a missing argument), `3`
-  not found, `4` conflict, `6` missing dependency, `8` store unavailable, `9`
-  file system error, `12` forbidden, `13` calculation error, `14` no data, `15`
-  not supported; `1` is a defect of Archiwista;
+  not found, `4` conflict, `6` missing dependency, `7` invalid data, `8` store
+  unavailable, `9` file system error, `12` forbidden, `13` calculation error, `14`
+  no data, `15` not supported; `1` is a defect of Archiwista;
 - a job that does not succeed prints its `JobDetail` on standard output and
-  exits `11` (it failed) or `130` (it was cancelled or interrupted, also by
-  Ctrl+C); `archiwista reindex` of several stores exits `10` when only some
+  exits `10` (it ended `partial`), `11` (it failed) or `130` (it was cancelled
+  or interrupted, also by Ctrl+C); `archiwista reindex` of several stores exits
+  `10` when only some
   were scanned; `archiwista doctor` exits `10` or `11` when checks fail. These
   are outcomes, not errors: no error document follows them;
 - text for people (diagnostics, the description of an error) always goes to
-  standard error, in Polish, and the log, in English, goes there too; none of it
+  standard error, in the language `lang` of `nogat.toml` sets (Polish by
+  default; README), and the log, in English, goes there too; none of it
   goes to standard output. Every command takes `--verbose` (debug) or `--quiet`
   (errors only),
   before or after its name, and without them the variable `ARCHIWISTA_LOG_LEVEL`
   (`debug`, `info`, `warning`, `error`) sets the level; the default is `warning`.
+  `archiwista serve` follows that level until it serves; then its standard error
+  gets only the lifecycle records of its logs and its errors reduced to their type
+  (`nogat-log/1`, README), and its one-time address goes to standard output only
+  when that is a terminal;
 
-Without `--json` the commands print a short Polish text for people; an agent
-should always pass `--json`. The text of an answer that carries the lines of the
-data providers' terms (section 5) ends with „Źródła danych i warunki korzystania:”
-and the lines, each indented two spaces.
+Without `--json` the commands print a short text for people in that language; an
+agent should always pass `--json`. The text of an answer that carries the lines of
+the data providers' terms (section 5) ends with „Źródła danych i warunki
+korzystania:” (`Data sources and terms of use:` in English) and the lines, each
+indented two spaces.
 
 The CLI downloads data and writes a store only through a job: a `download` (`jobs
 start download`) or `jobs retry` of one. The commands `users`,
@@ -104,9 +112,10 @@ account's sessions; no answer and no log holds a password or its hash (`GET
 ## 2. The HTTP session of an agent
 
 The server listens on `127.0.0.1` only (port `8090` by default, the setting
-`port`; a team server: below). Every request `/api/*` except the token exchange
-(and on a team server `GET /session/methods` and `POST /session/login`) needs a
-session.
+`port`; a team server: below). Every request `/api/*` except the token exchange,
+`GET /session/methods`, the sign-ins `POST /session/login` and `POST
+/session/proxy` (team mode only, `409 local_mode` else) and the pages of
+`/api/docs` needs a session.
 
 1. The owner starts the server: `archiwista serve --no-browser`.
 2. The agent takes a one-time token: `archiwista token --json` →
@@ -116,10 +125,12 @@ session.
    `label` is the label of the session the token opens.
 3. The agent exchanges the token for a session: `POST /api/v1/session` with the
    body `{"token": "…"}`. The answer `200` sets the cookie `archiwista_session`
-   (`HttpOnly`) and returns `{"actor": "local", "kind": "agent", "roles":
-   ["admin", "store_writer"], "store_write": true, "label": "…", "csrf_token":
-   "…", "expires_at": "…"}`: `csrf_token` appears only here, `roles` are the
-   roles of the actor (an agent has the roles of the person who issued the
+   (`HttpOnly`) and returns `{"actor": "local", "name": "local", "kind": "agent",
+   "roles": ["admin", "store_writer"], "groups": [], "store_write": true,
+   "label": "…", "method": "token", "password_change_required": false, "team":
+   false, "expires_at": "…", "gui": {}, "csrf_token": "…"}`: `csrf_token`
+   appears only here, `roles` are the roles of the actor (an agent has the
+   roles of the person who issued the
    token), and `store_write` says whether the session may write the stores (a
    `download`: the role `store_writer` or the setting `store_write_for_all`).
 4. **Every** request to `/api`, `GET` too, carries the session cookie and the
@@ -684,14 +695,18 @@ disk.
 **Data sources and terms** (A-ADR-055, Nogat DEV §20). The terms of IMGW-PIB,
 PMAXTP and ČHMÚ require their lines with every product of their data. An answer
 carries them in two lists of strings: `attribution` (the sources and the marks of
-processing, IMGW-PIB, PMAXTP, then ČHMÚ, each line once) and `terms_notice` (the
+processing, IMGW-PIB, PMAXTP, then ČHMÚ, then the lines of GUGiK's PRG and ČÚZK's
+RÚIAN that a station catalog's sidecar names for the state borders its positions
+were checked against, carried as written with an answer that gives a station's
+place and with a version of that catalog; each line once) and `terms_notice` (the
 links to the IMGW-PIB terms that apply, each naming whose terms it links), both empty without
 such data. They come with `GET /slots` (merged over the page's versions), a
 version's card, `GET /compare` (both sides merged) and every station answer
 (`/stations`, `/stations/datasets`, `/stations/timeline`, `/stations/compare`,
 `/stations/{code}`, its `/coverage` and `/series`, `/map/stations`). Archiwista
-chooses them by the provider and the form of the data, not from the sidecar; a
-version of a producer that names no origin of its data (Kartograf) gives its
+chooses them by the provider and the form of the data, not from the sidecar (but
+for those border lines); a version of a producer that names no origin of its data
+(Kartograf) gives its
 sidecar's attribution on its card and in `/compare` (for example „Główny Urząd
 Geodezji i Kartografii”). The lines are Polish whatever `Accept-Language` says. An
 agent shows them verbatim with the data, neither shortened nor translated, and
@@ -712,7 +727,8 @@ always gets the same one), the area in km² (`area_km2`, `area_crs`) and the
 countries. The `id` is the parameter `area_id` of `/slots` (`archiwista search
 --area-id`) and of `GET /local-coverage?area_id=…&product=…&store=…`: how much of
 the area the current versions of the product in the store cover: `results` with
-the country, `percent` (rounded down) and `label` ("lokalnie 83% obszaru").
+the country, `percent` (rounded down) and `label` (`locally 83% of the area`;
+„lokalnie 83% obszaru” with `Accept-Language: pl`).
 Before counting, the server reads the area's slots from the store (at most 500,
 up to 10 s); otherwise it answers from the index and gives the reason in
 `stale_reason`.
@@ -848,7 +864,8 @@ visibility of the project. An invisible project gives `404`, a missing right to
 a snapshot `403`.
 
 `GET /stores/{store}/versions/{version}/preview` returns `PreviewInfo`: `state`
-(`ready`, `needs_build`, `building`, `unavailable`), `kind`, `format` (e.g.
+(`ready`, `needs_build`, `building`, `unavailable`, `failed`: a time or memory
+limit, try again later), `kind`, `format` (e.g.
 `GeoTIFF`; a ZIP holding exactly one raster is previewed as that raster:
 `kind` `raster`, `format` `XYZ (ZIP)`), `reason` (`code`,
 a `message` and a `fix` in the language of the request), `styles`,
@@ -953,7 +970,8 @@ scan is shared. The SSE sends `progress`, `notice` and `state`, and a client
 resumes after `Last-Event-ID`.
 
 **The producers' commands (v0.3, ADR-034).** `GET /commands` lists the commands
-of every producer whose plugin offers them (Kartograf's catalog; `?producer=`
+of every producer whose plugin offers them (Kartograf's catalog, Obserwator's
+`store sync`, A-ADR-050 and A-ADR-056; `?producer=`
 keeps one producer): each with its options (JSON type, whether required, the
 allowed values and their meanings, the default, bounds, the `group` of mutually
 exclusive options and the `path_role` of a file path), what a run does
@@ -990,20 +1008,21 @@ without a store root (ready for `POST /commands/parse` and a plan), the `area`,
 `way` and the `replaced` options; nothing is checked against a store (`POST
 /commands/validate` does). An unknown area is `404 not_found`, a command outside
 the catalog `400` (`unknown_command`), a command that takes no area `422
-unsupported` (`no_area_option`), as is a producer without commands
-(`no_commands`) or one that takes no area of Archiwista (`no_area_commands`;
-Obserwator until its actions). `archiwista commands area` prints the same model
-with `--json`, otherwise the line and, below it, the replaced options.
+unsupported` (`no_area_option`; Obserwator's `store sync`, whose archives are
+national files), as is a producer without commands (`no_commands`) or one that
+takes no area of Archiwista (`no_area_commands`). `archiwista commands area`
+prints the same model with `--json`, otherwise the line and, below it, the
+replaced options.
 
 ```sh
 archiwista commands list --producer=kartograf --json
-archiwista commands parse kartograf "kartograf sheet parse --sheet N-34-130-D-d-2-4" --json
+archiwista commands parse kartograf "kartograf sheet parse N-34-130-D-d-2-4" --json
 archiwista commands validate kartograf "elevation download" --store=demo --json \
   --options='{"product": "nmt", "sheet": "N-34-130-D-d-2-4", "resolution": "1m", "vertical_crs": "EVRF2007"}'
 archiwista commands area kartograf "landcover download" --options='{"product": "bdot10k"}' \
   --area-id="$(archiwista project kamiennik --json | jq -r .area.area_id)" --json
 curl -sf -b "$JAR" -H "$H" -X POST -H 'Content-Type: application/json' \
-  -d '{"producer": "kartograf", "line": "kartograf sheet parse --sheet N-34-130-D-d-2-4"}' \
+  -d '{"producer": "kartograf", "line": "kartograf sheet parse N-34-130-D-d-2-4"}' \
   "$BASE/commands/parse"
 ```
 
@@ -1142,7 +1161,7 @@ Base decisions on `status`, `code` and `details.reason`, never on the text of
 
 | Status | `code` | `details.reason` and what to do |
 |---|---|---|
-| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store` for Kartograf); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB for the rest); `kartograf_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `project_not_discoverable`, `project_dir_missing`: a new project where a scan would not find it, or below a configured project directory that is missing; `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); `password_policy`: a new password breaks a rule, `details.rule` `too_short` (under 12 characters after NFKC), `too_long` (over 1,024), `account_name` (the account's id or name), `common` (a common password) or `same_as_current` (`PUT /session/password`: the current password, ignoring case); `password_mismatch` (`users password` only): the two typed passwords differ; no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
+| 400 | `validation_error` | `invalid_request`: invalid parameters or body, see `errors` (`pointer`, `type`, `message`); `invalid_settings`: `details.problems` (`code`, `field`, `message`, and `reason` and `hint` when the producer refuses the directory: `no_marker`, `unsupported_marker`, `foreign_store` or `not_a_store`, and for Obserwator also `wrong_root`, a root of the other kind, A-ADR-056); `invalid_ref`: a malformed reference; `area_too_large`: an area file over 50 MB or an archive over 200 MB unpacked; `area_too_complex`: more than 100 000 vertices; `request_too_large`: the body is over the limit (4 KiB for the token exchange, 16 KiB for a sign-in, 1 MiB for the rest); `kartograf_error`, `obserwator_error`: the producer refused a command line or a call (`/commands/…`), its own text and hint, the option in `details.option`; `unknown_command`, `store_required`, `store_without_producer`: a command outside the producer's catalog, a command on a store without `store`, a store without a directory of the producer (`details.option`); `project_not_discoverable`, `project_dir_missing`: a new project where a scan would not find it, or below a configured project directory that is missing; `ambiguous_station`: a station code that several stations share, named in `details.stations` (`store`, `provider`); `password_policy`: a new password breaks a rule, `details.rule` `too_short` (under 12 characters after NFKC), `too_long` (over 1,024), `account_name` (the account's id or name), `common` (a common password) or `same_as_current` (`PUT /session/password`: the current password, ignoring case); `password_mismatch` (`users password` only): the two typed passwords differ; no reason: an unknown store, area or cursor, a coverage filter without `dataset`, a reversed range of years |
 | 401 | `unauthorized` | `session_required`: no, expired or unknown session; a wrong, used or expired token → a new token; on a team server also a token of the computer's owner (a startup token, or one `archiwista token` issued without `--user`), since a team has no local owner → a token of an account (`archiwista token --user ID`); `login_failed` (team mode): the account and password do not sign in, one answer for every cause, or the reverse proxy names no enabled account (`POST /session/proxy`); `password_expired`: a correct temporary password past its end, an administrator gives a new one |
 | 403 | `forbidden` | `csrf_rejected`: no or wrong `X-Archiwista-CSRF` in any `/api` request, or a foreign `Origin`; `invalid_host`: a `Host` other than `127.0.0.1:<port>`/`localhost:<port>` (team mode: other than the host of `origin`); `tls_required`: team mode, a request not over HTTPS; `proxy_required`: team mode behind a reverse proxy, a request that did not come through it; `password_change_required`: the session's temporary password must be changed first (`PUT /session/password`); `wrong_password`: the current password given to `PUT /session/password` is wrong; `permission_denied`: the actor has no right (for example a settings change without the role `admin`); `path_outside_root`: the path leaves the store, or an option of a command is a file path (`details.option`) |
 | 404 | `not_found` | an unknown resource, or a project invisible to the actor; `missing_file`: the file of a download (`…/file`) is gone from the disk, the next scan updates the index |
@@ -1169,9 +1188,9 @@ standard output), for example for `archiwista search --limit=201 --json`:
 `exit_code` is the registry's exit code of `code` (`null` for the codes that
 exist only in REST: `unauthorized`, `method_not_allowed`, `rate_limited`; the
 command then exits `1`); `message` and `hint` are English, as the document is
-machine output, and the line before it, for a person, says the same in Polish;
-`command` is the `<group> <verb>` of the command when it has that shape. The
-schema is `schemas/nogat/error-1.schema.json`.
+machine output, and the line before it, for a person, says the same in the
+language of `lang` (Polish by default); the schema's optional `command` is left
+out. The schema is `schemas/nogat/error-1.schema.json`.
 
 ## 8. Recommended workflow of an agent
 
@@ -1401,7 +1420,7 @@ recorded before the texts followed the request. Base decisions on `code` and
 | `code` | `details.reason` | What it means |
 |---|---|---|
 | `store_unavailable` | `store_unreadable` | the store cannot be read now (an unmounted share); the index stays as it was, try again later |
-| `store_unavailable` | `no_marker`, `unsupported_marker`, `foreign_store`, `not_a_store` | the producer refuses the directory (Kartograf: no `kartograf-store.json` beside a layout, a marker of another schema or not JSON, the root of an Obserwator store, the parent of a store); `hint` gives the command, for `no_marker` `kartograf store init --root <path>`, which marks the store once; the index stays as it was |
+| `store_unavailable` | `no_marker`, `unsupported_marker`, `foreign_store`, `not_a_store`, `wrong_root` | the producer refuses the directory (Kartograf: no `kartograf-store.json` beside a layout, a marker of another schema or not JSON, the root of an Obserwator store, the parent of a store; Obserwator: `wrong_root`, a root of the other kind, its data root as the store root or the reverse, A-ADR-056); `hint` gives the command, for `no_marker` `kartograf store init --root <path>`, which marks the store once; the index stays as it was |
 | `missing_dependency` | `source_unavailable`, `source_incompatible` | the producer plugin is missing or has an unsupported version: `details.source` and `hint` give the fix |
 | `missing_dependency` | `own_reader_failed` | the process that reads own data did not start (for example without the GDAL bindings) |
 | `missing_dependency` | `renderer_not_started` | a `preview` or `preview_warm` job could not start a build or render process on the server (the cause is in the server's log); nothing is kept about the files, try again once it is fixed |
@@ -1479,15 +1498,13 @@ archiwista log list --actor marek.lis --json
 archiwista log export --format csv --since 2026-10-01T00:00:00+02:00 --output dziennik.csv
 ```
 
-## 11. Limits of v0.3
+## 11. Limits
 
-- Local mode only: one person on `127.0.0.1`, no login; accounts and groups
-  serve the visibility of projects (A-ADR-029).
-- Actions run the commands of Kartograf's catalog; Obserwator has no actions yet
-  (v0.5). An area is a drawn, sheet or file area as in v0.1, not the name of an
-  administrative unit (plan A15, Kartograf KB-7).
+- Actions run the commands of Kartograf's catalog and Obserwator's `store sync`
+  (A-ADR-050, A-ADR-056). An area is a drawn, sheet or file area as in v0.1, not
+  the name of an administrative unit (plan A15, Kartograf KB-7).
 - The files of an Obserwator store are indexed (archives, series, station
   catalogs), and its stations and the coverage of their series are read through
-  `/stations` and `archiwista stations` (section 5); the stations in the
-  interface, the chart data, the comparison of stations and the archive badge
-  are v0.5. No chat and no MCP; an external agent uses the API described above.
+  `/stations` and `archiwista stations` (section 5) and shown in the interface;
+  the archive badge is v0.5. No chat and no MCP; an external agent uses the API
+  described above.

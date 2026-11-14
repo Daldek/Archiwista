@@ -53,7 +53,9 @@ export const catalog = {
     area_km2: "{area} km²",
     bbox: "Prostokąt (bbox)",
     bbox_placeholder: "min_x,min_y,max_x,max_y",
-    bbox_hint: "Cztery liczby w układzie poniżej; inny niż WGS84 przelicza przypięta transformacja producenta.",
+    bbox_hint:
+      "Cztery liczby w układzie poniżej; inny układ niż WGS84 jest przeliczany do WGS84 " +
+      "stałą transformacją.",
     bbox_crs: "Układ prostokąta",
     bbox_crs_placeholder: "EPSG:4326",
     bbox_with_area: "Prostokąt zastępuje obszar — usuń najpierw obszar.",
@@ -326,7 +328,9 @@ export const catalog = {
         unknown: "nieznane",
       },
       years: "Zakres lat etykiet",
-      years_hint: "Zakres R etykiet pokrycia; puste: od pierwszego roku zbioru do ostatniego znanego.",
+      years_hint:
+        "Zakres lat, w którym liczone są etykiety pokrycia; puste: od pierwszego roku " +
+        "zbioru do ostatniego znanego.",
       year_type: "Lata",
       year_types: { hydrological: "hydrologiczne", calendar: "kalendarzowe" },
       year_type_hint: "Rok hydrologiczny trwa od 1 XI do 31 X. Wybór trafia do adresu i jest zapamiętywany dla danych {family}.",

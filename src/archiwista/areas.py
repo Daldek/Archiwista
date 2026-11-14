@@ -73,7 +73,6 @@ from archiwista.sources import GeoAdapter, GeoJSONGeometry
 
 type AreaSource = Literal["drawn", "view", "sheet", "file"]
 
-AREA_SOURCES: tuple[AreaSource, ...] = ("drawn", "view", "sheet", "file")
 AREA_BODY_LIMIT_BYTES = 50 * 1024**2
 AREA_READ_TIMEOUT_S = 30.0
 AREA_COPY_MAX_AGE = timedelta(days=7)

@@ -2,11 +2,11 @@ r"""``archiwista serve`` as a person starts it, for the measurements (SPEC 4.5).
 
 The perf modules (``tests/perf/test_store_50k.py``, ``test_previews_perf.py``,
 ``test_own_data_perf.py``) run the server as its own process over a work
-directory (configuration and index there, ``XDG_*_HOME`` pointing into it),
-talk to it as an agent with the one-time token it prints, and sample the
-memory of the server and of every process it starts. ``Medium`` names the
-mount a store lies on, so a report says what was measured: an SSD or a real
-SMB share, never a local directory standing for one.
+directory (configuration, index and logs there, ``XDG_*_HOME`` pointing into
+it), on a terminal, talk to it as an agent with the one-time token it prints
+there, and sample the memory of the server and of every process it starts.
+``Medium`` names the mount a store lies on, so a report says what was
+measured: an SSD or a real SMB share, never a local directory standing for one.
 """
 
 import os
@@ -28,6 +28,7 @@ import pytest
 
 from archiwista.config import AppPaths, AppSettings, ConfigStore
 from archiwista.security import CSRF_HEADER
+from tests.fixtures.terminal import Terminal
 
 START_TIMEOUT_S = 60.0
 FINAL_STATES = frozenset({"succeeded", "failed", "interrupted", "cancelled"})
@@ -302,6 +303,7 @@ def serve_paths(work: Path) -> AppPaths:
     return AppPaths(
         config_file=work / "config" / "archiwista" / "config.toml",
         data_dir=work / "data" / "archiwista",
+        state_home=work / "state" / "nogat" / "archiwista",
     )
 
 
@@ -318,9 +320,10 @@ def serve_process(work: Path, settings: AppSettings) -> Iterator[ServerProcess]:
         **os.environ,
         "XDG_CONFIG_HOME": str(work / "config"),
         "XDG_DATA_HOME": str(work / "data"),
+        "XDG_STATE_HOME": str(work / "state"),
     }
-    out = work / "serve.out"
-    with out.open("wb") as stdout, (work / "serve.err").open("wb") as stderr:
+    errors = work / "serve.err"
+    with Terminal(work / "serve.out") as terminal, errors.open("wb") as stderr:
         process = subprocess.Popen(
             [
                 str(Path(sys.executable).with_name("archiwista")),
@@ -330,22 +333,19 @@ def serve_process(work: Path, settings: AppSettings) -> Iterator[ServerProcess]:
                 "0",
             ],
             env=env,
-            stdout=stdout,
+            stdout=terminal.child,
             stderr=stderr,
         )
-    try:
-        deadline = time.monotonic() + START_TIMEOUT_S
-        while (found := _SERVE_URL.search(out.read_text(encoding="utf-8"))) is None:
-            assert process.poll() is None, (work / "serve.err").read_text("utf-8")
-            assert time.monotonic() < deadline, "the server did not start"
-            time.sleep(0.1)
-        with (
-            closing(_agent_session(found)) as client,
-            MemorySampler(process.pid) as memory,
-        ):
-            yield ServerProcess(process, client, memory, paths)
-    finally:
-        assert _stop(process) == 0, (work / "serve.err").read_text("utf-8")
+        terminal.started()
+        try:
+            found = terminal.wait_for(_SERVE_URL, process, START_TIMEOUT_S, errors)
+            with (
+                closing(_agent_session(found)) as client,
+                MemorySampler(process.pid) as memory,
+            ):
+                yield ServerProcess(process, client, memory, paths)
+        finally:
+            assert _stop(process) == 0, errors.read_text("utf-8")
 
 
 def _agent_session(found: re.Match[str]) -> httpx.Client:

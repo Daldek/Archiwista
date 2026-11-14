@@ -61,3 +61,12 @@ leaves a choice to an `app`, this ADR records it.
 - The author still has to decide the points in "Open questions" of
   `docs/PROGRESS.md` (the `src/` move among them), push the branch and apply the
   GitHub settings; until then the ADR is `proposed`.
+
+**Erratum 1 (2026-11-14, audit against the code):** the standard this ADR adopts is numbered
+1.0: the drafts called 2.0 and 2.1 were renumbered on 2026-11-03 (`STANDARD_VERSION` of
+`src/archiwista/_errors.py`); the title keeps the name of its time. `chore/nogat-2.1` reached
+`develop` on 2026-11-03 with the stack of `feature/archiwista-projects`, merged by the author's
+decision (`6f1caef`), and `develop` is pushed, so the ADR is accepted; the layout of point 2
+was kept by the author's decision of 2026-11-09, and the GitHub settings, which option B leaves
+to the author, stay open (`docs/PROGRESS.md`, Open questions). CI runs (point 5), and the gate
+takes about 50 to 60 minutes, not 25 to 40 (`CLAUDE.md`).

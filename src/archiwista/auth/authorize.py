@@ -74,20 +74,6 @@ type Action = Literal[
     "feedback.manage",
 ]
 
-ACTIONS: tuple[Action, ...] = (
-    "project.view",
-    "project.share",
-    "project.write",
-    "project.create",
-    "users.manage",
-    "groups.manage",
-    "settings.write",
-    "store.write",
-    "store.scan",
-    "job.cancel",
-    "log.read",
-    "feedback.manage",
-)
 ADMIN = "admin"
 STORE_WRITER = "store_writer"
 

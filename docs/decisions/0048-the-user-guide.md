@@ -21,3 +21,5 @@
 - Anyone who reaches the server reads the guide without signing in; it shows nothing the interface files do not already show (the sign-in page, the code and labels of every view).
 - The guide is a document in Polish, outside the message catalogs: its texts change with the interface by hand, and the labels it names are the interface's, checked when it is written. USAGE.md stays the full description, in English.
 - `/instrukcja` is a page of the application, not of the API (no OpenAPI operation). Tests: `tests/unit/test_security.py` (no session, headers, revalidation, a link from another site), `tests/contract/test_package_data.py` (its files ship in the wheel), `tests/e2e/test_guide.py` (the link, every picture, the CSP, a phone's width, a team server before and after a sign-in).
+
+**Erratum 1 (2026-11-14, audit against the code):** `feature/instrukcja` reached `develop` on 2026-11-03 with the stack of `feature/archiwista-projects`, merged by the author's decision (`6f1caef`): the decision is accepted.

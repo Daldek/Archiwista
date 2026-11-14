@@ -12,7 +12,7 @@ from typing import Any, get_args
 import pytest
 
 import archiwista
-from archiwista.auth.authorize import ACTIONS
+from archiwista.auth.authorize import Action
 from archiwista.error_document import describe
 from archiwista.errors import PreviewUnavailableError
 from archiwista.messages import (
@@ -54,7 +54,7 @@ SCOPES = ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
 _FILE_SUFFIXES = frozenset({"json", "geojson", "gpkg", "html", "sqlite", "toml", "zip"})
 # Dotted literals of the project that no catalog owns: permission actions and the
 # actions of the action log (``token.issue`` is no text of the ``token`` area).
-_NOT_KEYS = frozenset({*ACTIONS, *get_args(ActionName.__value__)})
+_NOT_KEYS = frozenset({*get_args(Action.__value__), *get_args(ActionName.__value__)})
 # Entries whose two languages read alike: a loan word, a code or a bare composition.
 _SAME_WORDS = frozenset(
     {

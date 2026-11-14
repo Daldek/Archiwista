@@ -27,9 +27,9 @@ ECO-057); the decisions keep the names of their time, and ADR-032 erratum 2 maps
 
 | ADR | Title | Date | Status |
 |---|---|---|---|
-| [ADR-001](#adr-001-separate-project-kartograf-as-a-dependency) | Separate project, Kartograf as a dependency | 2026-10-17 | accepted (amended by ADR-024; erratum 2: `kartograf>=0.8.0,<0.9`) |
+| [ADR-001](#adr-001-separate-project-kartograf-as-a-dependency) | Separate project, Kartograf as a dependency | 2026-10-17 | accepted (amended by ADR-024; erratum 2: `kartograf>=0.8.0,<0.9`; erratum 3: a GitHub remote, no `kartograf-project/1`, the range until Kartograf's release) |
 | [ADR-002](#adr-002-source-of-truth-on-disk-local-index-as-a-cache) | Source of truth on disk, local index as a cache | 2026-10-17 | accepted, amended by ADR-029 (separate local database for state that is not rebuildable) |
-| [ADR-003](#adr-003-read-only-store-writes-only-through-kartograf) | Read-only store, writes only through Kartograf | 2026-10-17 | accepted, partly superseded by ADR-019 |
+| [ADR-003](#adr-003-read-only-store-writes-only-through-kartograf) | Read-only store, writes only through Kartograf | 2026-10-17 | accepted, partly superseded by ADR-019; erratum 3: Archiwista's writes are a project's file, areas and exports (ADR-049) and own-data snapshots (ADR-027) |
 | [ADR-004](#adr-004-python-server-with-fastapi) | Python server with FastAPI | 2026-10-17 | accepted (erratum 2: confirmed after the architecture review, 2026-10-18) |
 | [ADR-005](#adr-005-interface-as-a-spa-in-svelte-api-first) | Interface as a SPA in Svelte, API first | 2026-10-17 | superseded by ADR-028 (Preact + htm without a build step; the "API first" principle stays) |
 | [ADR-006](#adr-006-map-in-maplibre-gl-js) | Map in MapLibre GL JS | 2026-10-17 | accepted (erratum 3: confirmed 2026-10-18; erratum 1: "Stack" replaced by "the Fan", no 3D) |
@@ -40,49 +40,50 @@ ECO-057); the decisions keep the names of their time, and ADR-032 erratum 2 maps
 | [ADR-011](#adr-011-server-side-assistant-with-human-confirmation) | Server-side assistant with human confirmation | 2026-10-17 | accepted |
 | [ADR-012](#adr-012-protecting-local-mode) | Local mode protection | 2026-10-17 | accepted (erratum 1: token in the fragment, separate CSRF token, `Origin` rule, CSP with basemaps; erratum 2: CSRF token in every request instead of a cookie, agent sessions limited; erratum 3: team mode by ADR-046, file links by ADR-047) |
 | [ADR-013](#adr-013-team-mode-as-a-single-server-on-the-local-network) | Team mode as a single server on a local network | 2026-10-17 | accepted, amended by ADR-029 (roles and permissions model from v0.1; user decision 2026-10-18; SPEC 15: P1), ADR-046 and ADR-047 (erratum 3: v0.4) |
-| [ADR-014](#adr-014-knowledge-of-the-store-format-only-in-kartograf) | Knowledge of the store format only in Kartograf | 2026-10-17 | accepted, amended by ADR-019 (erratum 2: KA in Kartograf 0.8.0, `skip_versions`, `list_segments`, KA-5 on request) and ADR-031 (erratum 3: the marker is judged by file name) |
+| [ADR-014](#adr-014-knowledge-of-the-store-format-only-in-kartograf) | Knowledge of the store format only in Kartograf | 2026-10-17 | accepted, amended by ADR-019 (erratum 2: KA in Kartograf 0.8.0, `skip_versions`, `list_segments`, KA-5 on request) and ADR-031 (erratum 3: the marker is judged by file name; erratum 4: Kartograf's `store_state` judges it) |
 | [ADR-015](#adr-015-packaging-and-running) | Packaging and running | 2026-10-17 | accepted (erratum 2: confirmed 2026-10-18, no Node.js) |
 | [ADR-016](#adr-016-date-format-in-the-interface-and-the-map-basemap) | Date format in the interface and map basemap | 2026-10-17 | accepted (SPEC 15: P6; mockup: M9; erratum 2: OpenFreeMap vector basemap instead of BKG TopPlusOpen) |
 | [ADR-017](#adr-017-grouped-variants-without-file-format) | Grouped variants without file format | 2026-10-17 | accepted (amends ADR-010) |
 | [ADR-018](#adr-018-interface-patterns-after-the-mockup-chat-stack-previews) | Interface patterns after the mockup: chat, Stack, previews | 2026-10-17 | accepted (erratum 1: "the Fan" replaces "Stack", M4/P12 resolved) |
-| [ADR-019](#adr-019-two-store-producers-kartograf-and-imgwtools) | Two store producers: Kartograf and IMGWTools | 2026-10-17 | accepted (changes ADR-003, amends ADR-014; item 7 changed by ADR-023; adapters as plugins: ADR-024; the IMGW source: ADR-032) |
-| [ADR-020](#adr-020-imgw-data-format-own-sidecar-parquet-geojson) | IMGW data format: own sidecar, Parquet, GeoJSON | 2026-10-17 | proposed (IMGWTools ADR; SPEC 12.8) |
+| [ADR-019](#adr-019-two-store-producers-kartograf-and-imgwtools) | Two store producers: Kartograf and IMGWTools | 2026-10-17 | accepted (changes ADR-003, amends ADR-014; item 7 changed by ADR-023; adapters as plugins: ADR-024; the IMGW source: ADR-032; erratum 4: Obserwator's raw root and data root, only `store sync` runs, ADR-050 and ADR-056) |
+| [ADR-020](#adr-020-imgw-data-format-own-sidecar-parquet-geojson) | IMGW data format: own sidecar, Parquet, GeoJSON | 2026-10-17 | accepted (erratum 2: the shape set by IMGWTools' ADR-001, today Obserwator's: `obserwator-meta/1`, Parquet per station with `series.json`, `stations.geojson`; SPEC 12.8) |
 | [ADR-021](#adr-021-coverage-labels-of-imgw-series) | Coverage labels of IMGW series | 2026-10-17 | accepted (P14, P15 — erratum 1; P16 — erratum 2; erratum 3: units known per ČHMÚ station; erratum 4: appearance, M11, user decision 2026-10-26) |
 | [ADR-022](#adr-022-data-without-location-catalog-instead-of-the-map) | Data without location: Catalog instead of a map | 2026-10-17 | accepted (SPEC 15: P13) |
-| [ADR-023](#adr-023-imgw-data-in-projects-the-imgwtools-manifest) | IMGW data in projects: IMGWTools manifest | 2026-10-17 | accepted, partly superseded by ADR-049 (the IMGWTools manifest `imgw-project.json` and the producer's project functions; IMGW versions stay pinnable in projects, as pins of `archiwista-project/1`); IMGW data in a project in v1.0: SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0; erratum 3: ADR-049 |
-| [ADR-024](#adr-024-data-sources-as-plugins-kartograf-required-imgwtools-optional) | Data sources as plugins: Kartograf required, IMGWTools optional | 2026-10-17 | accepted (amends ADR-001 and ADR-019; erratum 1: `kartograf>=0.8.0,<0.9`; amended by ADR-032) |
-| [ADR-025](#adr-025-mvp-scope-and-release-order) | MVP scope and release order | 2026-10-17 | accepted (user decision; erratum 3: "PL + CZ" as v0.6 in the MVP, with ČHMÚ stations) |
+| [ADR-023](#adr-023-imgw-data-in-projects-the-imgwtools-manifest) | IMGW data in projects: IMGWTools manifest | 2026-10-17 | accepted, partly superseded by ADR-049 (the IMGWTools manifest `imgw-project.json` and the producer's project functions; IMGW versions stay pinnable in projects, as pins of `archiwista-project/1`); IMGW data in a project in v1.0: SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0; erratum 3: ADR-049; erratum 4: archive pins checked, re-pinned and restored (ADR-050), series and catalog pins `not_checkable` (ADR-056) |
+| [ADR-024](#adr-024-data-sources-as-plugins-kartograf-required-imgwtools-optional) | Data sources as plugins: Kartograf required, IMGWTools optional | 2026-10-17 | accepted (amends ADR-001 and ADR-019; erratum 1: `kartograf>=0.8.0,<0.9`; amended by ADR-032 and ADR-050; erratum 2: the schemas read and the adapters' version ranges) |
+| [ADR-025](#adr-025-mvp-scope-and-release-order) | MVP scope and release order | 2026-10-17 | accepted (user decision; erratum 3: "PL + CZ" as v0.6 in the MVP, with ČHMÚ stations; erratum 4: IMGW-14 withdrawn, ČHMÚ in Obserwator's package) |
 | [ADR-026](#adr-026-mit-license-and-contributions-with-a-cla) | MIT license and contributions with a CLA | 2026-10-17 | accepted (MIT; CLA — erratum 1, user decision 2026-10-18) |
 | [ADR-027](#adr-027-own-data-in-the-project-directory-and-archiwista-snapshots) | Own data in the project directory and Archiwista snapshots | 2026-10-18 | accepted (user decision; erratum 1: in a team the snapshot is made by the project owner or an administrator, ADR-029) |
 | [ADR-028](#adr-028-ui-in-preact--htm-without-a-build-step) | Interface in Preact + htm without a build step | 2026-10-18 | accepted (user decision; supersedes ADR-005) |
 | [ADR-029](#adr-029-store-write-role-and-project-sharing) | Store write role and project sharing | 2026-10-18 | accepted (user decision; amends ADR-013; permissions model from v0.1; erratum 1: the own data folder is set by an administrator until v0.4; erratum 2: the data folder by its owner, scans, LDAP/AD groups deferred, v0.4) |
-| [ADR-030](decisions/0030-adopt-the-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | 2026-10-25 | proposed (accepted when the author approves and merges `chore/nogat-2.1`) |
-| [ADR-031](decisions/0031-judge-the-store-marker-in-the-adapter.md) | Judge the store marker in the adapter, and refuse a store without one | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-014) |
+| [ADR-030](decisions/0030-adopt-the-nogat-standard-2-1.md) | Adopt the Nogat standard 2.1 | 2026-10-25 | accepted (erratum 1: merged into `develop` on 2026-11-03; the standard is numbered 1.0) |
+| [ADR-031](decisions/0031-judge-the-store-marker-in-the-adapter.md) | Judge the store marker in the adapter, and refuse a store without one | 2026-10-25 | accepted (erratum 2: merged into `develop` on 2026-11-03; amends ADR-014) |
 | [ADR-032](decisions/0032-imgwtools-source.md) | The IMGWTools source: one adapter, the extra, read first | 2026-10-25 | accepted, partly superseded by ADR-049 (decision 14: a project is its directory, with the manifest of each producer); amends ADR-019 and ADR-024; the plan's approval is delegated; erratum 1: ADR-049; erratum 2: IMGWTools is called Obserwator, and the extra, plugin, settings field, marker and ids follow (ECO-057); decisions 5, 6 and 8 amended by ADR-056 (Obserwator's raw root and data root, each probed by its kind, `wrong_root`; the data marker in the nesting check; the current version asked of the root a slot lies in) |
-| [ADR-033](decisions/0033-offer-the-default-root-in-the-wizard.md) | Offer the producer's default root in the wizard, and never use it | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); amended by ADR-053 (erratum 1: Archiwista reads `nogat.toml` for its own directories, the default roots stay the producers' report) and ADR-056 (the default data root beside the default store root: `default_data_root` of `GET /sources`, the wizard, the doctor) |
-| [ADR-034](decisions/0034-producer-commands-as-data.md) | The producers' commands as data, an optional capability of the adapters | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
-| [ADR-035](decisions/0035-availability-at-the-source.md) | The availability at the source, a job with a stored report | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a row's lines are planned by one job (ADR-044) |
-| [ADR-036](decisions/0036-the-plan-of-a-run.md) | The plan of a run: a `check` job, the plan kept with it, the state `partial` | 2026-10-25 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: the check reads the source's answers of the last hour (Kartograf ADR-056); erratum 2: a check plans several calls (ADR-044) |
-| [ADR-037](decisions/0037-the-run-of-a-command.md) | The run of a command: the capability, the `download` job and the rescan of its files | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: a download runs several calls (ADR-044); erratum 2: a planned download claims its positions (ADR-047, v0.4) |
-| [ADR-038](decisions/0038-job-controls.md) | Job controls: cancel across processes, retry as a new job, the log's end | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); erratum 1: everyone sees the queue (ADR-047, v0.4) |
+| [ADR-033](decisions/0033-offer-the-default-root-in-the-wizard.md) | Offer the producer's default root in the wizard, and never use it | 2026-10-25 | accepted (erratum 2: merged into `develop` on 2026-11-03); amended by ADR-053 (erratum 1: Archiwista reads `nogat.toml` for its own directories, the default roots stay the producers' report) and ADR-056 (the default data root beside the default store root: `default_data_root` of `GET /sources`, the wizard, the doctor) |
+| [ADR-034](decisions/0034-producer-commands-as-data.md) | The producers' commands as data, an optional capability of the adapters | 2026-10-25 | accepted (erratum 1: merged into `develop` on 2026-11-03) |
+| [ADR-035](decisions/0035-availability-at-the-source.md) | The availability at the source, a job with a stored report | 2026-10-25 | accepted (erratum 3: merged into `develop` on 2026-11-03); erratum 1: a row's lines are planned by one job (ADR-044) |
+| [ADR-036](decisions/0036-the-plan-of-a-run.md) | The plan of a run: a `check` job, the plan kept with it, the state `partial` | 2026-10-25 | accepted (erratum 3: merged into `develop` on 2026-11-03); erratum 1: the check reads the source's answers of the last hour (Kartograf ADR-056); erratum 2: a check plans several calls (ADR-044) |
+| [ADR-037](decisions/0037-the-run-of-a-command.md) | The run of a command: the capability, the `download` job and the rescan of its files | 2026-10-26 | accepted (erratum 3: merged into `develop` on 2026-11-03); erratum 1: a download runs several calls (ADR-044); erratum 2: a planned download claims its positions (ADR-047, v0.4) |
+| [ADR-038](decisions/0038-job-controls.md) | Job controls: cancel across processes, retry as a new job, the log's end | 2026-10-26 | accepted (erratum 2: merged into `develop` on 2026-11-03); erratum 1: everyone sees the queue (ADR-047, v0.4) |
 | [ADR-039](decisions/0039-project-changes.md) | Projects created and changed through their producer, where a scan finds them | 2026-10-26 | superseded by ADR-049 (projects are Archiwista's own file; the place rules of decision 3 and who creates a project, erratum 3, are restated there); was proposed on `feature/kartograf-data-output` |
 | [ADR-040](decisions/0040-project-jobs.md) | The jobs of a project: download, repin, check, verify, and the left lock | 2026-10-26 | superseded by ADR-049 (the jobs `project_verify`, `project_check`, `project_repin` and `project_restore` over the groups of a project; Archiwista's lock, never removed by it); was proposed on `feature/kartograf-data-output` |
-| [ADR-041](decisions/0041-preview-warm-up.md) | The warm-up of previews: the first look, a pool of its own, the room of the cache | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
-| [ADR-042](decisions/0042-actions-in-the-interface.md) | The actions in the interface: a pasted command, a task of a project, what a person may do | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`); partly superseded by ADR-049 (decisions 3 and 4: "Dodaj do projektu" of the plan window and the card's actions); erratum 2: option H, the card's re-pin and restore start from the plan window of the set's check, `plan_job` (the author's decision of 2026-11-09) |
-| [ADR-043](decisions/0043-downloads-in-the-background.md) | Downloads in the background: the plan window lets go, the top bar follows | 2026-10-26 | proposed (accepted when the author approves and merges `feature/kartograf-data-output`) |
-| [ADR-044](decisions/0044-one-job-per-row.md) | One job per row: a `check` and a `download` take the calls of all the lines, and the worker starts lighter | 2026-10-26 | proposed (A and C chosen by delegated approval; accepted when the author approves and merges `feature/kartograf-data-output`; amends ADR-035, ADR-036 and ADR-037) |
-| [ADR-045](decisions/0045-station-views.md) | The station views: the routes they read and how the interface draws them | 2026-10-26 | proposed (plan Part 4, its approval open; accepted when the author approves it and merges `feature/kartograf-data-output`); erratum 1: a chart's bands are its label's gaps; erratum 2: the year types are each person's preferences (ADR-047 erratum 1, v0.4); decisions 9 and 11 amended by ADR-051 (charts of monthly series and of annual extremes); erratum 3: the card's licence becomes the providers' lines, ADR-055; erratum 4: one strip of the kit at the card's foot, ADR-055 erratum 1 |
+| [ADR-041](decisions/0041-preview-warm-up.md) | The warm-up of previews: the first look, a pool of its own, the room of the cache | 2026-10-26 | accepted (erratum 1: merged into `develop` on 2026-11-03) |
+| [ADR-042](decisions/0042-actions-in-the-interface.md) | The actions in the interface: a pasted command, a task of a project, what a person may do | 2026-10-26 | accepted (erratum 3: merged into `develop` on 2026-11-03); partly superseded by ADR-049 (decisions 3 and 4: "Dodaj do projektu" of the plan window and the card's actions); erratum 2: option H, the card's re-pin and restore start from the plan window of the set's check, `plan_job` (the author's decision of 2026-11-09) |
+| [ADR-043](decisions/0043-downloads-in-the-background.md) | Downloads in the background: the plan window lets go, the top bar follows | 2026-10-26 | accepted (erratum 1: merged into `develop` on 2026-11-03) |
+| [ADR-044](decisions/0044-one-job-per-row.md) | One job per row: a `check` and a `download` take the calls of all the lines, and the worker starts lighter | 2026-10-26 | accepted (A and C chosen by delegated approval; erratum 1: merged into `develop` on 2026-11-03; amends ADR-035, ADR-036 and ADR-037) |
+| [ADR-045](decisions/0045-station-views.md) | The station views: the routes they read and how the interface draws them | 2026-10-26 | proposed (plan Part 4, its approval open; erratum 5: the branch is merged into `develop`, 2026-11-03); erratum 1: a chart's bands are its label's gaps; erratum 2: the year types are each person's preferences (ADR-047 erratum 1, v0.4); decisions 9 and 11 amended by ADR-051 (charts of monthly series and of annual extremes); erratum 3: the card's licence becomes the providers' lines, ADR-055; erratum 4: one strip of the kit at the card's foot, ADR-055 erratum 1 |
 | [ADR-046](decisions/0046-team-sign-in-sessions-and-tls.md) | Team mode: sign-in, sessions and transport security | 2026-10-26 | accepted (delegated approval 2026-10-26; plan `docs/plans/2026-10-26-plan-v0.4.md`, steps T1 and T2 built; amends ADR-012 and ADR-013; LDAP/AD groups deferred); erratum 1: the source, commit, rule and licence of the list of common passwords; erratum 2: the last administrator who can sign in stays |
 | [ADR-047](decisions/0047-team-shared-work.md) | The team's shared work: the action log, the shared queue, limits per person, file download, preferences | 2026-10-26 | accepted (delegated approval 2026-10-26; plan `docs/plans/2026-10-26-plan-v0.4.md`, steps T6 to T11 built; amends ADR-012, ADR-037 and ADR-038); erratum 1: `GET`/`PUT /preferences`, an old `year_types` in `config.toml` ignored with a doctor note, `basemap` `""` for none; erratum 2: bounded audit of request-rule and token/proxy refusals (D7) |
-| [ADR-048](decisions/0048-the-user-guide.md) | The user guide: a page of its own at `/instrukcja`, readable without a session | 2026-10-31 | proposed (accepted when the author approves and merges `feature/instrukcja`) |
+| [ADR-048](decisions/0048-the-user-guide.md) | The user guide: a page of its own at `/instrukcja`, readable without a session | 2026-10-31 | accepted (erratum 1: merged into `develop` on 2026-11-03) |
 | [ADR-049](decisions/0049-projects-in-archiwista.md) | Projects are Archiwista's own: the file `archiwista-project/1`, groups of pins, and the jobs over them | 2026-10-31 | accepted (the author's decision of 2026-10-31, ECO-054, D1 to D7 of the Nogat plan; built in the phases of `docs/plans/2026-10-31-archiwista-projects.md`); supersedes ADR-039, ADR-040, ADR-032 decision 14 and the IMGWTools manifest of ADR-023; partly supersedes ADR-042; erratum 7: README „Źródła danych i warunki korzystania” and `ATTRIBUTION.txt` in an export, ADR-055; decision 7 amended by ADR-056 (Obserwator's store named by its raw root, else its data root; either matches) |
 | [ADR-050](decisions/0050-obserwator-commands.md) | Obserwator's commands in Archiwista: the store-writing catalog, national archives, the whole-store rescan | 2026-11-05 | accepted (plan `docs/plans/2026-11-05-obserwator-actions.md`, approved 2026-11-05, A1 to A5); amends ADR-024 and ADR-049 D5; decisions 1, 2 and 5 amended by ADR-056 (only `store sync`, into the raw root; `series build` and `store catalog` leave; pins of series and catalogs `not_checkable`) |
 | [ADR-051](decisions/0051-monthly-and-annual-charts.md) | Charts of monthly series and of annual extremes: Archiwista finds a year's maximum and minimum for display | 2026-11-05 | accepted (plan `docs/plans/2026-11-05-monthly-annual-charts.md`, approved 2026-11-05, D1 to D8); amends ADR-045 decisions 9 and 11 and the boundary of SPEC 1.3 and section 15, P17 |
 | [ADR-052](decisions/0052-station-series-to-hydrolog.md) | A station's series handed to Hydrolog: `nogat-handoff/1` with `hydrolog-series/1` | 2026-11-05 | accepted (the author's request of 2026-11-05 with delegated authority; Nogat plan `2026-11-05-archiwista-series-to-hydrolog`, D4); amends ADR-051 decision 5; erratum 1: the hand-off through Nogat's kit, ADR-054; erratum 2: `attribution` and `terms_notice` in the hand-off, ADR-055; erratum 3: `terms_notice` RD alone, `handoff-1` of Nogat `b46eb5b` (ECO-065) |
 | [ADR-053](decisions/0053-nogat-toml.md) | Archiwista reads `nogat.toml` for its data directory, its caches and its language | 2026-11-10 | accepted (the author's decision of 2026-11-09); amends ADR-033 (erratum 1); erratum 1: the table `gui`, ADR-054 |
-| [ADR-054](decisions/0054-nogat-gui-kit.md) | Nogat's GUI kit in Archiwista: the menu „Aplikacje” and the hand-off | 2026-11-12 | accepted (the author's approval of Nogat's plan `2026-11-12-gui-links-and-handoff`, step 6; ECO-058); amends ADR-052 decisions 4 and 5 and ADR-053 decision 1; erratum 1: kit 0.5.1 of Nogat `9940bb8` with the strip `<nogat-sources>`; erratum 2: kit 0.6.0 of Nogat `b46eb5b` (ECO-065) |
-| [ADR-055](decisions/0055-provider-attribution.md) | The providers' lines with every product: `attribution` and `terms_notice` | 2026-11-13 | accepted (the author's order of 2026-11-13 approving Nogat's plan `2026-11-13-provider-attribution`, step 5; ECO-060, DEV §20); amends ADR-045 decision 10, ADR-049 decision 13 and ADR-052 decisions 1 and 5; erratum 1: the lines in one strip of the kit a view, the full lines in its dialog (DEV-20.5, ECO-064); erratum 2: H and N gone, the terms linked as RD, RH, RK (ECO-065) |
+| [ADR-054](decisions/0054-nogat-gui-kit.md) | Nogat's GUI kit in Archiwista: the menu „Aplikacje” and the hand-off | 2026-11-12 | accepted (the author's approval of Nogat's plan `2026-11-12-gui-links-and-handoff`, step 6; ECO-058); amends ADR-052 decisions 4 and 5 and ADR-053 decision 1; erratum 1: kit 0.5.1 of Nogat `9940bb8` with the strip `<nogat-sources>`; erratum 2: kit 0.6.0 of Nogat `b46eb5b` (ECO-065); erratum 3: kit 0.7.0 of Nogat `229ade3`, „Zgłoszenia” on `<nogat-admin-feedback>` |
+| [ADR-055](decisions/0055-provider-attribution.md) | The providers' lines with every product: `attribution` and `terms_notice` | 2026-11-13 | accepted (the author's order of 2026-11-13 approving Nogat's plan `2026-11-13-provider-attribution`, step 5; ECO-060, DEV §20); amends ADR-045 decision 10, ADR-049 decision 13 and ADR-052 decisions 1 and 5; erratum 1: the lines in one strip of the kit a view, the full lines in its dialog (DEV-20.5, ECO-064); erratum 2: H and N gone, the terms linked as RD, RH, RK (ECO-065); erratum 3: the G and Z lines of station catalogs' sidecars, carried as written (ECO-068) |
 | [ADR-056](decisions/0056-obserwator-raw-and-data-roots.md) | Obserwator's raw root and data root in a store | 2026-11-14 | accepted (the author's approval of Nogat's plan `2026-11-12-station-data-and-analyses`, D5 and step R2, adopting Obserwator's ADR-017); amends ADR-032 decisions 5, 6 and 8, ADR-033, ADR-049 decision 7 and ADR-050 decisions 1, 2 and 5 |
+| [ADR-057](decisions/0057-nogat-server-logs.md) | Nogat's server logs in `<state_dir>/archiwista/logs` | 2026-11-14 | accepted (Nogat ECO-066, DEV-12.4 to DEV-12.9); amends ADR-053 (`state_dir`) |
 
 ---
 
@@ -124,6 +125,14 @@ through entry points.
 **Erratum 2 (2026-10-18, user decision — ADR-024 erratum 1):** the version range from erratum 1
 no longer applies: public store reading (KA-1..KA-6) enters Kartograf 0.8.0, so the
 dependency is `kartograf>=0.8.0,<0.9`.
+
+**Erratum 3 (2026-11-14, audit against the code):** the repository has a remote,
+`https://github.com/Daldek/Archiwista` (`develop` pushed on 2026-11-03, `main` on
+2026-11-10). Of the formats named, `kartograf-project/1` is no longer read: Kartograf
+removed its projects (ECO-054, ADR-049). Until Kartograf's release the adapter's range is
+`>=0.8.0.dev0,<0.9` (`SUPPORTED_VERSIONS` of `archiwista.adapter.kartograf`) and
+`pyproject.toml` pins Kartograf by commit (ADR-030 item 3); the release narrows the range to
+erratum 2's.
 
 ---
 
@@ -198,6 +207,12 @@ is changed only by the IMGWTools API. The "read-only store" part applies unchang
 both directories, as do Archiwista's permitted writes (local files, the set directory,
 `obszary/`); a set may contain IMGW series in CSV exported
 by an IMGWTools function (SPEC 8.4).
+
+**Erratum 3 (2026-11-14, audit against the code):** there is no set directory (the QGIS set
+is v1.1, SPEC 8.4). Besides its local files Archiwista writes, on the user's command, only in
+a project's directory: `archiwista-project.json` with its area files in `obszary/` and the
+exports in `eksport/<name>/` (ADR-049), and own-data snapshots in `<data folder>/.wersje/`
+(ADR-027). The store stays read-only.
 
 ---
 
@@ -680,6 +695,11 @@ apart. It is a copy of producer knowledge kept until Kartograf offers `store_sta
 request); a contract test against the producer's own writers (`kartograf.testing`,
 `kartograf.init_store`) pins it. The layout of the files below the marker stays Kartograf's.
 
+**Erratum 4 (2026-11-14, audit against the code; ADR-031 erratum 1):** the copy of erratum 3
+is gone: Kartograf offers `store_state(root)`, and the adapter asks it whether a directory is
+a store (`adapter/kartograf/adapter.py`); no file name or schema of the marker is judged in
+Archiwista.
+
 ---
 
 ## ADR-015: Packaging and running
@@ -947,6 +967,14 @@ and possibly transient problem (SPEC 4.4, IMGW-2, IMGW-10). The simpler IMGW con
 no overwriting and no mutable files) stays; the publication model is
 now shared with Kartograf, which reduces the divergence between the two implementations (SPEC 14).
 
+**Erratum 4 (2026-11-14, audit against the code; ADR-050, ADR-056):** Obserwator's store is
+two directories of a store (item 1): its raw root (the field `obserwator`, the marker
+`obserwator-store.json`) and its data root (`obserwator_data`, `obserwator-data.json`), none
+inside another (Obserwator's ADR-017). Of the actions of item 5 Archiwista runs only
+Obserwator's `store sync`, into the raw root, in worker processes with the plan window and the
+`obserwator …` line; Obserwator builds the series and station catalogs offline, and Archiwista
+runs no export of a series.
+
 ---
 
 ## ADR-020: IMGW data format: own sidecar, Parquet, GeoJSON
@@ -1007,6 +1035,14 @@ for both kinds of data, P15); a dataset's series cover all stations, including t
 with gaps (P14); a station without a location is in `stations.geojson` with `geometry: null`
 and the reason for the missing location (P13, ADR-022); the schema `imgw-project/1` is added (ADR-023), covered by the
 same version policy (SPEC 12.7: IMGW-7, IMGW-9, IMGW-13, IMGW-14).
+
+**Erratum 2 (2026-11-14, audit against the code):** the final shape is set. IMGWTools' ADR-001
+(Obserwator's since ECO-057, accepted) adopted B, D and G (its D1 to D3 and D8): its own
+sidecar, today `obserwator-meta/1`; a Parquet file per station in a dataset's series version
+with the index `series.json` (`obserwator-series/1`), Parquet in the extra `obserwator[store]`;
+and `stations.geojson`. Archiwista reads them through Obserwator's read API (`SCHEMAS` of
+`archiwista.adapter.obserwator`; the adapter imports no `pyarrow`). Since Obserwator's ADR-017
+the series and the station catalogs lie in its data root (ADR-056).
 
 ---
 
@@ -1222,6 +1258,12 @@ and 9). Restoring by content stays as erratum 2 says, now done by Archiwista's `
 the command of a stored version (`command_for_version`, IMGW-21). The check, re-pin and restore of
 IMGW pins wait for the IMGWTools actions of v0.5.
 
+**Erratum 4 (2026-11-14, audit against the code; ADR-050, ADR-056):** the Obserwator actions
+are built: `project_check`, `project_repin` and `project_restore` run the pins of archive
+versions through `command_for_version` and Obserwator's `store sync`. Pins of series and
+station catalogs are `not_checkable`: Obserwator builds them offline in its data root, and
+`command_for_version` refuses them (`command_not_rebuildable`).
+
 ---
 
 ## ADR-024: Data sources as plugins: Kartograf required, IMGWTools optional
@@ -1288,6 +1330,17 @@ checks the presence of KA in `kartograf.__all__` and that the installed `kartogr
 falls within the range from `pyproject.toml`; before the Archiwista release it is repeated
 against the tagged Kartograf 0.8.0. SPEC 5.8.
 
+**Erratum 2 (2026-11-14, audit against the code):** item 2's extra is `archiwista[obserwator]`
+(ADR-032 erratum 2). The schemas item 4 checks
+are each adapter's `SCHEMAS`: `kartograf-meta/1` and `kartograf-store/1`; `obserwator-store/1`,
+`obserwator-data/1`, `obserwator-meta/1` and `obserwator-series/1` (the project schemas went
+with the producers' projects, ADR-049). The range of item 1 and erratum 1 is the adapter's
+`SUPPORTED_VERSIONS` (`>=0.8.0.dev0,<0.9` until Kartograf's release; Obserwator
+`>=3.0.0.dev0,<4`), as `pyproject.toml` pins each producer by commit (ADR-030 item 3, REL-5.3).
+Item 6's two configurations are the jobs of `.github/workflows/ci.yml`, the gate with every
+extra and the tests without the extra `obserwator`. ADR-050 amends item 3: the Obserwator
+plugin also offers commands.
+
 ---
 
 ## ADR-025: MVP scope and release order
@@ -1347,6 +1400,11 @@ releases ČHMÚ as a separate package (open question in the PRD). Changes: SPEC 
 3 (UC-09, UC-20), 4.8.6, 5.3, 6.7, 8.3, 8.6, 10.2, 11, 12.5, 12.7, 13, 14; PRD F12,
 F14, F17, assumptions, success measures, open decisions; SCOPE; README; plan v0.1
 (scope boundaries); the requirements list of IMGWTools (IMGW-15..IMGW-19; since removed, see SPEC 12.7).
+
+**Erratum 4 (2026-11-14, audit against the code; ADR-049, ADR-050):** IMGW-14 is withdrawn, so
+the MVP waits for Obserwator's release with IMGW-1 to IMGW-13 and IMGW-21. The ČHMÚ provider is
+in Obserwator's package (pinned `0591b82`, the datasets `cz.chmi.*`) and read by the one
+Obserwator adapter, so of erratum 3's blockers Obserwator's release and Kartograf's KF remain.
 
 ---
 

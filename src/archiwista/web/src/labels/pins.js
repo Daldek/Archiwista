@@ -105,8 +105,8 @@ export const pins = {
   reopened: "Otwarto do edycji zestaw „{group}”.",
   draft: "Nowy zestaw w budowie…",
   draft_title:
-    "Pusty zestaw, do którego okna planu i „Dodaj do projektu…” dodają wersje, " +
-    "aż go zamkniesz",
+    "Pusty zestaw, do którego okna planu i „Dodaj do projektu…” dodają wersje " +
+    "aż do jego zamknięcia",
   draft_heading: "Nowy zestaw w budowie",
   draft_name: "Nazwa zestawu",
   draft_submit: "Utwórz zestaw",
@@ -126,8 +126,8 @@ export const pins = {
       "Najlepiej cel albo rok, np. 2024; od 1 do 80 znaków, bez „/”; inna niż nazwy zestawów projektu.",
     keep_open: "Zostaw w budowie",
     keep_open_hint:
-      "Następne okna planu i „Dodaj do projektu…” dodadzą do niego wersje, " +
-      "aż zamkniesz go na karcie projektu.",
+      "Następne okna planu i „Dodaj do projektu…” dodadzą do niego wersje " +
+      "aż do jego zamknięcia na karcie projektu.",
     open_group: "Zestaw w budowie",
     open_group_hint:
       "Polecenia i pliki tego pobrania dołączą do zestawu; zamknięty zestaw otwórz " +

@@ -88,6 +88,7 @@ from archiwista.sources import (
     RunStatus,
     ScanScope,
 )
+from archiwista.values import as_mapping
 
 # The command of Obserwator's catalog that downloads into a raw root
 # (A-ADR-050, A-ADR-056).
@@ -448,7 +449,7 @@ def _entry(command: str) -> Mapping[str, Any]:
 
 def _command_info(entry: Mapping[str, Any]) -> CommandInfo:
     """Convert one command of ``obserwator-commands/1``."""
-    effects = _mapping(entry.get("effects"))
+    effects = as_mapping(entry.get("effects"))
     name = str(entry["name"])
     return CommandInfo(
         producer=PRODUCER,
@@ -758,10 +759,6 @@ def _lang() -> Any:
 
 def _item_status(item: Mapping[str, Any]) -> str:
     return str(item.get("status", ""))
-
-
-def _mapping(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
 
 
 def _mappings(value: object) -> list[Mapping[str, Any]]:
