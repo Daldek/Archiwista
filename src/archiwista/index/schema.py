@@ -5,98 +5,40 @@ user data directory), never on a share. It is a cache rebuilt from the
 producers' files, so a different ``SCHEMA_VERSION`` (``PRAGMA
 user_version``) means an atomic rebuild instead of a migration (SPEC 4.4):
 every object is dropped and the current schema created in one transaction,
-which readers in other processes see either before or after.
+which readers in other processes see either before or after. Until the first
+release every format is version 1 (Nogat REL-1.4, ECO-072), so an index
+numbered before that (up to 18) is rebuilt as one of any other version.
 
-Tables (v0.1): ``stores``, ``segments``, ``slots``, ``versions`` with the
-1:1 ``version_sidecars`` (raw sidecar) and ``version_shapes`` (outlines
-that are not plain boxes, native outlines), ``footprints`` (R*Tree of WGS84
-boxes, versions with a footprint only), ``search`` (FTS5, one row per
-slot), ``issues``, ``projects`` with ``project_stores``, ``pin_groups`` and
-``pins``, ``areas``, ``jobs`` with ``job_events``, ``session_tokens`` and
-``index_info``.
-Public keys are a store's configured id (``stores.key``) and paths relative
-to the store's producer directory; integer ids never leave the index.
-
-Version 5 (v0.2): a WGS84 outline is the polygon of the native rectangle
-(``outline_footprints``), so an index of bounding boxes is rebuilt.
-
-Version 6 (v0.2): own data of projects (decision 8). ``own_folders`` (one
-per project, keyed by the project directory after ``realpath``: the access
-key), ``own_files`` (a folder's files by path, with what the reader found
-and the content identity), ``own_file_states`` (observed states, at most
-200 per file), ``snapshots`` (``.wersje/`` of a folder, with the full
-``migawka.json``) and ``own_problems``.
-
-Version 7 (v0.5, IMGW slots): ``slots.slot_key`` (the producer's own name of a
-slot), ``versions.provider`` (the organisation that publishes the data) and
-``observations`` (the publication history of a slot: a source served other
-bytes with the content of a version, so no version was written).
-
-Version 8 (v0.3, plan of 2026-10-25 A2): ``availability``, the last report of
-the availability at the source of each area, producer and product (the
-producer-neutral ``AvailabilityReport`` as JSON, with the time the source was
-asked and the job that asked it).
-
-Version 9 (v0.3, A4): a job may end ``partial``, and ``plans`` keeps the plan
-of each ``check`` job (the producer-neutral ``ActionPlan`` as JSON, with the
-store it is of and the producer's command line of the run it plans); a plan
-goes with its job.
-
-Version 10 (v0.5, plan I4): ``stations``, the stations of the current version
-of each provider's station catalog in a store (identity: store, provider and
-code as text), with the R*Tree ``station_points`` of the located ones (a
-station without a location keeps the catalog's reason), and
-``station_catalogs``, the catalog version each provider's rows were read from:
-a new current version replaces the provider's rows.
-
-Version 11 (v0.5, plan I5): ``series_catalogs``, the series version each
-dataset's coverage in a store was read from (with its unit, year numbering,
-first year and known periods), ``station_series``, each variable of each
-station's series in that version (first and last date with a value, gaps,
-accumulated sums, the station's own periods, its file), and ``series_years``,
-each year of a variable in both year types (units, known units, units with a
-value), computed when the index is written: a new current version replaces
-the dataset's rows.
-
-Version 12 (v0.3, ADR-044): a ``check`` job plans every call of its
-``calls``, so ``plans`` keeps one plan per call (``call``, its place in the
-job's ``calls``); a call whose check failed has none.
-
-Version 13 (v0.5, plan I7): a project is its directory (``projects``, one
-row and one key per directory), which holds the manifest of one producer or
-of both (SPEC 4.7). ``manifests`` keeps each producer's manifest as it was
-read (the store it names, its status or the producer's problem, its stamp),
-and ``project_tasks`` and ``pins`` carry the producer of the manifest they
-come from; they go with it.
-
-Version 14 (v0.4, ADR-047): ``job_claims``, the positions an active
-``download`` with a plan fetches (one claimant per store and path), so a
-download of another person leaves them out; a claim goes with its job.
-
-Version 15 (A-ADR-049): a project is Archiwista's own file
-``archiwista-project.json``. ``projects`` keeps what the file says (name,
-description, creator, area) with its state (``ok``, ``invalid``,
-``unsupported_schema``) and the file's stamp; ``project_stores`` the store of
-each producer as written and the configured store it matches;
-``pin_groups`` the groups with their origin; ``pins`` the pinned versions of
-each group. ``manifests`` and ``project_tasks`` go. ``versions`` gains
-``content_sha256`` (the producer's canonical content).
-
-Version 16 (A-ADR-049 D-10): ``version_calls``, the call that selects each
-version the projects pin again (or the producer's refusal), per store and
-version path, as the producer of a given version answered it.
-
-Version 17 (A-ADR-049 erratum 6): a group is a set, ``open`` or ``closed``.
-``pin_groups`` gains ``state`` (``closed`` for a group without the member),
-``closed_at``, ``closed_by`` and ``pins_sha256`` of its closing and
-``digest_state`` (that digest against ``pins_digest`` of the pins when the
-file was read: ``ok``, ``mismatch``, ``NULL`` without one), and keeps the
-``selections`` of a ``plan`` group too; ``pins`` gains ``calls``, the places
-of a ``plan`` group's calls whose runs pinned it (JSON, ``NULL`` without the
-member).
-
-Version 18 (Nogat ECO-057): the producer ``imgw`` is called ``obserwator``, so
-an index whose rows name ``imgw`` is rebuilt.
+Tables (version 1): ``stores``, ``segments``, ``slots`` (with ``slot_key``,
+the producer's own name of a slot), ``versions`` (with ``provider``, the
+organisation that publishes the data, and ``content_sha256``, the producer's
+canonical content) with the 1:1 ``version_sidecars`` (raw sidecar) and
+``version_shapes`` (outlines that are not plain boxes, native outlines; a
+WGS84 outline is the polygon of the native rectangle), ``observations`` (the
+publication history of a slot: a source served other bytes with the content
+of a version, so no version was written), ``footprints`` (R*Tree of WGS84
+boxes, versions with a footprint only), ``search`` (FTS5, one row per slot)
+and ``issues``; ``projects`` (what each ``archiwista-project.json`` says,
+with its state ``ok``, ``invalid`` or ``unsupported_schema`` and the file's
+stamp, A-ADR-049) with ``project_stores`` (the store of each producer as
+written and the configured store it matches), ``pin_groups`` (the sets with
+their origin, ``open`` or ``closed`` with the digest of their closing) and
+``pins`` (each set's pinned versions); ``version_calls`` (the call that
+selects each version the projects pin again, or the producer's refusal);
+``areas`` and ``availability`` (the last report of the availability at the
+source of each area, producer and product); ``jobs`` (a job may end
+``partial``) with ``job_events``, ``plans`` (the plan of each call of a
+``check`` job) and ``job_claims`` (the positions an active ``download`` with
+a plan fetches); ``station_catalogs`` and ``stations`` with the R*Tree
+``station_points`` (the stations of the current version of each provider's
+station catalog in a store); ``series_catalogs``, ``station_series`` and
+``series_years`` (the coverage of each dataset's current series of
+stations); ``session_tokens``; the own data of projects: ``own_folders``,
+``own_files``, ``own_file_states`` (observed states, at most 200 per file),
+``snapshots`` (``.wersje/`` of a folder) and ``own_problems``; and
+``index_info``. Public keys are a store's configured id (``stores.key``) and
+paths relative to the store's producer directory; integer ids never leave
+the index.
 """
 
 import sqlite3
@@ -108,7 +50,7 @@ from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
 from archiwista.wal import use_wal
 
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 1
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 

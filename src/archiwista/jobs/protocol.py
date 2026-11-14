@@ -47,7 +47,7 @@ from archiwista._errors import BY_CODE
 from archiwista.auth import PrincipalKind
 from archiwista.config import AppPaths, AppSettings
 
-PROTOCOL_VERSION = 15
+PROTOCOL_VERSION = 1
 # Exit status of a worker stopped by an interrupt (as a shell's 128 + SIGINT).
 INTERRUPTED_EXIT = 130
 # Seconds an interrupted worker has to stop. The supervisor kills it then, and

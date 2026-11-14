@@ -304,11 +304,11 @@ MESSAGES = {
     ),
     "state_export_help": Text(
         (
-            "Writes the state database as JSON archiwista-state/2; it holds the"
+            "Writes the state database as JSON archiwista-state/1; it holds the"
             " password hashes, so keep it secret."
         ),
         (
-            "Zapisuje bazę stanu jako JSON archiwista-state/2; zawiera skróty haseł,"
+            "Zapisuje bazę stanu jako JSON archiwista-state/1; zawiera skróty haseł,"
             " więc trzymaj ją w tajemnicy."
         ),
     ),
@@ -318,12 +318,12 @@ MESSAGES = {
     ),
     "state_import_help": Text(
         (
-            "Restores the state database from a backup (archiwista-state/2 or /1)"
-            " — into an empty database only."
+            "Restores the state database from a backup (archiwista-state/1, also"
+            " one written as /2) — into an empty database only."
         ),
         (
-            "Odtwarza bazę stanu z kopii (archiwista-state/2 albo /1) — tylko do"
-            " pustej bazy."
+            "Odtwarza bazę stanu z kopii (archiwista-state/1, także zapisanej jako"
+            " /2) — tylko do pustej bazy."
         ),
     ),
     "state_file_help": Text(

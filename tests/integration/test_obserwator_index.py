@@ -21,13 +21,7 @@ from obserwator import StoreEntry, current_version, iter_store
 
 from archiwista.auth import ALL_PROJECTS
 from archiwista.config import AppSettings, StoreConfig
-from archiwista.index import (
-    SCHEMA_VERSION,
-    IndexQueries,
-    IndexWriter,
-    SlotQuery,
-    initialize,
-)
+from archiwista.index import IndexQueries, IndexWriter, SlotQuery, initialize
 from archiwista.index.scanner import ScanMode, ScanSummary, scan_store
 from archiwista.sources import CurrentVersionAdapter, SourceAdapter
 from archiwista.sources.registry import load_registry
@@ -41,6 +35,9 @@ STORE = "dane"
 HYDRO_SLOT = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
 HYDRO_KEY = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
 SERIES_KEY = "series:pl.imgw.hydro_daily"
+# The number of the index schema before every format went back to version 1
+# (Nogat REL-1.4): the index of a server updated from then is rebuilt.
+PREVIOUS_SCHEMA = 18
 
 type Stores = Callable[[str], Path]
 
@@ -651,7 +648,7 @@ def test_an_index_of_the_previous_schema_is_rebuilt_and_a_scan_fills_it_again(
         connection.execute("DROP TABLE observations")
         connection.execute("ALTER TABLE slots DROP COLUMN slot_key")
         connection.execute("ALTER TABLE versions DROP COLUMN provider")
-        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION - 1}")
+        connection.execute(f"PRAGMA user_version = {PREVIOUS_SCHEMA}")
 
     # Act
     rebuilt = initialize(env.index)
@@ -669,7 +666,7 @@ def test_an_index_of_the_previous_schema_is_rebuilt_and_a_scan_fills_it_again(
     # Assert
     assert all(before.values())
     assert rebuilt == "rebuilt"
-    assert origin == [(str(SCHEMA_VERSION - 1),)]
+    assert origin == [(str(PREVIOUS_SCHEMA),)]
     assert emptied == [(0, 0, 0, 0)]
     assert after == before
     assert (_digest(state_file), state.snapshot()) == kept

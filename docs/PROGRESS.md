@@ -8,13 +8,13 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 ## Status
 
 The working branch is `develop`; every branch named below is merged into it, except
-`chore/pins-candidate-4`. Nothing after 0.2.0 is released.
+`chore/pins-candidate-4` and `chore/everything-v1`. Nothing after 0.2.0 is released.
 
 | Component | State | Note |
 |---|---|---|
 | v0.1 "Browser", v0.2 "Previews" | done | released as 0.1.0 and 0.2.0 on `develop`, not tagged and not merged into `main` (the author's decision); the v0.2 criterion of 30 frames per second with 5,000 footprints is unverified (blocked below) |
-| v0.3 "Actions" | done | plan `docs/plans/2026-10-25-archiwista-next.md` Part 3, A1 to A14 (ADR-034 to ADR-044); report `docs/reports/v0.3-measurements.md`; its project actions (A7, A8, A13) are replaced by A-ADR-049. Not released (Next 7, 8); not built: Next 14 |
-| v0.4 "Team" | done | plan `docs/plans/2026-10-26-plan-v0.4.md` T1 to T12 (ADR-046, ADR-047); the LAN runbook ran once on one machine with real components (`docs/reports/v0.4-lan-runbook.md`); the three-computer run is the author's (Next 9). Not released |
+| v0.3 "Actions" | done | plan `docs/plans/2026-10-25-archiwista-next.md` Part 3, A1 to A14 (ADR-034 to ADR-044); report `docs/reports/v0.3-measurements.md`; its project actions (A7, A8, A13) are replaced by A-ADR-049. Not released (Next 7); not built: Next 13 |
+| v0.4 "Team" | done | plan `docs/plans/2026-10-26-plan-v0.4.md` T1 to T12 (ADR-046, ADR-047); the LAN runbook ran once on one machine with real components (`docs/reports/v0.4-lan-runbook.md`); the three-computer run is the author's (Next 8). Not released |
 | Projects (A-ADR-049 and its errata 1 to 7) | done | `archiwista-project.json` (`archiwista-project/1`) with its area files in `obszary/`; sets („Zestaw”) open or closed with their pins; the jobs verify, check, re-pin and restore; the card's „Przepnij” and „Przywróć brakujące” open the plan window of the set's check (ADR-042 erratum 2); exports in `eksport/<name>/`. Not released |
 | Data output (DEV §19, ECO-051) and `nogat.toml` | done | store markers and roots, the producers' default roots offered in the wizard, tests isolated from the producers' settings (ADR-031, ADR-033); `data_dir`, `cache_dir`, `lang` and the table `gui` of `nogat.toml` (A-ADR-053) |
 | Obserwator source and station views | done | Obserwator stores indexed, stations, series coverage, the station map, Katalog list, Timeline, card, chart and comparison (ADR-032, ADR-045); monthly charts and annual extremes (A-ADR-051); a station's series handed to Hydrolog through Nogat's kit, with „Dane” and „Zmienna” (A-ADR-052, A-ADR-054) |
@@ -26,8 +26,9 @@ The working branch is `develop`; every branch named below is merged into it, exc
 | Test server :8090 | done | https://archiwista-test.debever.pl, user unit `archiwista-public.service`, runs `55d97a7` (`develop`) since 2026-11-14; rollback steps in `/home/claude-agent/data/archiwista-public/backup-2026-11-13/ROLLBACK.txt`. Its `nogat.toml` (in its `XDG_CONFIG_HOME`) holds only the table `gui`; its store `hydroni` names only a raw root (Next 1) |
 | Tidy-up of 2026-11-14 (`refactor/tidy-2026-11-14`) | done | merged as `8573a93`: dead and duplicated code removed (`values.py`), Nogat's server logs (A-ADR-057, ECO-066), the documentation audited against the code, the info texts by Nogat DEV-15.14 |
 | Pins of Nogat's release set candidate-4 (`chore/pins-candidate-4`) | in progress | Kartograf `c9afdd3f`, Obserwator `0394af7` (Hydrolog is no dependency); ruff, mypy, unit and contract tests and the integration tests that touch the producers pass; not merged, the full gate is left to the parent session |
+| Every format at version 1 (`chore/everything-v1`, Nogat REL-1.4, ECO-072) | in progress | the state backup `archiwista-state/1` (a `/2` copy still imports), the job protocol 1, the index schema 1 (an index of another number is rebuilt) and the state schema 1 in one migration (a database numbered 5 is renumbered when it opens; schema 2 to 4 no longer opens); on :8090 the next start renumbers `state.sqlite` (5) and rebuilds `index.sqlite` (18) by a full scan of `hydroni`; ruff, mypy, unit and contract tests and the touched tests pass; not merged, the full gate is left to the parent session |
 | Gate | done | last recorded full run: 2026-11-14 on `feat/obserwator-data-root` (`0ee0906`, merged as `55d97a7`), 3006 passed, coverage 93.45 %, 55 min with `TMPDIR` on a local disk, `GATE OK`; none yet on `refactor/tidy-2026-11-14` |
-| CI (Linux) | in progress | `ci.yml` runs the gate, the suite without the extra `obserwator` and a dependency audit; on 2026-11-14 the audit (opentelemetry-api 1.45.1) and the project card's activity test failed on `develop` and were fixed in `0ee0906`, the run after it not recorded. Python 3.15 (reported, not blocking) failed on an unraisable `sqlite3` finalizer warning in an e2e test. `live.yml` has not run (Next 10) |
+| CI (Linux) | in progress | `ci.yml` runs the gate, the suite without the extra `obserwator` and a dependency audit; on 2026-11-14 the audit (opentelemetry-api 1.45.1) and the project card's activity test failed on `develop` and were fixed in `0ee0906`, the run after it not recorded. Python 3.15 (reported, not blocking) failed on an unraisable `sqlite3` finalizer warning in an e2e test. `live.yml` has not run (Next 9) |
 | v0.5 "IMGW stations" release | blocked | the Obserwator release with its store (REL-5.3: today pinned by commit); the archive badge of the stations (SPEC 9.2, 4.8.4) and the input archives of the station card need a producer capability the source interface lacks |
 | v0.6 "PL + CZ" | blocked | Kartograf KF (merged PL + CZ surface) |
 | Producer requirements behind open gaps | blocked | „U źródła” offers only NMT, NMPT and LAZ until Kartograf KD-3/KD-4 (meanwhile paste the producer's command, which „Obszar polecenia” runs on a project's area); plans show „rozmiar nieznany” until Kartograf KH; the „pobrane” badge cannot match LAZ, whose sidecar records no survey work (Kartograf `docs/PROGRESS.md` Next 30); A15 waits for Kartograf KB-7; Archiwista's later versions need KA-4, KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4, KH |
@@ -57,9 +58,7 @@ The working branch is `develop`; every branch named below is merged into it, exc
    shown only inside views that carry the lines); the regulamin of DEV-15.7 (ECO-061; its
    files are in the kit's copy, but Archiwista serves no `regulamin.html`, as it runs
    without `[nogat.operator]`).
-7. Release preparation (the author): `archiwista-state/2` back to `/1` (a format
-   identifier not yet released on `main` stays at `/1`), then the release below.
-8. Release, per decisions D2 and D3 of Nogat's plan
+7. Release, per decisions D2 and D3 of Nogat's plan
    `2026-10-31-archiwista-projects.md`: one Archiwista release holds v0.3, v0.4 and the
    projects (all in `develop` since 2026-11-03), outside the first release set
    (Archiwista follows the producers' tags in its own session, REL-5.4). Then: replace
@@ -69,20 +68,20 @@ The working branch is `develop`; every branch named below is merged into it, exc
    --offline` resolves a commit only from uv's git database
    (`~/.cache/uv/git-v1/db/`), so fetch the producer's branch into it, change the commit
    in `pyproject.toml`, `uv lock --offline`, `uv sync --locked --all-extras`.
-9. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
+8. The author: the runbook's three-computer SMB/TLS scenario on a Linux server (CA trust
    in three browsers, the store on the share); a full `scripts/gate.sh` on the Mac; the
    live run of `tests/integration/test_live_actions.py` (`ARCHIWISTA_LIVE_ACTIONS=1`)
    and the SMB run of v0.3 criterion 8.
-10. CI: the weekly `live.yml` has not run yet.
-11. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
+9. CI: the weekly `live.yml` has not run yet.
+10. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
     it covers the case (DEV-10.6).
-12. Adopt the ecosystem's visual identity (Nogat `design/`, plan
+11. Adopt the ecosystem's visual identity (Nogat `design/`, plan
     `docs/plans/2026-11-01-visual-identity.md` in Nogat) once the author approves it, by
     an Archiwista plan.
-13. AGI-4.1: a top-level `schema` (`archiwista-<kind>/1`) in every API response and
+12. AGI-4.1: a top-level `schema` (`archiwista-<kind>/1`) in every API response and
     `--json` output, added with the catalog work (the author's decision of 2026-11-09);
     until then the deviation of `CLAUDE.md` (AGI-3.2, AGI-4.1, AGI-4.2) stands.
-14. Known gaps of Archiwista: v0.3's units colouring on the map (A12, M7) is not built;
+13. Known gaps of Archiwista: v0.3's units colouring on the map (A12, M7) is not built;
     "one job per row" options B (a sheet list in Kartograf's hint) and D (a longer
     `PLAN_REFRESH_TTL_S`) are open; a variant without a default format and a plan with
     conflicts are untested in the browser (the stand-in has neither). Availability rows:

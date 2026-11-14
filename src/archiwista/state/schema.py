@@ -9,24 +9,26 @@ one taking ``PRAGMA user_version`` a step further, all pending ones in one
 transaction, and never by a rebuild; a database written by a newer
 Archiwista is refused rather than changed.
 
-Tables (version 1): ``users``, ``groups``, ``memberships``, ``roles``,
+Tables (version 1): ``users`` (with ``sessions_revoked_at``, the time before
+which the account's sessions end), ``groups``, ``memberships``, ``roles``,
 ``project_acl`` (key: the project directory after ``realpath``; owner and
-visibility), ``project_acl_entries`` (a person or a group per row) and
-``permission_log`` (who, when, what, and the state before and after as
-JSON). Version 2 records with each log entry how the actor acted
-(``actor_kind``: the owner, a person or an agent) and the label of its
-session. Version 3 (v0.4, A-ADR-046, A-ADR-047) adds ``passwords``
-(Argon2id hashes, used by ``archiwista.auth.passwords`` and copied only by
-the backup), the accounts' ``sessions_revoked_at``, ``preferences`` per
-principal, and turns the permission log into ``action_log`` (its entries
-kept with the outcome ``ok``; new: the client address, the outcome and
-details), which a trigger keeps append-only. Version 4 (A-ADR-049 decision
-14) indexes the action log by target and by the project in the details of a
-job's entries, which a project's activity reads. Version 5 adds ``feedback``:
-the reports people send with "Zgłoś uwagę" (the text, an optional contact,
-the page, the browser, optional diagnostics as JSON, whether an administrator
-has read it, and the account that sent it, ``NULL`` for the owner of a local
+visibility), ``project_acl_entries`` (a person or a group per row),
+``passwords`` (Argon2id hashes, used by ``archiwista.auth.passwords`` and
+copied only by the backup), ``preferences`` per principal, ``action_log``
+(who, when, how the actor acted: the owner, a person or an agent, the label
+of its session, the client address, what, the outcome, the state before and
+after and details as JSON), which a trigger keeps append-only and which is
+indexed by target and by the project in the details of a job's entries (a
+project's activity, A-ADR-049 decision 14), and ``feedback``: the reports
+people send with "Zgłoś uwagę" (the text, an optional contact, the page, the
+browser, optional diagnostics as JSON, whether an administrator has read it,
+and the account that sent it, ``NULL`` for the owner of a local
 installation), with the limits of Hydrograf's table as checks.
+
+Until every format went back to version 1 for the time before the first
+release (Nogat REL-1.4, ECO-072), this schema was numbered 5
+(``RENUMBERED_VERSION``): a database of that number holds the same tables,
+so it is read as version 1 and renumbered when it is opened.
 """
 
 import sqlite3
@@ -51,7 +53,8 @@ _VERSION_1 = (
         name TEXT NOT NULL,
         disabled INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1)),
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        sessions_revoked_at TEXT
     ) WITHOUT ROWID
     """,
     """
@@ -102,33 +105,6 @@ _VERSION_1 = (
     "CREATE INDEX project_acl_entries_by_user ON project_acl_entries (user_id)",
     "CREATE INDEX project_acl_entries_by_group ON project_acl_entries (group_id)",
     """
-    CREATE TABLE permission_log (
-        id INTEGER PRIMARY KEY,
-        at TEXT NOT NULL,
-        actor TEXT NOT NULL,
-        action TEXT NOT NULL,
-        target TEXT NOT NULL,
-        before TEXT,
-        after TEXT
-    )
-    """,
-)
-
-
-def _version_1(connection: sqlite3.Connection) -> None:
-    """Create the tables of the first schema version."""
-    for statement in _VERSION_1:
-        connection.execute(statement)
-
-
-def _version_2(connection: sqlite3.Connection) -> None:
-    """Record the actor's kind and session label in the permission log."""
-    connection.execute("ALTER TABLE permission_log ADD COLUMN actor_kind TEXT")
-    connection.execute("ALTER TABLE permission_log ADD COLUMN session TEXT")
-
-
-_VERSION_3 = (
-    """
     CREATE TABLE passwords (
         user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         hash TEXT NOT NULL,
@@ -138,7 +114,6 @@ _VERSION_3 = (
         expires_at TEXT
     ) WITHOUT ROWID
     """,
-    "ALTER TABLE users ADD COLUMN sessions_revoked_at TEXT",
     """
     CREATE TABLE action_log (
         id INTEGER PRIMARY KEY,
@@ -155,16 +130,14 @@ _VERSION_3 = (
         details TEXT
     )
     """,
-    """
-    INSERT INTO action_log
-        (id, at, actor, actor_kind, session, action, target, outcome, before, after)
-    SELECT id, at, actor, actor_kind, session, action, target, 'ok', before, after
-    FROM permission_log ORDER BY id
-    """,
-    "DROP TABLE permission_log",
     "CREATE INDEX action_log_at ON action_log (at)",
     "CREATE INDEX action_log_actor ON action_log (actor, at)",
     "CREATE INDEX action_log_action ON action_log (action, at)",
+    "CREATE INDEX action_log_target ON action_log (target, at)",
+    """
+    CREATE INDEX action_log_project
+        ON action_log (json_extract(details, '$.project'), at)
+    """,
     """
     CREATE TRIGGER action_log_append_only BEFORE UPDATE ON action_log
     BEGIN SELECT RAISE(ABORT, 'the action log is append-only'); END
@@ -176,31 +149,6 @@ _VERSION_3 = (
         updated_at TEXT NOT NULL
     ) WITHOUT ROWID
     """,
-)
-
-
-def _version_3(connection: sqlite3.Connection) -> None:
-    """Passwords, revocation times, preferences, and the action log (v0.4)."""
-    for statement in _VERSION_3:
-        connection.execute(statement)
-
-
-_VERSION_4 = (
-    "CREATE INDEX action_log_target ON action_log (target, at)",
-    """
-    CREATE INDEX action_log_project
-        ON action_log (json_extract(details, '$.project'), at)
-    """,
-)
-
-
-def _version_4(connection: sqlite3.Connection) -> None:
-    """Index the action log by target and by a job's project (projects' activity)."""
-    for statement in _VERSION_4:
-        connection.execute(statement)
-
-
-_VERSION_5 = (
     """
     CREATE TABLE feedback (
         id INTEGER PRIMARY KEY,
@@ -219,21 +167,18 @@ _VERSION_5 = (
 )
 
 
-def _version_5(connection: sqlite3.Connection) -> None:
-    """Keep the reports of „Zgłoś uwagę” (feedback)."""
-    for statement in _VERSION_5:
+def _version_1(connection: sqlite3.Connection) -> None:
+    """Create the tables of the first schema version."""
+    for statement in _VERSION_1:
         connection.execute(statement)
 
 
 # Migration ``i`` takes a database from user_version ``i`` to ``i + 1``.
-MIGRATIONS: tuple[Migration, ...] = (
-    _version_1,
-    _version_2,
-    _version_3,
-    _version_4,
-    _version_5,
-)
+MIGRATIONS: tuple[Migration, ...] = (_version_1,)
 STATE_SCHEMA_VERSION = len(MIGRATIONS)
+# The number of version 1 before every format went back to version 1 (Nogat
+# REL-1.4): a database of this number holds the tables of version 1.
+RENUMBERED_VERSION = 5
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -281,9 +226,10 @@ def initialize(
     Returns
     -------
     StateSchemaState
-        ``created`` for a new database, ``current`` when it is up to date,
-        ``migrated`` when pending migrations ran (all in one transaction;
-        nothing changes if one fails).
+        ``created`` for a new database, ``current`` when it is up to date
+        (a database of ``RENUMBERED_VERSION`` is renumbered 1, nothing else
+        changes), ``migrated`` when pending migrations ran (all in one
+        transaction; nothing changes if one fails).
 
     Raises
     ------
@@ -297,15 +243,14 @@ def initialize(
     connection = connect(path)
     try:
         use_wal(connection, timeout_ms=BUSY_TIMEOUT_MS)
-        version = _user_version(connection)
-        if version == target:
+        if _user_version(connection) == target:
             return "current"
-        _require_known(path, version, target)
+        _require_known(path, schema_version(connection, target=target), target)
         # Migrations may rebuild tables; references are checked once at the end.
         connection.execute("PRAGMA foreign_keys = OFF")
         connection.execute("BEGIN IMMEDIATE")
         try:
-            version = _user_version(connection)
+            version = schema_version(connection, target=target)
             _require_known(path, version, target)
             for migration in migrations[version:]:
                 migration(connection)
@@ -316,9 +261,34 @@ def initialize(
         except BaseException:
             connection.execute("ROLLBACK")
             raise
-        return "created" if version == 0 else "migrated"
+        if version == 0:
+            return "created"
+        return "current" if version == target else "migrated"
     finally:
         connection.close()
+
+
+def schema_version(
+    connection: sqlite3.Connection, *, target: int = STATE_SCHEMA_VERSION
+) -> int:
+    """Return the schema version of an open state database.
+
+    Parameters
+    ----------
+    connection : sqlite3.Connection
+        The state database.
+    target : int, default STATE_SCHEMA_VERSION
+        The newest schema version the caller knows.
+
+    Returns
+    -------
+    int
+        Its ``PRAGMA user_version``, except that ``RENUMBERED_VERSION`` above
+        ``target`` is 1: such a database was written before the renumbering
+        and holds the tables of version 1.
+    """
+    version = _user_version(connection)
+    return 1 if version == RENUMBERED_VERSION > target else version
 
 
 def _require_known(path: Path, version: int, target: int) -> None:

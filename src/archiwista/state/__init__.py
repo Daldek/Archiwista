@@ -2,13 +2,12 @@
 
 Unlike the index, this state cannot be rebuilt from files (A-ADR-029, SPEC
 4.3): it changes by migrations and is backed up with ``archiwista state
-export`` (``archiwista-state/2``, a secret: it holds the password hashes).
+export`` (``archiwista-state/1``, a secret: it holds the password hashes).
 The feedback reports are not in that document: a copy of the database file
 (SQLite ``.backup``) keeps them.
 """
 
 from archiwista.state.export import (
-    LEGACY_STATE_DOCUMENT_SCHEMA,
     STATE_DOCUMENT_SCHEMA,
     StateDocument,
     dump_state,
@@ -56,7 +55,6 @@ from archiwista.state.store import (
 __all__ = [
     "ANONYMOUS_ACTOR",
     "ID_PATTERN",
-    "LEGACY_STATE_DOCUMENT_SCHEMA",
     "MIGRATIONS",
     "NAME_MAX_LENGTH",
     "OUTCOMES",

@@ -41,7 +41,12 @@ from archiwista.errors import (
     StateError,
 )
 from archiwista.messages import message
-from archiwista.state.schema import STATE_SCHEMA_VERSION, connect, initialize
+from archiwista.state.schema import (
+    STATE_SCHEMA_VERSION,
+    connect,
+    initialize,
+    schema_version,
+)
 
 type Role = Literal["admin", "store_writer"]
 type Visibility = Literal["public", "users", "group", "private"]
@@ -1566,7 +1571,7 @@ def read_users(path: Path) -> tuple[UserRecord, ...] | None:
     connection = connect(path)
     try:
         connection.execute("PRAGMA query_only = ON")
-        (version,) = connection.execute("PRAGMA user_version").fetchone()
+        version = schema_version(connection)
         if version > STATE_SCHEMA_VERSION:
             raise StateError(
                 message(

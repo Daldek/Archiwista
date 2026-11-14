@@ -1232,11 +1232,13 @@ of its own, or use TLS in Archiwista without `proxy_user_header`.
 
 **Backup of accounts and the log.** `archiwista state export --output FILE` copies the
 state database — accounts with their password hashes, groups, sharing, preferences
-and the action log — as `archiwista-state/2`. The file gets mode `0600` and must stay
+and the action log — as `archiwista-state/1`. The file gets mode `0600` and must stay
 as secret as the passwords themselves. `archiwista state import FILE` restores such a
-copy into an empty state database only; a copy made before v0.4
-(`archiwista-state/1`) imports too. Make one before upgrading to v0.4: its first start
-turns the permission log into the action log.
+copy into an empty state database only; a copy written as `archiwista-state/2`
+(before every format went back to version 1, Nogat REL-1.4) or before v0.4 (with the
+permission log) imports too. A state database written by an Archiwista older than
+2026-11-04 (schema 2 to 4, 0.1.0 and 0.2.0 included) no longer opens: export it with
+that Archiwista and import the copy into an empty database.
 
 ## Feedback ("Zgłoś uwagę")
 
@@ -1255,7 +1257,7 @@ says "Dziękujemy! Zgłoszenie zostało zapisane." and closes the window two sec
 later; "Anuluj" and `Esc` close it without sending.
 
 **Where reports live.** In the state database `<data-dir>/state.sqlite` (table
-`feedback`, from schema version 5), with the time, the account that sent it (an
+`feedback`), with the time, the account that sent it (an
 agent's: its person's; none for the owner of a local installation), the page's
 address and the browser's `User-Agent`. They stay until an administrator deletes
 them.

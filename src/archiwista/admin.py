@@ -7,7 +7,7 @@ models of those routes and every change lands in the action log
 (A-ADR-029, A-ADR-047). A refused action exits with the registry's exit code
 and ends standard error with the ``archiwista-error/1`` document, the Polish
 text before it (ERR-4). ``state export`` and ``state import`` back up and
-restore the state database (``archiwista-state/2``, a secret written with
+restore the state database (``archiwista-state/1``, a secret written with
 mode ``0600``; into an empty database only).
 """
 

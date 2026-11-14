@@ -470,7 +470,7 @@ _UNUSED_EXAMPLE = {
     "reclaimable_bytes": 251000000,
 }
 _INDEX_EXAMPLE = {
-    "schema_version": 3,
+    "schema_version": 1,
     "created_at": "2026-10-18T11:58:02Z",
     "size_bytes": 214958080,
 }

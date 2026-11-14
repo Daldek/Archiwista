@@ -1,4 +1,4 @@
-"""Backups of the state database: the ``archiwista-state/2`` JSON document.
+"""Backups of the state database: the ``archiwista-state/1`` JSON document.
 
 The state cannot be rebuilt from files (A-ADR-029), so ``archiwista state
 export`` writes all of it: accounts with their roles, groups with their
@@ -7,8 +7,10 @@ the action log, keeping ids and times. The document is a secret (it holds
 the password hashes, A-ADR-047). ``archiwista state import`` restores such a
 document into an empty state database only, so a backup never merges into or
 overwrites a working state; restoring and exporting again gives the same
-document. A document ``archiwista-state/1`` (before v0.4: no passwords or
-preferences, the permission log) still imports: its log entries become
+document. Two older backups still import: the same document written as
+``archiwista-state/2`` (``RENUMBERED_STATE_DOCUMENT_SCHEMA``, before every
+format went back to version 1, Nogat REL-1.4), and one written before v0.4
+(no passwords or preferences, the permission log), whose log entries become
 entries of the action log with the outcome ``ok``.
 """
 
@@ -37,11 +39,12 @@ from archiwista.state.store import (
     Visibility,
 )
 
-type StateFormat = Literal["archiwista-state/2"]
-type LegacyStateFormat = Literal["archiwista-state/1"]
+type StateFormat = Literal["archiwista-state/1"]
 
-STATE_DOCUMENT_SCHEMA: StateFormat = "archiwista-state/2"
-LEGACY_STATE_DOCUMENT_SCHEMA: LegacyStateFormat = "archiwista-state/1"
+STATE_DOCUMENT_SCHEMA: StateFormat = "archiwista-state/1"
+# The id of the same document before every format went back to version 1
+# (Nogat REL-1.4): a backup written with it imports as ``STATE_DOCUMENT_SCHEMA``.
+RENUMBERED_STATE_DOCUMENT_SCHEMA = "archiwista-state/2"
 
 
 class _Part(BaseModel):
@@ -51,7 +54,7 @@ class _Part(BaseModel):
 class UserBackup(_Part):
     """An account with its roles; memberships are kept with the groups.
 
-    ``sessions_revoked_at`` is missing from ``archiwista-state/1``.
+    ``sessions_revoked_at`` is missing from a backup written before v0.4.
     """
 
     id: str
@@ -121,7 +124,7 @@ class ActionBackup(_Part):
 
 
 class ChangeBackup(_Part):
-    """An entry of the permission log of ``archiwista-state/1``.
+    """An entry of the permission log of a backup written before v0.4.
 
     ``actor_kind`` and ``session`` are missing from backups of entries
     written before Archiwista recorded them.
@@ -139,7 +142,7 @@ class ChangeBackup(_Part):
 
 
 class StateDocument(_Part):
-    """The whole state database as one JSON document (``archiwista-state/2``)."""
+    """The whole state database as one JSON document (``archiwista-state/1``)."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -154,11 +157,11 @@ class StateDocument(_Part):
 
 
 class LegacyStateDocument(_Part):
-    """A backup written before v0.4 (``archiwista-state/1``)."""
+    """A backup written before v0.4: ``archiwista-state/1`` with the permission log."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    format: LegacyStateFormat = Field(alias="schema")
+    format: StateFormat = Field(alias="schema")
     exported_at: AwareDatetime
     users: list[UserBackup]
     groups: list[GroupBackup]
@@ -166,7 +169,7 @@ class LegacyStateDocument(_Part):
     permission_log: list[ChangeBackup]
 
     def upgrade(self) -> StateDocument:
-        """Return the same state as ``archiwista-state/2``.
+        """Return the same state as the current document.
 
         The permission log becomes the action log with the outcome ``ok``;
         there are no passwords or preferences.
@@ -297,8 +300,8 @@ def import_state(store: StateStore, text: str | bytes) -> StateSnapshot:
         The state database; it must hold no account, group, project entry,
         preferences or log entry.
     text : str or bytes
-        The JSON written by ``dump_state``, or an ``archiwista-state/1``
-        document.
+        The JSON written by ``dump_state``, or a backup written as
+        ``archiwista-state/2`` or before v0.4.
 
     Returns
     -------
@@ -308,7 +311,7 @@ def import_state(store: StateStore, text: str | bytes) -> StateSnapshot:
     Raises
     ------
     StateError
-        The text is no ``archiwista-state/2`` or ``/1`` document, the
+        The text is no ``archiwista-state/1`` (or ``/2``) document, the
         document is inconsistent, or the database is not empty; nothing is
         written.
     """
@@ -389,8 +392,9 @@ def parse_state(text: str | bytes) -> StateDocument:
     Returns
     -------
     StateDocument
-        The document; an ``archiwista-state/1`` one upgraded
-        (``LegacyStateDocument.upgrade``).
+        The document; one written as ``archiwista-state/2`` read as
+        ``archiwista-state/1``, one written before v0.4 (with the permission
+        log) upgraded (``LegacyStateDocument.upgrade``).
 
     Raises
     ------
@@ -406,20 +410,16 @@ def parse_state(text: str | bytes) -> StateDocument:
             reason="invalid_backup",
         ) from error
     found = data.get("schema") if isinstance(data, dict) else None
-    if found not in (STATE_DOCUMENT_SCHEMA, LEGACY_STATE_DOCUMENT_SCHEMA):
+    if found not in (STATE_DOCUMENT_SCHEMA, RENUMBERED_STATE_DOCUMENT_SCHEMA):
         raise StateError(
-            message(
-                "state.import_schema",
-                found=found,
-                expected=f"{STATE_DOCUMENT_SCHEMA}, {LEGACY_STATE_DOCUMENT_SCHEMA}",
-            ),
+            message("state.import_schema", found=found, expected=STATE_DOCUMENT_SCHEMA),
             code="data_error",
             reason="invalid_backup",
         )
     try:
-        if found == LEGACY_STATE_DOCUMENT_SCHEMA:
+        if "permission_log" in data:
             return LegacyStateDocument.model_validate(data).upgrade()
-        return StateDocument.model_validate(data)
+        return StateDocument.model_validate({**data, "schema": STATE_DOCUMENT_SCHEMA})
     except ValidationError as error:
         fields = ", ".join(
             ".".join(str(part) for part in item["loc"]) for item in error.errors()
