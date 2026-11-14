@@ -1,14 +1,17 @@
 """Obserwator's commands through the adapter's capability (plan 2026-11-05, P1).
 
+The catalog is ``store sync`` alone, the download into a raw root: Obserwator
+builds the series and station catalogs offline in its data root (A-ADR-056).
 The catalog, the reading and writing of a call and the check of its options
 are Obserwator's own answers, offline. The plan of a call and its run go to
 Obserwator's real ``check_command`` and ``run_command`` with its HTTP layer
 stood in for (``tests/fixtures/obserwator_http.py``, as Obserwator's own
-tests do): an initialised empty store is planned, the plan is run and writes
-versions, a plan whose source changed meanwhile fails as ``stale_plan``, a
-narrowed plan fetches only what it keeps, and an interrupt leaves no part of
-a version. The places of plan positions and of files are compared with the
-versions Obserwator wrote, so a change of its store layout fails here.
+tests do): an initialised empty raw root is planned, the plan is run and
+writes versions, a plan whose source changed meanwhile fails as
+``stale_plan``, a narrowed plan fetches only what it keeps, and an interrupt
+leaves no part of a version. The places of plan positions and of files are
+compared with the versions Obserwator wrote, so a change of its store layout
+fails here.
 """
 
 import json
@@ -41,7 +44,6 @@ SYNC = {"datasets": [HYDRO], "years": [2023, 2024]}
 SLOT_2023 = "archives/versions/dane_hydrologiczne/dobowe/2023/codz_2023"
 SLOT_2024 = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
 SERIES = "series/versions/hydro_daily"
-CATALOG = "stations/versions"
 
 
 @pytest.fixture
@@ -54,9 +56,9 @@ def adapter(tmp_path: Path) -> ObserwatorAdapter:
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    """Return an empty Obserwator store (its marker only)."""
+    """Return an empty raw root of Obserwator (its marker only)."""
     store = tmp_path / "store"
-    init_store(store)
+    init_store(store, kind="raw")
     return store
 
 
@@ -177,10 +179,10 @@ def test_obserwator_validate_store_command_needs_root(
     assert adapter.validate("store sync", SYNC, root=root) == SYNC
 
 
-def test_obserwator_check_plans_missing_archives_and_series(
+def test_obserwator_check_plans_only_the_missing_archives(
     adapter: ObserwatorAdapter, root: Path
 ) -> None:
-    """The plan of an empty store: both archives and the series are missing."""
+    """The plan of an empty raw root: both archives are missing, and nothing else."""
     notices: list[AvailabilityNotice] = []
 
     with standin_source() as source:
@@ -194,7 +196,6 @@ def test_obserwator_check_plans_missing_archives_and_series(
     assert [(entry.path, entry.status) for entry in plan.entries] == [
         (SLOT_2023, "missing"),
         (SLOT_2024, "missing"),
-        (SERIES, "missing"),
     ]
     assert plan.ok and plan.size_bytes and plan.size_bytes > 0
     assert plan.document["schema"] == "obserwator-plan/1"
@@ -216,9 +217,7 @@ def test_obserwator_run_of_a_plan_writes_versions_at_its_places(
     assert result.status == "ok" and not result.failed
     places = {file.path for file in result.files}
     assert places == {entry.path for entry in plan.entries}
-    assert {file.version_path for file in result.files} == set(_versions(root)) - {
-        version for version in _versions(root) if version.startswith("stations")
-    }
+    assert {file.version_path for file in result.files} == set(_versions(root))
     for file in result.files:
         assert file.status == "new"
         assert file.version_path and file.version_path.startswith(f"{file.path}/")
@@ -250,10 +249,10 @@ def test_obserwator_narrow_keeps_only_the_claimed_archives(
     """A narrowed plan's run fetches only the archives it keeps."""
     with standin_source() as source:
         plan = adapter.check("store sync", SYNC, root=root)
-        narrowed = adapter.narrow(plan, [SLOT_2024, SERIES])
+        narrowed = adapter.narrow(plan, [SLOT_2024])
         result = adapter.run("store sync", SYNC, root=root, plan=narrowed)
 
-    assert [entry.path for entry in narrowed.entries] == [SLOT_2024, SERIES]
+    assert [entry.path for entry in narrowed.entries] == [SLOT_2024]
     assert source.files() == ["dane_hydrologiczne/dobowe/2024/codz_2024.zip"]
     assert SLOT_2023 not in {file.path for file in result.files}
 
@@ -296,33 +295,7 @@ def test_obserwator_run_again_without_plan_is_unchanged(
     assert {file.status for file in again.files} == {"unchanged"}
     assert {entry.status for entry in plan.entries} == {"current"}
     assert plan.todo == ()
-    assert {entry.local_label for entry in plan.entries[:2]} == {"2026-10-17"}
-
-
-def test_obserwator_catalog_and_series_at_their_places(
-    adapter: ObserwatorAdapter, root: Path
-) -> None:
-    """The catalog's and the series' positions name where their versions lie."""
-    with standin_source():
-        adapter.run("store sync", {**SYNC, "series": False}, root=root)
-        series_plan = adapter.check("series build", {"dataset": HYDRO}, root=root)
-        series = adapter.run("series build", {"dataset": HYDRO}, root=root)
-        catalog_plan = adapter.check("store catalog", {}, root=root)
-        catalog = adapter.run("store catalog", {}, root=root)
-
-    assert {entry.path for entry in series_plan.entries} == {
-        SERIES,
-        SLOT_2023,
-        SLOT_2024,
-    }
-    assert [entry.status for entry in series_plan.entries if entry.path != SERIES] == [
-        "current",
-        "current",
-    ]
-    assert [file.path for file in series.files] == [SERIES]
-    assert CATALOG in {entry.path for entry in catalog_plan.entries}
-    assert [file.path for file in catalog.files] == [CATALOG]
-    assert [item.id for item in catalog.items] == [CATALOG]
+    assert {entry.local_label for entry in plan.entries} == {"2026-10-17"}
 
 
 def test_obserwator_version_call_runs_again(
@@ -380,7 +353,7 @@ def test_obserwator_check_of_a_command_without_plan_is_unsupported(
 def test_obserwator_live_store_sync_of_one_year(
     adapter: ObserwatorAdapter, root: Path
 ) -> None:
-    """IMGW-PIB's real ``pl.imgw.hydro_daily`` 2024: plan, run, files, series.
+    """IMGW-PIB's real ``pl.imgw.hydro_daily`` 2024: plan, run and its archive.
 
     Downloads about 2 MB from danepubliczne.imgw.pl; run deliberately with
     ``-m live``.
@@ -391,4 +364,4 @@ def test_obserwator_live_store_sync_of_one_year(
     result = adapter.run("store sync", call, root=root, plan=plan)
 
     assert result.status == "ok", json.dumps([item.message for item in result.failed])
-    assert {file.path for file in result.files} == {SLOT_2024, SERIES}
+    assert {file.path for file in result.files} == {SLOT_2024}

@@ -3,10 +3,11 @@
 A store's settings name only the directories of the producers Archiwista
 configures (Kartograf's, Obserwator's). ``StandinStore`` gives the stand-in
 (``tests/fixtures/action_source``) the store's Kartograf directory in the test's
-own process, and ``standin_in_settings`` does it for every store the API and
-the commands of a test load; the settings reach a worker process as JSON, so
-the workers of ``ACTION_WORKER`` (``tests.fixtures.action_worker``) do the same
-themselves.
+own process, as its store root (``roots``) and as its one directory
+(``directories``, which the scan, the jobs and the paths of the index read), and
+``standin_in_settings`` does it for every store the API and the commands of a
+test load; the settings reach a worker process as JSON, so the workers of
+``ACTION_WORKER`` (``tests.fixtures.action_worker``) do the same themselves.
 The stand-in is registered by ``tests.fixtures.availability.register_standin``
 and the worker imports ``tests`` through ``tests.fixtures.jobs.worker_path``.
 """
@@ -22,6 +23,7 @@ from archiwista.config import (
     ConfigStore,
     SettingsService,
     StoreConfig,
+    StoreDirectory,
 )
 from archiwista.jobs import JobSupervisor
 from archiwista.jobs.protocol import JobKind, JobSpec, JsonObject
@@ -38,8 +40,31 @@ ACTION_WORKER: tuple[str, ...] = (sys.executable, "-m", "tests.fixtures.action_w
 
 
 def standin_roots(roots: dict[str, Path]) -> dict[str, Path]:
-    """Return a store's directories with its Kartograf directory as the stand-in's."""
+    """Return a store's roots with its Kartograf directory as the stand-in's."""
     return {"standin": roots["kartograf"]} if "kartograf" in roots else roots
+
+
+def as_producer(
+    producer: str, directories: tuple[StoreDirectory, ...]
+) -> tuple[StoreDirectory, ...]:
+    """Return a store's directories with its Kartograf directory as ``producer``'s.
+
+    A producer the settings have no field of (the stand-in, a second plugin)
+    takes the Kartograf directory as its only one, under its own id as the field.
+    """
+    kartograf = next(
+        (found for found in directories if found.field == "kartograf"), None
+    )
+    if kartograf is None:
+        return directories
+    return (StoreDirectory(producer, producer, False, kartograf.path),)
+
+
+def standin_directories(
+    directories: tuple[StoreDirectory, ...],
+) -> tuple[StoreDirectory, ...]:
+    """Return a store's directories with its Kartograf directory as the stand-in's."""
+    return as_producer("standin", directories)
 
 
 class StandinStore(StoreConfig):
@@ -49,6 +74,10 @@ class StandinStore(StoreConfig):
         """Return the stand-in's directory: the one given as Kartograf's."""
         return standin_roots(super().roots())
 
+    def directories(self) -> tuple[StoreDirectory, ...]:
+        """Return the stand-in's directory: the one given as Kartograf's."""
+        return standin_directories(super().directories())
+
 
 def standin_in_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     """Give the stand-in each store's Kartograf directory in this process too.
@@ -56,12 +85,16 @@ def standin_in_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     The settings the API and the commands load hold plain ``StoreConfig``s;
     a worker of ``ACTION_WORKER`` does the same in its own process.
     """
-    roots = StoreConfig.roots
+    roots, directories = StoreConfig.roots, StoreConfig.directories
 
     def standin(self: StoreConfig) -> dict[str, Path]:
         return standin_roots(roots(self))
 
+    def standin_only(self: StoreConfig) -> tuple[StoreDirectory, ...]:
+        return standin_directories(directories(self))
+
     monkeypatch.setattr(StoreConfig, "roots", standin)
+    monkeypatch.setattr(StoreConfig, "directories", standin_only)
 
 
 def store_root(tmp_path: Path) -> Path:

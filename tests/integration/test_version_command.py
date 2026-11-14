@@ -56,7 +56,7 @@ def _indexed(tmp_path: Path) -> tuple[AppPaths, PluginRegistry]:
     assert config is not None
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         scan_store(registry.adapter("standin"), writer, settings, STORE, mode="full")
     return paths, registry
 

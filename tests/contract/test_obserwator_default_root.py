@@ -1,22 +1,70 @@
-"""The adapter reports the store root Obserwator uses when a call names none.
+"""The adapter reports the roots Obserwator uses when a call names none.
 
-The root comes from ``obserwator.store_root()``, which gives the layer of the
-settings that chose it (``OBSERWATOR_ROOT``, the same key in ``.env``,
-``[obserwator] root`` of ``nogat.toml``, else ``<data_dir>/obserwator``, DEV-19.2),
-so these tests set those layers themselves (the canary of ``tests/conftest.py``
-points all of them at an empty tree) and pin the report to what Obserwator's own
-writers leave.
+Obserwator keeps a store in two roots (its ADR-017), and each comes from
+``obserwator.store_root(kind=...)``, which gives the layer of the settings that
+chose it: for the raw root ``OBSERWATOR_RAW_ROOT``, the same key in ``.env``,
+``[obserwator] raw_root`` of ``nogat.toml``, else ``<data_dir>/obserwator-raw``;
+for the data root ``OBSERWATOR_ROOT``, ``[obserwator] root``, else
+``<data_dir>/obserwator`` (DEV-19.2). ``default_root`` reports the raw root and
+``default_data_root`` the data root, so these tests set those layers
+themselves (the canary of ``tests/conftest.py`` points all of them at an empty
+tree) and pin each report to what Obserwator's own writers leave.
 """
 
 import json
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import obserwator
 import pytest
 
 from archiwista.adapter.obserwator import load
 from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
-from archiwista.sources import DefaultRoot, DefaultRootAdapter, SourceContext
+from archiwista.sources import (
+    DataRootAdapter,
+    DefaultRoot,
+    DefaultRootAdapter,
+    SourceContext,
+)
+
+
+@dataclass(frozen=True)
+class Kind:
+    """What names Obserwator's default root of a kind, and the adapter's report.
+
+    ``variable`` and ``key`` are the setting of the root in the environment and
+    in ``[obserwator]`` of ``nogat.toml``, ``directory`` its default below the
+    data directory.
+    """
+
+    name: Literal["raw", "data"]
+    variable: str
+    key: str
+    directory: str
+    report: Callable[[ObserwatorAdapter], DefaultRoot]
+
+
+RAW = Kind(
+    "raw",
+    "OBSERWATOR_RAW_ROOT",
+    "raw_root",
+    "obserwator-raw",
+    ObserwatorAdapter.default_root,
+)
+DATA = Kind(
+    "data",
+    "OBSERWATOR_ROOT",
+    "root",
+    "obserwator",
+    ObserwatorAdapter.default_data_root,
+)
+KINDS = [RAW, DATA]
+
+
+def _name(kind: Kind) -> str:
+    return kind.name
 
 
 @pytest.fixture
@@ -30,94 +78,129 @@ def adapter(tmp_path: Path) -> ObserwatorAdapter:
 @pytest.fixture
 def data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Give ``NOGAT_DATA_DIR`` alone: a data directory with no root of its own."""
-    monkeypatch.delenv("OBSERWATOR_ROOT")
-    monkeypatch.delenv("OBSERWATOR_DATA_DIR")
+    for variable in (RAW.variable, DATA.variable, "OBSERWATOR_DATA_DIR"):
+        monkeypatch.delenv(variable)
     monkeypatch.setenv("NOGAT_DATA_DIR", str(tmp_path / "nogat"))
     return tmp_path / "nogat"
 
 
-def test_default_root_is_a_capability_of_the_adapter(
+def test_default_roots_are_capabilities_of_the_adapter(
     adapter: ObserwatorAdapter,
 ) -> None:
-    """The wizard and the doctor find it by the protocol, not by the class."""
+    """The wizard and the doctor find both by the protocols, not by the class."""
     assert isinstance(adapter, DefaultRootAdapter)
+    assert isinstance(adapter, DataRootAdapter)
 
 
-def test_default_root_variable_names_a_marked_store(
-    adapter: ObserwatorAdapter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("kind", KINDS, ids=_name)
+def test_default_root_variable_names_a_marked_root(
+    adapter: ObserwatorAdapter,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: Kind,
 ) -> None:
-    """``OBSERWATOR_ROOT`` on a store Obserwator initialised is a store to offer."""
+    """The variable of a kind on a root Obserwator initialised so is one to offer."""
     # Arrange
-    root = tmp_path / "store"
-    obserwator.init_store(root)
-    monkeypatch.setenv("OBSERWATOR_ROOT", str(root))
+    root = tmp_path / "root"
+    obserwator.init_store(root, kind=kind.name)
+    monkeypatch.setenv(kind.variable, str(root))
 
     # Act
-    found = adapter.default_root()
+    found = kind.report(adapter)
 
     # Assert
-    assert found == DefaultRoot(root, "env", "OBSERWATOR_ROOT", True, True)
+    assert found == DefaultRoot(root, "env", kind.variable, True, True)
 
 
+@pytest.mark.parametrize("kind", KINDS, ids=_name)
 def test_default_root_without_settings_lies_under_the_data_directory(
-    adapter: ObserwatorAdapter, data_dir: Path
+    adapter: ObserwatorAdapter, data_dir: Path, kind: Kind
 ) -> None:
-    """Nothing but ``NOGAT_DATA_DIR``: ``<data_dir>/obserwator``, which is not there."""
+    """Nothing but ``NOGAT_DATA_DIR``: its directory of the kind, which is not there."""
     # Act
-    found = adapter.default_root()
+    found = kind.report(adapter)
 
     # Assert
-    assert found == DefaultRoot(data_dir / "obserwator", "default", None, False, False)
+    assert found == DefaultRoot(
+        data_dir / kind.directory, "default", None, False, False
+    )
     assert not data_dir.exists()
 
 
+@pytest.mark.parametrize("kind", KINDS, ids=_name)
 def test_default_root_directory_is_marked_by_obserwator_init_store_only(
-    adapter: ObserwatorAdapter, data_dir: Path
+    adapter: ObserwatorAdapter, data_dir: Path, kind: Kind
 ) -> None:
-    """A directory is not a store before ``init_store`` wrote the marker into it."""
+    """A directory is no root before ``init_store`` of its kind wrote the marker."""
     # Arrange
-    (data_dir / "obserwator").mkdir(parents=True)
+    root = data_dir / kind.directory
+    root.mkdir(parents=True)
 
     # Act
-    before = adapter.default_root()
-    obserwator.init_store(data_dir / "obserwator")
-    after = adapter.default_root()
+    before = kind.report(adapter)
+    obserwator.init_store(root, kind=kind.name)
+    after = kind.report(adapter)
 
     # Assert
     assert (before.exists, before.marked) == (True, False)
     assert (after.exists, after.marked) == (True, True)
 
 
-def test_default_root_of_the_settings_file_names_its_table(
-    adapter: ObserwatorAdapter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(("kind", "other"), [(RAW, DATA), (DATA, RAW)], ids=_name)
+def test_default_root_holding_the_other_kinds_marker_is_not_marked(
+    adapter: ObserwatorAdapter, data_dir: Path, kind: Kind, other: Kind
 ) -> None:
-    """``[obserwator] root`` of ``nogat.toml`` is reported as the file's."""
+    """A root of the other kind at the default directory is no root to offer."""
+    # Arrange
+    root = data_dir / kind.directory
+    obserwator.init_store(root, kind=other.name)
+
+    # Act
+    found = kind.report(adapter)
+
+    # Assert
+    assert (found.exists, found.marked) == (True, False)
+
+
+@pytest.mark.parametrize("kind", KINDS, ids=_name)
+def test_default_root_of_the_settings_file_names_its_table(
+    adapter: ObserwatorAdapter,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: Kind,
+) -> None:
+    """The key of a kind in ``[obserwator]`` of ``nogat.toml`` is the file's."""
     # Arrange
     chosen = tmp_path / "chosen"
     settings = tmp_path / "nogat.toml"
-    settings.write_text(f"[obserwator]\nroot = {json.dumps(str(chosen))}\n", "utf-8")
+    line = f"{kind.key} = {json.dumps(str(chosen))}"
+    settings.write_text(f"[obserwator]\n{line}\n", "utf-8")
     monkeypatch.setenv("NOGAT_CONFIG", str(settings))
-    monkeypatch.delenv("OBSERWATOR_ROOT")
+    monkeypatch.delenv(kind.variable)
 
     # Act
-    found = adapter.default_root()
+    found = kind.report(adapter)
 
     # Assert
     assert found == DefaultRoot(chosen, "file", "[obserwator]", False, False)
 
 
+@pytest.mark.parametrize("kind", KINDS, ids=_name)
 def test_default_root_of_a_dotenv_file_is_told_from_the_environment(
-    adapter: ObserwatorAdapter, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    adapter: ObserwatorAdapter,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: Kind,
 ) -> None:
-    """Obserwator also reads ``OBSERWATOR_ROOT`` from ``.env``: its own layer."""
+    """Obserwator also reads the variable of a kind from ``.env``: its own layer."""
     # Arrange
     chosen = tmp_path / "chosen"
-    (tmp_path / ".env").write_text(f"OBSERWATOR_ROOT={chosen}\n", "utf-8")
+    (tmp_path / ".env").write_text(f"{kind.variable}={chosen}\n", "utf-8")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("OBSERWATOR_ROOT")
+    monkeypatch.delenv(kind.variable)
 
     # Act
-    found = adapter.default_root()
+    found = kind.report(adapter)
 
     # Assert
-    assert found == DefaultRoot(chosen, "dotenv", "OBSERWATOR_ROOT", False, False)
+    assert found == DefaultRoot(chosen, "dotenv", kind.variable, False, False)

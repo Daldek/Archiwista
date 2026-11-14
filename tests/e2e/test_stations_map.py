@@ -12,9 +12,9 @@ legend names the three shapes and five fills, the counter of stations
 without a position equals ``counts.unlocated`` and opens the Catalog with
 ``location=none``, and the "Kolor punktów" and dataset chips change the
 address and the next request. The view's one strip under the map shows S
-and P of the IMGW-PIB lines with the stations of the view and their
-positions (Nogat DEV §20, DEV-20.5); its dialog lists every line, byte for
-byte those of ``GET /map/stations``.
+and P of the IMGW-PIB lines and the catalog's G with the stations of the
+view and their positions (Nogat DEV §20, DEV-20.5); its dialog lists every
+line, byte for byte those of ``GET /map/stations``.
 """
 
 import json
@@ -28,6 +28,7 @@ from playwright.sync_api import Locator, Page, Request, Response, Route, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.provider_lines import (
+    GUGIK_PRG,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_HYDRO,
@@ -310,7 +311,7 @@ def test_legend_counter_and_chips_stand_beside_the_map(
 def test_map_screen_station_lines_stand_in_a_strip_under_the_map(
     serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
-    """Raba Górna in the view: S and P in the strip under the map, every line behind."""
+    """Raba Górna in the view: S, P and G in the strip under the map, all behind."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
@@ -329,11 +330,12 @@ def test_map_screen_station_lines_stand_in_a_strip_under_the_map(
     box = strip.bounding_box()
 
     # Assert
-    assert shown == [IMGW_SOURCE, IMGW_PROCESSED]
+    assert shown == [IMGW_SOURCE, IMGW_PROCESSED, "Źródło: GUGiK (PRG)"]
     assert full == [*view["attribution"], *view["terms_notice"]]
     assert full == [
         IMGW_SOURCE,
         IMGW_PROCESSED,
+        GUGIK_PRG,
         IMGW_TERMS_PUBLIC_DATA,
         IMGW_TERMS_HYDRO,
     ]

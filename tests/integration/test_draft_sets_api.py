@@ -129,7 +129,7 @@ def place(tmp_path: Path) -> Iterator[Place]:
     segment = SourceSegment(HYDRO, "hydro", "PL", "pl.imgw.daily", "Dobowe", True)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: store.roots()})
+        writer.sync_stores({STORE: store.directory_paths()})
         write_pass(
             writer,
             [

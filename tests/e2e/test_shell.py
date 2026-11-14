@@ -316,32 +316,44 @@ def test_first_run_wizard_offers_the_default_root_and_enters_it_on_a_click(
     tab.assert_clean()
 
 
-def test_first_run_wizard_offers_both_default_roots_each_under_its_own_field(
+def test_first_run_wizard_offers_each_default_root_under_its_own_field(
     serve: Serve, tab: Tab, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Kartograf's and Obserwator's stores are offered, each entered by a click."""
+    """Kartograf's store and Obserwator's raw and data roots, each a click away."""
     producer = pytest.importorskip("obserwator")
     store = make_store(tmp_path / "store", slots=24, seed=7)
-    obserwator_root = tmp_path / "obserwator"
-    producer.init_store(obserwator_root)
+    raw_root = tmp_path / "obserwator-raw"
+    data_root = tmp_path / "obserwator"
+    producer.init_store(raw_root)
+    producer.init_store(data_root, kind="data")
     monkeypatch.setenv("KARTOGRAF_ROOT", str(store.root))
-    monkeypatch.setenv("OBSERWATOR_ROOT", str(obserwator_root))
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(raw_root))
+    monkeypatch.setenv("OBSERWATOR_ROOT", str(data_root))
     served = serve()
     page = tab.page
     open_shell(page, served.token_url())
     kartograf = page.get_by_label("Katalog Kartografa")
-    obserwator = page.get_by_label("Katalog Obserwatora")
-    kartograf_offer = page.get_by_text("Kartograf zapisuje domyślnie w katalogu")
-    obserwator_offer = page.get_by_text("Obserwator zapisuje domyślnie w katalogu")
+    raw = page.get_by_label("Katalog surowy Obserwatora", exact=True)
+    data = page.get_by_label("Katalog danych Obserwatora", exact=True)
+    offers = page.locator(".field-offer")
+    kartograf_offer = offers.filter(has_text="Kartograf zapisuje domyślnie w katalogu")
+    raw_offer = offers.filter(has_text="Obserwator zapisuje domyślnie w katalogu")
+    data_offer = offers.filter(has_text="Obserwator buduje domyślnie dane w katalogu")
+    use = "Użyj tego katalogu"
 
     expect(kartograf_offer).to_contain_text(str(store.root))
-    expect(obserwator_offer).to_contain_text(str(obserwator_root))
-    expect(obserwator_offer).to_contain_text("zmienna OBSERWATOR_ROOT")
-    expect(obserwator).to_have_value("")  # offered, not entered
-    page.get_by_role("button", name="Użyj tego katalogu").nth(1).click()
-    expect(obserwator).to_have_value(str(obserwator_root))
+    expect(raw_offer).to_contain_text(f"{raw_root} (zmienna OBSERWATOR_RAW_ROOT)")
+    expect(data_offer).to_contain_text(f"{data_root} (zmienna OBSERWATOR_ROOT)")
+    expect(raw).to_have_value("")  # offered, not entered
+    expect(data).to_have_value("")
+    raw_offer.get_by_role("button", name=use).click()
+    expect(raw).to_have_value(str(raw_root))
+    expect(data).to_have_value("")
+    data_offer.get_by_role("button", name=use).click()
+    expect(data).to_have_value(str(data_root))
     expect(kartograf).to_have_value("")
-    expect(obserwator_offer).to_have_count(0)  # it is entered: nothing left to offer
+    expect(raw_offer).to_have_count(0)  # each is entered: nothing left to offer
+    expect(data_offer).to_have_count(0)
     expect(kartograf_offer).to_have_count(1)
     tab.assert_clean()
 

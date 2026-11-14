@@ -32,6 +32,7 @@ from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.obserwator_roots import data_root, raw_root, store_fields
 
 STORE = "dane"
 DAILY = "pl.imgw.hydro_daily"
@@ -82,13 +83,13 @@ def served(
     root = base / "store"
     shutil.copytree(obserwator_store("complete_pl_cz"), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
         yield Served(api.session(LOCAL_OWNER), paths)
@@ -310,7 +311,9 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
     folder = "series/versions/hydro_daily/2026-10-26_00000000"
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: {"obserwator": root}})
+        writer.sync_stores(
+            {STORE: {"obserwator": raw_root(root), "obserwator_data": data_root(root)}}
+        )
         writer.replace_stations(
             STORE,
             "obserwator",
@@ -369,7 +372,7 @@ def test_a_page_of_200_stations_of_75_years_within_300_ms(tmp_path: Path) -> Non
     # Arrange
     paths = local_paths(tmp_path)
     ConfigStore(paths.config_file).save(AppSettings())
-    _perf_index(paths, tmp_path / "store" / "obserwator")
+    _perf_index(paths, tmp_path / "store")
     path = f"/stations/timeline?dataset={DAILY}&limit={PERF_STATIONS}"
 
     # Act

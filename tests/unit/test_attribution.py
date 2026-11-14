@@ -172,10 +172,10 @@ def test_the_fixtures_g_and_z_are_the_kits_lines_with_their_values() -> None:
     gugik = (
         lines["G"]
         .replace("`<products>`", "PRG")
-        .replace("`<period>`", "2025")
-        .replace("`<date>`", "2026-11-10")
+        .replace("`<period>`", "2026")
+        .replace("`<date>`", "2026-11-13")
     )
-    cuzk = lines["Z"].replace("`<products>`", "RÚIAN").replace("`<date>`", "2026-11-12")
+    cuzk = lines["Z"].replace("`<products>`", "RÚIAN").replace("`<date>`", "2026-11-13")
 
     # Assert
     assert (gugik, cuzk) == (GUGIK_PRG, CUZK_RUIAN)

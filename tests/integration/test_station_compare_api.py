@@ -29,9 +29,12 @@ from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED_VIEWS,
     CHMI_SOURCE,
+    CUZK_RUIAN,
+    GUGIK_PRG,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_HYDRO,
@@ -47,9 +50,10 @@ UNSERIED = "149190312"  # no series at all
 RAINFALL = "123750000"  # a precipitation series only
 SPINDLER = "0-203-1-900001"  # values 2023-01-01 to 2024-12-31
 ZAPADLA = "0-203-1-900002"  # values 2004 to 2006, no known year
-# The lines of IMGW-PIB stations, one with a position (of the hydrological service).
+# The lines of IMGW-PIB stations, one with a position (of the hydrological
+# service), with the border line G their catalog names for their places.
 IMGW_LINES = (
-    [IMGW_SOURCE, IMGW_PROCESSED],
+    [IMGW_SOURCE, IMGW_PROCESSED, GUGIK_PRG],
     [IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO],
 )
 # The facts of a compared station that its card gives too.
@@ -108,13 +112,13 @@ def served(
     root = base / "store"
     shutil.copytree(obserwator_store("complete_pl_cz"), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
         yield Served(api.session(LOCAL_OWNER), paths)
@@ -246,7 +250,7 @@ def test_the_facts_of_each_station_are_those_of_its_card(
             [chmi(SPINDLER), chmi(ZAPADLA)],
             CZ_DAILY,
             "T",
-            ([CHMI_SOURCE, CHMI_PROCESSED_VIEWS], []),
+            ([CHMI_SOURCE, CHMI_PROCESSED_VIEWS, CUZK_RUIAN], []),
         ),
     ],
 )
@@ -257,7 +261,7 @@ def test_the_comparison_carries_the_lines_its_providers_terms_require(
     variable: str,
     lines: tuple[list[str], list[str]],
 ) -> None:
-    """IMGW-PIB: S and P, RD, and RH for a position; ČHMÚ: C and CP alone."""
+    """IMGW-PIB: S, P and G, RD, and RH for a position; ČHMÚ: C, CP and Z alone."""
     # Act
     answer = _compare(served, stations, variable=variable, dataset=dataset)
 
@@ -460,7 +464,7 @@ def test_the_command_line_writes_the_comparison_for_a_person(
     assert lines[10] == f"  brak danych: brak zmiennej H w szeregu {DAILY}"
     assert lines[11].startswith(f"{NO_Q}  Stacja Bez Q")
     assert lines[14] == "    luka 2023-11-02 – 2024-10-31 (365 dni)"
-    assert lines[-5:] == [
+    assert lines[-6:] == [
         "Źródła danych i warunki korzystania:",
         *(f"  {line}" for part in IMGW_LINES for line in part),
     ]

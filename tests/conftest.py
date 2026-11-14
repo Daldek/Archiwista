@@ -12,6 +12,7 @@ import pytest
 
 from archiwista.messages import language
 from tests.fixtures.isolation import Canary, isolated_producers
+from tests.fixtures.obserwator_roots import data_root, raw_root
 
 if TYPE_CHECKING:
     from obserwator.testing import FixtureVariant
@@ -135,8 +136,10 @@ def obserwator_store(
 
     The producer's own builder (``obserwator.testing.build_fixture_store``) writes it
     with its public writers and recorded answers, so no request leaves the process.
-    Tests share a store read-only and copy it to change it. Without the extra
-    `obserwator` every test that asks for it is skipped.
+    The store is one directory with Obserwator's two roots (its ADR-017), ``raw/``
+    and ``data/`` (``tests/fixtures/obserwator_roots.py``). Tests share a store
+    read-only and copy it to change it. Without the extra `obserwator` every test
+    that asks for it is skipped.
     """
     pytest.importorskip("obserwator")
     built: dict[str, Path] = {}
@@ -146,7 +149,11 @@ def obserwator_store(
             from obserwator.testing import build_fixture_store
 
             root = tmp_path_factory.mktemp(f"obserwator-{variant}") / "store"
-            build_fixture_store(root, variant=cast("FixtureVariant", variant))
+            build_fixture_store(
+                raw_root(root),
+                data_root=data_root(root),
+                variant=cast("FixtureVariant", variant),
+            )
             built[variant] = root
         return built[variant]
 
@@ -159,9 +166,10 @@ def statistics_store(
 ) -> Path:
     """Return ``complete`` with IMGW-PIB's half-year and monthly series, built once.
 
-    Obserwator's ``sync_store`` builds them from archives of IMGW-PIB's layout
-    through the stood-in source (``tests/fixtures/obserwator_statistics.py``).
-    Tests share the store read-only and copy it to change it.
+    Obserwator's ``sync_store`` downloads their archives of IMGW-PIB's layout
+    through the stood-in source and ``build_series`` builds them
+    (``tests/fixtures/obserwator_statistics.py``). Tests share the store
+    read-only and copy it to change it.
     """
     from tests.fixtures.obserwator_statistics import build_statistics_store
 

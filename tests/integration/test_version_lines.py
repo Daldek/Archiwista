@@ -25,7 +25,7 @@ from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Caller, running_api
 from tests.fixtures.local_server import local_paths
-from tests.fixtures.obserwator_edits import name_borders
+from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED,
     CHMI_SOURCE,
@@ -59,17 +59,16 @@ def owner(
     base = tmp_path_factory.mktemp("version-lines")
     root = base / "store"
     shutil.copytree(obserwator_store("complete_pl_cz"), root)
-    name_borders(root, {"IMGW-PIB": GUGIK_PRG, "CHMI": CUZK_RUIAN})
     paths = local_paths(base)
     projects = base / "projekty"
     projects.mkdir()
-    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
     settings = AppSettings(stores=(config,), project_dirs=(projects,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
         yield api.session(LOCAL_OWNER)

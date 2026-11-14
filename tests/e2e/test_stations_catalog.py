@@ -11,10 +11,10 @@ and the stations the coverage hides are counted. The year-type switch
 numbers the labels as the API does with ``year_type``, stays in the address
 and is remembered for the family in the person's preferences. The rows move
 with the keys of the file list. Under the list stands the view's one strip
-of the IMGW-PIB lines with every page read (S and P on screen, every line in
-its dialog), those of the hydrological service only with stations that have
-a position (Nogat DEV §20, DEV-20.5). Everything stands beside
-the map, so each test runs in Chromium and Firefox.
+of the lines with every page read (IMGW-PIB's S and P and the catalog's G on
+screen, every line in its dialog), those of the hydrological service only
+with stations that have a position (Nogat DEV §20, DEV-20.5). Everything
+stands beside the map, so each test runs in Chromium and Firefox.
 """
 
 import json
@@ -29,6 +29,7 @@ from playwright.sync_api import Locator, Page, Response, Route, expect
 
 from tests.fixtures.browser import Served, Tab
 from tests.fixtures.provider_lines import (
+    GUGIK_PRG,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_HYDRO,
@@ -463,7 +464,7 @@ def test_keys_move_through_the_rows_fold_the_group_open_the_card_and_the_map(
 def test_catalog_stations_lines_of_the_pages_read_stand_under_the_list(
     serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
-    """S and P on screen; S, P, RD, RH behind; "Bez położenia" without RH."""
+    """S, P and G on screen; S, P, G, RD, RH behind; "Bez położenia" without RH."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
@@ -482,14 +483,20 @@ def test_catalog_stations_lines_of_the_pages_read_stand_under_the_list(
     without = dialog_lines(strip)
 
     # Assert
-    assert shown == [IMGW_SOURCE, IMGW_PROCESSED]
+    assert shown == [IMGW_SOURCE, IMGW_PROCESSED, "Źródło: GUGiK (PRG)"]
     assert both == [
         IMGW_SOURCE,
         IMGW_PROCESSED,
+        GUGIK_PRG,
         IMGW_TERMS_PUBLIC_DATA,
         IMGW_TERMS_HYDRO,
     ]
     assert without == [*unlocated["attribution"], *unlocated["terms_notice"]]
-    assert without == [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS_PUBLIC_DATA]
+    assert without == [
+        IMGW_SOURCE,
+        IMGW_PROCESSED,
+        GUGIK_PRG,
+        IMGW_TERMS_PUBLIC_DATA,
+    ]
     expect(page.locator(SOURCES)).to_have_count(1)
     engine_tab.assert_clean()

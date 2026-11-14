@@ -23,6 +23,7 @@ from tests.fixtures.isolation import Canary, isolated_producers
 
 OBSERWATOR_DIRECTORIES = (
     "OBSERWATOR_ROOT",
+    "OBSERWATOR_RAW_ROOT",
     "OBSERWATOR_DATA_DIR",
     "OBSERWATOR_CACHE_DIR",
     "OBSERWATOR_REFERENCE_DIR",
@@ -59,6 +60,7 @@ def test_isolation_replaces_the_settings_of_the_developer(
         monkeypatch.setenv(f"{producer}_LANG", "en")
     monkeypatch.setenv("KARTOGRAF_ROOT", str(theirs / "kartograf"))
     monkeypatch.setenv("OBSERWATOR_ROOT", str(theirs / "obserwator"))
+    monkeypatch.setenv("OBSERWATOR_RAW_ROOT", str(theirs / "obserwator-raw"))
     monkeypatch.setenv("OBSERWATOR_REFERENCE_DIR", str(theirs / "reference"))
 
     # Act
@@ -89,6 +91,7 @@ def test_isolation_adapter_reads_leave_the_canary_untouched(
     for name in (
         "KARTOGRAF_ROOT",
         "OBSERWATOR_ROOT",
+        "OBSERWATOR_RAW_ROOT",
         "NOGAT_DATA_DIR",
         "NOGAT_CACHE_DIR",
     ):

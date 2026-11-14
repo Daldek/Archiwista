@@ -3,9 +3,9 @@
 The Obserwator adapter names the dataset whose series a slot is by the producer's
 own slot key and reads the index of a series version with
 ``obserwator.read_series_index``: what it gives must be what the producer itself
-reads in its offline fixture stores (``obserwator.testing``), with each
-station's series file relative to the store, and a version the producer
-refuses is its error, never coverage.
+reads in the data roots of its offline fixture stores (``obserwator.testing``,
+its ADR-017), with each station's series file relative to the data root, and a
+version the producer refuses is its error, never coverage.
 """
 
 import os
@@ -21,6 +21,7 @@ from archiwista.adapter.obserwator import load
 from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.sources import SeriesIndexAdapter, SourceContext
+from tests.fixtures.obserwator_roots import data_root, raw_root
 
 type Stores = Callable[[str], Path]
 
@@ -41,7 +42,7 @@ def adapter(tmp_path: Path) -> ObserwatorAdapter:
 
 
 def _series_version(adapter: ObserwatorAdapter, root: Path, key: str) -> Path:
-    """Return the current version of a dataset's series, relative to the store."""
+    """Return the current version of a dataset's series, relative to the data root."""
     version = adapter.current_version(root, key)
     assert version is not None
     return version
@@ -61,10 +62,11 @@ def test_only_the_obserwator_adapter_has_series_indexes(
 def test_the_series_slots_name_their_datasets_and_no_other_slot_does(
     obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
-    """Every slot of ``iter_store``: a series names its dataset, the others none."""
-    root = obserwator_store(variant)
+    """Every slot of both roots: a series names its dataset, the others none."""
+    store = obserwator_store(variant)
     slots = {
         entry.slot: entry.kind
+        for root in (raw_root(store), data_root(store))
         for entry in iter_store(root)
         if entry.slot is not None and entry.kind != "problem"
     }
@@ -83,8 +85,8 @@ def test_the_series_slots_name_their_datasets_and_no_other_slot_does(
 def test_read_series_index_gives_every_station_the_producer_reads(
     obserwator_store: Stores, adapter: ObserwatorAdapter, key: str
 ) -> None:
-    """Stations, variables, periods and gaps as the producer's; files in the store."""
-    root = obserwator_store("complete_pl_cz")
+    """Stations, variables, periods and gaps as the producer's; files in the root."""
+    root = data_root(obserwator_store("complete_pl_cz"))
     version = _series_version(adapter, root, key)
     index = read_series_index(root / version)
     dataset = get_dataset(index.dataset)
@@ -128,7 +130,7 @@ def test_a_station_of_per_station_files_keeps_its_own_periods(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """ČHMÚ: the station's files decide its known periods, the version's do not."""
-    root = obserwator_store("complete_pl_cz")
+    root = data_root(obserwator_store("complete_pl_cz"))
     czech = adapter.read_series_index(
         root, _series_version(adapter, root, "series:cz.chmi.hydro_daily")
     )
@@ -148,8 +150,9 @@ def test_a_version_unlike_its_sidecar_is_the_producers_error(
     obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """Same size, other bytes: Obserwator refuses it and no coverage comes out."""
-    root = tmp_path / "store"
-    shutil.copytree(obserwator_store("complete"), root)
+    store = tmp_path / "store"
+    shutil.copytree(obserwator_store("complete"), store)
+    root = data_root(store)
     version = _series_version(adapter, root, "series:pl.imgw.hydro_daily")
     path = root / version
     data = path.read_bytes()
@@ -166,7 +169,7 @@ def test_a_file_that_is_no_series_index_is_the_producers_error(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A station catalog is not a series index."""
-    root = obserwator_store("complete")
+    root = data_root(obserwator_store("complete"))
     catalog = _series_version(adapter, root, "catalog:pl.imgw.stations")
 
     with pytest.raises(ProducerError):
@@ -180,8 +183,9 @@ def test_a_series_index_the_system_cannot_read_is_an_unavailable_store(
     obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A file without read permission is no verdict of the producer."""
-    root = tmp_path / "store"
-    shutil.copytree(obserwator_store("complete_pl_cz"), root)
+    store = tmp_path / "store"
+    shutil.copytree(obserwator_store("complete_pl_cz"), store)
+    root = data_root(store)
     version = _series_version(adapter, root, "series:cz.chmi.meteo_daily")
     path = root / version
     path.chmod(0)

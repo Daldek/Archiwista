@@ -5,7 +5,7 @@ import stat
 import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -27,18 +27,21 @@ from archiwista.sources import SourceState
 
 @dataclass
 class ProbeRegistry:
-    """Registry whose probe reports available unless a root is listed."""
+    """Registry whose probe reports available unless a root is listed.
+
+    ``probed`` records each probed root with its kind (``True``: a data root).
+    """
 
     failing: dict[Path, SourceState] = field(default_factory=dict)
-    probed: list[Path] = field(default_factory=list)
+    probed: list[tuple[Path, bool]] = field(default_factory=list)
 
     def states(self) -> tuple[SourceState, ...]:
         """Report an available Kartograf plugin."""
         return (SourceState(producer="kartograf", status="available"),)
 
-    def probe(self, producer: str, root: Path) -> SourceState:
+    def probe(self, producer: str, root: Path, *, data: bool = False) -> SourceState:
         """Record the probe and report the configured state."""
-        self.probed.append(root)
+        self.probed.append((root, data))
         return self.failing.get(
             root, SourceState(producer=producer, status="available", store=str(root))
         )
@@ -397,7 +400,7 @@ def test_config_validate_accepts_several_stores_and_read_only_root(
     )
 
     assert validate_settings(settings, registry) == ()
-    assert registry.probed == list(roots)
+    assert registry.probed == [(root, False) for root in roots]
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
@@ -430,15 +433,22 @@ def test_config_validate_rejects_missing_root(tmp_path: Path) -> None:
 def test_config_validate_rejects_nested_producer_directories(
     roots: tuple[Path, Path],
 ) -> None:
-    """A store inside another store, or the same directory twice, is rejected."""
+    """A store inside another store, or the same directory twice, is rejected.
+
+    Any two of a store's three directories count, Obserwator's data root too.
+    """
     inner = roots[0] / "nmt"
     inner.mkdir()
+    raw = roots[1].parent / "obserwator"
+    (raw / "data").mkdir(parents=True)
     settings = AppSettings(
         stores=(
             make_store("a", roots[0]),
             make_store("b", inner),
             make_store("c", roots[1]),
             make_store("d", roots[1]),
+            make_store("e", None, obserwator=raw, obserwator_data=raw / "data"),
+            make_store("f", None, obserwator_data=roots[1]),
         )
     )
 
@@ -447,6 +457,8 @@ def test_config_validate_rejects_nested_producer_directories(
     assert [(p.code, p.field) for p in problems] == [
         ("root_nested", "stores[1].kartograf"),
         ("root_nested", "stores[3].kartograf"),
+        ("root_nested", "stores[4].obserwator_data"),
+        ("root_nested", "stores[5].obserwator_data"),
     ]
 
 
@@ -543,7 +555,7 @@ def _mark(directory: Path, marker: str) -> Path:
 def test_config_store_keeps_the_directories_it_has_and_loads_old_files(
     tmp_path: Path,
 ) -> None:
-    """Stores of one or both directories round-trip; an old file is unchanged."""
+    """Stores of any of their directories round-trip; an old file is unchanged."""
     # Arrange
     old = tmp_path / "old.toml"
     old.write_text(
@@ -558,6 +570,10 @@ def test_config_store_keeps_the_directories_it_has_and_loads_old_files(
             make_store("kart", tmp_path / "k"),
             make_store("obserwator", None, obserwator=tmp_path / "i"),
             make_store("both", tmp_path / "b", obserwator=tmp_path / "bi"),
+            make_store(
+                "roots", None, obserwator=tmp_path / "r", obserwator_data=tmp_path / "d"
+            ),
+            make_store("data", None, obserwator_data=tmp_path / "dd"),
         )
     )
     config = ConfigStore(tmp_path / "config.toml")
@@ -569,15 +585,21 @@ def test_config_store_keeps_the_directories_it_has_and_loads_old_files(
 
     # Assert
     assert config.load() == settings
-    assert [store.roots() for store in settings.stores] == [
+    assert [store.directory_paths() for store in settings.stores] == [
         {"kartograf": tmp_path / "k"},
         {"obserwator": tmp_path / "i"},
         {"kartograf": tmp_path / "b", "obserwator": tmp_path / "bi"},
+        {"obserwator": tmp_path / "r", "obserwator_data": tmp_path / "d"},
+        {"obserwator_data": tmp_path / "dd"},
     ]
-    assert (text.count("kartograf = "), text.count("obserwator = ")) == (2, 2)
-    assert loaded.obserwator is None and loaded.roots() == {
-        "kartograf": Path("/mnt/nas/kartograf")
-    }
+    assert settings.stores[4].roots() == {}  # no store root a command could write
+    assert (
+        text.count("kartograf = "),
+        text.count("obserwator = "),
+        text.count("obserwator_data = "),
+    ) == (2, 3, 2)
+    assert loaded.obserwator is None and loaded.obserwator_data is None
+    assert loaded.directory_paths() == {"kartograf": Path("/mnt/nas/kartograf")}
     again = AppSettings(stores=(loaded,))
     assert "obserwator" not in dump_settings(again)
     assert parse_settings(tomllib.loads(dump_settings(again))) == again
@@ -608,7 +630,10 @@ def test_config_store_ignores_a_retired_setting_until_the_next_save(
     assert config.load() == loaded
 
 
-@pytest.mark.parametrize("store", [{}, {"kartograf": None, "obserwator": None}])
+@pytest.mark.parametrize(
+    "store",
+    [{}, {"kartograf": None, "obserwator": None, "obserwator_data": None}],
+)
 def test_config_store_needs_a_directory_and_detects_its_kind_from_any(
     store: dict[str, None],
 ) -> None:
@@ -618,7 +643,8 @@ def test_config_store_needs_a_directory_and_detects_its_kind_from_any(
     share = parse_settings(
         {
             "stores": [
-                {"id": "a", "name": "A", "obserwator": "\\\\nas\\dane\\obserwator"}
+                {"id": "a", "name": "A", "obserwator": "\\\\nas\\dane\\obserwator"},
+                {"id": "b", "name": "B", "obserwator_data": "\\\\nas\\dane\\dane"},
             ]
         }
     )
@@ -626,55 +652,83 @@ def test_config_store_needs_a_directory_and_detects_its_kind_from_any(
     problem = error.value.problems[0]
     assert (problem.code, problem.field) == ("invalid_value", "stores[0]")
     assert "at least one producer directory: kartograf or obserwator" in problem.message
-    assert share.stores[0].kind == "share"
+    assert [store.kind for store in share.stores] == ["share", "share"]
 
 
 def test_config_validate_checks_each_directory_of_a_store_at_its_own_field(
     tmp_path: Path,
 ) -> None:
-    """The Obserwator directory is checked like Kartograf's and named by its field."""
+    """Obserwator's two roots are checked like Kartograf's, each by its kind.
+
+    A problem names the directory's field; the data root is probed as one.
+    """
     # Arrange
     kartograf = tmp_path / "kartograf"
     kartograf.mkdir()
     both = AppSettings(
-        stores=(make_store("a", kartograf, obserwator=tmp_path / "brak"),)
+        stores=(
+            make_store(
+                "a",
+                kartograf,
+                obserwator=tmp_path / "brak",
+                obserwator_data=tmp_path / "brak-danych",
+            ),
+        )
     )
     obserwator = tmp_path / "obserwator"
     obserwator.mkdir()
-    only = AppSettings(stores=(make_store("a", None, obserwator=obserwator),))
-    failing = ProbeRegistry(
-        failing={obserwator: SourceState(producer="obserwator", status="not_installed")}
+    data = tmp_path / "dane"
+    data.mkdir()
+    only = AppSettings(
+        stores=(make_store("a", None, obserwator=obserwator, obserwator_data=data),)
     )
+    missing_plugin = SourceState(producer="obserwator", status="not_installed")
+    probing = ProbeRegistry()
+    failing = ProbeRegistry(failing={obserwator: missing_plugin, data: missing_plugin})
 
     # Act
     missing = validate_settings(both, ProbeRegistry())
-    accepted = validate_settings(only, ProbeRegistry())
+    accepted = validate_settings(only, probing)
     refused = validate_settings(only, failing)
 
     # Assert
     assert [(p.code, p.field) for p in missing] == [
-        ("root_missing", "stores[0].obserwator")
+        ("root_missing", "stores[0].obserwator"),
+        ("root_missing", "stores[0].obserwator_data"),
     ]
     assert "obserwator" in missing[0].message
+    assert "obserwator_data" in missing[1].message
     assert accepted == ()
+    assert probing.probed == [(obserwator, False), (data, True)]
     assert [(p.code, p.field) for p in refused] == [
-        ("source_not_installed", "stores[0].obserwator")
+        ("source_not_installed", "stores[0].obserwator"),
+        ("source_not_installed", "stores[0].obserwator_data"),
     ]
+    assert "obserwator_data" in refused[1].message
 
 
 def test_config_validate_finds_a_directory_inside_a_store_by_its_marker(
     tmp_path: Path,
 ) -> None:
-    """A marker of either producer in an ancestor nests the directory under it."""
+    """A marker of any producer's root in an ancestor nests the directory under it."""
     # Arrange
     obserwator_store = _mark(tmp_path / "obserwator", "obserwator-store.json")
     kartograf_store = _mark(tmp_path / "kartograf", "kartograf-store.json")
-    inside_obserwator = obserwator_store / "kartograf"
+    data_root = _mark(tmp_path / "dane", "obserwator-data.json")
+    inside_data = data_root / "kartograf"
     inside_kartograf = kartograf_store / "nmt" / "obserwator"
-    inside_obserwator.mkdir()
-    inside_kartograf.mkdir(parents=True)
+    inside_obserwator = obserwator_store / "dane"
+    for directory in (inside_data, inside_kartograf, inside_obserwator):
+        directory.mkdir(parents=True)
     settings = AppSettings(
-        stores=(make_store("a", inside_obserwator, obserwator=inside_kartograf),)
+        stores=(
+            make_store(
+                "a",
+                inside_data,
+                obserwator=inside_kartograf,
+                obserwator_data=inside_obserwator,
+            ),
+        )
     )
 
     # Act
@@ -684,28 +738,31 @@ def test_config_validate_finds_a_directory_inside_a_store_by_its_marker(
     assert [(p.code, p.field) for p in problems] == [
         ("root_nested", "stores[0].kartograf"),
         ("root_nested", "stores[0].obserwator"),
+        ("root_nested", "stores[0].obserwator_data"),
     ]
-    assert str(obserwator_store) in problems[0].message
-    assert "obserwator-store.json" in problems[0].message
+    assert str(data_root) in problems[0].message
+    assert "obserwator-data.json" in problems[0].message
     assert str(kartograf_store) in problems[1].message
     assert "kartograf-store.json" in problems[1].message
+    assert str(obserwator_store) in problems[2].message
+    assert "obserwator-store.json" in problems[2].message
 
 
 @pytest.mark.parametrize(
-    ("below", "found"),
+    ("below", "marker", "found"),
     [
-        (("segment",), True),
-        (("product", "segment"), True),
-        (("product", "segment", "slot"), False),
+        (("segment",), "obserwator-store.json", True),
+        (("product", "segment"), "obserwator-data.json", True),
+        (("product", "segment", "slot"), "obserwator-store.json", False),
     ],
 )
 def test_config_validate_looks_two_levels_below_a_directory_for_a_store(
-    tmp_path: Path, below: tuple[str, ...], found: bool
+    tmp_path: Path, below: tuple[str, ...], marker: str, found: bool
 ) -> None:
-    """A store down in the tree is found to the bounded depth, not deeper."""
+    """A store or data root down in the tree is found to the bounded depth only."""
     # Arrange
     root = _mark(tmp_path / "kartograf", "kartograf-store.json")
-    folder = _mark(root.joinpath(*below), "obserwator-store.json")
+    folder = _mark(root.joinpath(*below), marker)
 
     # Act
     problems = validate_settings(
@@ -726,11 +783,10 @@ def test_config_validate_accepts_stores_beside_each_other_with_their_own_markers
     """A marker in the directory itself, or in a sibling's, nests nothing."""
     kartograf = _mark(tmp_path / "data" / "kartograf", "kartograf-store.json")
     obserwator = _mark(tmp_path / "data" / "obserwator", "obserwator-store.json")
+    data = _mark(tmp_path / "data" / "obserwator-dane", "obserwator-data.json")
+    store = make_store("a", kartograf, obserwator=obserwator, obserwator_data=data)
 
-    problems = validate_settings(
-        AppSettings(stores=(make_store("a", kartograf, obserwator=obserwator),)),
-        ProbeRegistry(),
-    )
+    problems = validate_settings(AppSettings(stores=(store,)), ProbeRegistry())
 
     assert problems == ()
 
@@ -806,6 +862,72 @@ def test_config_store_aliases_translate_between_computers() -> None:
         "Z:\\kartograf\\a.tif",
     )
     assert store.foreign_paths(Path("/mnt/nasty/a.tif")) == ()
+
+
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("series/hydro/daily/149180020", "obserwator_data"),
+        ("stations/hydro", "obserwator_data"),
+        (PurePosixPath("analyses/floods/2024"), "obserwator_data"),
+        ("archives/imgw/hydro/2024", "obserwator"),
+        ("series-old/hydro", "obserwator"),
+        ("observations", "obserwator"),
+    ],
+)
+def test_config_store_finds_the_root_an_obserwator_path_lies_in(
+    path: str | PurePosixPath, field: str
+) -> None:
+    """Series, stations and analyses lie in the data root, anything else in the raw."""
+    # Arrange
+    store = StoreConfig(
+        id="a",
+        name="A",
+        kartograf=Path("/srv/kartograf"),
+        obserwator=Path("/srv/raw"),
+        obserwator_data=Path("/srv/data"),
+        kind="local",
+    )
+    raw_only = StoreConfig(id="b", name="B", obserwator=Path("/srv/raw"), kind="local")
+
+    # Act
+    found = store.root_of("obserwator", path)
+    without_data = raw_only.root_of("obserwator", path)
+
+    # Assert
+    assert found == store.directory_paths()[field]
+    assert without_data == (Path("/srv/raw") if field == "obserwator" else None)
+    assert store.root_of("kartograf", path) == Path("/srv/kartograf")
+
+
+def test_config_store_stands_for_a_producer_by_its_store_root_else_its_data_root() -> (
+    None
+):
+    """A data root alone makes Obserwator one of a store's producers."""
+    # Arrange
+    both = StoreConfig(
+        id="a",
+        name="A",
+        obserwator=Path("/srv/raw"),
+        obserwator_data=Path("/srv/data"),
+        kind="local",
+    )
+    data_only = StoreConfig(
+        id="b",
+        name="B",
+        kartograf=Path("/srv/kartograf"),
+        obserwator_data=Path("/srv/data"),
+        kind="local",
+    )
+
+    # Act
+    producers = (both.producers(), data_only.producers())
+    roots = (both.producer_root("obserwator"), data_only.producer_root("obserwator"))
+
+    # Assert
+    assert producers == (("obserwator",), ("kartograf", "obserwator"))
+    assert roots == (Path("/srv/raw"), Path("/srv/data"))
+    assert both.producer_root("kartograf") is None
 
 
 def test_config_detect_store_kind_from_mounts_and_unc(tmp_path: Path) -> None:

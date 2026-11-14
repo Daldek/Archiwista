@@ -65,18 +65,24 @@ def test_doctor_cli_names_the_default_store_root_of_kartograf(
     assert producer_canary.appeared() == []
 
 
-def test_doctor_cli_names_the_default_store_root_of_obserwator(
+def test_doctor_cli_names_the_default_raw_and_data_roots_of_obserwator(
     tmp_path: Path, producer_canary: Canary
 ) -> None:
-    """The root Obserwator would use, and the variable that gave it, are printed."""
+    """The roots Obserwator would use, and the variables that gave them, are printed.
+
+    The raw root is its store root; the line of its data root follows.
+    """
     pytest.importorskip("obserwator")
+    raw, data = producer_canary.obserwator_raw_root, producer_canary.obserwator_root
 
     result = _doctor(tmp_path)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert (
-        "[OK] Wtyczka obserwator: domyślny katalog główny magazynu"
-        f" {producer_canary.obserwator_root} (zmienna OBSERWATOR_ROOT; nie istnieje)"
+        f"[OK] Wtyczka obserwator: domyślny katalog główny magazynu {raw}"
+        " (zmienna OBSERWATOR_RAW_ROOT; nie istnieje)\n"
+        f"[OK] Wtyczka obserwator: domyślny katalog danych {data}"
+        " (zmienna OBSERWATOR_ROOT; nie istnieje)\n"
     ) in result.stdout
     assert producer_canary.appeared() == []
 

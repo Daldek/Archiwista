@@ -3,8 +3,8 @@
 The producer reports the directory it uses when a call names no store (D7); the
 first-run wizard offers it and Archiwista never uses it. ``/health`` is polled and
 the producer sizes the directory while it reports it, so ``/health`` leaves it out.
-The source ``obserwator`` is listed beside Kartograf and reports its own root
-(``test_sources_obserwator.py``).
+The source ``obserwator`` is listed beside Kartograf and reports its own raw and
+data roots (``test_sources_obserwator.py``).
 """
 
 import json
@@ -16,6 +16,7 @@ import pytest
 
 from archiwista.cli import main
 from tests.fixtures.api_store import ServedStore, served_store
+from tests.fixtures.isolation import Canary
 
 pytestmark = pytest.mark.filterwarnings("ignore:Dataset has no geotransform")
 
@@ -136,12 +137,14 @@ def test_default_root_command_line_prints_what_the_route_answers(
     served: ServedStore,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    producer_canary: Canary,
 ) -> None:
-    """``sources --json`` is ``GET /sources``; the text gives the root its own line."""
+    """``sources --json`` is ``GET /sources``; the text gives each root its own line."""
     # Arrange
     root = served.store.root
     monkeypatch.setenv("KARTOGRAF_ROOT", str(root))
     registry, paths = served.registry, served.api.paths
+    raw, data = producer_canary.obserwator_raw_root, producer_canary.obserwator_root
     capsys.readouterr()
 
     # Act
@@ -152,11 +155,23 @@ def test_default_root_command_line_prints_what_the_route_answers(
 
     # Assert
     assert as_json == _sources(served)
-    items = as_json["items"]
-    shown = len(items) + sum(item["default_root"] is not None for item in items)
-    assert len(text) == shown  # a line per source and one per default root
+    defaults = [
+        found
+        for item in as_json["items"]
+        for found in (item["default_root"], item["default_data_root"])
+        if found is not None
+    ]
+    # A line per source and one per default root, a store's or a data root.
+    assert len(text) == len(as_json["items"]) + len(defaults)
     kartograf = [line.startswith("Źródło kartograf (") for line in text].index(True)
     assert text[kartograf + 1] == (
         f"  Wtyczka kartograf: domyślny katalog główny magazynu {root}"
         " (zmienna KARTOGRAF_ROOT; magazyn ze znacznikiem)"
     )
+    obserwator = [line.startswith("Źródło obserwator (") for line in text].index(True)
+    assert text[obserwator + 1 : obserwator + 3] == [
+        f"  Wtyczka obserwator: domyślny katalog główny magazynu {raw}"
+        " (zmienna OBSERWATOR_RAW_ROOT; nie istnieje)",
+        f"  Wtyczka obserwator: domyślny katalog danych {data}"
+        " (zmienna OBSERWATOR_ROOT; nie istnieje)",
+    ]

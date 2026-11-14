@@ -9,19 +9,23 @@ the test's own process, and runs the real worker.
 import sys
 from pathlib import Path
 
-from archiwista.config import StoreConfig
+from archiwista.config import StoreConfig, StoreDirectory
 from archiwista.jobs import worker
-from tests.fixtures.actions import standin_roots
+from tests.fixtures.actions import standin_directories, standin_roots
 
 
 def main() -> int:
     """Give the stand-in its directory in every store and run the real worker."""
-    roots = StoreConfig.roots
+    roots, directories = StoreConfig.roots, StoreConfig.directories
 
     def standin(self: StoreConfig) -> dict[str, Path]:
         return standin_roots(roots(self))
 
+    def standin_only(self: StoreConfig) -> tuple[StoreDirectory, ...]:
+        return standin_directories(directories(self))
+
     StoreConfig.roots = standin  # type: ignore[method-assign]
+    StoreConfig.directories = standin_only  # type: ignore[method-assign]
     return worker.main()
 
 

@@ -8,11 +8,12 @@ variable as ``GET /stations/{code}`` does; its header switch numbers the
 labels in calendar years, writes ``year_type`` to the address and remembers
 it in the person's preferences (``PUT /preferences``). A station without a
 position shows the catalog's reason and no map action, a located one opens
-the map centred on it. At its foot stands its one strip of the IMGW-PIB
-lines (S and P), whose dialog lists every line, byte for byte the card's
-``attribution`` and ``terms_notice``, and „Kopiuj atrybucję” there copies
-them one per line, as „Kopiuj ścieżkę pliku” copies the series file's path
-(read back in Chromium, whose clipboard Playwright can grant); Esc closes
+the map centred on it. At its foot stands its one strip of the lines
+(IMGW-PIB's S and P, the catalog's G of GUGiK), whose dialog lists every
+line, byte for byte the card's ``attribution`` and ``terms_notice``, and
+„Kopiuj atrybucję” there copies them one per line, as „Kopiuj ścieżkę
+pliku” copies the series file's path (read back in Chromium, whose
+clipboard Playwright can grant); Esc closes
 the dialog and not the card. The IMGW
 station page is a plain link the page never requests.
 """
@@ -26,7 +27,7 @@ from urllib.parse import urlencode
 from playwright.sync_api import Locator, Page, Response, expect
 
 from tests.fixtures.browser import Served, Tab
-from tests.fixtures.obserwator_edits import name_borders
+from tests.fixtures.obserwator_roots import data_root
 from tests.fixtures.provider_lines import (
     GUGIK_PRG,
     IMGW_PROCESSED,
@@ -277,7 +278,7 @@ def test_a_station_without_a_position_has_its_reason_and_no_map_action(
 def test_the_lines_and_the_file_path_are_copied_as_the_card_gives_them(
     serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
-    """One strip at the card's foot: S and P; its dialog copies all lines (Chromium)."""
+    """One strip at the card's foot: S, P and G; its dialog copies all (Chromium)."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
@@ -314,14 +315,15 @@ def test_the_lines_and_the_file_path_are_copied_as_the_card_gives_them(
     assert lines == [
         IMGW_SOURCE,
         IMGW_PROCESSED,
+        GUGIK_PRG,
         IMGW_TERMS_PUBLIC_DATA,
         IMGW_TERMS_HYDRO,
     ]
-    assert shown == [IMGW_SOURCE, IMGW_PROCESSED]
+    assert shown == [IMGW_SOURCE, IMGW_PROCESSED, "Źródło: GUGiK (PRG)"]
     assert full == lines
     assert copied == {
         "lines": "\n".join(lines),
-        "path": str(tmp_path / "obserwator" / series["file"]),
+        "path": str(data_root(tmp_path / "obserwator") / series["file"]),
     }
     assert answer["paths"][DAILY]["local"] == copied["path"]
     expect(sources).to_be_hidden()
@@ -335,9 +337,7 @@ def test_the_strip_of_a_station_shows_its_catalogs_border_line_short(
 ) -> None:
     """The catalog's G on screen as GK „Źródło: GUGiK (PRG)”, in full in the dialog."""
     # Arrange
-    settings = station_settings(obserwator_store("complete"), tmp_path)
-    name_borders(tmp_path / "obserwator", {PROVIDER: GUGIK_PRG})
-    served = serve(settings)
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(tab, served)
     page.goto(
         address(served, view="catalog", product="hydro", station=station_of(UNLOCATED))

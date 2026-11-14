@@ -6,8 +6,9 @@ both halves of it equal. This writes archives of the layout IMGW-PIB
 publishes (CP1250 CSV in ZIP: ``polr_<P>_<year>.zip`` of 18 columns,
 ``mies_<year>.zip`` of 10) for the stations of the fixtures' station list, and
 Obserwator's own ``sync_store`` downloads them through the stood-in source
-(``obserwator_http.standin_source``) and builds their series into a copy of
-``complete``, whose daily series and station catalog stay as they are.
+(``obserwator_http.standin_source``) into the raw root of a copy of
+``complete`` and its ``build_series`` builds their series into the data root,
+whose daily series and station catalog stay as they are.
 
 Raba Górna (``RABA``) has the daily series, the monthly series of the
 hydrological years 2023 and 2024 (March 2024 missing) and the half-year
@@ -28,9 +29,10 @@ import zipfile
 from collections.abc import Iterable
 from pathlib import Path
 
-from obserwator import sync_store
+from obserwator import build_series, sync_store
 
 from tests.fixtures.obserwator_http import standin_source
+from tests.fixtures.obserwator_roots import data_root, raw_root
 
 HALF_YEAR = "pl.imgw.hydro_semiannual"
 MONTHLY = "pl.imgw.hydro_monthly"
@@ -146,7 +148,7 @@ def monthly_value(
 
 
 def build_statistics_store(root: Path, complete: Path) -> Path:
-    """Copy ``complete`` to ``root`` and sync the archives into it with Obserwator.
+    """Copy ``complete`` to ``root``, sync the archives and build their series.
 
     Raises
     ------
@@ -154,14 +156,16 @@ def build_statistics_store(root: Path, complete: Path) -> Path:
         A series was not built anew.
     """
     shutil.copytree(complete, root)
+    raw = raw_root(root)
     with standin_source() as source:
         source.archives.update(archives())
-        reports = [
-            sync_store(root, datasets=[HALF_YEAR], years=HALF_YEARS),
-            sync_store(root, datasets=[MONTHLY], years=MONTH_YEARS),
-        ]
-    statuses = [series.status for report in reports for series in report.series]
-    assert statuses == ["new", "new"], [r.series for r in reports]
+        sync_store(raw, datasets=[HALF_YEAR], years=HALF_YEARS)
+        sync_store(raw, datasets=[MONTHLY], years=MONTH_YEARS)
+    reports = [
+        build_series(data_root(root), raw_root=raw, dataset=dataset)
+        for dataset in (HALF_YEAR, MONTHLY)
+    ]
+    assert [report.status for report in reports] == ["new", "new"], reports
     return root
 
 

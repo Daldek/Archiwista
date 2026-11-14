@@ -47,6 +47,7 @@ from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.obserwator_roots import data_root, store_fields
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED,
     CHMI_PROCESSED_VIEWS,
@@ -83,7 +84,8 @@ class Served:
 
     owner: Caller
     paths: AppPaths
-    root: Path
+    # The data root of the store, of its series.
+    data: Path
 
     def get(self, path: str, params: Params | None = None) -> httpx.Response:
         """Return the answer of ``GET path`` under ``/api/v1``."""
@@ -102,16 +104,16 @@ def _serve(stores: Stores, base: Path, variant: str) -> Iterator[Served]:
     root = base / "store"
     shutil.copytree(stores(variant), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
-        yield Served(api.session(LOCAL_OWNER), paths, root)
+        yield Served(api.session(LOCAL_OWNER), paths, data_root(root))
 
 
 @pytest.fixture(scope="module")
@@ -137,7 +139,7 @@ def _series(served: Served, code: str, variables: Sequence[str]) -> list[Any]:
     """Return the producer's records of a station's current daily series."""
     card = served.json(f"/stations/{code}")
     (series,) = (item for item in card["station"]["series"] if item["coverage"])
-    path = served.root / series["series_version"]
+    path = served.data / series["series_version"]
     return list(read_series(path, station=code, variables=list(variables)))
 
 
@@ -168,7 +170,7 @@ def test_the_daily_values_are_the_producers_and_the_gaps_the_labels(
     records = _series(served, RABA, ["H"])
     card = served.json(f"/stations/{RABA}", {"dataset": DAILY})
     (series,) = card["station"]["series"]
-    gaps = read_series_index(served.root / series["series_version"])
+    gaps = read_series_index(served.data / series["series_version"])
     produced = gaps.stations[RABA].variables["H"].gaps
 
     # Act
@@ -427,7 +429,7 @@ def test_an_accumulated_sum_is_a_marker_and_no_value_of_its_day(
     (series,) = card["station"]["series"]
     records = list(
         read_series(
-            served.root / series["series_version"], station="123750000", variables=["P"]
+            served.data / series["series_version"], station="123750000", variables=["P"]
         )
     )
     (summed,) = [r for r in records if r.measurements["P"].flag == "accumulated"]

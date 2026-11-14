@@ -985,13 +985,18 @@ def _keyed(entry: SourceEntry, key: str) -> SourceEntry:
 
 @dataclass
 class _Producer:
-    """A producer's current versions of its slots, and what it was asked."""
+    """A producer's current versions of its slots, and what it was asked.
+
+    ``asked`` holds the keys asked for, ``paths`` the slot path given with each.
+    """
 
     answers: dict[str, SourceEntry | None]
     asked: list[str] = field(default_factory=list)
+    paths: dict[str, str] = field(default_factory=dict)
 
-    def __call__(self, key: str) -> Path | None:
+    def __call__(self, path: str, key: str) -> Path | None:
         self.asked.append(key)
+        self.paths[key] = path
         found = self.answers[key]
         return None if found is None else found.relative_path
 
@@ -1032,6 +1037,7 @@ def test_index_a_slot_with_a_key_takes_the_producers_current_version(
 
     # Assert
     assert sorted(producer.asked) == ["a", "b"]
+    assert producer.paths == {"a": SHEET_A, "b": SHEET_B}  # the directory to ask in
     assert (summary.current, summary.unlinked) == (2, 0)
     assert _current(queries) == {
         SHEET_A: ("ok", new.relative_path.as_posix()),

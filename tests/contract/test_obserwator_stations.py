@@ -2,9 +2,10 @@
 
 The Obserwator adapter names a provider's station catalog by the producer's own slot
 key and reads a catalog version with ``obserwator.read_catalog``: what it gives
-must be what the producer itself reads in its offline fixture stores
-(``obserwator.testing``), stations without a location included with their
-reason, and a version the producer refuses is its error, never stations.
+must be what the producer itself reads in the data roots of its offline fixture
+stores (``obserwator.testing``, its ADR-017), stations without a location
+included with their reason, and a version the producer refuses is its error,
+never stations.
 """
 
 import os
@@ -20,6 +21,7 @@ from archiwista.adapter.obserwator import load
 from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
 from archiwista.errors import ProducerError, SourceUnavailableError
 from archiwista.sources import SourceContext, Station, StationCatalogAdapter
+from tests.fixtures.obserwator_roots import data_root, raw_root
 
 type Stores = Callable[[str], Path]
 
@@ -36,15 +38,16 @@ def adapter(tmp_path: Path) -> ObserwatorAdapter:
 
 
 def _catalog_version(adapter: ObserwatorAdapter, root: Path, key: str) -> Path:
-    """Return the current version of a provider's catalog, relative to the store."""
+    """Return the current version of a provider's catalog, relative to its root."""
     version = adapter.current_version(root, key)
     assert version is not None
     return version
 
 
-def _copy(obserwator_store: Stores, root: Path) -> Path:
-    shutil.copytree(obserwator_store("complete_pl_cz"), root)
-    return root
+def _copy(obserwator_store: Stores, store: Path) -> Path:
+    """Copy a fixture store, both roots, and return the data root of the copy."""
+    shutil.copytree(obserwator_store("complete_pl_cz"), store)
+    return data_root(store)
 
 
 def test_only_the_obserwator_adapter_has_station_catalogs(
@@ -77,10 +80,11 @@ def test_each_provider_of_the_registry_has_its_catalog_slot(
 def test_the_catalog_slots_are_the_producers_catalogs_and_nothing_else(
     obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
-    """Every slot of ``iter_store``: a catalog names its provider, others none."""
-    root = obserwator_store(variant)
+    """Every slot of both roots: a catalog names its provider, the others none."""
+    store = obserwator_store(variant)
     slots = {
         entry.slot: (entry.kind, entry.provider)
+        for root in (raw_root(store), data_root(store))
         for entry in iter_store(root)
         if entry.slot is not None and entry.kind != "problem"
     }
@@ -101,7 +105,7 @@ def test_read_stations_gives_every_station_the_producer_reads(
     obserwator_store: Stores, adapter: ObserwatorAdapter, key: str, count: int
 ) -> None:
     """Codes as text in the catalog's order, points and reasons as the producer's."""
-    root = obserwator_store("complete_pl_cz")
+    root = data_root(obserwator_store("complete_pl_cz"))
     version = _catalog_version(adapter, root, key)
     features = read_catalog(root / version)
 
@@ -122,7 +126,7 @@ def test_a_station_keeps_the_fields_of_the_catalog(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """Kind, river, hydrographic code and order, location source and uncertainty."""
-    root = obserwator_store("complete_pl_cz")
+    root = data_root(obserwator_store("complete_pl_cz"))
 
     imgw = {
         s.code: s
@@ -196,7 +200,7 @@ def test_a_file_that_is_no_catalog_is_the_producers_error(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A series listing is not a station catalog."""
-    root = obserwator_store("complete")
+    root = data_root(obserwator_store("complete"))
     series = adapter.current_version(root, "series:pl.imgw.hydro_daily")
     assert series is not None
 

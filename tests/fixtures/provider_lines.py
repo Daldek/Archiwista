@@ -55,11 +55,11 @@ IMGW_TERMS_HYDRO = (
 )
 IMGW_TERMS_PMAXTP = "Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne"
 GUGIK_PRG = (
-    "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, PRG (wytworzono 2025,"
-    " pozyskano 2026-11-10); dane przetworzone"
+    "Źródło: Główny Urząd Geodezji i Kartografii – GUGiK, PRG (wytworzono 2026,"
+    " pozyskano 2026-11-13); dane przetworzone"
 )
 CUZK_RUIAN = (
     "Źródło: Český úřad zeměměřický a katastrální (ČÚZK), RÚIAN (pozyskano"
-    " 2026-11-12), licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/);"
+    " 2026-11-13), licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/);"
     " dane przetworzone"
 )

@@ -30,8 +30,9 @@ selected for Ctrl+C.
 Every chart, of days, months or years, puts the lines the terms of its
 provider require (Nogat DEV §20, A-ADR-055) into the card's one strip at its
 foot (DEV-20.5): on screen for IMGW-PIB the source and the mark of processing,
-for ČHMÚ the short credit; its dialog lists every line of the chart's answer,
-byte for byte, then the terms.
+for ČHMÚ the short credit, beside the card's short line of its catalog's
+borders (GUGiK's G, ČÚZK's Z); its dialog lists every line of the chart's
+answer, byte for byte, then the terms.
 """
 
 import json
@@ -50,6 +51,8 @@ from tests.fixtures.provider_lines import (
     CHMI_PROCESSED_VIEWS,
     CHMI_SHORT,
     CHMI_SOURCE,
+    CUZK_RUIAN,
+    GUGIK_PRG,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_PUBLIC_DATA,
@@ -614,7 +617,7 @@ def test_station_chart_series_chart_imgw_lines_join_the_cards_one_strip(
     name: str,
     params: dict[str, str],
 ) -> None:
-    """S and P at 12 px in the strip at the card's foot; every chart line behind it."""
+    """S, P and the card's G at 12 px in the strip at the card's foot; all behind."""
     # Arrange
     served = serve(station_settings(statistics_store, tmp_path))
     page = open_session(engine_tab, served)
@@ -638,7 +641,8 @@ def test_station_chart_series_chart_imgw_lines_join_the_cards_one_strip(
     lines = [*chart["attribution"], *chart["terms_notice"]]
     assert lines == [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS_PUBLIC_DATA]
     assert [line for line in full if line in lines] == lines
-    assert shown == [IMGW_SOURCE, IMGW_PROCESSED]
+    assert shown == [IMGW_SOURCE, IMGW_PROCESSED, "Źródło: GUGiK (PRG)"]
+    assert GUGIK_PRG in full
     assert size == 12
     expect(card.locator(SOURCES)).to_have_count(1)
     assert foot is not None and block is not None
@@ -649,7 +653,7 @@ def test_station_chart_series_chart_imgw_lines_join_the_cards_one_strip(
 def test_station_chart_series_chart_chmi_lines_join_the_cards_one_strip(
     serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
-    """Špindlerův Mlýn: the short ČHMÚ line on screen, the credit and CP behind it."""
+    """Špindlerův Mlýn: the short ČHMÚ and ČÚZK lines on screen, the rest behind."""
     # Arrange
     served = serve(station_settings(obserwator_store("complete_pl_cz"), tmp_path))
     page = open_session(engine_tab, served)
@@ -669,6 +673,7 @@ def test_station_chart_series_chart_chmi_lines_join_the_cards_one_strip(
     lines = [*chart["attribution"], *chart["terms_notice"]]
     assert lines == [CHMI_SOURCE, CHMI_PROCESSED_VIEWS]
     assert [line for line in full if line in lines] == lines
-    assert shown == [CHMI_SHORT]
+    assert shown == [CHMI_SHORT, "Źródło: ČÚZK, CC BY 4.0"]
+    assert CUZK_RUIAN in full
     expect(credit).to_have_attribute("href", "https://opendata.chmi.cz")
     engine_tab.assert_clean()

@@ -19,11 +19,12 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
-from archiwista.config import AppSettings, StoreConfig
+from archiwista.config import AppSettings, StoreConfig, StoreDirectory
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.jobs import scheduler
 from archiwista.sources.registry import load_registry
 from tests.e2e.test_map import create_project_area
+from tests.fixtures.actions import as_producer
 from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.layer_store import make_variant_store
 from tests.fixtures.local_server import local_paths
@@ -534,22 +535,27 @@ def test_second_adapter_entries_in_catalog(
     """A second producer's files reach the catalog through the index and the API.
 
     v0.1 settings name only Kartograf's directory, so — as in
-    tests/integration/test_second_adapter.py — ``roots()`` gives the test
-    producer the store's directory, the store is indexed in the test process
-    and the scheduler plans no scan: a worker process would read the
-    settings without that override.
+    tests/integration/test_second_adapter.py — ``roots()`` and ``directories()``
+    give the test producer the store's directory, the store is indexed in the
+    test process and the scheduler plans no scan: a worker process would read
+    the settings without that override.
     """
     for name in FIXTURE_MODULES:
         monkeypatch.delitem(sys.modules, name, raising=False)
     monkeypatch.syspath_prepend(str(SECOND_SOURCE))
-    kartograf_roots = StoreConfig.roots
+    kartograf_roots, kartograf_directories = StoreConfig.roots, StoreConfig.directories
 
     def roots(config: StoreConfig) -> dict[str, Path]:
         if config.id == "pomiary":
             return {"external": kartograf_roots(config)["kartograf"]}
         return kartograf_roots(config)
 
+    def directories(config: StoreConfig) -> tuple[StoreDirectory, ...]:
+        found = kartograf_directories(config)
+        return as_producer("external", found) if config.id == "pomiary" else found
+
     monkeypatch.setattr(StoreConfig, "roots", roots)
+    monkeypatch.setattr(StoreConfig, "directories", directories)
     monkeypatch.setattr(scheduler, "plan_scans", lambda *args, **kwargs: ())
     folder = tmp_path / "pomiary"
     folder.mkdir()

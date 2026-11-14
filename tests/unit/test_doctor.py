@@ -23,6 +23,13 @@ KARTOGRAF = SourceState(
     supported_versions=">=0.8.0,<0.9",
     schemas=("kartograf-meta/1", "kartograf-store/1"),
 )
+OBSERWATOR = SourceState(
+    producer="obserwator",
+    status="available",
+    package_version="0.4.0",
+    supported_versions=">=0.4.0,<0.5",
+    schemas=("obserwator-store/1", "obserwator-data/1"),
+)
 
 
 @dataclass(frozen=True)
@@ -36,16 +43,33 @@ class DefaultRootOnly:
         return self.root
 
 
+@dataclass(frozen=True)
+class DefaultRoots(DefaultRootOnly):
+    """An adapter that reports a default store root and a default data root."""
+
+    data_root: DefaultRoot
+
+    def default_data_root(self) -> DefaultRoot:
+        """Return the data root it was given."""
+        return self.data_root
+
+    def probe_data(self, root: Path) -> SourceState:
+        """Refuse to judge a data root: the doctor reads no store."""
+        raise AssertionError(root)
+
+
 @dataclass
 class FakeRegistry:
     """Plugin registry with fixed states; probes mirror the plugin state.
 
-    ``roots`` gives the available plugins the capability ``default_root``.
+    ``roots`` gives the available plugins the capability ``default_root``,
+    ``data_roots`` (with a root) the capability ``default_data_root``.
     """
 
     source_states: tuple[SourceState, ...] = (KARTOGRAF,)
     failing: dict[Path, SourceState] = field(default_factory=dict)
     roots: dict[str, DefaultRoot] = field(default_factory=dict)
+    data_roots: dict[str, DefaultRoot] = field(default_factory=dict)
 
     def producers(self) -> tuple[str, ...]:
         """Return the producers of the configured states."""
@@ -63,10 +87,14 @@ class FakeRegistry:
     def adapter(self, producer: str) -> SourceAdapter:
         """Refuse every producer but one with a root: the doctor reads no store."""
         if self.state(producer).status == "available" and producer in self.roots:
-            return cast(SourceAdapter, DefaultRootOnly(self.roots[producer]))
+            root = self.roots[producer]
+            if producer in self.data_roots:
+                adapter = DefaultRoots(root, self.data_roots[producer])
+                return cast(SourceAdapter, adapter)
+            return cast(SourceAdapter, DefaultRootOnly(root))
         raise source_error(self.state(producer))
 
-    def probe(self, producer: str, root: Path) -> SourceState:
+    def probe(self, producer: str, root: Path, *, data: bool = False) -> SourceState:
         """Return the plugin state, or a listed root's own failure."""
         state = self.state(producer)
         if state.status != "available":
@@ -404,6 +432,94 @@ def test_doctor_shows_the_default_store_root_with_its_source_and_state(
         "[OK] Wtyczka kartograf: domyślny katalog główny magazynu"
         f" /srv/nogat/kartograf {described}"
     )
+
+
+@pytest.mark.parametrize(
+    ("exists", "marked", "state"),
+    [
+        (False, False, "nie istnieje"),
+        (True, False, "istnieje, bez znacznika katalogu danych"),
+        (True, True, "katalog danych ze znacznikiem"),
+    ],
+)
+def test_doctor_shows_the_default_data_root_after_the_default_store_root(
+    paths: AppPaths,
+    store_root: Path,
+    capsys: pytest.CaptureFixture[str],
+    exists: bool,
+    marked: bool,
+    state: str,
+) -> None:
+    """A producer with a data root reports both default roots, each by its kind."""
+    # Arrange
+    configure(paths, store_root)
+    raw = DefaultRoot(Path("/srv/raw"), "env", "OBSERWATOR_RAW_ROOT", True, True)
+    data = DefaultRoot(Path("/srv/data"), "env", "OBSERWATOR_ROOT", exists, marked)
+    registry = FakeRegistry(
+        source_states=(KARTOGRAF, OBSERWATOR),
+        roots={"obserwator": raw},
+        data_roots={"obserwator": data},
+    )
+
+    # Act
+    status, out = run_cli(paths, registry, capsys)
+
+    # Assert
+    lines = [line for line in out.splitlines() if "Wtyczka obserwator:" in line]
+    assert status == 0
+    assert lines[1:] == [
+        "[OK] Wtyczka obserwator: domyślny katalog główny magazynu /srv/raw"
+        " (zmienna OBSERWATOR_RAW_ROOT; magazyn ze znacznikiem)",
+        "[OK] Wtyczka obserwator: domyślny katalog danych /srv/data"
+        f" (zmienna OBSERWATOR_ROOT; {state})",
+    ]
+
+
+def test_doctor_names_each_directory_of_a_store_by_its_field(
+    tmp_path: Path, paths: AppPaths, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Obserwator's raw root and data root are two lines of one store."""
+    # Arrange
+    raw, data = tmp_path / "nas" / "raw", tmp_path / "nas" / "data"
+    raw.mkdir(parents=True)
+    data.mkdir()
+    store = StoreConfig(
+        id="zespol", name="Zespół", obserwator=raw, obserwator_data=data, kind="share"
+    )
+    ConfigStore(paths.config_file).save(AppSettings(stores=(store,)))
+
+    # Act
+    status, out = run_cli(
+        paths, FakeRegistry(source_states=(KARTOGRAF, OBSERWATOR)), capsys
+    )
+
+    # Assert
+    assert status == 0
+    assert f"[OK] Magazyn „zespol” (obserwator, udział sieciowy): {raw}" in out
+    assert f"[OK] Magazyn „zespol” (obserwator_data, udział sieciowy): {data}" in out
+
+
+def test_doctor_a_data_root_without_its_plugin_shows_the_plugins_install_command(
+    tmp_path: Path, paths: AppPaths, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A store with only Obserwator's data root needs the Obserwator plugin."""
+    # Arrange
+    data = tmp_path / "nas" / "data"
+    data.mkdir(parents=True)
+    store = StoreConfig(id="zespol", name="Zespół", obserwator_data=data, kind="share")
+    ConfigStore(paths.config_file).save(AppSettings(stores=(store,)))
+    missing = SourceState(producer="obserwator", status="not_installed")
+
+    # Act
+    status, out = run_cli(
+        paths, FakeRegistry(source_states=(KARTOGRAF, missing)), capsys
+    )
+
+    # Assert
+    assert status == 10
+    assert "[BŁĄD] Katalog obserwator_data magazynu „zespol” nie jest zgodnym" in out
+    # the plugin's line and the directory's line both name the plugin's package
+    assert out.count(f'pip install "{install_requirement("obserwator")}"') == 2
 
 
 def test_doctor_shows_no_default_root_of_a_plugin_that_is_not_available(

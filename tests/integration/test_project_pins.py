@@ -294,7 +294,7 @@ def test_one_request_pins_two_producers_of_a_store_each_at_its_own_root(
     segment = SourceSegment(hydro, "hydro", "PL", "pl.imgw.daily", "Dobowe", True)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: store.roots()})
+        writer.sync_stores({STORE: store.directory_paths()})
         write_pass(writer, [A_CURRENT])
         writer.write_segments(STORE, "obserwator", [segment])
         writer.begin_pass(STORE, "obserwator", segment=None, slots=None, full=False)

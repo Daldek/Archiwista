@@ -3,7 +3,8 @@
 Kartograf and Obserwator take their settings from ``nogat.toml`` and from the
 variables ``KARTOGRAF_*``, ``OBSERWATOR_*`` and ``NOGAT_*`` (DEV-18.1), and a call
 that names no store root reads and writes the default root of the producer,
-``<data_dir>/kartograf`` or ``<data_dir>/obserwator`` (DEV-19.2). A test run on a
+``<data_dir>/kartograf``, ``<data_dir>/obserwator`` or ``<data_dir>/obserwator-raw``
+(DEV-19.2; Obserwator's data and raw roots, its ADR-017). A test run on a
 developer's computer would meet that computer's settings and, through one
 forgotten ``root=``, write into the developer's real store.
 
@@ -65,8 +66,13 @@ class Canary:
 
     @property
     def obserwator_root(self) -> Path:
-        """The default store root of Obserwator (``OBSERWATOR_ROOT``)."""
+        """The default data root of Obserwator (``OBSERWATOR_ROOT``)."""
         return self.base / "obserwator"
+
+    @property
+    def obserwator_raw_root(self) -> Path:
+        """The default raw root of Obserwator (``OBSERWATOR_RAW_ROOT``)."""
+        return self.base / "obserwator-raw"
 
     @property
     def obserwator_reference_dir(self) -> Path:
@@ -91,6 +97,7 @@ class Canary:
             "KARTOGRAF_CACHE_DIR": cache,
             "KARTOGRAF_LANG": LANGUAGE,
             "OBSERWATOR_ROOT": str(self.obserwator_root),
+            "OBSERWATOR_RAW_ROOT": str(self.obserwator_raw_root),
             "OBSERWATOR_DATA_DIR": data,
             "OBSERWATOR_CACHE_DIR": cache,
             "OBSERWATOR_REFERENCE_DIR": str(self.obserwator_reference_dir),

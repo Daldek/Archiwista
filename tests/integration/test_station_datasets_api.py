@@ -30,6 +30,7 @@ from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.cli_errors import refusal
 from tests.fixtures.local_server import NoSources, local_paths
 from tests.fixtures.missing_package import hide_packages
+from tests.fixtures.obserwator_roots import data_root, store_fields
 
 STORE = "dane"
 DAILY = "pl.imgw.hydro_daily"
@@ -45,7 +46,8 @@ class Served:
 
     owner: Caller
     paths: AppPaths
-    root: Path
+    # The data root of the store, of its series.
+    data: Path
 
     def get(self, path: str) -> httpx.Response:
         """Return the answer of ``GET path`` under ``/api/v1``."""
@@ -62,16 +64,16 @@ def _serve(obserwator_store: Stores, base: Path, variant: str) -> Iterator[Serve
     root = base / "store"
     shutil.copytree(obserwator_store(variant), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
-        yield Served(api.session(LOCAL_OWNER), paths, root)
+        yield Served(api.session(LOCAL_OWNER), paths, data_root(root))
 
 
 @pytest.fixture(scope="module", params=["complete", "complete_pl_cz"])
@@ -126,12 +128,12 @@ def test_datasets_are_those_of_the_series_slots_with_their_variables(
 
     # Assert
     items = body["items"]
-    assert [item["dataset"] for item in items] == _series_datasets(served.root)
+    assert [item["dataset"] for item in items] == _series_datasets(served.data)
     assert body["stale"] is False
     for item in items:
         descriptor = obserwator.get_dataset(item["dataset"])
         entry = obserwator.current_version(
-            served.root, slot=f"series:{item['dataset']}"
+            served.data, slot=f"series:{item['dataset']}"
         )
         assert entry is not None and entry.version is not None
         assert item["store"] == STORE
@@ -139,13 +141,13 @@ def test_datasets_are_those_of_the_series_slots_with_their_variables(
         assert item["kind"] == descriptor.kind
         assert item["time_unit"] == descriptor.time_unit
         version = entry.version
-        assert item["series_version"] == version.relative_to(served.root).as_posix()
+        assert item["series_version"] == version.relative_to(served.data).as_posix()
         assert item["series"] == version.parent.name.split("_")[0]
         keys = [variable["key"] for variable in item["variables"]]
         assert len(keys) == len(set(keys))
         assert {
             (variable["key"], variable["unit"]) for variable in item["variables"]
-        } == _variables(served.root, item["dataset"])
+        } == _variables(served.data, item["dataset"])
     daily = next(item for item in items if item["dataset"] == DAILY)
     assert (daily["name"], daily["year_type"], daily["years"]) == (
         "Dane hydrologiczne dobowe",

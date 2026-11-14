@@ -53,7 +53,7 @@ class TeamPlace:
     projects : Path
         The project directory of the settings.
     obserwator : Path
-        The store's Obserwator directory (a marked Obserwator store).
+        The store's Obserwator raw root (marked by ``obserwator.init_store``).
     """
 
     paths: AppPaths
@@ -123,7 +123,7 @@ def team_place(
         ConfigStore(paths.config_file).save(settings)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: store.roots()})
+        writer.sync_stores({STORE: store.directory_paths()})
     return TeamPlace(paths, projects, share / "obserwator")
 
 
