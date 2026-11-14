@@ -4255,7 +4255,7 @@ over TLS.
   (`vendor.json`, `archiwista-docs.js`) are excluded by name. Nogat's GUI kit
   (`src/archiwista/web/nogat/`: the menu "Aplikacje", the hand-off module, the strip of
   the providers' lines `<nogat-sources>`, the administrators' views (`<nogat-admin-feedback>`), the regulamin files and the marks of the GUIs;
-  kit 0.7.0) is copied from Nogat whole, byte for byte and never edited; the same
+  kit 1.0.0) is copied from Nogat whole, byte for byte and never edited; the same
   test checks each kit file against the kit's own manifest `nogat-kit.json`
   (A-ADR-054). The Python
   environment is pinned by `uv.lock` (`uv sync --locked`, DEV-6.3); Kartograf and Obserwator

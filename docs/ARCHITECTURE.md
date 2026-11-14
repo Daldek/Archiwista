@@ -1414,7 +1414,7 @@ Sans Regular from openmaptiles/fonts 2.0 (OFL-1.1; ranges U+0000–U+02FF,
 U+0400–U+04FF and U+2000–U+20FF). `vendor/vendor.json` lists every file
 with its SHA-256 sum, source and license; `tests/unit/test_vendor_integrity.py`
 rejects a file that is changed, missing or not listed (the same for
-`api/swagger/`). `nogat/` is Nogat's GUI kit 0.7.1 of Nogat `05bf583` (A-ADR-054
+`api/swagger/`). `nogat/` is Nogat's GUI kit 1.0.0 of Nogat `8dbdcaa` (A-ADR-054
 errata 1 to 4, Nogat DEV-15.4 to DEV-15.7, DEV-15.13, DEV-20.5, ECO-064, ECO-065, ECO-067, ECO-068, ECO-071), copied whole, byte for byte
 and never edited: `nogat-app-menu.js` and `.css` (the element `<nogat-app-menu>`, the
 menu „Aplikacje”), `nogat-handoff.js` (the hand-off's labels, file name and text, the
