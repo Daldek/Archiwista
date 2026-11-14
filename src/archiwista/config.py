@@ -238,10 +238,6 @@ class AppPaths:
         """
         return (self.data_dir, self.cache_dir, self.previews_dir)
 
-    def source_cache_dir(self, producer: str) -> Path:
-        """Return the local cache directory owned by one producer plugin."""
-        return self.cache_dir / producer
-
 
 def is_absolute_path(path: str) -> bool:
     """Return whether ``path`` is absolute on this computer, or a UNC path."""

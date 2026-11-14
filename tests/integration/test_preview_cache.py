@@ -119,14 +119,17 @@ with PreviewCache(root, limit_bytes=limit) as cache:
             counts["damaged"] += not whole(data)
 print(json.dumps(counts))
 """
-# Another process evicting everything it may (limit 0); prints bytes freed.
+# Another process lowering the limit to 0, which evicts everything it may;
+# prints bytes freed.
 EVICTING = """
 import sys
 from pathlib import Path
 from archiwista.previews.cache import PreviewCache
 
 with PreviewCache(Path(sys.argv[1]), limit_bytes=0) as cache:
-    print(cache.evict())
+    used = cache.usage().used_bytes
+    cache.set_limit(0)
+    print(used - cache.usage().used_bytes)
 """
 # A build killed while its object is pinned: it never unpins.
 CRASHING = """

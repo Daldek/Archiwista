@@ -117,6 +117,7 @@ from archiwista.sources.markers import (
     directory_field,
     foreign_markers,
 )
+from archiwista.values import as_mapping, as_text
 
 # The marker of each root, and the schema of the marker, by whether it is the
 # data root (Obserwator ADR-017).
@@ -1247,22 +1248,22 @@ def _polish(text: str) -> str:
 
 def _entry_meta(store: str, relative: Path, meta: Meta) -> EntryMeta:
     """Producer-neutral metadata from a parsed ``obserwator-meta/1`` sidecar."""
-    version = _mapping(meta.extra.get("version"))
-    period = _mapping(meta.extra.get("period"))
+    version = as_mapping(meta.extra.get("version"))
+    period = as_mapping(meta.extra.get("period"))
     return EntryMeta(
         producer=PRODUCER,
         store=store,
         relative_path=relative,
         dataset=meta.dataset,
         dataset_key=meta.dataset_key,
-        label=_text(version.get("label")),
-        label_source=_text(version.get("label_source")),
+        label=as_text(version.get("label")),
+        label_source=as_text(version.get("label_source")),
         data_year=_year(period.get("year")),
         downloaded_at=meta.downloaded_at,
         sha256=meta.sha256,
         size_bytes=meta.size_bytes,
-        license=_text(meta.license.id),
-        attribution=_text(meta.license.attribution),
+        license=as_text(meta.license.id),
+        attribution=as_text(meta.license.attribution),
         source_files=_source_files(meta.extra.get("source_files")),
         raw_sidecar=_raw_sidecar(meta),
         country=meta.country,
@@ -1311,15 +1312,15 @@ def _station(feature: StationFeature) -> Station:
     return Station(
         provider=feature.provider,
         code=feature.station_code,
-        kind=_text(properties.get("kind")),
-        name=_text(properties.get("name")),
-        meteo_kind=_text(properties.get("meteo_kind")),
-        river=_text(properties.get("river")),
-        hydrographic_code=_text(properties.get("hydrographic_code")),
+        kind=as_text(properties.get("kind")),
+        name=as_text(properties.get("name")),
+        meteo_kind=as_text(properties.get("meteo_kind")),
+        river=as_text(properties.get("river")),
+        hydrographic_code=as_text(properties.get("hydrographic_code")),
         river_order=_year(properties.get("river_order")),
         point=feature.geometry,
-        location_reason=_text(properties.get("location_missing_reason")),
-        location_source=_text(properties.get("location_source")),
+        location_reason=as_text(properties.get("location_missing_reason")),
+        location_source=as_text(properties.get("location_source")),
         location_uncertainty_m=_number(properties.get("location_uncertainty_m")),
         active=_flag(properties.get("active")),
         established_year=_year(properties.get("established_year")),
@@ -1423,14 +1424,6 @@ def _failure(
 def _unavailable(where: str, detail: str) -> SourceUnavailableError:
     text = message("store.unreadable", path=where)
     return SourceUnavailableError(with_detail(text, detail))
-
-
-def _mapping(value: object) -> Mapping[str, object]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _text(value: object) -> str | None:
-    return value if isinstance(value, str) and value else None
 
 
 def _year(value: object) -> int | None:

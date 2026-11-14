@@ -131,6 +131,7 @@ from archiwista.paths import private_directory
 from archiwista.previews.types import CONTENT_KEY
 from archiwista.sources import PLAN_TODO
 from archiwista.state import ActionRecorder, StateStore
+from archiwista.values import as_datetime
 
 if sys.platform == "win32":  # pragma: no cover - Windows
     import msvcrt
@@ -1285,8 +1286,8 @@ class JobSupervisor:
                 (store, *_INDEX_KINDS),
             ).fetchone()
         return ScanHistory(
-            finished_at=_datetime(finished),
-            full_at=_datetime(full),
+            finished_at=as_datetime(finished),
+            full_at=as_datetime(full),
             busy=busy is not None,
         )
 
@@ -1307,7 +1308,7 @@ class JobSupervisor:
                 f"SELECT 1 FROM jobs WHERE kind = 'own_scan' AND state IN {_ACTIVE_SQL}"
                 " AND json_extract(params, '$.project') IS NULL LIMIT 1"
             ).fetchone()
-        return ScanHistory(finished_at=_datetime(finished), busy=busy is not None)
+        return ScanHistory(finished_at=as_datetime(finished), busy=busy is not None)
 
     def active_of(self, actor: str, kind: str) -> JobRecord | None:
         """Return the oldest job of ``kind`` that ``actor`` asked for, still active.
@@ -1386,7 +1387,7 @@ class JobSupervisor:
                 " AND json_extract(params, '$.project') = ?",
                 (kind, project),
             ).fetchone()[0]
-        return _datetime(started)
+        return as_datetime(started)
 
     def list(
         self,
@@ -2413,8 +2414,8 @@ def _job_record(connection: sqlite3.Connection, row: sqlite3.Row) -> JobRecord:
         store=row["store"],
         params=json.loads(row["params"]),
         created_at=datetime.fromisoformat(row["created_at"]),
-        started_at=_datetime(row["started_at"]),
-        finished_at=_datetime(row["finished_at"]),
+        started_at=as_datetime(row["started_at"]),
+        finished_at=as_datetime(row["finished_at"]),
         progress=None if progress is None else json.loads(progress["data"]),
         result=None if row["summary"] is None else json.loads(row["summary"]),
         error=None if error is None else JobError.from_json(error),
@@ -2613,10 +2614,6 @@ def _now() -> datetime:
 def _iso(value: datetime) -> str:
     # Microseconds: jobs of one second still sort by time.
     return value.astimezone(UTC).isoformat(timespec="microseconds")
-
-
-def _datetime(value: object) -> datetime | None:
-    return None if value is None else datetime.fromisoformat(str(value))
 
 
 def _json(value: object) -> str:

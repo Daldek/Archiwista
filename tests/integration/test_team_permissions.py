@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import count
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, cast, get_args
 
 import httpx
 import pytest
@@ -36,7 +36,7 @@ from archiwista.auth import (
     access_key,
     passwords,
 )
-from archiwista.auth.authorize import ACTIONS, Action, Authorizer, principal_for
+from archiwista.auth.authorize import Action, Authorizer, principal_for
 from archiwista.cli import main
 from archiwista.config import AppPaths, ConfigStore
 from archiwista.errors import PermissionDeniedError
@@ -359,9 +359,10 @@ def test_all_team_actions_follow_the_role_and_resource_matrix(place: TeamPlace) 
             client="10.0.0.5",
         ),
     }
-    assert set(MATRIX) == set(ACTIONS)
+    actions: tuple[Action, ...] = get_args(Action.__value__)
+    assert set(MATRIX) == set(actions)
     authorizer = Authorizer(state, ConfigStore(place.paths.config_file).load)
-    for action in ACTIONS:
+    for action in actions:
         resource = OWNER if action == "job.cancel" else project
         allowed = {
             label

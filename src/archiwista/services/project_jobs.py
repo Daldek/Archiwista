@@ -34,7 +34,7 @@ module without the supervisor.
 """
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Literal, get_args
+from typing import TYPE_CHECKING, Literal
 
 from archiwista.auth import Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
@@ -59,7 +59,6 @@ if TYPE_CHECKING:
 # pins one group anew to the source's newer versions and ``restore``
 # downloads the missing pinned versions again (A-ADR-049 decision 11).
 type ProjectJobKind = Literal["verify", "check", "repin", "restore"]
-PROJECT_JOB_KINDS: tuple[ProjectJobKind, ...] = get_args(ProjectJobKind.__value__)
 # The job kind of each.
 JOB_KIND: Mapping[ProjectJobKind, "JobKind"] = {
     "verify": "project_verify",
@@ -107,7 +106,7 @@ def start(
     key : str
         Project key.
     kind : {"verify", "check", "repin", "restore"}
-        What the job does (``PROJECT_JOB_KINDS``).
+        What the job does (``ProjectJobKind``).
     groups : Sequence[str] or None
         The groups by name (compared case-folded), ``None`` for every group;
         a re-pin names exactly one.

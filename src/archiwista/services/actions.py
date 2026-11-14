@@ -24,7 +24,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, get_args
+from typing import Literal
 
 from archiwista.auth import Principal, ProjectVisibility
 from archiwista.auth.authorize import Authorizer
@@ -48,7 +48,6 @@ from archiwista.sources.registry import PluginRegistry
 # in the store without its effects (ADR-036), ``download`` runs them there,
 # the plans of a ``check`` job if one is named (ADR-037, ADR-044).
 type ActionKind = Literal["check", "download"]
-ACTION_KINDS: tuple[ActionKind, ...] = get_args(ActionKind.__value__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,7 +94,7 @@ def start(
     authorizer : Authorizer
         Decides whether ``actor`` may write the stores (``store.write``).
     kind : {"check", "download"}
-        What the job does with the calls (``ACTION_KINDS``): ``check`` plans
+        What the job does with the calls (``ActionKind``): ``check`` plans
         a run of each, ``download`` runs them and writes the store.
     store : str
         Id of the configured store whose producer directory the calls work

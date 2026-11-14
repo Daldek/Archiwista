@@ -155,6 +155,7 @@ from archiwista.sources import (
     YearType,
 )
 from archiwista.sources.markers import directory_field
+from archiwista.values import as_date, as_datetime
 
 _IDS = "SELECT value FROM json_each(?)"
 _CURSOR_VERSION = 1
@@ -1910,29 +1911,6 @@ class IndexQueries:
             for row in rows
         )
 
-    def attributions(self, store: str, paths: Collection[str]) -> dict[str, str]:
-        """Return the attribution of each present version of a store by its path.
-
-        The text the source requires (``license.attribution`` of the
-        sidecar); a version without one, or that is not present, is left out.
-
-        Parameters
-        ----------
-        store : str
-            Configured store id.
-        paths : Collection[str]
-            Version paths relative to the store.
-        """
-        with self._read() as connection:
-            stores = _stores(connection)
-            rows = connection.execute(
-                "SELECT path, attribution FROM versions"
-                f" WHERE store_id = ? AND state = 'present' AND path IN ({_IDS})"
-                " AND attribution IS NOT NULL AND attribution <> ''",
-                (_store_id(stores, store), json.dumps(list(paths))),
-            ).fetchall()
-        return {str(row["path"]): str(row["attribution"]) for row in rows}
-
     def status(self) -> IndexStatus:
         """Return the index's state and each store's index state and jobs."""
         with self._read() as connection:
@@ -1964,10 +1942,10 @@ class IndexQueries:
                 StoreIndexState(
                     store=row["key"],
                     status=row["status"],
-                    status_at=_datetime(row["status_at"]),
+                    status_at=as_datetime(row["status_at"]),
                     detail=row["detail"],
-                    indexed_at=_datetime(row["indexed_at"]),
-                    full_scan_at=_datetime(row["full_scan_at"]),
+                    indexed_at=as_datetime(row["indexed_at"]),
+                    full_scan_at=as_datetime(row["full_scan_at"]),
                     slots=int(row["slots"]),
                     versions=int(row["versions"]),
                     missing_versions=int(row["missing"]),
@@ -1997,7 +1975,7 @@ class IndexQueries:
         )
         return IndexStatus(
             schema_version=SCHEMA_VERSION,
-            created_at=_datetime(info.get("created_at")),
+            created_at=as_datetime(info.get("created_at")),
             size_bytes=size,
             stores=states,
         )
@@ -2017,9 +1995,9 @@ class IndexQueries:
             StoreFreshness(
                 store=row["key"],
                 status=row["status"],
-                status_at=_datetime(row["status_at"]),
+                status_at=as_datetime(row["status_at"]),
                 detail=row["detail"],
-                indexed_at=_datetime(row["indexed_at"]),
+                indexed_at=as_datetime(row["indexed_at"]),
                 stale=row["status"] == "unavailable",
             )
             for row in rows
@@ -2415,7 +2393,7 @@ class IndexQueries:
             wgs84=None if found["wgs84"] is None else json.loads(found["wgs84"]),
             first_seen_at=datetime.fromisoformat(found["first_seen_at"]),
             changed_at=datetime.fromisoformat(found["changed_at"]),
-            missing_since=_datetime(found["missing_since"]),
+            missing_since=as_datetime(found["missing_since"]),
             history=tuple(
                 OwnFileObservation(
                     observed_at=datetime.fromisoformat(state["observed_at"]),
@@ -3333,8 +3311,8 @@ def _station_coverage(
             variable=row["variable"],
             unit=row["unit"],
             period=row["period"],
-            first=_date(row["first_date"]),
-            last=_date(row["last_date"]),
+            first=as_date(row["first_date"]),
+            last=as_date(row["last_date"]),
             with_value=row["with_value"],
             accumulated=row["accumulated"],
             gaps=_date_ranges(row["gaps"]),
@@ -3487,8 +3465,8 @@ def _summary(
         label=row["label"],
         label_source=row["label_source"],
         data_year=row["data_year"],
-        data_date=_date(row["data_date"]),
-        downloaded_at=_datetime(row["downloaded_at"]),
+        data_date=as_date(row["data_date"]),
+        downloaded_at=as_datetime(row["downloaded_at"]),
         sha256=row["sha256"],
         size_bytes=row["size_bytes"],
         full_sheet=None if full_sheet is None else bool(full_sheet),
@@ -3498,7 +3476,7 @@ def _summary(
         is_current=bool(row["is_current"]),
         is_full_sheet=bool(row["is_full_sheet"]),
         state=row["version_state"],
-        missing_since=_datetime(row["missing_since"]),
+        missing_since=as_datetime(row["missing_since"]),
         location=_location(
             row["location"], row["location_reason"], row["location_source"]
         ),
@@ -3733,8 +3711,8 @@ def _job(
         state=row["state"],
         actor=row["actor"],
         created_at=datetime.fromisoformat(row["created_at"]),
-        started_at=_datetime(row["started_at"]),
-        finished_at=_datetime(row["finished_at"]),
+        started_at=as_datetime(row["started_at"]),
+        finished_at=as_datetime(row["finished_at"]),
         progress=progress,
     )
 
@@ -3765,8 +3743,8 @@ def _product_version(row: sqlite3.Row, *, shapes: bool) -> ProductVersion:
         segment_name=row["segment_name"],
         producer=row["producer"],
         data_year=row["data_year"],
-        data_date=_date(row["data_date"]),
-        downloaded_at=_datetime(row["downloaded_at"]),
+        data_date=as_date(row["data_date"]),
+        downloaded_at=as_datetime(row["downloaded_at"]),
         edition=row["edition"],
         label=row["label"],
         campaign=row["campaign"],
@@ -3822,14 +3800,6 @@ def _coverage(
         covered_km2=measure.covered_km2,
         versions_count=measure.footprints,
     )
-
-
-def _datetime(value: object) -> datetime | None:
-    return None if value is None else datetime.fromisoformat(str(value))
-
-
-def _date(value: object) -> date | None:
-    return None if value is None else date.fromisoformat(str(value))
 
 
 def _utc_text(value: datetime) -> str:
@@ -4019,7 +3989,7 @@ def _snapshot(row: sqlite3.Row) -> SnapshotRecord:
         path=row["path"],
         label=row["label"],
         state=row["state"],
-        created_at=_datetime(row["created_at"]),
+        created_at=as_datetime(row["created_at"]),
         content_method=row["content_method"],
         content_sha256=row["content_sha256"],
         size_bytes=row["size_bytes"],
