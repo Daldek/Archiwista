@@ -8,7 +8,8 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 ## Status
 
 The working branch is `develop`; every branch named below is merged into it, except
-`chore/pins-candidate-4` and `chore/everything-v1`. Nothing after 0.2.0 is released.
+`chore/pins-candidate-4`, `chore/everything-v1` and `fix/ci-develop`. Nothing after 0.2.0
+is released.
 
 | Component | State | Note |
 |---|---|---|
@@ -28,7 +29,7 @@ The working branch is `develop`; every branch named below is merged into it, exc
 | Pins of Nogat's release set candidate-4 (`chore/pins-candidate-4`) | in progress | Kartograf `c9afdd3f`, Obserwator `0394af7` (Hydrolog is no dependency); ruff, mypy, unit and contract tests and the integration tests that touch the producers pass; not merged, the full gate is left to the parent session |
 | Every format at version 1 (`chore/everything-v1`, Nogat REL-1.4, ECO-072) | in progress | the state backup `archiwista-state/1` (a `/2` copy still imports), the job protocol 1, the index schema 1 (an index of another number is rebuilt) and the state schema 1 in one migration (a database numbered 5 is renumbered when it opens; schema 2 to 4 no longer opens); on :8090 the next start renumbers `state.sqlite` (5) and rebuilds `index.sqlite` (18) by a full scan of `hydroni`; ruff, mypy, unit and contract tests and the touched tests pass; not merged, the full gate is left to the parent session |
 | Gate | done | last recorded full run: 2026-11-14 on `feat/obserwator-data-root` (`0ee0906`, merged as `55d97a7`), 3006 passed, coverage 93.45 %, 55 min with `TMPDIR` on a local disk, `GATE OK`; none yet on `refactor/tidy-2026-11-14` |
-| CI (Linux) | in progress | `ci.yml` runs the gate, the suite without the extra `obserwator` and a dependency audit; on 2026-11-14 the audit (opentelemetry-api 1.45.1) and the project card's activity test failed on `develop` and were fixed in `0ee0906`, the run after it not recorded. Python 3.15 (reported, not blocking) failed on an unraisable `sqlite3` finalizer warning in an e2e test. `live.yml` has not run (Next 9) |
+| CI (Linux) | in progress | `ci.yml` runs the gate, the suite without the extra `obserwator` and a dependency audit. The run of `develop` at `0ff788e` (2026-11-14) failed three tests, fixed on `fix/ci-develop` (not merged): in the gate `test_serve` took the warning of the own-data scan a quick stop interrupts (the server starts it at once) for the server's app record; without the extra the CLI test expected Obserwator's roots, and the side-by-side maps were measured one before and one after the providers' strip came under them. Python 3.15 (reported, not blocking) failed on an unraisable `sqlite3` finalizer warning in an e2e test. `live.yml` has not run (Next 9) |
 | v0.5 "IMGW stations" release | blocked | the Obserwator release with its store (REL-5.3: today pinned by commit); the archive badge of the stations (SPEC 9.2, 4.8.4) and the input archives of the station card need a producer capability the source interface lacks |
 | v0.6 "PL + CZ" | blocked | Kartograf KF (merged PL + CZ surface) |
 | Producer requirements behind open gaps | blocked | „U źródła” offers only NMT, NMPT and LAZ until Kartograf KD-3/KD-4 (meanwhile paste the producer's command, which „Obszar polecenia” runs on a project's area); plans show „rozmiar nieznany” until Kartograf KH; the „pobrane” badge cannot match LAZ, whose sidecar records no survey work (Kartograf `docs/PROGRESS.md` Next 30); A15 waits for Kartograf KB-7; Archiwista's later versions need KA-4, KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4, KH |

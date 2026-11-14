@@ -88,6 +88,11 @@ OPACITY_B = (
     "() => getComputedStyle(document.querySelector"
     "('.cmp-pane.b .maplibregl-canvas')).opacity"
 )
+# The boxes of the maps A and B side by side, read in one layout.
+PANE_BOXES = """() => ["a", "b"].map((side) => {
+  const box = document.querySelector(`.cmp-pane.${side}`).getBoundingClientRect();
+  return { x: box.x, width: box.width, height: box.height };
+})"""
 
 
 @dataclass(frozen=True)
@@ -549,13 +554,12 @@ def test_side_by_side_maps_stay_in_sync(compare_store: CompareStore, tab: Tab) -
         )
     )
     paths = [version["path"] for version in versions]
-    boxes = [page.locator(f".cmp-pane.{side}").bounding_box() for side in "ab"]
-    assert boxes[0] is not None and boxes[1] is not None
-    assert boxes[0]["x"] + boxes[0]["width"] <= boxes[1]["x"]
-    assert (boxes[0]["width"], boxes[0]["height"]) == (
-        boxes[1]["width"],
-        boxes[1]["height"],
-    )
+    # Both boxes in one layout: the strip of the providers' lines comes under the
+    # maps with the answer of ``GET /compare``, after them, and makes both lower.
+    expect(page.locator(".cmp-stage.side .cmp-pane")).to_have_count(2)
+    a, b = page.evaluate(PANE_BOXES)
+    assert a["x"] + a["width"] <= b["x"]
+    assert (a["width"], a["height"]) == (b["width"], b["height"])
 
     def same_tiles(zoom: int, since: int) -> set[tuple[int, int]]:
         found = [

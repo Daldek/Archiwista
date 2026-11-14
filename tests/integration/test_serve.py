@@ -227,7 +227,13 @@ def test_serve_logs_an_unhandled_exception_as_an_app_record(
         for record in records(paths.logs_dir, "access")
         if record["path"] == "/api/v1/health"
     ]
-    (application,) = records(paths.logs_dir, "app")
+    # The server starts an own-data scan at once (the scheduler's first tick); a
+    # stop that interrupts it adds the job's own warning (test_jobs.py).
+    (application,) = [
+        record
+        for record in records(paths.logs_dir, "app")
+        if record["event"] != "archiwista.jobs.worker"
+    ]
     lines = printed(err.getvalue())
 
     assert_problem(failed, 500, "internal_error")

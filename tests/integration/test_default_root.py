@@ -3,12 +3,15 @@
 The producer reports the directory it uses when a call names no store (D7); the
 first-run wizard offers it and Archiwista never uses it. ``/health`` is polled and
 the producer sizes the directory while it reports it, so ``/health`` leaves it out.
-The source ``obserwator`` is listed beside Kartograf and reports its own raw and
-data roots (``test_sources_obserwator.py``).
+The source ``obserwator`` is listed beside Kartograf and, with the extra
+``archiwista[obserwator]``, reports its own raw and data roots
+(``test_sources_obserwator.py``).
 """
 
+import importlib.util
 import json
 from collections.abc import Iterator
+from itertools import takewhile
 from pathlib import Path
 from typing import Any
 
@@ -169,9 +172,16 @@ def test_default_root_command_line_prints_what_the_route_answers(
         " (zmienna KARTOGRAF_ROOT; magazyn ze znacznikiem)"
     )
     obserwator = [line.startswith("Źródło obserwator (") for line in text].index(True)
-    assert text[obserwator + 1 : obserwator + 3] == [
-        f"  Wtyczka obserwator: domyślny katalog główny magazynu {raw}"
-        " (zmienna OBSERWATOR_RAW_ROOT; nie istnieje)",
-        f"  Wtyczka obserwator: domyślny katalog danych {data}"
-        " (zmienna OBSERWATOR_ROOT; nie istnieje)",
-    ]
+    # Without the extra `obserwator` its plugin is not installed and has no root.
+    roots = (
+        [
+            f"  Wtyczka obserwator: domyślny katalog główny magazynu {raw}"
+            " (zmienna OBSERWATOR_RAW_ROOT; nie istnieje)",
+            f"  Wtyczka obserwator: domyślny katalog danych {data}"
+            " (zmienna OBSERWATOR_ROOT; nie istnieje)",
+        ]
+        if importlib.util.find_spec("obserwator")
+        else []
+    )
+    below = takewhile(lambda line: line.startswith("  "), text[obserwator + 1 :])
+    assert list(below) == roots
