@@ -344,7 +344,11 @@ class PinRef:
 
 @dataclass(frozen=True, slots=True)
 class VersionSummary:
-    """A version as listed in the catalog and on the file card."""
+    """A version as listed in the catalog and on the file card.
+
+    ``attribution`` is the attribution its sidecar gives
+    (``license.attribution``), ``None`` without one.
+    """
 
     path: str
     label: str | None
@@ -363,6 +367,7 @@ class VersionSummary:
     state: VersionState
     missing_since: datetime | None
     location: LocationRef
+    attribution: str | None
     pinned_by: tuple[PinRef, ...] = ()
 
 
@@ -1060,10 +1065,12 @@ class StationRow:
     ``point`` is ``(lon, lat)`` in WGS84 for ``location="point"``; a station
     without one has ``location="none"`` and the catalog's ``location_reason``
     (``none``, ``zero``, ``outside_country``). ``catalog`` is the label of the
-    catalog version the station was read from (its download date) and
-    ``catalog_version`` its file, relative to the store. ``on_boundary``:
-    the station lies on the boundary of the query's area (closer to it than
-    its location uncertainty); ``False`` without an area.
+    catalog version the station was read from (its download date),
+    ``catalog_version`` its file, relative to the store, and
+    ``catalog_attribution`` the attribution of its sidecar, with the lines of
+    the state borders its places were checked against (G, Z; A-ADR-055).
+    ``on_boundary``: the station lies on the boundary of the query's area
+    (closer to it than its location uncertainty); ``False`` without an area.
     """
 
     store: str
@@ -1087,6 +1094,7 @@ class StationRow:
     elevation_m: float | None
     catalog: str | None
     catalog_version: str | None
+    catalog_attribution: str | None
     on_boundary: bool = False
 
 
@@ -1190,8 +1198,9 @@ class StationMap:
     ``aggregated`` replaces ``items`` by ``cells`` (each a count of
     stations). ``counts`` are those of the same query as a list, and
     ``coverage`` that of ``items`` when the query asked for labels.
-    ``providers`` are the providers of the stations drawn, items or cells, in
-    the order of their first station (the lines their terms require).
+    ``catalogs`` are the providers of the stations drawn, items or cells, each
+    with the attribution of its catalog version, in the order of their first
+    station (the lines their terms require).
     """
 
     total: int
@@ -1200,7 +1209,7 @@ class StationMap:
     cells: tuple[GridCell, ...]
     counts: StationCounts
     coverage: tuple[StationCoverage, ...] = ()
-    providers: tuple[str, ...] = ()
+    catalogs: tuple[tuple[str, str | None], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -1161,12 +1161,17 @@ address and the browser's `User-Agent`. They stay until an administrator deletes
 them.
 
 **Reading them.** An administrator (in local mode the owner) opens "Zgłoszenia" at
-the bottom of the navigation: the reports newest first, 50 a page, with "nowe: N" for
-the unread ones and "nowe" at each. Opening a report shows its text, contact, account,
-page, browser, view, environment and events, and marks it read; "Oznacz
-nieprzeczytane" undoes that and "Usuń" deletes it after a confirmation. Scripts use
-`GET /api/v1/admin/feedback?limit=50&offset=0`, `PATCH /api/v1/admin/feedback/{id}`
-(`{"is_read": true}`) and `DELETE /api/v1/admin/feedback/{id}`; without a server,
+the bottom of the navigation, Nogat's kit view of the reports (the same in every GUI
+of the ecosystem, Nogat DEV-15.13): the reports newest first, 50 a page ("Poprzednia
+strona", "Następna strona"), with "Nieprzeczytane: N z M", "Tylko nieprzeczytane"
+and "nowe" at each unread one. Each report shows its number, time and text, and its
+context folded under "Kontekst": the account, the contact, the page, the browser and
+the attached diagnostics. "Oznacz jako przeczytane" and "Oznacz jako nieprzeczytane"
+change it, and "Usuń" deletes it after the question "Usunąć zgłoszenie #N?". Scripts
+use `GET /api/v1/admin/feedback?limit=50&offset=0` (`{items, total, unread_count}`,
+each report `{id, created_at, message, context, is_read}`), `PATCH
+/api/v1/admin/feedback/{id}` (`{"is_read": true}`, answering the report) and `DELETE
+/api/v1/admin/feedback/{id}` (answering `{"status": "deleted"}`); without a server,
 `sqlite3 <data-dir>/state.sqlite "SELECT id, created_at, user_id, message FROM
 feedback ORDER BY id DESC"` lists them.
 

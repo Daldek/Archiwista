@@ -267,11 +267,12 @@ _VERSION_COLUMNS = """
     v.resolution AS resolution,
     v.state AS version_state, v.missing_since AS missing_since,
     v.location AS location, v.location_reason AS location_reason,
-    v.location_source AS location_source,
+    v.location_source AS location_source, v.attribution AS attribution,
     (v.id = s.current_version_id) AS is_current,
     (v.id = s.full_sheet_version_id) AS is_full_sheet
 """
-# A station with the label and file of the catalog version it was read from.
+# A station with the label, file and attribution of the catalog version it
+# was read from.
 _STATION_COLUMNS = """
     s.id AS id, s.store_id AS store_id, s.provider AS provider, s.code AS code,
     s.kind AS kind,
@@ -282,7 +283,7 @@ _STATION_COLUMNS = """
     s.location_uncertainty_m AS location_uncertainty_m, s.active AS active,
     s.established_year AS established_year, s.gauge_zero_m AS gauge_zero_m,
     s.river_km AS river_km, s.elevation_m AS elevation_m, cv.label AS catalog,
-    c.version_path AS catalog_version
+    c.version_path AS catalog_version, cv.attribution AS catalog_attribution
 """
 _STATION_SOURCE = (
     "stations s LEFT JOIN station_catalogs c"
@@ -642,7 +643,7 @@ class IndexQueries:
                 " v.unit AS version_unit, v.campaign AS campaign,"
                 " v.survey_work_id AS survey_work_id, v.edition AS edition,"
                 " v.coverage AS coverage, v.parent_request AS parent_request,"
-                " v.license AS license, v.attribution AS attribution,"
+                " v.license AS license,"
                 " v.source_files AS source_files, v.resolution AS resolution,"
                 " v.nodata AS nodata, v.native_crs AS native_crs,"
                 " v.has_meta AS has_meta, v.is_box AS is_box,"
@@ -1418,12 +1419,16 @@ class IndexQueries:
                 f" WHERE {found.located.sql()} ORDER BY {_NAME_ORDER}",
                 found.located.params,
             ).fetchall()
-            providers = tuple(dict.fromkeys(str(row["provider"]) for row in rows))
+            catalogs = tuple(
+                dict.fromkeys(
+                    (str(row["provider"]), row["catalog_attribution"]) for row in rows
+                )
+            )
             if len(rows) > limit:
                 points = [(row["lon"], row["lat"]) for row in rows]
                 cells = grid.count(points)
                 return StationMap(
-                    len(rows), True, (), cells, found.counts, providers=providers
+                    len(rows), True, (), cells, found.counts, catalogs=catalogs
                 )
             coverage = (
                 _stations_coverage(connection, stores, rows, query)
@@ -1437,7 +1442,7 @@ class IndexQueries:
             cells=(),
             counts=found.counts,
             coverage=coverage,
-            providers=providers,
+            catalogs=catalogs,
         )
 
     def station(self, store: str, provider: str, code: str) -> StationRow | None:
@@ -2995,6 +3000,7 @@ def _station(
         elevation_m=row["elevation_m"],
         catalog=row["catalog"],
         catalog_version=row["catalog_version"],
+        catalog_attribution=row["catalog_attribution"],
         on_boundary=row["id"] in boundary,
     )
 
@@ -3494,6 +3500,7 @@ def _summary(
         location=_location(
             row["location"], row["location_reason"], row["location_source"]
         ),
+        attribution=row["attribution"],
         pinned_by=pins.get((row["store_id"], row["version_path"]), ()),
     )
 

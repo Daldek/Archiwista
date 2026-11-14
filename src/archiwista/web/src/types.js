@@ -2798,30 +2798,4 @@
  * @property {"ok"} status
  */
 
-/**
- * A report as an administrator reads it (`GET /admin/feedback`).
- *
- * @typedef {object} FeedbackItem
- * @property {number} id - A later report has a greater number.
- * @property {string} created_at - When it was sent.
- * @property {string|null} user_id - The account that sent it; null for the owner
- *   of a local installation.
- * @property {string} message
- * @property {string|null} contact
- * @property {string|null} page_url
- * @property {string|null} user_agent
- * @property {Object<string, *>|null} diagnostics - As the person's browser sent
- *   it: any JSON object, shown as text only.
- * @property {boolean} is_read
- */
-
-/**
- * A page of the reports, newest first.
- *
- * @typedef {object} FeedbackList
- * @property {FeedbackItem[]} items
- * @property {number} total - Every report, all pages together.
- * @property {number} unread_count - Those nobody marked read.
- */
-
 export {};
