@@ -1,12 +1,13 @@
 # Archiwista: instructions for agents developing the project
 
-Archiwista is a web application (locally: one person on `localhost`; later a
-team on a local network) for working with the spatial data stores that
-Kartograf writes: browsing and search, a map with previews, availability and
+Archiwista is a web application (locally: one person on `localhost`; in team mode,
+`[team]` of `config.toml`, a team on a local network) for working with the spatial data
+stores that Kartograf writes and the IMGW-PIB and ČHMÚ archives that Obserwator writes:
+browsing and search, a map with previews, availability and
 freshness checks, downloads through the producer's API, projects in Archiwista's own
 file (A-ADR-049), and preparing data for merging. Profile `app` (DEV-1.1;
 `ecosystem.yaml` is authoritative). Introduction: [README.md](README.md); specification:
-[docs/SPEC.md](docs/SPEC.md). The Nogat standard 2.1 is in
+[docs/SPEC.md](docs/SPEC.md). The Nogat standard 1.0 is in
 [standards/](https://github.com/Daldek/Nogat/tree/main/standards)
 (DEVELOPMENT_STANDARDS, DOCUMENTATION_STANDARDS, AGENT_INTERFACE, ERROR_REGISTRY).
 
@@ -78,7 +79,7 @@ minutes (the interface tests drive Chromium; those that depend on the engine als
 
 ```
 src/archiwista/
-├── app.py cli.py server.py config.py doctor.py   # application, CLI entry, server, settings
+├── app.py cli.py server.py config.py shared_settings.py doctor.py   # application, CLI entry, server, settings, nogat.toml
 ├── logs.py nogat_logging.py   # logs of the CLI and the server (Nogat's module, byte for byte, A-ADR-057)
 ├── api/            # HTTP routes /api/v1, models, problems (errors.py), OpenAPI (docs.py)
 ├── adapter/kartograf/ adapter/obserwator/  # the source plugins: the only importers of kartograf and obserwator
@@ -87,6 +88,7 @@ src/archiwista/
 ├── jobs/           # background jobs: supervisor, worker processes, scheduler
 ├── previews/       # render pool, renderers per file kind, content-addressed cache, tiles
 ├── owndata/        # own project data: scan, reader, snapshots
+├── projects/       # the project file archiwista-project/1: document, lock and writes, exports
 ├── services/ auth/ state/   # services shared by API and CLI, permissions, local state database
 ├── commands/ reader.py admin.py   # CLI commands
 ├── errors.py messages/   # exceptions, the message catalog (English and Polish texts)
@@ -142,7 +144,7 @@ tests/{unit,integration,contract,e2e,perf,fixtures}
 | Code architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Decisions | [docs/DECISIONS.md](docs/DECISIONS.md) (A-ADR-001 to 029; from 030 in [docs/decisions/](docs/decisions/)) |
 | Views for users; API and CLI for scripts and agents | [docs/USAGE.md](docs/USAGE.md), [docs/AGENT_API.md](docs/AGENT_API.md) |
-| Plans (v0.1 and v0.2 executed) | [docs/plans/](docs/plans/) |
+| Plans (v0.1 and v0.2 executed; the later ones built in `develop`) | [docs/plans/](docs/plans/) |
 | Measurements and acceptance | [docs/reports/](docs/reports/) |
 | Changes for users | [docs/CHANGELOG.md](docs/CHANGELOG.md) |
 | Formats on disk (sidecar, `data/`, plan) | Kartograf, not Archiwista: its `docs/ARCHITECTURE.md`; the project file `archiwista-project/1`: [A-ADR-049](docs/decisions/0049-projects-in-archiwista.md) |
@@ -160,7 +162,8 @@ Registry entry:
 [ecosystem.yaml](https://github.com/Daldek/Nogat/blob/main/ecosystem.yaml)
 (Archiwista). Kartograf is a runtime dependency (library and store read API,
 contract KA-1 to KA-8, SPEC 12); Obserwator is an optional producer behind the extra
-`archiwista[obserwator]` (read side: `adapter/obserwator/`; the actions are planned for v0.5).
+`archiwista[obserwator]` (`adapter/obserwator/`: its stores, stations and series, and
+its commands, A-ADR-050).
 
 ## Deviations
 
@@ -171,7 +174,7 @@ contract KA-1 to KA-8, SPEC 12); Obserwator is an optional producer behind the e
   `app` MAY run the platform matrix.
 - DEV-10.1: the gate leaves out two markers more than the standard, `perf` (the synthetic
   store of 50,000 slots) and `smb` (a real SMB share), besides `live`.
-- DEV-15.1: about 650 lines of the build-free JavaScript exceed 100 columns (templates
+- DEV-15.1: about 1,100 lines of the build-free JavaScript exceed 100 columns (templates
   and long Polish texts); there is no formatter (A-ADR-028). New lines keep the limit.
 - DEV-16.5: the CLA is signed by a comment on the pull request, as the author's
   `docs/CLA.md` says; the template also carries the checkbox.

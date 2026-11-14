@@ -107,7 +107,7 @@ each requirement: the SPEC section named.
 
 **F1. Stores and index** (SPEC 4)
 
-- F1.1 Configuration of several stores (for example local and team); a store is a Kartograf directory and/or an Obserwator directory. (v0.1)
+- F1.1 Configuration of several stores (for example local and team); a store is a Kartograf directory and/or Obserwator's raw root and data root (A-ADR-056). (v0.1)
 - F1.2 A local index of the store built from sidecars through the producers' APIs, and of the projects built from their project files (`archiwista-project.json`); full and incremental scan, view refresh before the answer. The index is a cache: it can be deleted and rebuilt. (v0.1; project files: projects)
 - F1.3 The index state is always visible ("Index from 14:02, scan in progress: 63%"); the interface never waits for a scan. (v0.1)
 - F1.4 Work on an SMB share, also mounted read-only; a disconnected share means a banner and an unchanged index, and after reconnecting a refresh without a rebuild. (v0.1)
@@ -170,8 +170,8 @@ each requirement: the SPEC section named.
 - F11.1 Stations on the map, in the "Catalog" (also without location, with a river and hydrographic code filter) and in the "summary". (v0.5)
 - F11.2 Coverage labels of series for each variable separately, in hydrological and calendar years with a switch; all stations, also with gaps. (v0.5)
 - F11.3 The "Station card" with a chart (gaps as breaks, no interpolation) of daily and monthly series and of the annual maximum and minimum found in the half-year characteristics, versions and IMGW formulas; station comparison. No other statistical calculations (A-ADR-051). (v0.5)
-- F11.4 Freshness of archives (a new publication, a new year), synchronisation and series as Obserwator background jobs with the plan window and an `obserwator …` command. (v0.5)
-- F11.5 IMGW archive and series versions pinned in projects (projects); their check, re-pin and restore through the Obserwator actions. (v0.5)
+- F11.4 Freshness of archives (a new publication, a new year) and their synchronisation as Obserwator background jobs with the plan window and an `obserwator …` command; Obserwator builds the series offline (A-ADR-056). (v0.5)
+- F11.5 IMGW archive and series versions pinned in projects (projects); the check, re-pin and restore of archive versions through the Obserwator actions (series pins are `not_checkable`, A-ADR-056). (v0.5)
 
 **F15. Own data and snapshots** (SPEC 4.7.1, A-ADR-027)
 
@@ -259,9 +259,9 @@ each requirement: the SPEC section named.
 
 | Assumption | Effect | How it is communicated |
 | --- | --- | --- |
-| The producers deliver the required APIs (Kartograf KA to KH, Obserwator IMGW-1 to 20) | Archiwista releases wait for the producers' releases | requirements in SPEC 12; the "needs" column in SCOPE |
-| Obserwator (released as IMGWTools 2.1.1, Beta) has no store today | IMGW data (v0.5), and so the MVP, depends on Obserwator | requirements agreed early; the Obserwator source is an add-on |
-| KF (merged PL + CZ surface) is not yet in the public Kartograf API; ČHMÚ stations in Obserwator are only in preparation | v0.6, and so the MVP, depends on both releases | requirements KF (SPEC 12.5) and IMGW-15 to IMGW-19 (SPEC 12.7) reported early; the risk in SCOPE and SPEC 14 |
+| The producers deliver the required APIs (Kartograf KA to KH, Obserwator IMGW-1 to 21, IMGW-14 withdrawn) | Archiwista releases wait for the producers' releases | requirements in SPEC 12; the "needs" column in SCOPE |
+| Obserwator has its store only in development (3.0.0, pinned by commit; its last release is IMGWTools 2.1.1, Beta) | IMGW data (v0.5), and so the MVP, depends on Obserwator | requirements agreed early; the Obserwator source is an add-on |
+| KF (merged PL + CZ surface) is not yet in the public Kartograf API; ČHMÚ stations are in Obserwator's development version, not yet released | v0.6, and so the MVP, depends on both releases | requirements KF (SPEC 12.5) and IMGW-15 to IMGW-19 (SPEC 12.7) reported early; the risk in SCOPE and SPEC 14 |
 | IMGW publication lag (10 to 19 months), republished archives | an incomplete last year, changed data | published years and publication dates in the interface; new versions instead of overwriting |
 | Some IMGW stations have no location | stations outside the map | the "Catalog" with the group "without location" and a counter on the map; a location is never guessed |
 | SMB semantics (attribute cache, inodes) | the index may be briefly stale | view refresh before the answer, a visible index state |
@@ -288,7 +288,7 @@ MVP success criteria (v1.0):
 | Decision | Options / working value | When to decide |
 | --- | --- | --- |
 | Coverage labels and their look | working ones from SPEC 6.4 (A-ADR-010; mockup M2) | before v0.3 |
-| The IMGW data format | `obserwator-meta/1`, Parquet, GeoJSON (A-ADR-020) | with the Obserwator team, before v0.5 |
+| The IMGW data format | `obserwator-meta/1`, Parquet, GeoJSON (A-ADR-020) | decided by IMGWTools' ADR-001, today Obserwator's (A-ADR-020 erratum 2) |
 | Merge results as derived Kartograf products | yes, on the HSG model (A-ADR-009; SPEC 15 P2, P3) | before v0.6 |
-| The reference computer for the performance targets | to be set | before v0.1 |
+| The reference computer for the performance targets | set: the machine of [`plans/2026-10-18-plan-v0.1.md`](plans/2026-10-18-plan-v0.1.md), decision 1 | decided before v0.1 |
 | The ČHMÚ station adapter | one Obserwator adapter while ČHMÚ is a provider inside the Obserwator package; a separate adapter (plugin) only if Obserwator releases ČHMÚ as a separate package; the rename of IMGWTools to Obserwator (ECO-057) renamed the import and the extra (SPEC 4.8.6, A-ADR-024) | at the Obserwator release with ČHMÚ stations, before v0.6 |

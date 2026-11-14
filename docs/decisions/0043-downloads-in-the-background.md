@@ -38,3 +38,5 @@
 - The Projects card follows its own job as before, so a project's download started there has two streams while the card is open.
 - A view that only starts downloads or listens to their ends is not drawn again by their events. A provider drawing itself again around the shell's children was rejected: besides drawing every view for each event, Preact then counts `useId` anew for what mounts below it, and the plan window's label met an id of the map's panel.
 - The rest of A12 is open: the retry, the log, the units changing colour on the map while a download runs, and the jobs of other kinds in the list.
+
+**Erratum 1 (2026-11-14, audit against the code):** `feature/kartograf-data-output` reached `develop` on 2026-11-03 with the stack of `feature/archiwista-projects`, merged by the author's decision (`6f1caef`): the decision is accepted.

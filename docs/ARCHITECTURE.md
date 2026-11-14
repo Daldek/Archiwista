@@ -1,12 +1,13 @@
 # Archiwista Architecture
 
-**Version described:** release code 0.2.0 "Podglądy" (Previews) (`pyproject.toml`).
+**Version described:** the code of `develop`, `0.3.0.dev0` (`pyproject.toml`); the last
+release is 0.2.0 "Podglądy" (Previews).
 History: [`CHANGELOG.md`](CHANGELOG.md), state:
 [`PROGRESS.md`](PROGRESS.md), instructions:
 [`USAGE.md`](USAGE.md), [`AGENT_API.md`](AGENT_API.md).
 Measurements and acceptance: [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md),
 [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md);
-standards: [`CLAUDE.md`](../CLAUDE.md) and the Nogat standard 2.1.
+standards: [`CLAUDE.md`](../CLAUDE.md) and the Nogat standard 1.0.
 
 Every claim about the behaviour of the system describes the **code** in this repository
 (`src/`, `tests/`), not a plan or a spec. Requirements and scope are in
@@ -24,8 +25,10 @@ shorthand "ARCH".
 
 ## 1. Purpose and boundaries
 
-Archiwista 0.2 runs locally: FastAPI on `127.0.0.1`, a browser
-interface, an API and a CLI. The store catalog comes from Kartograf's public API
+Archiwista runs locally: FastAPI on `127.0.0.1` (in team mode, the table `[team]`, one
+server on a local network; A-ADR-013, ADR-046), a browser
+interface, an API and a CLI. The store catalog comes from the producers' public API
+(Kartograf, and Obserwator when its extra is installed)
 and a rebuildable local SQLite index; own data comes
 from separately scanned project folders. `state.sqlite` holds
 accounts and permissions that are not rebuildable (A-ADR-029).
@@ -49,21 +52,27 @@ layout belongs to the producer (A-ADR-014). Archiwista does not walk the `data/`
 itself, but calls the names from `kartograf.__all__` — `list_segments`,
 `list_partitions`, `iter_store`, `read_sidecar`, `describe_segment`,
 `file_footprint`, `link_target`, `pinned_transform`, `command_for_file`,
-`countries_for_bbox`, `find_sheets_for_bbox`,
-`SheetParser` — and only in `src/archiwista/adapter/kartograf/`
+`countries_for_bbox`, `find_sheet_outlines`, `store_root`, `store_state` and, for its
+commands, `list_commands`, `command_schema`, `parse_command`, `validate_command`,
+`format_command`, `check_availability`, `check_command`, `run_command` and
+`error_report` — and only in `src/archiwista/adapter/kartograf/`
 (section 2.2). The rest of the application knows only the source interface
 `src/archiwista/sources/`. A missing Kartograf function is a requirement on
 Kartograf (SPEC 12), not a workaround in Archiwista. The adapter reads Kartograf
 `>=0.8.0.dev0,<0.9` with KA-1..KA-6 (`SUPPORTED_VERSIONS`: while a commit is pinned the
 range starts at the development version, REL-5.6; the release narrows it to `>=0.8.0`).
 
-**Release boundaries:** Archiwista does not download data or run
-producer commands (v0.3), does not write or delete store files,
-does not delete snapshots. `JOB_KINDS` now includes `scan`, `footprints`,
-`link_check`, `preview`, `own_scan`, `snapshot`, `availability` (v0.3:
-what the source has for an area, ADR-035) and `check` (v0.3: what a run of a
-producer's command would do in a store, ADR-036). The `footprints`, `availability`
-and `check` jobs use the network only after offline mode is turned off. Data without a footprint
+**Release boundaries:** Archiwista does not download data itself: a download is the
+producer's command run by its adapter in a `download` job (v0.3, ADR-037); it does not
+write or delete store files itself and does not delete snapshots. `JOB_KINDS` are `scan`,
+`footprints`, `link_check`, `preview`, `own_scan`, `snapshot`, `availability` (v0.3:
+what the source has for an area, ADR-035), `check` (v0.3: what a run of a
+producer's command would do in a store, ADR-036), `download` (ADR-037), `preview_warm`
+(ADR-041) and the jobs over a project's groups `project_verify`, `project_check`,
+`project_repin` and `project_restore` (A-ADR-049 decision 11). The network jobs
+(`JobRule.network` in `JOB_RULES`: `footprints`, `availability`, `check`, `download`,
+`project_check`, `project_repin`, `project_restore`) are refused while offline mode is
+on. Data without a footprint
 stays in the catalog with a reason, and the interface does not load libraries from a CDN.
 
 ---
@@ -86,7 +95,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `app.py` | FastAPI application factory: shared objects in `app.state` (the `Transport` built once from the settings), routers under `/api/v1`, the OpenAPI document, `/api/docs` in local mode only, interface files, `SecurityMiddleware` | `create_app`, `WEB_DIR` |
 | `reader.py` | read commands `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` built on API functions and models | `add_read_commands`, `read_main`, `search_filters`, `READ_COMMANDS` |
 | `admin.py` | commands `users`, `groups`, `share`, `state export` and `state import`, run as `LOCAL_OWNER` | `add_admin_commands`, `admin_main`, `ADMIN_COMMANDS` |
-| `doctor.py` | `archiwista doctor`: diagnostics without writing — settings, plugins, stores and project directories, data directory, team mode (address, TLS files, trusted proxies, the administrators who can sign in, read by `read_users` without creating or upgrading the state database), port | `run_doctor`, `doctor_main`, `DoctorCheck`, `DoctorReport`, `source_check`, `team_checks`, `team_admin_check`, `is_port_available`, `REQUIRED_PRODUCERS` |
+| `doctor.py` | `archiwista doctor`: diagnostics without writing — settings, `nogat.toml` and the source of each of its values, plugins and their default roots, stores and project directories, data directory, team mode (address, TLS files, trusted proxies, the administrators who can sign in, read by `read_users` without creating or upgrading the state database), port | `run_doctor`, `doctor_main`, `DoctorCheck`, `DoctorReport`, `source_check`, `team_checks`, `team_admin_check`, `is_port_available`, `REQUIRED_PRODUCERS` |
 | `commands/previews.py`, `commands/layers.py`, `commands/compare.py`, `commands/owndata.py` | v0.2 CLI shared with the API services: `preview`, `layers`, `compare`, `files`, `file`, `snapshot`, `own-scan` | `add_commands`, `main` in each module |
 | `commands/producer_commands.py` | v0.3 CLI of the producers' commands over `services/commands.py` (ADR-034): `commands list`, `parse`, `validate`, `format`, `area` (a call given an area of Archiwista, e.g. a project's, A-ADR-049 erratum 5); `version-command` (the call that selects a stored version again, A-ADR-049 D-10) | `add_commands`, `main` |
 | `commands/availability.py` | v0.3 CLI of the availability at the source over `services/availability.py` (ADR-035): `availability show` (the kept report) and `availability check` (the `availability` job in the foreground unless a fresh report answers) | `add_commands`, `main` |
@@ -94,7 +103,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `commands/projects.py` | CLI of project changes over `services/projects.py` (A-ADR-049): `project-init` (a new project file in a directory, with a name, a description and an area), `project-edit` (name, description), `project-area` (`--area-id` or `--clear`) and `project-store` (the configured store of a producer's pins), each printing the project's card as the route answers it; `project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`, `project-exports PROJEKT` and `project-activity PROJEKT [--limit N] [--cursor ID]` printing the routes' models; `project-delete PROJEKT --yes` (the project removed from Archiwista, never data; a supervisor to find a job of the project); as the local owner, with the `Authorizer` over the state database | `add_commands`, `main` |
 | `commands/project_jobs.py` | CLI of the jobs over a project's groups (A-ADR-049 decision 11): `project-verify PROJEKT [ZESTAW …]`, `project-check PROJEKT [ZESTAW …]`, `project-repin PROJEKT ZESTAW [--plan ZADANIE]`, `project-restore PROJEKT [ZESTAW …] [--plan ZADANIE]` (`--plan`: the `project-check` job whose plan is confirmed, `plan_job`, ADR-042 erratum 2), each started through `services/project_jobs.py` as the local owner and followed in the foreground (`commands.jobs.foreground`), exit 0, 10, 11 or 130 | `add_commands`, `main` |
 | `commands/preview_warm.py` | v0.3 CLI of the warm-up of previews over `services/warm.py` (ADR-041): `preview-warm` (filters `--store`, `--product`, `--segment`, `--project`, `--area-id`) starts the `preview_warm` job as `POST /previews/warm` and follows it in the foreground (`commands/jobs.py` `foreground`), printing it as it ended; as the local owner | `add_commands`, `main` |
-| `commands/stations.py` | the CLI of the stations over `api/stations.py` (plans I6, I8): `stations list` (its options generated from `StationListFilters`, one per parameter of `GET /stations`, a repeatable one with `action="append"`, validated by the same model), `stations timeline` (`StationTimelineListFilters`: the same options with `--dataset` required; for a person a strip of year cells per variable), `stations show KOD` (the options of `StationLookup`), `stations series KOD` (`StationChartQuery`, a parameter read by an alias an option of the alias, `--from`, `--to`; for a person the range, each variable's points with a value, gaps and markers), `stations compare` (`StationCompareQuery`, `--station` repeated; for a person the range once, then each station with the variable's label and full years and its chart as `series` writes it, or "brak danych") and `stations datasets` (`StationDatasetsQuery`); `--json` prints the route's model, a refusal the route's problem as `archiwista-error/1`; reads the index, and for `series` and `compare` the producer's series files, no network, no writes | `add_commands`, `main`, `query_of` |
+| `commands/stations.py` | the CLI of the stations over `api/stations.py` (plans I6, I8): `stations list` (its options generated from `StationListFilters`, one per parameter of `GET /stations`, a repeatable one with `action="append"`, validated by the same model), `stations timeline` (`StationTimelineListFilters`: the same options with `--dataset` required; for a person a strip of year cells per variable), `stations show KOD` (the options of `StationLookup`), `stations series KOD` (`StationChartQuery`, a parameter read by an alias an option of the alias, `--from`, `--to`; for a person the range, each variable's points with a value, gaps and markers), `stations handoff KOD` (`StationHandoffQuery`: the `nogat-handoff/1` document of `GET /stations/{code}/handoff` as the text, A-ADR-052), `stations compare` (`StationCompareQuery`, `--station` repeated; for a person the range once, then each station with the variable's label and full years and its chart as `series` writes it, or "brak danych") and `stations datasets` (`StationDatasetsQuery`); `--json` prints the route's model, a refusal the route's problem as `archiwista-error/1`; reads the index, and for `series`, `handoff` and `compare` the producer's series files, no network, no writes | `add_commands`, `main`, `query_of` |
 | `commands/log.py` | v0.4 CLI of the action log over `services/log.py`: `log list` (a page as `GET /log`, `ActionPage` with `--json`) and `log export` (the bytes of `GET /log/export` to standard output or `--output`, mode `0600`), the filters of the routes validated by their models; as the local owner | `add_commands`, `main` |
 
 **HTTP and security**
@@ -131,6 +140,7 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `api/commands.py`, `api/models_commands.py` | the producers' commands (ADR-034): their catalog, a pasted line read into a call, a call checked without the network, the line of a call, a call given an area of Archiwista (A-ADR-049 erratum 5); a `422 unsupported` of a producer without commands, without areas or of a command without an area | `list_commands`, `parse_command`, `validate_command`, `format_command`, `apply_command_area`, `CommandList`, `CommandCallItem`, `CommandLine`, `ValidateRequest`, `AreaRequest`, `CommandAreaItem` |
 | `api/availability.py`, `api/models_availability.py` | the availability at the source (ADR-035): `POST /availability` answers a kept report younger than seven days (`200`) or starts the `availability` job (`202`; `job_router`, served with the supervisor), `GET /availability` returns the kept report without the network | `check_availability`, `get_availability`, `AvailabilityInfo`, `AvailabilityRequest`, `AvailabilityQuery` |
 | `api/actions.py`, `api/models_actions.py` | the jobs of producers' commands (ADR-036, ADR-037, ADR-044; `router`, served with the supervisor): `POST /jobs` starts a job of `calls` of commands of the catalog on a configured store (`202`; `download` needs `store.write`, `plan_job` names the `check` job of the same calls whose plans it runs), `GET /jobs/{job}/plan` returns the plans a `check` job kept with their totals | `start_job`, `get_job_plan`, `JobRequest`, `CallRequest`, `ActionPlanInfo`, `CallPlanItem`, `PlanEntryItem` |
+| `api/feedback.py`, `api/models_feedback.py` | feedback reports (Hydrograf's mechanism, Nogat DEV-15.13): `POST /feedback` from any session („Zgłoś uwagę”, `201`), `GET /admin/feedback`, `PATCH` and `DELETE /admin/feedback/{feedback_id}` for `feedback.manage`, which the kit's `<nogat-admin-feedback>` of the view „Zgłoszenia” reads | `submit_feedback`, `list_feedback`, `update_feedback`, `delete_feedback`, `NewFeedback`, `FeedbackItem`, `FeedbackList` |
 
 **Services, permissions, state**
 
@@ -154,6 +164,8 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `services/actions.py` | the jobs of producers' commands for HTTP and the CLI (ADR-036, ADR-037, ADR-044): `start` refuses before a job exists what the worker would refuse (a download without `store.write`, asked of the `Authorizer`; a store that is not configured; for each call a command outside the catalog, on no store or without a check, a file path, the producer's refusal of the options, named by `details.call`; a `plan_job` the principal does not see, without a kept plan or of another store or other calls (`plan_mismatch`); a download's `pin` the project refuses, `services.pins.check_plan_pin`; offline mode) and submits one job of all the calls with the options as the producer read them; `kept_plans` returns the plans a `check` job kept, for a job the principal sees | `start`, `kept_plans`, `KeptPlans`, `ActionKind`, `ACTION_KINDS` |
 | `services/warm.py` | the warm-up of previews for HTTP and the CLI (ADR-041): `start` refuses before a job exists a store that is not configured, a project the principal does not see and an area the index does not keep (each `404`), then submits `preview_warm` with the filters; any principal may warm | `start` |
 | `services/availability.py` | the availability at the source for HTTP and the CLI (ADR-035): the area, the products the producer checks, a kept report younger than `REPORT_TTL` (seven days, Kartograf's metadata cache TTL) unless `force`, else the `availability` job; the kept report without the network. Without I/O, a report's rows (SPEC 6.3, 6.4): one per country and year, its variants (the formats of one set grouped, ADR-017; the default format the first of `DEFAULT_FORMATS`, ASC then TIFF, else none and an explicit choice; the size of the default format) ranked complete, full share (equal to a millionth of a percent), fewer campaigns, finer resolution, report order; a year without a variant of the `VariantFilter` is `no_data`; the label as structure (`CoverageLabel`: `full`, `full_campaigns`, `partial`, `no_data`; the campaigns of the sheet records, the percent rounded down and at most 99 when partial, `below_one`). `summary` adds each variant's `StoreBadge` from `IndexQueries.held_units` (present versions of the combination's dataset, sheets, year and campaigns; height systems are not told apart until Kartograf names a combination's segment); `known_store` refuses a store that is not configured (`404`). `api/models_availability.py` renders the labels and badges in the request's language (`coverage_text`, `plural_form` of `messages`) | `check`, `stored`, `rows`, `summary`, `variants`, `coverage_label`, `known_store`, `AreaAvailability`, `AvailabilityRow`, `AvailabilityVariant`, `CoverageLabel`, `StoreBadge`, `VariantFilter`, `NO_DATA`, `DEFAULT_FORMATS`, `REPORT_TTL` |
+| `services/feedback.py` | the feedback reports in the state database: sent by any session with Hydrograf's limits (a description of 1 to 5,000 characters), read newest first, marked read or unread and deleted by `feedback.manage`; not logged | `submit`, `read`, `mark`, `delete`, `MESSAGE_MAX_LENGTH` |
+| `services/station_handoff.py`, `api/models_handoff.py` | a station's series as a hand-off to Hydrolog's statistics (A-ADR-052): the `nogat-handoff/1` document around a `hydrolog-series/1` payload, a variable's daily values or the annual maxima of complete hydrological years (A-ADR-051), with the lines of the provider's terms (A-ADR-055) | `daily_payload`, `annual_payload`, `handoff`, `StationHandoff`, `StationHandoffQuery` |
 | `auth/principal.py` | who acts | `Principal`, `PrincipalKind`, `LOCAL_OWNER`, `SCHEDULER`, `LOCAL_PRINCIPAL_ID`, `LOCAL_ROLES` |
 | `auth/authorize.py` | the only place where permission decisions are made | `Authorizer`, `Action`, `principal_for`, `session_principal` |
 | `auth/visibility.py` | which projects are visible | `ProjectVisibility`, `ALL_PROJECTS`, `access_key` |
@@ -181,10 +193,10 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 
 | Module | Role | Key symbols |
 |---|---|---|
-| `jobs/supervisor.py` | job supervisor: queue, worker processes, events, crash recovery, history pruning; the claims of the positions of planned downloads (`job_claims`) and the waiting of an unplanned download of a running call, the network jobs of one person (`network_jobs_per_person`; a free place to the person with the fewest running ones) and the `hidden` jobs of the list (ADR-047; a download's `pin` makes it a job of the project); the jobs people start or retry go to the action log (`job.start`, `job.retry` with `action_details`, a download's `project` and `group` of its `pin`; a project job's `project` and `groups`; one job of a project at a time, of the `PROJECT_KINDS` (`_PROJECT_CONFLICT`); `active_set_job(project, group)`, beside `active_project_job`, the waiting or running job that writes into a set (a `download` whose `params.pin` names it, or its `project_repin`), which refuses closing the set (A-ADR-049 erratum 6); `record`, the state database of its paths by default; not the scheduler's) | `JobSupervisor`, `JobRecord`, `JobEvent`, `JobError`, `JobPage`, `ScanHistory`, `INDEX_JOB_KINDS`, `NETWORK_JOB_KINDS`, `MAX_NETWORK_JOBS`, `STOP_TIMEOUT_S`, `WORKER_COMMAND`, `default_max_jobs`, `action_details` |
+| `jobs/supervisor.py` | job supervisor: queue, worker processes, events, crash recovery, history pruning; the rule of each kind (`JOB_RULES`: a store's job, a network job, the conflicts, joins and overlaps that refuse or join another job); the claims of the positions of planned downloads (`job_claims`) and the waiting of an unplanned download of a running call, the network jobs of one person (`network_jobs_per_person`; a free place to the person with the fewest running ones) and the `hidden` jobs of the list (ADR-047; a download's `pin` makes it a job of the project); the jobs people start or retry go to the action log (`job.start`, `job.retry` with `action_details`, a download's `project` and `group` of its `pin`; a project job's `project` and `groups`; one job of a project at a time, of the `PROJECT_KINDS` (`_PROJECT_CONFLICT`); `active_set_job(project, group)`, beside `active_project_job`, the waiting or running job that writes into a set (a `download` whose `params.pin` names it, or its `project_repin`), which refuses closing the set (A-ADR-049 erratum 6); `record`, the state database of its paths by default; not the scheduler's) | `JobSupervisor`, `JobRecord`, `JobEvent`, `JobError`, `JobPage`, `ScanHistory`, `JOB_RULES`, `JobRule`, `MAX_NETWORK_JOBS`, `STOP_TIMEOUT_S`, `WORKER_COMMAND`, `default_max_jobs`, `action_details` |
 | `jobs/worker.py` | job worker process: scan, footprints, link, preview, own scan, snapshot, availability at the source, the plan of each call of a job (`check`; calls or positions not checked end `partial` through `PartialResult`), the run of each call (`download`; a call without a kept plan is skipped, a kept plan runs narrowed to the claimed positions, those of other jobs are `taken`; with `pin`, after the rescan of a download that succeeded, the project's `plan` group through `services.pins.pin_download`, its outcome the summary's `pin`, a failed write ending the job `partial`; A-ADR-049 decision 9) and the warm-up of previews (`preview_warm`, ADR-041) | `main`, `RUNNERS`, `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_availability`, `run_check`, `run_download`, `run_preview_warm`, `PartialResult`, `Emitter` |
 | `jobs/project_jobs.py` | the runners of the jobs over a project's groups (A-ADR-049 decisions 11 and 12), imported by the worker's runners only (ADR-044 C): `verify` (each pinned file hashed in 1 MiB chunks inside the root its path lies in, probed by its kind: Obserwator's raw root or data root, A-ADR-056; `ok`, `corrupt`, `missing`, `content_match` through `IndexQueries.slot_versions`, `no_store`), `check` (`ActionAdapter.check` of a plan group's calls or of each local pin's call from `version_calls`; by slot and SHA-256, `added` positions, D5 `not_checkable`, which Obserwator's series and station catalogs are; each row with the pinned `sha256`, by which a re-pin or a restore that confirms the check's plan finds the set unchanged, ADR-042 erratum 2), `repin` (the calls with `upgrade`, each call's options as written, the group's pins replaced under the file's lock only after a whole success and only while the set is open, its run pins by the runs' files with their `calls` and each hand pin (`calls: []`) by the file of its own call at its slot; A-ADR-049 erratum 6) and `restore` (the missing pins' calls in default mode; `restored`, `content_match`, `not_restored`, `not_restorable`; the file never written); the rescans as a `download`'s; each answers its summary and whether it did all its work (`worker._ended`) | `verify`, `check`, `repin`, `restore`, `VERIFY_STATUSES`, `CHECK_STATUSES`, `RESTORE_STATUSES` |
-| `jobs/protocol.py` | JSON Lines protocol supervisor ↔ worker process | `JobSpec`, `WorkerMessage`, `encode_spec`, `decode_spec`, `encode_message`, `decode_message`, `PROTOCOL_VERSION`, `JOB_KINDS`, `PROJECT_KINDS`, `WARM_FILTERS`, `INTERRUPTED_EXIT`, `CODE_WORKER_CRASHED` |
+| `jobs/protocol.py` | JSON Lines protocol supervisor ↔ worker process | `JobSpec`, `WorkerMessage`, `encode_spec`, `decode_spec`, `encode_message`, `decode_message`, `PROTOCOL_VERSION`, `JOB_KINDS`, `PROJECT_KINDS`, `WARM_FILTERS`, `INTERRUPTED_EXIT`, `REASON_WORKER_CRASHED` |
 | `jobs/scheduler.py` | periodic scans of the store and own data; with `preview_warm_after_scan`, a `preview_warm` job of the versions a store's newest scan wrote (`since` its start), once per scan; every hour, the first time at the start, the action log's entries older than `action_log_retention_days` go (`log.prune`) | `ScanScheduler`, `plan_scans`, `plan_own_scan`, `PlannedScan` |
 | `jobs/reindex.py` | `archiwista reindex`: full foreground scan | `reindex_main` |
 | `jobs/availability.py` | whether the store can be read now (an empty mount point of a known store = unavailable), as the error a job raises: `store_unavailable` with the reason and the hint of the probe; `all_empty`: a store with indexed entries is unreachable only when every directory is empty (an empty raw root beside a data root is no unmounted share, A-ADR-056) | `store_unreachable`, `all_empty` |
@@ -221,8 +233,8 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `sources/types.py` | shared producer-independent types | `SourceContext`, `ScanScope`, `SourcePartition`, `SourceState`, `DefaultRoot`, `DefaultRootSource`, `SourceSegment`, `SourceEntry`, `SourceObservation`, `Station`, `SeriesListing`, `StationSeries`, `VariableCoverage`, `SeriesValues`, `Extreme`, `DateRange`, `TimeUnit`, `YearType`, `EntryMeta`, `Footprint`, `SheetGrid`, `SourceStatus`, `CommandInfo`, `CommandOption`, `CommandChoice`, `CommandCall`, `AreaCommand`, `AreaWay`, `OptionType`, `PathRole`, `CommandWrites`, `DataOrigin` (`imgw_file`, `imgw_processed`, `imgw_stations`, `pmaxtp`, `chmi_file`, `chmi_processed`), `AvailabilityReport` (with `to_json`, `from_json`), `AvailabilityArea`, `AvailabilityCombination`, `AvailabilitySheet`, `AvailabilityCampaign`, `AvailabilityFailure`, `AvailabilityNotice`, `ActionPlan` (with `to_json`, `from_json`, `counts`, `todo`, `size_bytes`, `size_complete`), `PlanEntry`, `PlanStatus`, `PLAN_STATUSES`, `PLAN_TODO`, `ActionResult` (with `failed`), `ActionFile`, `ActionItem`, `ActionProgress`, `FileStatus`, `ItemStatus`, `RunStatus`, `FILE_STATUSES` |
 | `sources/registry.py` | plugins from entry points of the `archiwista.sources` group, their states and adapters; the verdict on a root by its kind (`probe(…, data=)`, `probe_root(adapter, root, data=)`: a data root through `DataRootAdapter.probe_data`, an `error` state for a producer without it; A-ADR-056); the default store root or data root of a producer that has one (ADR-033) | `SourceRegistry`, `PluginRegistry`, `load_registry`, `check_package`, `install_requirement`, `source_fix`, `source_error`, `probe_root`, `read_default_root`, `ENTRY_POINT_GROUP`, `APP_DISTRIBUTION` |
 | `adapter/kartograf/__init__.py` | plugin factory: compares the installed Kartograf with Archiwista's pin before import | `load`, `PRODUCER`, `PACKAGE`, `SCHEMAS` |
-| `adapter/kartograf/adapter.py` | Kartograf adapter with all optional capabilities (the export folders of its products: a table) but `DataOriginAdapter` (its versions carry their sidecars' attribution, A-ADR-055) | `KartografAdapter`, `UNIT_CACHE_FILE` |
-| `adapter/kartograf/actions.py` | Kartograf's commands as producer-neutral ones (ADR-034): the catalog of `list_commands` and `command_schema` (the options of a call without the store root and the flags of a run), `parse_command`, `validate_command` (`root=` for a command on a store, never the default root) and `format_command`; a refusal as Kartograf's `error_report` in the call's language; `check_availability` with Archiwista's own `MetadataCache` (`metadata.db` in the adapter's cache directory, never `cache=True`) and the area as the envelope of its polygon in EPSG:2180 (EPSG:5514 for CZ alone) with `country` `pl`, `cz` or `auto` (ADR-035), its report converted to `AvailabilityReport`; `check_command` with `root=` and the same cache, its `kartograf-plan/1` converted to `ActionPlan` (no size: KC-3; a refused root is the plan's one `conflict`; ADR-036); `run_command` with `root=`, the same cache and a kept plan as `update="upgrade", plan=…`, or `update="upgrade"` alone for a re-pin, its `kartograf-download/1` read as `ActionResult` (`files[]` below the root; a plain or outside file is a `BrokenContractError`), `DownloadProgress` counting units, and the scan scope of a standard path, `<segment>` and `<slot directory>/<stem>` (ADR-037); a call over an area of Archiwista (A-ADR-049 erratum 5): the options of the schema's `one_of` group `area` and their companions (`bbox_crs`, `layer`) replaced by `geometry` (the area's GeoJSON), else by the box enclosing the densified polygon in EPSG:2180, EPSG:5514 (CZ alone) or WGS 84, widened to whole metres (`pinned_transform`), with the area's `country` when the call gives none; the call of a stored version from its sidecar (`read_sidecar` into `command_for_file`, KB-6, offline), Kartograf's `CommandNotRebuildableError` as `UnsupportedError` with the reason `command_not_rebuildable` and Kartograf's text (A-ADR-049 D-10) | `catalog`, `parse`, `validate`, `format_line`, `call_error`, `availability`, `availability_products`, `area_request`, `with_area`, `area_call`, `area_box`, `check`, `run`, `scope`, `command_for_version`, `BESIDE_OPTIONS`, `METADATA_CACHE_FILE`, `AVAILABILITY_COMMAND` |
+| `adapter/kartograf/adapter.py` | Kartograf adapter with the optional capabilities of a store of files (the export folders of its products: a table), not those of stations and series (`CurrentVersionAdapter`, `StationCatalogAdapter`, `SeriesIndexAdapter`, `SeriesValuesAdapter`), `DataRootAdapter`, `ProductNameAdapter` or `DataOriginAdapter` (its versions carry their sidecars' attribution, A-ADR-055) | `KartografAdapter`, `UNIT_CACHE_FILE` |
+| `adapter/kartograf/actions.py` | Kartograf's commands as producer-neutral ones (ADR-034): the catalog of `list_commands` and `command_schema` (the options of a call without the store root and the flags of a run), `parse_command`, `validate_command` (`root=` for a command on a store, never the default root) and `format_command`; a refusal as Kartograf's `error_report` in the call's language; `check_availability` with Archiwista's own `MetadataCache` (`metadata.db` in the adapter's cache directory, never `cache=True`) and the area as its GeoJSON file (`geometry`, ADR-035 erratum 2) with `country` `pl`, `cz` or `auto` (`area_country`, ADR-035), its report converted to `AvailabilityReport`; `check_command` with `root=` and the same cache, its `kartograf-plan/1` converted to `ActionPlan` (no size: KC-3; a refused root is the plan's one `conflict`; ADR-036); `run_command` with `root=`, the same cache and a kept plan as `update="upgrade", plan=…`, or `update="upgrade"` alone for a re-pin, its `kartograf-download/1` read as `ActionResult` (`files[]` below the root; a plain or outside file is a `BrokenContractError`), `DownloadProgress` counting units, and the scan scope of a standard path, `<segment>` and `<slot directory>/<stem>` (ADR-037); a call over an area of Archiwista (A-ADR-049 erratum 5): the options of the schema's `one_of` group `area` and their companions (`bbox_crs`, `layer`) replaced by `geometry` (the area's GeoJSON), else by the box enclosing the densified polygon in EPSG:2180, EPSG:5514 (CZ alone) or WGS 84, widened to whole metres (`pinned_transform`), with the area's `country` when the call gives none; the call of a stored version from its sidecar (`read_sidecar` into `command_for_file`, KB-6, offline), Kartograf's `CommandNotRebuildableError` as `UnsupportedError` with the reason `command_not_rebuildable` and Kartograf's text (A-ADR-049 D-10) | `catalog`, `parse`, `validate`, `format_line`, `call_error`, `availability`, `availability_products`, `area_country`, `with_area`, `area_call`, `area_box`, `check`, `run`, `scope`, `command_for_version`, `BESIDE_OPTIONS`, `METADATA_CACHE_FILE`, `AVAILABILITY_COMMAND` |
 | `adapter/kartograf/unit_cache.py` | local cache of unit footprints (TERYT, KU, SM5) for `file_footprint` | `UnitBBoxCache` |
 | `sources/markers.py` | file names of the producers' store markers and data-root markers (DEV-19.12): an adapter refuses a foreign store by the file name alone, importing no other producer; the trees of a producer's data root and the settings field of the directory a path lies in by its first part (`series/`, `stations/`, `analyses/` in Obserwator's data root, field `obserwator_data`; Obserwator's ADR-017 D6, A-ADR-056); the nesting check counts both markers | `STORE_MARKERS`, `DATA_MARKERS`, `DATA_TREES`, `data_field`, `field_producer`, `directory_field`, `foreign_markers`, `marker_in` |
 | `adapter/obserwator/__init__.py` | Obserwator plugin factory: compares the installed Obserwator with the range `SUPPORTED_VERSIONS` before the import (ADR 0032) | `load`, `PRODUCER`, `PACKAGE`, `SUPPORTED_VERSIONS`, `SCHEMAS` |
@@ -234,11 +246,13 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 |---|---|---|
 | `config.py` | local paths, TOML settings, validation, atomic write, change notification; a store's directories (`StoreConfig.directories()` in the order of `STORE_DIRECTORIES`: `kartograf`, `obserwator`, `obserwator_data`, each a `StoreDirectory` with its field, producer and kind; `directory_paths()` by field, `producers()`, `producer_directories(p)`, `producer_root(p)` (the store root, else the data root: what a project file names), `root_of(p, path)` (the root a path lies in) and `roots()` (the producers' store roots, which their commands write); A-ADR-056) | `AppPaths`, `AppSettings`, `StoreConfig`, `StoreDirectory`, `STORE_DIRECTORIES`, `BasemapConfig`, `ConfigStore`, `SettingsService`, `parse_settings`, `validate_settings`, `detect_store_kind`, `write_text_atomic`, `DEFAULT_BASEMAPS` |
 | `config.py` (`AppSettings`) | v0.2, v0.3 and v0.5 options | `preview_cache_limit_gb`, `preview_warm_after_scan` (off by default), `own_data_dirs`, `DEFAULT_BASEMAPS` (OpenFreeMap vector, GUGiK OSM raster), `RETIRED_SETTINGS` (`year_types`: ignored when read, left out of the next save, named by the doctor; ADR-047 erratum 1), `aliased_path` (shared by a store's aliases and `Preferences.personal_path`) |
+| `shared_settings.py` | `nogat.toml` (A-ADR-053, A-ADR-054): `data_dir`, `cache_dir`, `lang` and the table `gui`, each from `[archiwista]` before `[nogat]`, the file from `NOGAT_CONFIG` or the user configuration directory of `nogat`; no `NOGAT_<KEY>` variable; a file that cannot be used gives no value | `SharedSettings`, `SharedValue`, `SharedGui`, `SHARED_KEYS`, `GUI_KEY`, `CONFIG_ENV` |
 | `paths.py` | private directories and index paths within the root | `private_directory`, `indexed_path`, `resolve_indexed_path`, `PRIVATE_DIRECTORY_MODE` |
 | `wal.py` | the switch of the index, the state database, the preview cache and the Kartograf adapter's unit cache to WAL, tried again while another process switches a new file | `use_wal` |
 | `values.py` | a value of a document or a row Archiwista reads (a producer's sidecar, a JSON document, a column of a local database) taken only with the expected type, else absent; shared by the adapters, the index queries and the job supervisor | `as_mapping`, `as_text`, `as_date`, `as_datetime` |
 | `errors.py` | application exceptions | `ArchiwistaError`, `SourceUnavailableError`, `SourceIncompatibleError`, `ProducerError`, `BrokenContractError`, `CheckFailedError`, `RunFailedError`, `CommandRequestError`, `PathOutsideRootError`, `IndexQueryError`, `PermissionDeniedError`, `NotFoundError`, `ConflictError`, `JobConflictError`, `ProjectLockedError`, `ProjectFileError`, `ProjectFileWriteError`, `ProjectAreaError`, `OfflineModeError`, `AreaTooLargeError`, `AreaUnreadableError`, `AreaTooComplexError`, `StateError`, `SnapshotError` |
 | `error_document.py` | one description of an error for every interface: `Problem`, the `archiwista-error/1` document and the refusal of a command | `Problem`, `describe`, `refuse`, `error_document`, `validation_problem`, `language_of` |
+| `_errors.py` | the error registry of the Nogat standard (ERR-3), generated by `scripts/generate_errors.py`: the codes with their exit codes and HTTP statuses, the outcomes 0, 10, 11 and 130 | `STANDARD_VERSION`, `OUTCOMES`, `CODES`, `BY_CODE`, `RegistryCode` |
 | `attribution.py` | the lines the data providers' terms require with every product (Nogat DEV §20, ECO-060, ECO-065, A-ADR-055): a product names the origins of its data (`DataOrigin`, or `chmi_views` for ČHMÚ data in Archiwista's station tables and charts) and gets `attribution` (DEV-20.4) and `terms_notice` (DEV-20.7, the links to the IMGW-PIB terms that apply) in the standard's order, each line once; a station answer's origin by provider and whether it shows positions, a hand-off's by provider, a stored version's by its producer's `DataOriginAdapter` (`Origins`), else its sidecar's attribution; the CLI block „Źródła danych i warunki korzystania:” | `Attribution` (`lines`, `fields`), `Origin`, `of`, `merge`, `station_origin`, `series_origin`, `version`, `text`, `Origins` |
 | `messages/` | the message catalog: every text for a person in English and Polish, one module per area; rendered in the language of the request or of the command | `Text`, `Message`, `message`, `localize`, `localize_json`, `dump`, `load`, `language`, `STORED_LANG` |
 | `messages/legal.py` | the area `legal`: the lines of IMGW-PIB (S, P), PMAXTP (PS, PP, M), ČHMÚ (C and the two forms of CP) and the links to the IMGW-PIB terms (RD, RH, RK; ECO-065: links, never a summary of the terms) as the standard words them, the Polish wording in both languages (DEV §20); only `attribution.py` reads them | `MESSAGES` |
@@ -300,8 +314,9 @@ requests to `previews.worker` processes; `jobs/worker.py` runs the scan,
 the preview build, the own-data folder scan and the snapshot across separate
 process boundaries. Reading untrusted files uses `sandbox.py:untrusted_env`
 and `formats.py:open_raster` / `vector_source`. `owndata.reader` reads the
-folder without changing it, and `owndata.snapshots:make_snapshot` is the only
-write path in the project directory. The producer is reachable only through
+folder without changing it, and `owndata.snapshots:make_snapshot`, `projects/files.py`
+(the project file and its area files) and `projects/exports.py` (the exports) are the
+only write paths in the project directory. The producer is reachable only through
 an adapter with a public API.
 
 **Rules enforced by tests** (`tests/contract/`):
@@ -316,6 +331,10 @@ an adapter with a public API.
   without loading Kartograf, the Kartograf plugin has the state `available` and the
   Obserwator plugin `not_installed` —
   `test_imports.py::test_archiwista_starts_without_obserwator`;
+- the Obserwator adapter imports only public names of `obserwator` and never
+  `pyarrow` — `test_imports.py::test_obserwator_adapter_uses_only_public_api_and_never_pyarrow`;
+- the server and its plugins start without loading a preview library (rio-tiler,
+  laspy and their kin) — `test_imports.py::test_server_start_imports_no_preview_library`;
 - a producer without optional capabilities satisfies `SourceAdapter`
   (`test_source_protocol.py`); plugin states (`not_installed`,
   `incompatible`, `error`) and a second plugin alongside Kartograf —
@@ -325,16 +344,18 @@ an adapter with a public API.
 **Rules adopted in the code (without a separate test):**
 
 - nobody imports `archiwista.adapter`: the adapter is obtained from the plugin
-  registry through the entry point `kartograf = "archiwista.adapter.kartograf:load"`;
+  registry through the entry points `kartograf = "archiwista.adapter.kartograf:load"`
+  and `obserwator = "archiwista.adapter.obserwator:load"`;
 - FastAPI and Starlette are imported only by `api/`, `app.py` and `security.py`
-  (`server.py`: Uvicorn and `starlette.types`); in `jobs/` indirectly only
-  `reindex.py` (through `api.errors.problem_of`); `index/`, `services/`,
-  `auth/`, `state/` and `sources/` do not know them;
+  (`server.py`: Uvicorn and `starlette.types`); `jobs/`, `index/`, `auth/`, `state/`
+  and `sources/` do not load them, and of `services/` only `layers.py` does (through
+  `api.areas` and `api.slots`);
 - `archiwista.jobs` loads its names on first use (module `__getattr__`, ADR-044),
   so a worker process imports neither the supervisor nor the scheduler; the
   preview runners import `previews.build` and `previews.warm` inside the function;
 - `index/` does not import `api`, `jobs`, `services`, `security`, `app` or
-  `server`; `services/` does not import `api`;
+  `server`; `services/` imports of `api` its models (`api.models*`) and, in
+  `layers.py`, `pins.py` and `projects.py`, functions of `api.areas` and `api.slots`;
 - routes do not filter projects themselves: they take `visible_projects` and pass
   them to queries and services (`api/dependencies.py`, section 7);
 - the CLI does not create a second read implementation: `reader.py` uses
@@ -348,8 +369,8 @@ an adapter with a public API.
 
 | Process | Started by | What it does | Communication |
 |---|---|---|---|
-| server `archiwista serve` | user | Uvicorn with the `create_app` application, `JobSupervisor`, `ScanScheduler`; index reads and short, bounded store reads | HTTP on `127.0.0.1:<port>`; Nogat's logs in `<state_dir>/archiwista/logs/`, on stderr only lifecycle records and reduced errors |
-| job worker process | `JobSupervisor`, one per job, in its own process group (`python -P -m archiwista.jobs.worker`) | `RUNNERS`: `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_preview`, `run_availability` (the producer's `check_availability` with its metadata cache under `cache/<producer>/`, ADR-035), `run_check` (the producer's `check_command` with `root=` the store's directory and the same cache, ADR-036), `run_download` (the producer's `run_command` with `root=`, the same cache and a kept plan, then `refresh_view` of its files' scopes, also of the units it named when interrupted, ADR-037) | stdin: `JobSpec`; stdout: JSON Lines `WorkerMessage`; stderr: `jobs/<id>.log`; warnings and errors also app records in `JobSpec.log_dir` |
+| server `archiwista serve` | user | Uvicorn with the `create_app` application, `JobSupervisor`, `ScanScheduler`; index reads and short, bounded store reads | HTTP on `127.0.0.1:<port>` (team mode: the address of `[team]`); Nogat's logs in `<state_dir>/archiwista/logs/`, on stderr only lifecycle records and reduced errors |
+| job worker process | `JobSupervisor`, one per job, in its own process group (`python -P -m archiwista.jobs.worker`) | `RUNNERS`: `run_scan`, `run_footprints`, `run_link_check`, `run_own_scan`, `run_snapshot`, `run_preview`, `run_availability` (the producer's `check_availability` with its metadata cache under `cache/<producer>/`, ADR-035), `run_check` (the producer's `check_command` with `root=` the store's directory and the same cache, ADR-036), `run_download` (the producer's `run_command` with `root=`, the same cache and a kept plan, then `refresh_view` of its files' scopes, also of the units it named when interrupted, ADR-037), `run_preview_warm` (ADR-041), `run_project_verify`, `run_project_check`, `run_project_repin` and `run_project_restore` (`jobs/project_jobs.py`, A-ADR-049 decision 11) | stdin: `JobSpec`; stdout: JSON Lines `WorkerMessage`; stderr: `jobs/<id>.log`; warnings and errors also app records in `JobSpec.log_dir` |
 | rendering pool | `RenderPool`, by default `min(4, cpu)` long-lived processes `python -P -m archiwista.previews.worker` | GDAL, OGR, laspy and ZIP: open attempt, thumbnail, tile, objects, ZIP and layer composition; time and memory limit, process restart after an error | queue ≤ 64, a shared request counted once, files in `previews/`; warnings and errors app records in `--log-dir` |
 | own-data reader | `OwnReader` (`owndata/reader.py`) | one file from the folder at a time, GDAL in an isolated process; GeoPackage read consistently without writing at the source | response with metadata for the scan |
 | area reader | `read_area_file` (`AREA_READER_COMMAND`: `python -P -m archiwista.area_reader`) | GDAL reads an untrusted area file, 30 s limit | one JSON line on stdout |
@@ -372,7 +393,10 @@ at once, stays below it whatever the number of sheets. The server's own threads:
 `archiwista-scheduler` (the `ScanScheduler` loop, every `TICK_S` = 60 s),
 `archiwista-probe-<store>` (a probe of an unavailable
 store, at most `PROBE_TIMEOUT_S` = 10 s), `archiwista-job-<id>` (the reader of
-stdout of one worker process in `JobSupervisor`), a `threading.Timer`
+stdout of one worker process in `JobSupervisor`), `archiwista-job-cancels` (the cancel
+requests of the supervisor's jobs, every `CANCEL_POLL_S` = 0.5 s), `archiwista-render-<n>`
+(one per process of the rendering pool, with `archiwista-render-<n>-out` reading its
+answers), a `threading.Timer`
 killing an interrupted process after `STOP_TIMEOUT_S` (30 s), a timer removing the
 startup file after the token validity ends, and the `webbrowser.open` thread. Listeners of
 `JobSupervisor.subscribe` run in the supervisor thread under its lock, so the
@@ -398,15 +422,19 @@ in batches: `BATCH_ENTRIES` (1000) entries or whatever arrived within
 `BATCH_SECONDS` (1 s) of the first entry of the batch — one transaction per
 batch. Between processes writes are serialised by SQLite (WAL, `BEGIN IMMEDIATE`,
 `busy_timeout` 10 s; readers do not wait), and the supervisor allows at most
-one job writing a store's index (`INDEX_JOB_KINDS`: `scan`,
+one job writing a store's index (the kinds of the index conflict in `JOB_RULES`: `scan`,
 `footprints`): it checks this in the `jobs` table, so also against jobs of another
 process, e.g. `archiwista reindex` (`JobConflictError` → `409 conflict`).
 Besides the scan write thread, the index is written by: the supervisor (`jobs`, `job_events`,
 `IndexWriter.sync_stores`), the server (`refresh_view` and `write_area`
-in the area routes, `record_project` after a change of a project file,
-`session_tokens`) and the other jobs in worker
-processes — `footprints` (`write_footprints`) and `link_check`
-(`record_issue`, `clear_issue`).
+in the area routes, `record_project` after a change of a project file and
+`remove_project` after its deletion, `write_version_calls` for the calls of stored
+versions, `session_tokens`) and the other jobs in worker
+processes — `footprints` (`write_footprints`), `link_check`
+(`record_issue`, `clear_issue`), `own_scan` (`write_own_files` and the other own-data
+tables), `snapshot` (`record_snapshot`), `availability` (`write_availability`),
+`check` (`write_plans`) and the jobs over a project's groups (`record_project`,
+`write_version_calls`).
 
 **The server process does not render data.** Short store reads are
 `refresh_view` in `GET /local-coverage`, the access probe and the project status
@@ -437,18 +465,19 @@ The same file gives the table `gui`, the ecosystem's GUIs of the deployment
 A project's data folder may overlap none of these directories (`AppPaths.own_dirs`), and a
 job knows them from its index and its preview cache (`JobSpec.app_paths`). Apart from these,
 Archiwista writes **only** snapshots, the project file `archiwista-project.json`
-and its area files in the project directory, on the command of a person with
-`project.write` (A-ADR-049); the store remains unchanged.
+with its area files in `obszary/` and the exports `eksport/<name>/` in the project
+directory, on the command of a person with `project.write` (A-ADR-049); the store
+remains unchanged.
 
 | Path (`AppPaths`) | Contents | Rebuildable | Who writes |
 |---|---|---|---|
 | `config_file` = `config.toml` | `AppSettings`: port, offline mode, store and project directories, `own_data_dirs` (an exception to `<project directory>/dane/`), `preview_cache_limit_gb` (20), `basemaps` (OpenFreeMap vector and OSM GUGiK by default) and permissions; a retired `year_types` is ignored | no (wizard or Settings) | `SettingsService.update` → `ConfigStore.save` |
-| `index_file` = `index.sqlite` (+ `-wal`, `-shm`) | index of stores, projects, own files, snapshots and areas, job history, token hashes | yes, schema 6 rebuilt with a full scan | `IndexWriter`, `JobSupervisor`, `security.py` |
-| `state_file` = `state.sqlite` | accounts, groups, roles, project access, passwords, each person's preferences, the action log | **no** — backup with `archiwista state export` | `StateStore` |
+| `index_file` = `index.sqlite` (+ `-wal`, `-shm`) | index of stores, projects, own files, snapshots and areas, job history, token hashes | yes, schema 18 rebuilt with a full scan | `IndexWriter`, `JobSupervisor`, `security.py` |
+| `state_file` = `state.sqlite` | accounts, groups, roles, project access, passwords, each person's preferences, the action log, the feedback reports | **no** — backup with `archiwista state export` (the feedback reports only in a copy of the file) | `StateStore` |
 | `cache_dir` = `cache/<producer>/` (beside `previews/`, in `cache_home` when set) | plugin cache (`SourceContext.cache_dir`); Kartograf: `unit_bboxes.sqlite` (`UnitBBoxCache`) | yes, from the network | adapter |
 | `jobs_dir` = `jobs/` | `<id>.log` (stderr of the worker process), `owner-<pid>.lock` (job supervisor lock), `<id>.cancel` (a cancel request for the job's supervisor, ADR-038) | logs not needed for operation | `JobSupervisor`, worker processes |
 | `logs_dir` = `logs/` (in `state_home`, else the data directory) | `access-`, `app-` and `lifecycle-YYYY-MM-DD.jsonl`: the server's logs, `nogat-log/1` (A-ADR-057) | not needed for operation; deleted 14 days after their date | the server's `ServerLog` (`server_logging`), job and render processes (`log_to_server`) |
-| `areas_dir` = `areas/` | `<id>/area.*` (copy of the area file), `.incoming/<random>/` (file being read) | load the file again | `AreaFiles` |
+| `areas_dir` = `areas/` | `<id>/area.*` (copy of the area file), `.incoming/<random>/` (file being read), `<id>.geojson` (the area as the GeoJSON a producer reads, `write_area_geojson`; never pruned) | load the file again | `AreaFiles` |
 | `open-<random>.html` in the data directory | start page with the token address for the browser (`LaunchFile`, `0600` file) | — | `serve_main`; disappears after the token is used, after 10 min and on shutdown |
 | `previews_dir` = `previews/` (in `cache_home` when set) | `cache.sqlite`, `objects/<key>/<renderer>-r<version>/`: detection, thumbnails, tiles, COG, copies for consistent SQLite reads; local LRU | yes | `PreviewCache`, `RenderPool`, `preview` job |
 | `work_dir` = `work/` | private working directories of processes; cleaned up after shutdown or a crash | yes | `sandbox.process_work_dir`, readers and renderers |
@@ -500,7 +529,7 @@ A cache rebuilt from the producers' files (A-ADR-002),
 - **Schema version** `SCHEMA_VERSION` (6 in release 0.2.0, 7 since the index of
   IMGW slots, 8 since the availability reports, 9 since the plans of `check` jobs
   and the job state `partial`, 10 since the stations of the station catalogs, 11 since the coverage of the series of stations, 12 since a plan per call of a `check` job, 13 since a project is its directory with the manifest of each producer, 14 since the claims of planned downloads, 15 since a project is Archiwista's project file with its stores, groups and pins, and `versions.content_sha256`, 16 since the producers' calls of stored versions in `version_calls`, 17 since the sets' states and the pins' calls: `pin_groups.state`, `closed_at`, `closed_by`, `pins_sha256` and `digest_state`, `pins.calls`, 18 since the producer `imgw` is called `obserwator` (Nogat ECO-057)) in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
-  `serve`, `reindex`, `token`) calls `initialize`: a different version (older
+  `JobSupervisor` at its start, `serve`, `reindex`, `token`) calls `initialize`: a different version (older
   or newer) means a rebuild instead of a migration — all objects are dropped
   and created anew in a single transaction (`BEGIN IMMEDIATE`), which
   readers in other processes see either before or after; then `VACUUM`.
@@ -541,7 +570,11 @@ A cache rebuilt from the producers' files (A-ADR-002),
   each station of that version: first and last date with a value, gaps and the
   station's own periods as JSON, accumulated sums, the series file) and
   `series_years` (each year of a variable in both kinds of years: units, known
-  units, units with a value; deleted with its variable), `session_tokens`.
+  units, units with a value; deleted with its variable), `session_tokens`, and the
+  own data of projects (decision 8): `own_folders` (one per project, keyed by the
+  project directory after `realpath`), `own_files`, `own_file_states` (at most 200
+  per file), `snapshots` (the `.wersje/` of a folder with the full `migawka.json`)
+  and `own_problems`.
   Triggers delete `footprints`, `search` and `station_points` rows together with
   the version, the slot and the station.
 - **Public keys** are the store identifier from the settings and the relative
@@ -566,7 +599,7 @@ A separate file next to the index (`state/schema.py`) that no
 file on disk can rebuild (A-ADR-029): rebuilding the index does not touch it.
 
 - **Schema version** `STATE_SCHEMA_VERSION` = number of `MIGRATIONS` (2 in release
-  0.1.0, 3 from v0.4, 4 with the projects' activity). `initialize` runs the missing
+  0.1.0, 3 from v0.4, 4 with the projects' activity, 5 with the feedback reports). `initialize` runs the missing
   migrations in a single transaction and checks foreign keys; a database from a newer
   Archiwista (higher `user_version`) raises `StateError`, with no changes to the file.
   WAL, `synchronous = FULL`.
@@ -586,13 +619,17 @@ file on disk can rebuild (A-ADR-029): rebuilding the index does not touch it.
   the indexes `action_log_target (target, at)` and `action_log_project
   (json_extract(details, '$.project'), at)`, through which
   `StateStore.project_activity` reads a project's `project.*` entries and the
-  `job.*` entries of its jobs.
+  `job.*` entries of its jobs. Version 5 adds `feedback`, the reports of „Zgłoś uwagę”
+  (the text, an optional contact, the page, the browser, optional diagnostics as JSON,
+  whether an administrator has read it and the account that sent it, `NULL` for the
+  local owner; the limits of Hydrograf's table as checks; SPEC 4.3).
 - **Backup:** `archiwista state export [--output PLIK]` writes a JSON
   document `archiwista-state/2` (`export_state`: one consistent snapshot,
   `dump_state`) with the password hashes, so the file gets mode `0600`;
   `archiwista state import PLIK` (`parse_state`, `import_state`,
   `StateStore.restore`) accepts only an empty database — restoring from a backup, not
-  merging — and reads `archiwista-state/1` too (its log becomes `ok` entries).
+  merging — and reads `archiwista-state/1` too (its log becomes `ok` entries). The
+  feedback reports are not in that document: a copy of the database file keeps them.
 
 ---
 
@@ -765,8 +802,13 @@ interval after the end of the last scan, for any store that would not otherwise 
 with a job writing the index is skipped. An `unavailable` store is only
 probed, and scanned when the probe finds it and its directory is not
 an empty mount point (`store_unreachable`). A store added or
-moved in settings gets a full scan immediately. Once an hour
-(`PRUNE_INTERVAL`) the tick prunes the job history (`JobSupervisor.prune`).
+moved in settings gets a full scan immediately. The data folders of every project
+get an `own_scan` the same way (`plan_own_scan`, every `scan_interval_local_min`),
+and with `preview_warm_after_scan` a store whose scan indexed new versions gets a
+`preview_warm` job of them (ADR-041). Once an hour
+(`PRUNE_INTERVAL`) the tick prunes the job history (`JobSupervisor.prune`) and the
+action log entries older than `action_log_retention_days`
+(`StateStore.prune_actions`, logged as `log.prune`).
 
 **Related jobs.** `footprints` (`POST …/footprints`, refused in offline
 mode): `entries_without_footprint` → `footprint(entry, network=True)`
@@ -829,23 +871,26 @@ of the code):
 1. **Response headers** computed at the start of the request: CSP from the current
    settings (`csp_header`), `Referrer-Policy: no-referrer`,
    `X-Content-Type-Options: nosniff`, in team mode
-   `Strict-Transport-Security: max-age=31536000`, and for `/api/v1/session*`
-   `Cache-Control: no-store`; every response gets them, including a refusal.
+   `Strict-Transport-Security: max-age=31536000`, and for `/api/v1/session*` and
+   `/api/v1/admin/*` `Cache-Control: no-store`; every response gets them, including a refusal.
 2. **`Host`** must be one of `Transport.hosts`: in local mode `allowed_hosts(port)`
    (`127.0.0.1:<port>`, `localhost:<port>`), in team mode the host of `origin`
    (`origin_hosts`) → otherwise `403 invalid_host` (protection against DNS
    rebinding). `X-Forwarded-Host` is never read.
 3. **`Origin` and `Sec-Fetch-Site`** (`origin_rejection`): a present `Origin`
-   must be `http://<host>`; with `Sec-Fetch-Site` a read passes only
+   must be `http://<host>` (in team mode the team's `origin`); with `Sec-Fetch-Site` a read passes only
    from `same-origin` or `none`, or as a top-level navigation from another site
    (`Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document` or none) outside `/api`;
    a state change only from `same-origin`
    and with `Origin` → otherwise `403 csrf_rejected`. A client without these headers
    (curl, an agent script) passes on.
 4. Paths outside `/api` (`/`, `/instrukcja`, `/static/…`) and public requests
-   (`POST /api/v1/session`, the `/api/docs` files) end the session check here.
+   (`POST /api/v1/session`, `POST /api/v1/session/login`, `POST /api/v1/session/proxy`,
+   `GET /api/v1/session/methods`, the `/api/docs` files) end the session check here.
 5. **Session:** the `archiwista_session` cookie (`__Host-archiwista_session` in team
-   mode) in `SessionStore` → otherwise `401 session_required`.
+   mode) in `SessionStore` → otherwise `401 session_required`; a session signed in
+   through the proxy also needs a trusted proxy naming the same person
+   (`named_by_proxy`), else the session ends → `401 session_required`.
 6. **CSRF token:** `X-Archiwista-CSRF` equal to the session token in **every**
    `/api` request, including a read (`csrf_rejection`, comparison with
    `hmac.compare_digest`) → otherwise `403 csrf_rejected`.
@@ -855,13 +900,15 @@ of the code):
    than its account's `sessions_revoked_at` (`StateStore.revoke_sessions`, also written
    by another process such as the command line) and an agent session from before
    `revoke_agent_sessions` (a different generation in `index_info`) end the session
-   → `401 session_required`. A request that has passed these checks moves the end of
+   → `401 session_required`. A session of a temporary password reaches only the
+   routes of `PASSWORD_CHANGE_ROUTES` → otherwise `403 password_change_required`.
+   A request that has passed these checks moves the end of
    the session forward and records it as its last request (`SessionStore.extend`).
 8. **Body limit** (`body_limit`, only after the header checks, so the body
    of a request without a session is not read): 4 KiB for `/api/v1/session`,
-   1 MiB for the others, `POST /api/v1/areas` reads the body itself with its own
-   limit; a declared `Content-Length` over the limit is refused before
-   reading → `413 request_too_large`.
+   16 KiB for `/api/v1/session/login`, 1 MiB for the others, `POST /api/v1/areas`
+   reads the body itself with its own limit; a declared `Content-Length` over the
+   limit is refused before reading → `400 request_too_large`.
 9. The session and principal go into `request.state`; the route takes them through
    `require_session` / `current_principal`, and the projects visible to the
    principal through `visible_projects` (`Authorizer.visible_projects`,
@@ -916,7 +963,8 @@ ends all of them.
    The route answers `202` with `JobDetail` and `Location: /api/v1/jobs/{id}`.
 2. **Start**, when there is room: at most `default_max_jobs()` processes
    (half of the processors, at least 2) and `MAX_NETWORK_JOBS` (2) network
-   jobs; the rest wait in the queue. Before the start the supervisor reconciles
+   jobs, of them at most `network_jobs_per_person` of one person (ADR-047);
+   the rest wait in the queue. Before the start the supervisor reconciles
    the index stores with the settings (`sync_stores`), launches the
    worker process in its own process group, writes `encode_spec(JobSpec)` (with
    `PROTOCOL_VERSION`, the settings from the moment of the start, the path of the index
@@ -980,13 +1028,14 @@ ends all of them.
 6. **History** — `prune` at start and from the scheduler: finished jobs
    and logs of 90 days (`LOG_MAX_AGE`; the last job of each store
    and kind stays), logs together at most 1 GB, routine scans
-   (incremental from the scheduler, successful, without changes) after 48 h
+   (incremental from the scheduler, successful, without changes) and routine
+   `own_scan` runs after 48 h
    (`ROUTINE_SCAN_MAX_AGE`), the cancel requests of jobs that are not active.
 7. **Retry and log** (`services/jobs.py`, ADR-038) — `retry` submits the kind,
    store and parameters of a job that did not succeed again as a new job of
-   the principal (a download asks `store.write` again, a snapshot
-   `project.write`, a project's download or repin both through
-   `services/project_jobs.require`, ADR-040); `log` reads the end of
+   the principal (a download asks `store.write` again, with its `pin` also
+   `project.write`, a snapshot `project.write`, a project's repin or restore both
+   through `services/project_jobs.require`, ADR-040); `log` reads the end of
    `<jobs>/<id>.log` (`LogTail`, the last MiB) for a principal who sees the
    whole job (`sees_whole`).
 
@@ -1018,21 +1067,21 @@ with `Location`):
   `IndexWriter.write_area`.
 - **File** (any other content type, raw bytes; parameters `name`, `layer`)
   → `save_area_file`:
-  1. content over `AREA_BODY_LIMIT_BYTES` (50 MB) → `413 area_too_large`
+  1. content over `AREA_BODY_LIMIT_BYTES` (50 MB) → `400 area_too_large`
      (`check_body_size`);
   2. `read_area_file` writes the content under a random name in
      `areas/.incoming/<random>/upload` (the client's path is never
      opened) and runs `AREA_READER_COMMAND` in the environment
      `sandbox.untrusted_env`: without GDAL/PROJ network, without proxy and credentials,
      with `GDAL_PAM_ENABLED=NO` and `GDAL_DISABLE_READDIR_ON_OPEN=EMPTY_DIR`;
-     after 30 s the process is killed (`422 area_unreadable`);
+     after 30 s the process is killed (`500 area_unreadable`, code `data_error`);
   3. `area_reader.read_area` recognises the format by content (GeoJSON,
      GeoPackage, ZIP with one Shapefile), checks the archive before
      unpacking (`MAX_MEMBERS` members, together ≤ `UNPACKED_LIMIT_BYTES`
      = 200 MB according to the headers, nothing outside the directory, no links or encryption),
      in GeoJSON accepts only `crs` of type `name` (GDAL would fetch `link`/`url`
      over HTTP), merges polygons (≤ `MAX_VERTICES` = 100,000, otherwise
-     `422 area_too_complex`) and returns one JSON line: `geometry`, `crs`,
+     `400 area_too_complex`) and returns one JSON line: `geometry`, `crs`,
      `format`, `layer`, `features`, `vertices` or a refusal with `layers` to
      choose from;
   4. `area_from_file` converts the geometry to WGS84 with the pinned operation
@@ -1175,13 +1224,15 @@ the CLI: `tests/integration/test_team_permissions.py`).
   (`PermissionDeniedError` → `403 permission_denied`) and
   `visible_projects(principal)`. Actions (`Action`): `project.view`,
   `project.share`, `project.write` (since v0.2: snapshots of project files;
-  since v0.3: adding a manifest or a task to a project and removing a task,
-  ADR-039, and a project's download and repin, ADR-040; since v0.4: its data
+  since A-ADR-049: changing the project file (name, description, area, stores, sets
+  and pins), an export and the deletion of the project, a download that pins into
+  it, and a project's repin and restore, ADR-040; since v0.4: its data
   folder), `project.create` (v0.4: every principal acting for a person, not the
   scheduler), `users.manage`, `groups.manage`, `settings.write`, `store.write`,
   `store.scan` (v0.4: `admin`), `job.cancel`, `log.read` (v0.4: reading and
-  exporting the action log, administrators only).
-  `admin` manages accounts, groups and settings, scans the stores, reads the action
+  exporting the action log, administrators only), `feedback.manage` (the feedback
+  reports, administrators only).
+  `admin` manages accounts, groups, settings and the feedback reports, scans the stores, reads the action
   log, sees every project, manages access to it and changes it; the owner does so for
   their own (a project without an access entry is changed only by the administrator);
   in team mode the last administrator who can sign in can be neither disabled, removed
@@ -1191,17 +1242,17 @@ the CLI: `tests/integration/test_team_permissions.py`).
   `default_project_visibility` (`public` or `private` = administrators
   only). `store.write` = the role `store_writer` or the setting
   `store_write_for_all`; a `download` job needs it (`POST /jobs`, `archiwista jobs
-  start download`, and its retry, v0.3), and so do a project's download and
-  repin besides `project.write` (`POST /projects/{project}/jobs`, `archiwista
-  project-download`, `project-repin`, and their retry, ADR-040); a project's
+  start download`, and its retry, v0.3), and so do a project's repin and
+  restore besides `project.write` (`POST /projects/{project}/jobs`, `archiwista
+  project-repin`, `project-restore`, and their retry, ADR-040); a project's
   check and verification need only that the principal sees the project.
   `job.cancel` (the resource is the job's
   `actor`) is for whoever started the job and administrators (`POST
   /jobs/{job}/cancel`, `archiwista jobs cancel`, v0.3, ADR-038).
 - **Projects of every person (v0.4).** `services/projects.py` `create_project`
   asks `project.create` where no project is yet, else `project.write`: a directory
-  with an access entry, an indexed project or any producer's manifest on the disk is
-  one already. After the producer wrote the manifest, `StateStore.add_project` gives
+  with an access entry is one already. After Archiwista wrote the project file
+  (`archiwista-project.json`), `StateStore.add_project` gives
   an account that created it (a `user`, or an `agent` of one) the access entry
   (owner, `default_project_visibility`) and logs `project.create` in the same
   transaction; the local owner's project keeps no entry. `services/owndata.py`
@@ -1231,15 +1282,19 @@ the CLI: `tests/integration/test_team_permissions.py`).
   `api/dependencies.visible_projects` and pass it on: `IndexQueries` queries
   accept it as the required argument `visible`
   (`slots`, `slot`, `version`, `footprints`, `projects`, `project`,
-  `pin_problems`), and services (`store_summary`, `project_detail`) pass
+  `pin_problems`, the own data's `own_folder`, `own_files` and `own_file`, and
+  `warm_selection`), and services (`store_summary`, `project_detail`) pass
   it on. Routers and the CLI do not filter themselves. The store report counts
   unused versions against the pins of all projects, but lists
   only visible projects and their pin problems. Jobs (since v0.2):
   the scope of a job follows from `store` and `params` — a store or version job
   (`version:`) and a job without a project are visible to everyone, a job on project data only
-  (`own_scan` of a project, `snapshot`, `preview` of `file:`
-  and `snapshot:` files) is visible to whoever sees any of them; `JobSupervisor.list`,
-  `get` and `events` accept `visible`, and a `preview` job shows only
+  (`params.project`: `own_scan` of a project, a project's job; `file:` and
+  `snapshot:` refs: `snapshot`, `preview`) is visible to
+  whoever sees any of them; `get` and `events` accept `visible`, and
+  `JobSupervisor.list` shows every job of the queue, one the principal does not see
+  `hidden` with its kind, store, actor, state, times and progress counts only
+  (ADR-047 decision 3); a `preview` job shows only
   `refs` and `failed[]` of visible projects (counters in full).
 - **Project key** is the directory after `realpath` (`access_key`): the same
   in `project_acl` of the state database and in the `projects.access_key` column of the index,
@@ -1250,8 +1305,8 @@ the CLI: `tests/integration/test_team_permissions.py`).
   Every change of accounts, groups and access goes to the action log
   (`action_log`) with the actor, kind, session and client address; so do the jobs
   people start, retry (`JobSupervisor`, its `record`, an `ActionRecorder`) or cancel
-  (`services/jobs.py`), a change of the settings (`api/settings.py`) or of a project's
-  tasks (`services/projects.py`) and a refused request (`api/errors.py` `DenialLog`;
+  (`services/jobs.py`), a change of the settings (`api/settings.py`) or of a project
+  (`services/projects.py`, `services/pins.py`), a file download (`api/files.py`) and a refused request (`api/errors.py` `DenialLog`;
   `PermissionDeniedError` carries the `action` and the `target`). Administrators
   read and export it (`log.read`, `services/log.py`; the view "Dziennik",
   `views/log.js`); an export is an entry too.
@@ -1277,12 +1332,12 @@ apart from it, it reads only its own static files from the server.
 | `api/stores.py` (`stores`) | `GET /stores`, `GET /stores/{store}` |
 | `api/slots.py` (`catalog`) | `GET /slots` (also the `project` filter), `/products`, slot and version cards, `…/sidecar`, `…/command` (the producer's call of a stored version, offline), `/requests/{parent_request}` |
 | `api/map.py` (`map`) | `GET /map/footprints`, `GET /map/sheets` |
-| `api/stations.py` (`stations`; `/map/stations` also `map`) | `GET /stations`, `GET /stations/datasets`, `GET /stations/timeline`, `GET /stations/compare`, `GET /stations/{code}`, `GET /stations/{code}/coverage`, `GET /stations/{code}/series`, `GET /map/stations` (from the index, the values of a chart or a comparison from the producer; `503` while Obserwator is not available) |
-| `api/projects.py` (`projects`) | `GET /projects`, `GET /projects/{project}`, `GET /projects/{project}/status`, `POST /projects` (`201`, `Location`), `POST /projects/{project}/tasks` (`201`), `DELETE /projects/{project}/tasks/{name}` (`project.write`; the answer is the project's card); with `jobs`: `POST /projects/{project}/jobs` (`download`, `repin`, `check`, `verify`; `202`; a download and a repin need `project.write` and `store.write`) |
+| `api/stations.py` (`stations`; `/map/stations` also `map`) | `GET /stations`, `GET /stations/datasets`, `GET /stations/timeline`, `GET /stations/compare`, `GET /stations/{code}`, `GET /stations/{code}/coverage`, `GET /stations/{code}/series`, `GET /stations/{code}/handoff` (a variable's series as a hand-off to Hydrolog, A-ADR-052), `GET /map/stations` (from the index, the values of a chart, a comparison or a hand-off from the producer; `503` while Obserwator is not available) |
+| `api/projects.py` (`projects`) | `GET /projects`, `POST /projects` (`201`, `Location`), `GET`/`PATCH /projects/{project}`, `PUT …/area`, `PUT …/stores/{producer}`, `POST …/groups` (`201`), `POST …/groups/{group}/pins`, `…/unpin`, `…/reopen`, `DELETE …/groups/{group}`, `…/groups/{group}/calls/{call}`, `POST …/exports` (`201`), `GET …/exports`, `GET …/exports/{name}/zip`, `GET …/activity` (a change needs `project.write`, a new project where none was `project.create`; the answer is the project's card); with `jobs`: `POST /projects/{project}/jobs` (`verify`, `check`, `repin`, `restore`; `202`; a repin and a restore need `project.write` and `store.write`), `POST …/groups/{group}/close`, `DELETE /projects/{project}` (`204`) |
 | `api/settings.py` (`settings`) | `GET /settings`, `PUT /settings` (`settings.write`) |
 | `api/preferences.py` (`preferences`) | `GET /preferences`, `PUT /preferences` (any session, its own) |
 | `api/areas.py` (`areas`) | `POST /areas`, `GET /areas/{area_id}`, `GET /local-coverage` |
-| `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check` (`store.scan`), `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events` |
+| `api/jobs.py` (`jobs`; only when `create_app` receives `jobs`) | `POST /stores/{store}/scan`, `…/footprints`, `…/link-check` (`store.scan`), `GET /jobs`, `GET /jobs/{job}`, `GET /jobs/{job}/events`, `POST /jobs/{job}/cancel` (`job.cancel`), `POST /jobs/{job}/retry` (`202`), `GET /jobs/{job}/log` |
 | `api/admin.py` (`permissions`) | `GET`/`POST /users`, `PATCH`/`DELETE /users/{user_id}`, `POST /users/{user_id}/password`, `DELETE /users/{user_id}/sessions`, `GET`/`POST /groups`, `PUT /groups/{group_id}/members`, `DELETE /groups/{group_id}`, `GET`/`PUT /projects/{project}/access` |
 | `api/directory.py` (`permissions`) | `GET /directory` (any session) |
 | `api/log.py` (`log`) | `GET /log`, `GET /log/export` (`log.read`) |
@@ -1291,44 +1346,46 @@ apart from it, it reads only its own static files from the server.
 | `api/compare.py` (`compare`) | `GET /compare?a=<ref>&b=<ref>` |
 | `api/commands.py` (`commands`) | `GET /commands`, `POST /commands/parse`, `/commands/validate`, `/commands/format`, `/commands/area` (a session; no network; only `area` writes, the area's GeoJSON in Archiwista's data) |
 | `api/availability.py` (`availability`) | `GET /availability` (the kept report, no network); with `jobs`: `POST /availability` (`200` with a fresh report or `202` with the `availability` job; offline `409`) |
-| `api/actions.py` (`jobs`; only with `jobs`) | `POST /jobs` (a job of `calls` of commands of a producer's catalog on a configured store: kind `check` or `download`, the latter with `store.write` and an optional `plan_job` of the same calls; `202`, refused before a job exists), `GET /jobs/{job}/plan` (the plans a `check` job kept, no network) |
-| `api/owndata.py` (`own_data`) | `GET /projects/{project}/files`, `PUT …/data-dir`, `GET …/files/{file_id}`, `…/layers`, `…/snapshot-plan`; `POST /projects/{project}/scan`, `POST …/snapshots`; previews, tiles, features and ZIP of a file and of a snapshot |
+| `api/actions.py` (`jobs`; only with `jobs`) | `POST /jobs` (a job of `calls` of commands of a producer's catalog on a configured store: kind `check` or `download`, the latter with `store.write`, an optional `plan_job` of the same calls and an optional `pin` into a set of a project, which also needs `project.write`; `202`, refused before a job exists), `GET /jobs/{job}/plan` (the plans a `check` job kept, no network) |
+| `api/owndata.py` (`own data`) | `GET /projects/{project}/files`, `PUT …/data-dir`, `GET …/files/{file_id}`, `…/layers`, `…/snapshot-plan`; `POST /projects/{project}/scan`, `POST …/snapshots`; previews, tiles, features and ZIP of a file and of a snapshot |
 | `api/files.py` (`files`) | `GET`/`HEAD /stores/{store}/versions/{version}/file`, `/projects/{project}/files/{file_id}/file`, `…/snapshots/{label}/file` (`?member=`; a link of the interface without the CSRF header, step 6 of section 5.3) |
+| `api/feedback.py` (`feedback`) | `POST /feedback` (any session, „Zgłoś uwagę”; `201`), `GET /admin/feedback`, `PATCH`/`DELETE /admin/feedback/{feedback_id}` (`feedback.manage`) |
 
 Rules in the code: Pydantic models (`api/models.py`, `models_previews.py`,
-`models_layers.py`, `models_compare.py`, `models_owndata.py`, `models_commands.py`, `models_availability.py`, `models_actions.py`, `models_stations.py`, `models_exports.py`, `models_project_jobs.py`; session
+`models_layers.py`, `models_compare.py`, `models_owndata.py`, `models_commands.py`, `models_availability.py`, `models_actions.py`, `models_stations.py`, `models_exports.py`, `models_project_jobs.py`, `models_activity.py`, `models_handoff.py`, `models_feedback.py`; session
 and administration next to the routers) also produce the OpenAPI schema
 with examples; `operationId` = the name of the route function
 (`operation_id`); `/api/v1/openapi.json` requires a session, and `/api/docs` is
 a local Swagger UI from `api/swagger/` (no CDN and no inline scripts). List
-filters are models with `extra="forbid"` (unknown parameter → `422`); `limit`
+filters are models with `extra="forbid"` (unknown parameter → `400 validation_error`); `limit`
 1–200 (`MAX_PAGE_LIMIT`, default 50); the cursor is opaque and bound
 to the query (pagination by sort key); dates are ISO. Responses
 from the index (`IndexAnswer`) have `stale` and `stale_stores` when a store is
 unavailable — the rows are then the state as of `indexed_at`, not proof that the
 files are missing. Errors are `application/problem+json` (RFC 9457) with a stable
-`code` independent of the Polish `detail`; plugin problems have a `source`
-member with the pip requirement, a producer error has a `kartograf` member
-with the unchanged message (`<producer>_error`).
+`code` independent of the language of `detail`; plugin problems have a `source`
+member with the pip requirement, a producer error has a member named after its
+package (`kartograf`, `obserwator`) with the unchanged message (`<producer>_error`).
 
 **CLI** (`archiwista`, `cli.main`):
 
 | Commands | Module | Notes |
 |---|---|---|
 | `serve [--host] [--port] [--no-browser]`, `token [--port] [--user ID] [--json \| --revoke-all]` | `server.py` | `--port 0` picks a free port; the address printed on a terminal only; `token --user ID` issues a token for an enabled account (required in team mode) |
-| `status`, `sources`, `search [ZAPYTANIE]`, `entry MAGAZYN SLOT`, `version MAGAZYN WERSJA`, `projects`, `project PROJEKT` | `reader.py` | without the server, on the local index; `--json` prints the API response model, an error as an RFC 9457 problem with exit code 1; the `search` options have the parameter names of `/slots` (`search_filters` → `CatalogFilters`) |
+| `status`, `sources`, `search [ZAPYTANIE]`, `entry MAGAZYN SLOT`, `version MAGAZYN WERSJA`, `projects`, `project PROJEKT` | `reader.py` | without the server, on the local index; `--json` prints the API response model; a refusal goes to stderr as the `archiwista-error/1` document with the registry's exit code; the `search` options have the parameter names of `/slots` (`search_filters` → `CatalogFilters`) |
 | `users list\|add\|roles\|remove\|password\|disable\|enable\|end-sessions`, `groups list\|add\|members\|remove`, `share`, `state export\|import` | `admin.py` | `users`, `groups` and `share` with `--json` use the API model; `users password ID [--temporary] [--stdin]` (typed twice without echo, or one line of standard input); `users end-sessions ID` ends the account's sessions, also of a running server; `state export [--output PLIK]`; `state import PLIK` accepts only an empty state database |
-| `reindex [--store ID]` | `jobs/reindex.py` | full scan as a `local` job in the foreground; progress on stderr, summary on stdout; exit 0, 1 (error, interruption, `conflict`), 2 (unknown store); Ctrl+C cancels |
-| `doctor` | `doctor.py` | diagnostics in Polish with a repair command for every problem |
+| `reindex [--store ID]` | `jobs/reindex.py` | full scan as a `local` job in the foreground; progress on stderr, summary on stdout; exit 0, 10 (some scans did not succeed), 11 (failed), 130 (cancelled or interrupted), 4 (`conflict`), 3 (unknown store), 14 (no stores); Ctrl+C cancels |
+| `doctor` | `doctor.py` | diagnostics in the person's language (`lang` of `nogat.toml`, Polish by default) with a repair command for every problem; exit 0, 10 (some checks failed) or 11 (all failed) |
 | `preview REF [--build] [--output PLIK.png]`, `layers --store ID --product NAZWA [--area-id ID] [--thumbnail KLUCZ]`, `compare REF REF` | `commands/previews.py`, `commands/layers.py`, `commands/compare.py` | the same services as the API, images saved on request |
 | `files PROJEKT`, `file PROJEKT PLIK`, `snapshot PROJEKT PLIK [--plan \| --note TEKST]`, `own-scan [--project PROJEKT]` | `commands/owndata.py` | list and card from the index; snapshot and scan are jobs with progress |
-| `commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE [--options JSON] [--store ID]`, `commands format PRODUCENT POLECENIE [--options JSON] [--run JSON]`, `commands area PRODUCENT POLECENIE [--options JSON] --area-id OBSZAR` | `commands/producer_commands.py` | the producers' catalogs and calls through `services/commands.py`, as `/commands`; no network, no writes but the area's GeoJSON of `area`; `--options` and `--run` take a JSON object |
+| `commands list [--producer ID]`, `commands parse PRODUCENT LINIA`, `commands validate PRODUCENT POLECENIE [--options JSON] [--store ID]`, `commands format PRODUCENT POLECENIE [--options JSON] [--run JSON]`, `commands area PRODUCENT POLECENIE [--options JSON] --area-id OBSZAR`, `version-command MAGAZYN WERSJA` | `commands/producer_commands.py` | the producers' catalogs and calls through `services/commands.py`, as `/commands`, and the call of a stored version as `GET …/versions/{version}/command`; no network, no writes but the area's GeoJSON of `area`; `--options` and `--run` take a JSON object |
 | `availability show OBSZAR --product PRODUKT [--producer ID]`, `availability check OBSZAR --product PRODUKT [--producer ID] [--force]` | `commands/availability.py` | the kept report and a check at the source through `services/availability.py`, as `/availability`; `check` runs the `availability` job in the foreground and prints the report it kept |
-| `jobs start RODZAJ PRODUCENT --store ID --call JSON [--call JSON …] [--plan ZADANIE]`, `jobs retry ZADANIE`, `jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs plan ZADANIE`, `jobs log ZADANIE` | `commands/jobs.py` | a job of a producer's calls through `services/actions.py`, as `POST /jobs` (`download` with `--plan` runs the plans of a `check` job of the same calls), and the retry of a job, as `POST /jobs/{job}/retry`, run in the foreground and printed as they ended (exit 0, 10 `partial`, 11, 130); the list, a job, its cancel and the end of its log as `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel` and `GET /jobs/{job}/log`; the plans a `check` job kept, as `GET /jobs/{job}/plan` |
-| `project-init PRODUCENT KATALOG --store MAGAZYN`, `project-add PROJEKT NAZWA POLECENIE [--options JSON] [--producer PRODUCENT]`, `project-remove PROJEKT NAZWA [--producer PRODUCENT]`, `project-status PROJEKT` | `commands/projects.py` | a new project and a task added or removed through `services/projects.py`, as `POST /projects`, `POST /projects/{project}/tasks` and `DELETE /projects/{project}/tasks/{name}`, each printing the project's card; the producers' status as `GET /projects/{project}/status`; a relative `KATALOG` is taken from the current directory; no network |
-| `project-verify PROJEKT [ZESTAW ...]`, `project-check PROJEKT [ZESTAW ...]`, `project-repin PROJEKT ZESTAW`, `project-restore PROJEKT [ZESTAW ...]` | `commands/project_jobs.py` | a job over the groups of a project as `POST /projects/{project}/jobs` starts it (A-ADR-049 decision 11), run in the foreground and printed as it ended (`JobDetail`); exit 0, 10, 11 or 130 |
+| `jobs start RODZAJ PRODUCENT --store ID --call JSON [--call JSON …] [--plan ZADANIE] [--pin PROJEKT --pin-group ZESTAW [--pin-add \| --pin-open]]`, `jobs retry ZADANIE`, `jobs list [--kind …] [--store …] [--state …] [--project …] [--limit N] [--cursor …]`, `jobs show ZADANIE`, `jobs cancel ZADANIE`, `jobs plan ZADANIE`, `jobs log ZADANIE` | `commands/jobs.py` | a job of a producer's calls through `services/actions.py`, as `POST /jobs` (`download` with `--plan` runs the plans of a `check` job of the same calls, with `--pin` pins into a set of a project), and the retry of a job, as `POST /jobs/{job}/retry`, run in the foreground and printed as they ended (exit 0, 10 `partial`, 11, 130); the list, a job, its cancel and the end of its log as `GET /jobs`, `GET /jobs/{job}`, `POST /jobs/{job}/cancel` and `GET /jobs/{job}/log`; the plans a `check` job kept, as `GET /jobs/{job}/plan` |
+| `project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit`, `project-area`, `project-store`, `project-export`, `project-exports`, `project-activity`, `project-delete`, `project-pin`, `project-draft`, `project-unpin`, `project-uncall`, `project-close`, `project-reopen` | `commands/projects.py` | a project's file and sets through `services/projects.py` and `services/pins.py`, as the routes of `/projects` (`POST /projects`, `PATCH /projects/{project}`, `…/area`, `…/stores/{producer}`, `…/exports`, `…/activity`, `DELETE /projects/{project}`, `…/groups`, `…/pins`, `…/unpin`, `…/calls/{call}`, `…/close`, `…/reopen`), each printing its result or the project's card; a relative `KATALOG` is taken from the current directory; no network |
+| `project-verify PROJEKT [ZESTAW ...]`, `project-check PROJEKT [ZESTAW ...]`, `project-repin [--plan ZADANIE] PROJEKT ZESTAW`, `project-restore [--plan ZADANIE] PROJEKT [ZESTAW ...]` | `commands/project_jobs.py` | a job over the groups of a project as `POST /projects/{project}/jobs` starts it (A-ADR-049 decision 11), run in the foreground and printed as it ended (`JobDetail`); exit 0, 10, 11 or 130 |
 | `preview-warm [--store MAGAZYN] [--product PRODUKT] [--segment SEGMENT] [--project PROJEKT] [--area-id OBSZAR]` | `commands/preview_warm.py` | the warm-up of previews through `services/warm.py`, as `POST /previews/warm`, run in the foreground and printed as it ended (exit 0, 10 `partial`, 11, 130) |
-| `stations list [--store …] [--provider …] [--dataset …] [--kind …] [--meteo-kind …] [--coverage …] [--min-complete-years …] [--q …] [--sort river\|name] [--area-id … \| --bbox … --bbox-crs …] [--boundary …] [--location …] [--limit N] [--cursor …]`, `stations timeline --dataset … [the options of stations list]`, `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [--variable …] [--store …] [--provider …] [--dataset …] [--from …] [--to …] [--max-points N] [--version …]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [--from …] [--to …] [--year-type …] [--max-points N]`, `stations datasets [--store …]` | `commands/stations.py` | the stations of the station catalogs, a page of them year by year, the card of one, the chart of its series, a comparison of 2 to 5 stations and the datasets with station series, from the index (the values of a chart or a comparison from the producer), as `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare` and `GET /stations/datasets` (every parameter an option of the same name); `missing_dependency` (exit 6) without Obserwator |
+| `stations list [--store …] [--provider …] [--dataset …] [--years …] [--year-type …] [--kind …] [--meteo-kind …] [--active …] [--river-code …] [--river-scope …] [--variable …] [--coverage …] [--min-complete-years …] [--q …] [--sort river\|name] [--area-id … \| --bbox … --bbox-crs …] [--boundary …] [--location …] [--limit N] [--cursor …]`, `stations timeline --dataset … [the options of stations list]`, `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [--variable …] [--store …] [--provider …] [--dataset …] [--resolution …] [--from …] [--to …] [--year-type …] [--max-points N] [--version …]`, `stations handoff KOD --variable … [--store …] [--provider …] [--dataset …] [--resolution …] [--from …] [--to …]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [--from …] [--to …] [--year-type …] [--max-points N]`, `stations datasets [--store …]` | `commands/stations.py` | the stations of the station catalogs, a page of them year by year, the card of one, the chart of its series, a hand-off of a variable's series to Hydrolog (A-ADR-052), a comparison of 2 to 5 stations and the datasets with station series, from the index (the values of a chart, a hand-off or a comparison from the producer), as `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/{code}/handoff`, `GET /stations/compare` and `GET /stations/datasets` (every parameter an option of the same name); `missing_dependency` (exit 6) without Obserwator |
+| `log list [--actor …] [--action …] [--outcome …] [--target …] [--since …] [--until …] [--limit N] [--cursor …]`, `log export [the same filters] [--format jsonl\|csv] [--output PLIK]` | `commands/log.py` | the action log as `GET /log` and `GET /log/export` (`log.read`) |
 
 ---
 
@@ -1342,8 +1399,8 @@ session, but behind a `Host` and `Origin` check. Each of them carries `Cache-Con
 no-cache` with its `ETag`: the browser asks again before every reuse (`304` when
 unchanged), so after an upgrade it never keeps the modules of the previous version.
 
-**Files.** `index.html` (no inline scripts: `<link>`s to `/static/styles.css` and
-`/static/nogat/nogat-app-menu.css` and `<script type="module" src="/static/src/main.js">`),
+**Files.** `index.html` (no inline scripts: `<link>`s to `/static/styles.css`,
+`/static/nogat/nogat-app-menu.css` and `/static/nogat/nogat-sources.css` and `<script type="module" src="/static/src/main.js">`),
 `styles.css` (tokens, shell, shared components), `favicon.svg`, `guide/` (the user
 guide in Polish: `index.html`, a page of slides without a script, `guide.css` over the
 tokens of `styles.css`, and its WebP pictures; "Instrukcja" in the top bar opens it),
@@ -1394,6 +1451,9 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 | `map/` | `canvas.js` (`MapCanvas`), `draw.js`, `panel.js` (`SelectionPanel`), `coverage.js` (`LocalState`), `legend.js`, `style.js` (basemap: raster or vector in its own gray style; `pickBasemap` takes the person's choice, `Preferences.basemap`, which the map view saves and waits for), `sheets.js` (sheet grids), `geo.js`, `products.js` |
 | `views/project-areas.js`, `map/source.js` | a project's area as a choice (A-ADR-049 erratum 5): `useProjectAreas` (the projects of `GET /projects` whose area file is in order), `projectsOfArea` (the projects whose area an area is) and `ProjectAreaSelect` ("Obszar projektu"), used by the map's step 1 (`map/panel.js`; the area's card names the project), the Katalog's area filter (`catalog-filters.js`) and "Obszar polecenia" of the pasted command (`map/source.js` `PasteCommand`: the area of step 1 or a project's, sent with the line to `POST /commands/area`, `applyCommandArea`, before the check); the plan window (`plan.js`) shows the area, its `way` and the replaced options and starts "Dodaj do projektu" at the area's project; a project's card (`projects.js`) links to the area's files in the Katalog and counts them |
 | `labels/` | text dictionary (below) |
+| `feedback.js`, `diagnostics.js` | „Zgłoś uwagę” (SPEC 6.5 and 9.2): `FeedbackButton` of the top bar opens the window of a report (`POST /feedback`, any session) with „Pokaż co zostanie wysłane”; `diagnostics.js` keeps in the tab's memory the last 50 events (the API calls `api.js` records with `recordCall`, the page's errors), the view and the environment, which a report attaches unless the person unchecks them (`snapshot`) |
+| `variant.js` | a product's variant for people (A-ADR-017): resolution and height system in plain words (`variantName`, `layerVariantName`, `segmentVariantNames`), one name across the catalog, the file card, the map, the fan, the timeline and the set's details |
+| `views/pin-dialog.js`, `views/store-commands.js`, `views/switch.js` | „Dodaj do projektu…” (A-ADR-049 decision 8: the rows of a query or the chosen versions pinned into a new set or a set in the making of a project the session may change); „Polecenia producenta” of the Store view (the producer's commands that write the store, from its catalog, checked with `POST /commands/validate`); the switch „Mapa / Wachlarz / Katalog” and the address state the map and the catalog share |
 | `previews.js`, `fan/fan.js`, `fan/layout.js`, `views/catalog-timeline.js` | previews via `fetch` with CSRF and a `blob:` address, the Fan of years/snapshots, the Timeline of layers |
 | `views/own.js`, `views/compare.js`, `views/set-details.js` | own file and snapshot plan, metadata comparison and the curtain (with the lines of both versions' providers in the strip under the maps, `SourcesStrip`, and in full in its CSV), details of the selected layer |
 | `map/previews.js`, `map/own.js` | tiles and features of local layers, project data and snapshots on the map |
@@ -1414,7 +1474,10 @@ in `labels/<view>.js` and loads its style through `loadStylesheet`. Nothing else
 in the shell changes. Views of 0.2.0: `map` (start), `catalog`,
 `projects`, `store`, `setup`; overlays `file`, `own`, `compare`. Plan I8 adds
 the overlay `station` (the station card) and the view `station-compare` (the
-comparison of stations, `nav: false`).
+comparison of stations, `nav: false`). Today `VIEWS` holds `map`, `catalog`,
+`projects`, `jobs`, `store`, `compare` and `station-compare` (`nav: false`), `setup`
+and, for administrators, `accounts`, `groups`, `feedback` and `log`; `OVERLAYS`
+holds `file`, `own` and `station`.
 
 **Dictionary.** The interface does not put texts into components
 (`CLAUDE.md`, DEV-2.3): `labels/index.js` assembles the shared part
@@ -1458,15 +1521,15 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   `Authorizer.require(principal, "store.write")` (`store_writer` or
   `store_write_for_all`) before a `download` exists, for the API, the CLI and an
   agent token alike. The source interface has the optional capability
-  `ActionAdapter` (ADR-034): `commands`, `validate`, `format`, `check` and `run`
-  (`upgrade=True`: the update mode of a re-pin), `AreaCommandAdapter` (A-ADR-049
+  `ActionAdapter` (ADR-034): `commands`, `parse`, `validate`, `format`, `availability_products` and `availability`, `check`, `run`
+  (`upgrade=True`: the update mode of a re-pin), `scope` and `narrow`, `AreaCommandAdapter` (A-ADR-049
   erratum 5): `with_area`, a call over an area of Archiwista (as its geometry
   file, else the box that encloses it), and `VersionCommandAdapter`
   (A-ADR-049 D-10): `command_for_version`, the call that selects a stored version
   again, which `services/commands.py` keeps in the index's `version_calls` per
   producer version. `ProjectActionAdapter` (ADR-039, ADR-040) is gone with the
-  producers' manifests; the project jobs (verify, check, re-pin, restore) come
-  back over Archiwista's project file (plan P4).
+  producers' manifests; the project jobs (verify, check, re-pin, restore) are
+  back over Archiwista's project file (plan P4, `services/project_jobs.py`).
 - **Team mode (v0.4, A-ADR-013, A-ADR-046, A-ADR-047).** Built so far: the `[team]`
   settings, the refusals to start, TLS and the transport rules (section 6), the
   password table and the action log of `state.sqlite` (4.2), passwords with temporary
@@ -1477,9 +1540,9 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   scan limits, the action log with its reading, export and screen (section 7), the
   shared queue with the limits per person and the jobs view, the file download
   (`api/files.py`), and each person's preferences and path aliases
-  (`api/preferences.py`, "Moje ścieżki…"). T12 has selected automated
-  acceptance and action-matrix checks; the full planned route-permission
-  coverage and live three-computer SMB/TLS check remain pending
+  (`api/preferences.py`, "Moje ścieżki…"). T12 checked every route of the
+  permission matrix with each kind of principal; the LAN runbook ran once on one
+  machine, and the three-computer SMB/TLS run remains the author's
   (`PROGRESS.md`, `reports/v0.4-lan-runbook.md`). Sessions live in the
   memory of a single server (`SessionStore`).
 - **Second producer: Obserwator and ČHMÚ (v0.5–v0.6, A-ADR-019, A-ADR-024,
@@ -1489,8 +1552,8 @@ with snapshots are already implemented (sections 2–9); below are the boundarie
   through `iter_store`, judges its raw root by the marker `obserwator-store.json` and
   its data root by `obserwator-data.json` (`DataRootAdapter`, A-ADR-056), and
   never imports `pyarrow`; without the package the source has the state
-  `not_installed`, and the producer's errors have the code `obserwator_error`
-  (`PRODUCER_CODES`). The test plugin `tests/fixtures/second_source/` (a flat
+  `not_installed`, and the producer's errors have the reason `obserwator_error`
+  (`PRODUCER_REASONS`). The test plugin `tests/fixtures/second_source/` (a flat
   store without segments, sheets and links) passes through the scanner, index
   and API with no changes in the core
   (`tests/integration/test_second_adapter.py`). A store accepts Obserwator's raw
@@ -1571,7 +1634,9 @@ the test account has no access to hardware WebGL; SwiftShader reached
   catalog rows close to the view.
 
 Performance tests (skipped by default, markers `perf` and `smb`):
-`tests/perf/test_store_50k.py`, `test_previews_perf.py` and
-`test_own_data_perf.py`; commands and conditions — the v0.2 report. The page of the
+`tests/perf/test_store_50k.py`, `test_scan_perf.py`, `test_index_perf.py`,
+`test_api_perf.py`, `test_previews_perf.py` and
+`test_own_data_perf.py`; commands and conditions — the v0.2 report; the warm-up of
+v0.3: `test_warm_perf.py` ([`reports/v0.3-measurements.md`](reports/v0.3-measurements.md)). The page of the
 Timeline: `tests/integration/test_station_timeline_api.py` (`-m perf`, a synthetic
 index of its own).

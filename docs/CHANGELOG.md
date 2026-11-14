@@ -1262,6 +1262,13 @@ command-line interface may change.
 
 ### Changed
 
+- Documentation audited against the code of 2026-11-14: README, `CLAUDE.md`'s maps,
+  SPEC, ARCHITECTURE, USAGE, AGENT_API, PRD and SCOPE state what the code does (the Nogat
+  standard 1.0, the routes, models, commands, exit codes, job kinds, index and state
+  schemas and the views as they are); `docs/PROGRESS.md` holds only Status, Next and Open
+  questions (Nogat DOC-6.1); ADRs whose facts changed have errata dated 2026-11-14, and the
+  decisions accepted by the merge of 2026-11-03 say so in the index.
+
 - **Breaking:** Obserwator is re-pinned from `f9f4ee79` to `0591b82`, which keeps a store
   in two roots (its ADR-015 and ADR-017; A-ADR-056). Archiwista runs only Obserwator's
   `store sync`, into the raw root: `series build` and `store catalog` leave

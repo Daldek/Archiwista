@@ -1,6 +1,6 @@
 # Archiwista: a local web application for browsing spatial-data stores
 
-Archiwista is a local web application for browsing the spatial-data stores that Kartograf writes (and, from v0.5, the IMGW archives that Obserwator writes): catalog, map, file previews, version comparison, and project folders with snapshots of own data. It has a web interface, an HTTP API and a command line, and never writes to a store.
+Archiwista is a local web application for browsing the spatial-data stores that Kartograf writes (and the IMGW-PIB and ČHMÚ archives that Obserwator writes): catalog, map, file previews, version comparison, and project folders with snapshots of own data. It has a web interface, an HTTP API and a command line, and never writes to a store.
 
 ## When to use
 
@@ -21,7 +21,7 @@ Archiwista is a local web application for browsing the spatial-data stores that 
 
 ## Run
 
-Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista 0.2 needs Kartograf 0.8.0 with its public read API of the store (KA-1 to KA-6); `pyproject.toml` pins the commit that has it until the tag `v0.8.0` exists, and `uv.lock` pins every package with its SHA-256 sum.
+Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista needs Kartograf 0.8.0 with its public read API of the store (KA-1 to KA-6) and its commands; `pyproject.toml` pins a commit of Kartograf's `develop` that has them until the tag `v0.8.0` exists (the optional Obserwator, the extra `obserwator`, likewise until `v3.0.0`), and `uv.lock` pins every package with its SHA-256 sum.
 
 ```bash
 uv sync --locked                      # the environment in .venv, from uv.lock
@@ -30,15 +30,15 @@ uv run archiwista doctor              # checks the installation
 uv run archiwista serve               # starts the server and opens the browser
 ```
 
-`archiwista doctor` checks the settings file, `nogat.toml` (below), the Kartograf plugin (version and the schemas `kartograf-meta/1` and `kartograf-store/1`), every store and project directory, the local data directory (write access, access of other accounts) and the free port, and names where the data directory, the caches, the server's logs, the language of the command line and the GUIs of the menu „Aplikacje” come from. Every problem has a line telling how to fix it, for example the command that installs a missing package.
+`archiwista doctor` checks the settings file, `nogat.toml` (below), the producer plugins (version and schemas, for Kartograf `kartograf-meta/1` and `kartograf-store/1`) and their default roots, every store and project directory, the local data directory (write access, access of other accounts), team mode (`[team]`) and the free port, and names where the data directory, the caches, the server's logs, the language of the command line and the GUIs of the menu „Aplikacje” come from. Every problem has a line telling how to fix it, for example the command that installs a missing package.
 
-The server listens on `127.0.0.1` only (port 8090, the setting `port`; `--port N` changes it for one run, `--port 0` picks a free one). It opens a one-time address `http://127.0.0.1:8090/#token=…` (valid for 10 minutes, works once) in the browser and, on a terminal, prints it; `--no-browser` only prints it. Started without a terminal (by a service manager such as systemd, whose journal keeps standard output) it prints nothing: `archiwista token` issues an address. On the first run a wizard asks for the Kartograf store root (the directory that holds `kartograf-store.json` and the product directories, usually called `data/`), optionally the project directories and the offline mode; after saving, the server indexes the store in the background and a bar above the views shows the progress. `Ctrl+C` stops the server. A browser session ends after 24 hours without use and with the server; `archiwista token` issues a new address. The views are described in [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md); "Instrukcja" in the top bar opens a short guide in Polish with pictures, `/instrukcja` of the running server, which needs no session.
+The server listens on `127.0.0.1` only (port 8090, the setting `port`; `--port N` changes it for one run, `--port 0` picks a free one). It opens a one-time address `http://127.0.0.1:8090/#token=…` (valid for 10 minutes, works once) in the browser and, on a terminal, prints it; `--no-browser` only prints it. Started without a terminal (by a service manager such as systemd, whose journal keeps standard output) it prints nothing: `archiwista token` issues an address. On the first run a wizard asks for the Kartograf store root (the directory that holds `kartograf-store.json` and the product directories, usually called `data/`) and, with the Obserwator plugin installed, Obserwator's raw root and data root (A-ADR-056), optionally the project directories, the offline mode and the limit of the preview cache; after saving, the server indexes the store in the background and a bar above the views shows the progress. `Ctrl+C` stops the server. A browser session ends after 24 hours without use and with the server; `archiwista token` issues the one-time address of an agent's session (valid for 5 minutes). The views are described in [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md); "Instrukcja" in the top bar opens a short guide in Polish with pictures, `/instrukcja` of the running server, which needs no session.
 
-The first start after an update from 0.1 rebuilds the local index (`SCHEMA_VERSION = 6`) and runs a full scan: with a disconnected store, wait with the update or connect the store before the scan.
+The first start after an update that changes the schema of the local index (`SCHEMA_VERSION = 18`; 0.2.0 has 6) rebuilds it and runs a full scan: with a disconnected store, wait with the update or connect the store before the scan.
 
 ## Deploy
 
-Archiwista 0.2 is for one person on one computer: the server listens on `127.0.0.1` only and every `/api` request needs the session that the one-time address starts. A server for a team on a local network (sign-in, roles, project sharing) is planned for v0.4 (A-ADR-013); Windows comes with v1.0. The server is a foreground process (`archiwista serve`); the previews of files are rendered by isolated processes, not by the server.
+Archiwista 0.2 is for one person on one computer: the server listens on `127.0.0.1` only and every `/api` request needs the session that the one-time address starts. A server for a team on a local network (sign-in, roles, project sharing; A-ADR-013) is v0.4, built in `develop` and not released: the table `[team]` of `config.toml` ([USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md), "Team server"); Windows comes with v1.0. The server is a foreground process (`archiwista serve`); the previews of files are rendered by isolated processes, not by the server.
 
 Archiwista itself writes nothing in a store: from v0.3 a download goes through the producer's API, which writes it, on the command of a person allowed to (`store.write`). The local index and the preview cache live in the user's account. Its own writes, on the command of a person allowed to change the project (`project.write`), are in a project directory only: the project file `archiwista-project.json` with its area in `obszary/` (`project-init`, `project-edit`, `project-area`, `project-store`; A-ADR-049), its exports in `eksport/<name>/` and `eksport/<name>.zip`: copies of the pinned files with `README.txt` (`project-export`), and a snapshot in the data folder of a project (`<project directory>/dane/.wersje/` by default). The data folder is indexed read-only. `archiwista doctor` prints the local paths below.
 
@@ -47,7 +47,7 @@ Archiwista itself writes nothing in a store: from v0.3 a download goes through t
 | settings `config.toml` | `~/.config/archiwista/` | the wizard or the "Ustawienia" (Settings) view |
 | index `index.sqlite` | `~/.local/share/archiwista/` | yes: `archiwista reindex` |
 | state database `state.sqlite`: accounts and their password hashes, groups, project sharing, preferences, the action log, the feedback reports | `~/.local/share/archiwista/` | **no**: back up with `archiwista state export` (a secret, mode `0600`), restore with `state import`; the feedback reports are not in that export: copy the file with `sqlite3 ~/.local/share/archiwista/state.sqlite ".backup '<backup-dir>/state.sqlite'"` (a secret too: it holds the password hashes) |
-| `cache/`: unit boundaries (TERYT, KU) fetched by the plugin | `~/.local/share/archiwista/`, or `<cache_dir>/archiwista/` | yes, from the network |
+| `cache/`: the producer plugins' caches, e.g. unit boundaries (TERYT, KU) and Kartograf's metadata of availability checks | `~/.local/share/archiwista/`, or `<cache_dir>/archiwista/` | yes, from the network |
 | `jobs/`: logs of background jobs (90 days, 1 GB at most) | `~/.local/share/archiwista/` | not needed for work |
 | `logs/`: the server's logs (below), one file per kind and UTC day, deleted 14 days after its date | `~/.local/state/nogat/archiwista/`, or `<state_dir>/archiwista/` | not needed for work |
 | `areas/`: copies of the area files that were loaded | `~/.local/share/archiwista/` | load the file again |
@@ -86,7 +86,7 @@ jq -cs 'sort_by(.time)[] | select(.kind != "access" or .status >= 500)' <state_d
 | A project's exports: copies of its pinned files in category folders (`NMT/`, `BDOT/`, `ORTO/`…) with `README.txt` in `eksport/NAME/`, optionally a ZIP, and their list | `archiwista project-export PROJECT NAME [--group SET …] [--zip]`, `project-exports PROJECT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports`, `GET /projects/{project}/exports/{name}/zip` |
 | A project's activity: its changes and its jobs from the action log, newest first | `archiwista project-activity PROJECT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
 | Remove a project from Archiwista, never its data: its file, area files and exports go; `dane/`, its snapshots and any other file stay, and so do the pinned versions in the store | `archiwista project-delete PROJECT --yes` | `DELETE /projects/{project}` |
-| Pin versions the store holds into a project's group, remove pins or a group | `archiwista project-pin PROJECT GROUP (--version STORE:PATH … \| --query JSON) [--from SOURCE] [--add]`, `project-unpin PROJECT GROUP [--pin PRODUCER:PATH …]` | `POST /projects/{project}/groups`, `POST …/groups/{group}/pins`, `POST …/groups/{group}/unpin`, `DELETE …/groups/{group}` |
+| Pin versions the store holds into a project's group, remove pins or a group, close or reopen a group in the making | `archiwista project-pin PROJECT GROUP (--version STORE:PATH … \| --query JSON) [--from SOURCE] [--add \| --open]`, `project-unpin PROJECT GROUP [--pin PRODUCER:PATH …]`, `project-close PROJECT GROUP`, `project-reopen PROJECT GROUP` | `POST /projects/{project}/groups`, `POST …/groups/{group}/pins`, `POST …/groups/{group}/unpin`, `DELETE …/groups/{group}`, `POST …/groups/{group}/close`, `POST …/groups/{group}/reopen` |
 | Jobs over a project's groups: hash the pinned files, compare the pins with the source, pin a group anew to the newer versions, download the missing pins again; a re-pin and a restore may confirm the plan of the group's check | `archiwista project-verify PROJECT [GROUP …]`, `project-check PROJECT [GROUP …]`, `project-repin PROJECT GROUP [--plan JOB]`, `project-restore PROJECT [GROUP …] [--plan JOB]` | `POST /projects/{project}/jobs` (`plan_job`) |
 | Preview of a file or a version, optionally as PNG | `archiwista preview REF [--build] [--output FILE.png]` | `GET` and `POST …/preview`, `GET …/preview.png` |
 | Prepare the first look at current versions ahead (thumbnail, map overview) in the preview cache | `archiwista preview-warm [--store STORE] [--product PRODUCT] [--segment SEGMENT] [--project PROJECT] [--area-id AREA]` | `POST /previews/warm` |
@@ -97,24 +97,24 @@ jq -cs 'sort_by(.time)[] | select(.kind != "access" or .status >= 500)' <state_d
 | What the source has for a kept area and a product: the last report with a row per year (coverage label, ranked variants, store badge), a check at the source | `archiwista availability show AREA --product PRODUCT [--store STORE]`, `availability check AREA --product PRODUCT [--force]` | `GET /availability`, `POST /availability` (a report younger than seven days, else a background job) |
 | Rebuild the index | `archiwista reindex [--store STORE]` (a full scan in the foreground) | `POST /stores/{store}/scan` (a background job) |
 | One-time session address, for example for an agent | `archiwista token [--json \| --revoke-all]` | `POST /session/tokens` |
-| Accounts, groups, project sharing, state backup | `archiwista users`, `groups`, `share`, `state export` and `state import` | none |
+| Accounts, groups, project sharing, state backup | `archiwista users`, `groups`, `share`, `state export` and `state import` | `/users`, `/groups`, `/projects/{project}/access`; the backup: none |
 | Feedback ("Zgłoś uwagę" in the top bar): send a report; administrators read, mark and delete them in the view "Zgłoszenia" (or with `sqlite3 state.sqlite "SELECT id, created_at, user_id, message FROM feedback ORDER BY id DESC"`) | none | `POST /feedback`, `GET /admin/feedback`, `PATCH`/`DELETE /admin/feedback/{id}` |
 
 The read commands work without a running server: they use the local index and the services that the HTTP routes use. Building a preview, preparing previews ahead, scanning own data, making a snapshot and checking the availability at the source run as jobs in worker processes, in the foreground in the CLI and in the background in the server. The log goes to standard error, never to standard output; `--verbose` (debug) or `--quiet` (errors only), before or after the command name, sets its level, and without them the variable `ARCHIWISTA_LOG_LEVEL` (`debug`, `info`, `warning`, `error`; default `warning`) does. `archiwista serve` follows that level until it serves; then it keeps its own logs (above), whatever the level.
 
 ## For AI agents
 
-The guide for scripts and agents is [AGENT_API.md](https://github.com/Daldek/Archiwista/blob/main/docs/AGENT_API.md): the HTTP session, filters, paging, background jobs and errors. The full schema is `/api/v1/openapi.json` of a running server (it needs a session) and the interactive documentation is `/api/docs`. With `--json` a command prints only JSON of the schema of the API answer on standard output. There is no MCP server.
+The guide for scripts and agents is [AGENT_API.md](https://github.com/Daldek/Archiwista/blob/main/docs/AGENT_API.md): the HTTP session, filters, paging, background jobs and errors. The full schema is `/api/v1/openapi.json` of a running server (it needs a session) and the interactive documentation is `/api/docs` (in local mode). With `--json` a command prints only JSON of the schema of the API answer on standard output. There is no MCP server.
 
-Archiwista never writes to a store itself: a download goes through the producer's API and needs `store.write`; its only own writes outside its index and cache are the project file (`archiwista-project.json`, its area) and snapshots, which need `project.write`, and `archiwista snapshot PROJECT FILE --plan` shows what a snapshot would do without writing. Always pass `--json`, and decide on `code` and `details.reason` of an error, never on its text.
+Archiwista never writes to a store itself: a download goes through the producer's API and needs `store.write`; its only own writes outside its index and cache are the project file (`archiwista-project.json`, its area), its exports and snapshots, which need `project.write`, and `archiwista snapshot PROJECT FILE --plan` shows what a snapshot would do without writing. Always pass `--json`, and decide on `code` and `details.reason` of an error, never on its text.
 
 ## Related tools
 
 | Tool | Relation |
 |---|---|
 | [Kartograf](https://github.com/Daldek/Kartograf) | writes the stores that Archiwista reads; the only importer of it is the adapter in `src/archiwista/adapter/kartograf/` |
-| [Obserwator](https://github.com/Daldek/Obserwator) | writes the IMGW measurement archives; an optional plugin (`archiwista[obserwator]`) planned for v0.5 |
-| [Nogat](https://github.com/Daldek/Nogat) | the ecosystem: the standard 2.1 that this repository follows and the error registry |
+| [Obserwator](https://github.com/Daldek/Obserwator) | writes the IMGW-PIB and ČHMÚ archives, series and station catalogs; an optional plugin (`archiwista[obserwator]`), imported only by the adapter in `src/archiwista/adapter/obserwator/` |
+| [Nogat](https://github.com/Daldek/Nogat) | the ecosystem: the standard 1.0 that this repository follows and the error registry |
 | QGIS | analysis and editing of the files that Archiwista shows; the QGIS plugin is in the Kartograf repository |
 
 ## Errors and exit codes
@@ -130,7 +130,7 @@ Errors use the shared [Nogat error registry](https://github.com/Daldek/Nogat/blo
 | `store_unavailable` | 8 | the store cannot be read (an unmounted share): connect it, then `archiwista reindex`; or the producer refuses the directory (for Kartograf: no `kartograf-store.json`, `reason` `no_marker`): run the command in `hint` once |
 | `forbidden` | 12 | the session or the role does not allow it |
 
-A job that does not succeed exits `11` (failed) or `130` (cancelled or interrupted), and `archiwista doctor` exits `10` or `11` when checks fail: these are outcomes, not errors, and print no error document. The texts of errors are English, and Polish for the request header `Accept-Language: pl`; the command line prints its text for people in Polish.
+A job that does not succeed exits `10` (partial), `11` (failed) or `130` (cancelled or interrupted), and `archiwista doctor` exits `10` or `11` when checks fail: these are outcomes, not errors, and print no error document. The texts of errors are English, and Polish for the request header `Accept-Language: pl`; the command line prints its text for people in Polish, or in English with `lang = "en"` of `nogat.toml`.
 
 ## Data and licensing
 
@@ -141,15 +141,15 @@ Archiwista holds no data of its own besides the project files it writes on a per
 | Document | Content |
 |---|---|
 | [CHANGELOG.md](https://github.com/Daldek/Archiwista/blob/main/docs/CHANGELOG.md) | changes by release |
-| [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md) | the views of v0.2: previews, Fan, Timeline, comparison, projects and snapshots |
+| [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md) | the user guide of 0.3: the views, projects and own data, jobs, the action log, IMGW stations, the team server |
 | [AGENT_API.md](https://github.com/Daldek/Archiwista/blob/main/docs/AGENT_API.md) | the HTTP API and the CLI with `--json` for scripts and AI agents |
 | [PRD.md](https://github.com/Daldek/Archiwista/blob/main/docs/PRD.md) | product requirements: problem, users, requirements, success measures, open decisions |
 | [SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md) | scope: the MVP, what is out of it, stages with gates, dependencies on the producers, risks |
 | [SPEC.md](https://github.com/Daldek/Archiwista/blob/main/docs/SPEC.md) | the detailed specification: use cases, data model and index, architecture, interface, API, security, requirements for the producers, roadmap with acceptance criteria |
 | [ARCHITECTURE.md](https://github.com/Daldek/Archiwista/blob/main/docs/ARCHITECTURE.md) | the architecture of the code; the format of the store is in Kartograf's `docs/ARCHITECTURE.md` |
 | [DECISIONS.md](https://github.com/Daldek/Archiwista/blob/main/docs/DECISIONS.md) | decisions (ADR) |
-| [docs/plans/](https://github.com/Daldek/Archiwista/tree/main/docs/plans) | the executed plans of v0.1 and v0.2: contracts between steps, steps with acceptance, the gate |
-| [docs/reports/](https://github.com/Daldek/Archiwista/tree/main/docs/reports) | measurements and acceptance of v0.1 and v0.2 |
+| [docs/plans/](https://github.com/Daldek/Archiwista/tree/main/docs/plans) | the plans: v0.1 and v0.2 executed, the later ones built in `develop`; contracts between steps, steps with acceptance, the gate |
+| [docs/reports/](https://github.com/Daldek/Archiwista/tree/main/docs/reports) | measurements and acceptance of v0.1 to v0.3, the LAN runbook and the security checklist of v0.4 |
 | [PROGRESS.md](https://github.com/Daldek/Archiwista/blob/main/docs/PROGRESS.md) | the current state and open matters |
 | [mockup/](https://github.com/Daldek/Archiwista/tree/main/mockup) | a clickable mockup of the interface (`mockup/README.md` tells how to run it) |
 
@@ -163,11 +163,11 @@ Read [CLAUDE.md](https://github.com/Daldek/Archiwista/blob/main/CLAUDE.md) first
 scripts/gate.sh    # ruff format, ruff check, mypy, pytest with coverage, the commit check
 ```
 
-The gate (DEV-7.6) runs from a git working directory and applies `uv sync --locked --all-extras`. By default `pytest` leaves out the tests marked `live`, `perf` and `smb` (real stores, the store of 50,000 slots, an SMB 3 share), runs the interface tests in Chromium and requires 80% coverage. The measurements and their method are in the reports of [v0.1](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.1-measurements.md) and [v0.2](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.2-measurements.md).
+The gate (DEV-7.6) runs from a git working directory and applies `uv sync --locked --all-extras`. By default `pytest` leaves out the tests marked `live`, `perf` and `smb` (real stores, the store of 50,000 slots, an SMB 3 share), runs the interface tests in Chromium (those that depend on the engine also in Firefox) and requires 80% coverage. The measurements and their method are in the reports of [v0.1](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.1-measurements.md), [v0.2](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.2-measurements.md) and [v0.3](https://github.com/Daldek/Archiwista/blob/main/docs/reports/v0.3-measurements.md).
 
 ## Status, licence, author
 
-Release **0.2.0 "Previews"** (2026-10-20): the local index, the map and the catalog of a Kartograf store, file previews, the Fan and the Timeline, comparison with the curtain, and own data of a project with snapshots; the store stays read-only. `develop` carries `0.3.0.dev0`. Next: v0.3 "Actions" (availability at the source, downloads and project actions through the Kartograf API), v0.4 "Team", v0.5 "IMGW stations", v0.6 "PL + CZ"; the MVP is v1.0 ([SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md)). The API may change until v1.0.
+Release **0.2.0 "Previews"** (2026-10-20): the local index, the map and the catalog of a Kartograf store, file previews, the Fan and the Timeline, comparison with the curtain, and own data of a project with snapshots; the store stays read-only. `develop` carries `0.3.0.dev0`: v0.3 "Actions" (availability at the source, downloads through the producer's API), v0.4 "Team", projects in Archiwista's own file (A-ADR-049) and the Obserwator source with the station views of v0.5 "IMGW stations" are built there and wait for one release. Next: that release, the rest of v0.5, v0.6 "PL + CZ"; the MVP is v1.0 ([SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md)). The API may change until v1.0.
 
 MIT licence: [LICENSE](https://github.com/Daldek/Archiwista/blob/main/LICENSE).
 

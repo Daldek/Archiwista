@@ -1,7 +1,7 @@
 # Archiwista — specification
 
 **Date:** 2026-10-17
-**Status:** specification for review (no application code); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
+**Status:** living specification: v0.1 and v0.2 released, the later versions in development or planned (section 13); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
 [`docs/DECISIONS.md`](DECISIONS.md); interface mockup: the `mockup/` directory
 (section 16)
 **Dependency:** Kartograf 0.8.0 (`develop`) — public API
@@ -23,11 +23,11 @@ ADR-044, project manifest spec `docs/superpowers/specs/2026-10-15-manifest-proje
 **Source documents (Obserwator and IMGW):** `README.md`,
 `docs/ARCHITECTURE.md`, IMGW format descriptions in `data/desc/`,
 `src/imgwtools/core/url_builder.py` and `src/imgwtools/stations.py`
-of the IMGWTools repository; IMGW-PIB terms of use
+of the Obserwator repository (release 2.1.1, then named IMGWTools); IMGW-PIB terms of use
 (https://danepubliczne.imgw.pl/regulations) and API description
 (https://danepubliczne.imgw.pl/apiinfo); measurements of the IMGW servers
 from 2026-10-17 (4.8); ČHMÚ data: `docs/OBSERWATOR_SPEC.md`
-and `docs/OBSERWATOR_RESEARCH.md` of the IMGWTools repository
+and `docs/OBSERWATOR_RESEARCH.md` of the Obserwator repository
 (https://opendata.chmi.cz, 4.8.6)
 
 Document conventions: names from Kartograf (functions, sidecar fields, directories)
@@ -37,12 +37,13 @@ data paths are replaced by `<data-dir>`. References "ARCH", "USAGE",
 decisions take the form "A-ADR-0xx" (`docs/DECISIONS.md` in this repository).
 Requirements for producers are "KA-1"…"KH-2" (Kartograf) and "IMGW-1"…
 "IMGW-21" (Obserwator, 12.7); `plik:linia` references to other repositories
-start with their name (e.g. `IMGWTools/src/imgwtools/stations.py:349`).
+start with their name (e.g. `IMGWTools/src/imgwtools/stations.py:349`; `IMGWTools/` is the
+Obserwator repository at release 2.1.1, before the renaming of ECO-057).
 
 **Table of contents:** 1. Purpose and users · 2. Glossary · 3. Use
 cases · 4. Data model and index · 5. Architecture · 6. Interface ·
-7. Assistant · 8. Combining data · 9. HTTP API · 10. Security ·
-11. Tests and verification · 12. Requirements for Kartograf and Obserwator ·
+7. Assistant · 8. Merging data · 9. HTTP API · 10. Security ·
+11. Testing and verification · 12. Requirements for Kartograf and Obserwator ·
 13. Roadmap · 14. Risks · 15. Open questions · 16. Mockup
 
 ---
@@ -286,7 +287,7 @@ plain language ("laser scanning, mean height error 0.06 m, full sheet"),
 the license, the lines its provider's terms require in a strip at the card's foot, whose dialog has a "Kopiuj atrybucję" (Copy attribution) button (4.8.5), a preview and the actions: "Kopiuj
 ścieżkę wersji" (Copy version path), "Polecenie Kartografa" (Kartograf command: the
 command that selects this version, KB-6), "Sprawdź aktualność" (Check for updates), "Porównaj
-wersje" (Compare versions), "Dodaj do projektu…" (Add to project: the version chosen on the
+z…" (Compare with…), "Dodaj do projektu…" (Add to project: the version chosen on the
 timeline, an older one too, into a group of a project; A-ADR-049).
 
 ### UC-05. Is there newer data?
@@ -330,8 +331,8 @@ only when nothing is left in it, and the project's activity stays in the action 
 
 ### UC-07. Which projects use this file?
 
-Before cleaning up the store, the team lead filters "Nieużywane przez
-żaden projekt" (Not used by any project) and "Niebieżące wersje" (Non-current versions), and sees their size and the list.
+Before cleaning up the store, the team lead filters the versions "niebieżące i
+nieprzypięte" (non-current and unpinned), and sees their size and the list.
 On the file card "Przypięta w: Raba (NMT 2023), Wisła-2026 (dem)" (Pinned in: project (group)) is shown.
 Archiwista deletes nothing; the report serves the decision (section 15, P4).
 
@@ -408,8 +409,8 @@ sets; downloading to the store can be done by a person with the "zapis do magazy
 ### UC-15. Pasted Kartograf command
 
 Marek pastes `kartograf elevation download --product nmt --sheet … -o
-./data`. Archiwista recognizes the command (the same parser as
-`kartograf project add`), fills in the form, replaces `-o` with the selected
+./data`. Archiwista recognizes the command (Kartograf's own parser,
+`parse_command`), fills in the form, replaces `-o` with the selected
 store, shows the plan and starts a background job. With "Obszar polecenia" he
 runs it on the area of step 1 or a project's area instead of the line's sheet
 (`POST /commands/area`, A-ADR-049 erratum 5): Kasia pastes `kartograf landcover
@@ -423,8 +424,8 @@ series.
 
 1. She loads the catchment boundary from Hydrograf (`zlewnia.gpkg`, EPSG:2180) as the
    area.
-2. She selects the product "Stany i przepływy dobowe" (Daily levels and flows) (group "Pomiary IMGW" (IMGW measurements))
-   and the variable by which the map colours the points ("Q"); the labels of all
+2. She selects the product "Stacje hydrologiczne" (Hydrological stations), its "Zbiór danych" (Dataset) of daily levels and flows
+   and the variable by which the map colours the points ("Kolor punktów": "Q"); the labels of all
    variables (H, Q, T) are shown separately.
 3. The map shows the area's gauging stations as points; a station close to the boundary has
    a badge "na granicy obszaru" (on the area boundary). Stations without a location are not on the map:
@@ -588,13 +589,13 @@ Producer commitments (KA-8, IMGW-20):
 2. **Renaming only through the producer's alias table.** The raw `dataset`
    stays in the sidecar unchanged, and the read API supplies alongside it a normalised
    `dataset_key` (the current descriptor key). Model: Kartograf's `_DEV_DATASETS`
-   (`Kartograf/kartograf/store.py:186`, ADR-044 D7) read
+   (`Kartograf/src/kartograf/store.py:227`, ADR-044 D7) read
    by `read_sidecar` (KA-2). A key unknown to the producer gives an empty
    `dataset_key`, not an error.
 3. **Provider from the `provider` field.** The provider's identity is in the
    `provider` field of the sidecar and the descriptor (Kartograf: the descriptor's `provider_name`,
    e.g. `GUGiK`, `CUZK`, `Copernicus CLMS`, `ISRIC` —
-   `Kartograf/kartograf/sources/sidecar.py:242`; Obserwator: `IMGW-PIB`,
+   `Kartograf/src/kartograf/sources/sidecar.py:259`; Obserwator: `IMGW-PIB`,
    `CHMI` — IMGW-15), and the country in the `country` field; the middle part of the key
    (`imgw`, `chmi`) is not a provider identifier.
 
@@ -604,13 +605,13 @@ derives the product, variant, provider or country from it — it takes them
 from the sidecar fields and from `describe_segment` (KA-3). Thanks to this,
 irregular keys break nothing, e.g. `pl.gugik.nmpt` (NMPT 1 m without `_1m`; a key
 from 0.7 (ADR-031) preserved in ADR-041 and ADR-044,
-`Kartograf/kartograf/sources/registry.py:313`).
+`Kartograf/src/kartograf/sources/registry.py:321`).
 
 ### 4.3 Local index
 
 The index (A-ADR-002) is a SQLite file (WAL mode) on the local disk, in the user's data directory
 (`platformdirs`: Linux `~/.local/share/archiwista/`, Windows
-`%LOCALAPPDATA%\Archiwista\`; `<data_dir>/archiwista/` when `nogat.toml` names a `data_dir`,
+`%LOCALAPPDATA%\archiwista\`; `<data_dir>/archiwista/` when `nogat.toml` names a `data_dir`,
 A-ADR-053); next to it are the preview cache (`previews/`, in `<cache_dir>/archiwista/` when
 `nogat.toml` names a `cache_dir`) and the job logs (`jobs/`); the server's logs lie in
 `<state_dir>/archiwista/logs/` (`~/.local/state/nogat/archiwista/logs/` by default,
@@ -619,7 +620,7 @@ limits, assistant provider) is in a readable TOML file in the user's
 configuration directory and in the "Ustawienia" (Settings) view; a person's view
 preferences (the kind of years, 6.7, the basemap, path aliases) are in the state
 database below from v0.4. The index can be deleted
-at any time — "Przebuduj indeks" (Rebuild index) recreates it from the stores and the project files;
+at any time — "Pełny skan" (Full scan) of the "Magazyn" (Store) view or `archiwista reindex` recreates it from the stores and the project files;
 only the job history and the assistant conversations are lost.
 
 The **state database** (A-ADR-029) is a separate SQLite file
@@ -632,8 +633,8 @@ the directory after `realpath`, independent of the index; owner; `public` /
 log, which the log of permission changes of v0.1 became (10.2, A-ADR-047), and the
 feedback reports of "Zgłoś uwagę" (table `feedback`, schema version 5: text, contact,
 page, browser, diagnostics, read flag and the sending account; 6.5, 9.2). This state cannot
-be rebuilt from disk, so "Przebuduj
-indeks" (Rebuild index) does not touch it, the schema changes through migrations (not by rebuilding),
+be rebuilt from disk, so rebuilding the index
+does not touch it, the schema changes through migrations (not by rebuilding),
 and a backup is provided by `archiwista state export` (JSON
 `archiwista-state/2` from v0.4, with the password hashes: a secret, written with mode `0600`;
 `archiwista-state/1` still imports), restored by `archiwista state import` into an empty
@@ -650,7 +651,7 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | Table | What it holds |
 |---|---|
 | `stores` | stores: identifier (a short name given by the user, e.g. `zespol`), producer directories (Kartograf, Obserwator) and path aliases, availability, scan times and statistics |
-| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for Obserwator the name of the dataset from the Obserwator registry in Polish, for a station catalog the name after its provider, the country of the provider and the family of the dataset as the product: `hydro`, `meteo`, `pmaxtp` or `stations`, because Obserwator has no products and the "Magazyn" (Store) view and the Map panel group by product — ADR 0032, decision 10; a producer without a list of segments, like Obserwator, describes the segments that its entries named, after the pass), recognized / unrecognized |
+| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for Obserwator the name of the dataset from the Obserwator registry in Polish, for a station catalog or stored analyses the name after its provider, the country of the provider and the family of the dataset as the product: `hydro`, `meteo`, `pmaxtp`, `stations` or `analyses`, because Obserwator has no products and the "Magazyn" (Store) view and the Map panel group by product — ADR 0032, decision 10; a producer without a list of segments, like Obserwator, describes the segments that its entries named, after the pass), recognized / unrecognized |
 | `slots` | slots: segment, hierarchy, name, unit kind and code, the producer's slot key (`slot_key`, opaque to the index), current version, `full_sheet/` version, number of versions; in the Obserwator catalog a slot is an archive file (path on the server), a station directory or the dataset series — the name of an archive slot is its file, that of a station directory its key (`catalog:pl.imgw.stations`), and the slot key is the Obserwator key (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) |
 | `versions` | versions: label and its source, `sha256`, size, coordinate systems, resolution, `nodata`, data year and date, campaign and request number, release, download date, provider (`provider`: `IMGW-PIB`, `CHMI`), full sheet, coverage (`extra.coverage`), license, `parent_request` group key, native extent and its source, kind of location (`footprint`, `country`, `none` with a reason; A-ADR-022), state, full sidecar (JSON) |
 | `observations` | the publication history of a slot (Obserwator only): a source served other bytes with the content of a version the producer already has — time, address, `ETag`, `Last-Modified`, size, `sha256` and the version with that content; it is neither a version nor a current version and enters no count; a record the pass did not see disappears |
@@ -661,7 +662,7 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | `series_years` | each year of a variable in hydrological and calendar years (half-year characteristics: hydrological only): units, known units, units with a value — computed during indexing from the gap lists against the known periods (4.8.4); the labels, the Timeline and filters, whose longest gap comes from the gap list |
 | `search` | FTS5: sheet codes, TERYT, KU, labels, request numbers, file names, human-readable product names, project names and the names of their pin groups, station codes and names, river names |
 | `projects`, `project_stores`, `pin_groups`, `pins` | known projects, one per directory, as their file `archiwista-project.json` was last read (its state or problem, name, description, area): the store of each producer it names with the configured store matched, its groups with their origin, state (`open`, `closed`), the members of their closing (`closed_at`, `closed_by`, `pins_sha256`) and `digest_state` (`ok`, `mismatch`: the recorded digest against the pins as read; `NULL` without one), and the pins of each group with their `calls` linked to versions by store and path — the "which projects use the file" index (SCOPE 3.3; A-ADR-049 and its erratum 6) |
-| `version_calls` | the command of a stored version as its producer rebuilds it (`command_for_version`), or the producer's refusal, per version and producer version: filled by pinning, by the project jobs and by the command of a version (`GET …/versions/{version}/command`), read by the project card (A-ADR-049 decision 10) |
+| `version_calls` | the command of a stored version as its producer rebuilds it (`command_for_version`), or the producer's refusal, per version, with the producer version that answered (asked again under another one): filled by pinning, by the project jobs and by the command of a version (`GET …/versions/{version}/command`), read by the project card (A-ADR-049 decision 10) |
 | `availability` | latest availability reports per area and product, with a date (visible without a network); for IMGW datasets — published years with publication dates |
 | `jobs`, `job_events` | history of background jobs and their events |
 | `conversations`, `messages`, `proposals` | conversations with the assistant and its proposals |
@@ -712,7 +713,7 @@ Rules common to all producers and products:
 
 ### 4.4 Build and refresh
 
-- **Full scan** (first start, "Przebuduj indeks" (Rebuild index)): a pass of
+- **Full scan** (first start, `archiwista reindex`): a pass of
   `iter_store` separately for each segment from `list_segments` (KA-1)
   in a bounded thread pool (SMB latency, not CPU); on a share, a
   segment is read in disjoint parts (`list_partitions`, KA-1),
@@ -802,8 +803,8 @@ Rules common to all producers and products:
   inside a known version directory. The time of the last full scan is visible
   in "Magazyn" (Store), in `/health` (`full_scan_at`) and in `archiwista status`.
 - **Store unavailable** (missing directory or an empty mount point):
-  scan aborted, index unchanged, banner "Magazyn niedostępny od 14:02 —
-  pokazuję stan z indeksu"; write actions disabled. We never
+  scan aborted, index unchanged, banner "Magazyn „Zespół” jest niedostępny. Wyniki pochodzą
+  z indeksu z 14:02 i nie dowodzą, że plików nie ma."; write actions disabled. We never
   mark the whole store as deleted because of a disconnected share. Each directory of a
   store is judged apart: one that reads nothing while the index holds entries in it is an
   unmounted share (`scan.store_empty`), and the scheduler counts a store with entries
@@ -842,8 +843,8 @@ a test on a synthetic store from the generator, section 11):
 Index ≤ 500 MB for 80,000 versions; server memory ≤ 500 MB without previews.
 Reference Obserwator catalog: datasets from 4.8 over the full range of years (about 2,000
 archives), a catalog of about 3,500 stations, one version of the dataset's series each.
-The interface never waits for a scan: queries go to the index, and the state of the
-index ("Indeks z 14:02, skan trwa: 63%") is always visible.
+The interface never waits for a scan: queries go to the index, and a scan in progress
+is shown in the index banner ("Indeksowanie magazynu „Zespół”: 63 z 100 segmentów.").
 
 Measurements of release 0.2.0 on the same store and share:
 [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md) —
@@ -890,7 +891,7 @@ without access to a hardware GPU (SwiftShader: 8.4 frames/s).
    reach the version directory through hard links (`os.link`), the sidecar
    of the main file commits the version last. A share with the Obserwator catalog must
    therefore support hard links — the same requirement as for Kartograf's catalog
-   (point 1; checked by `archiwista doctor`, 5.5); without them
+   (point 1); without them
    an Obserwator write ends with the error `not_atomic`. After publication each file
    has one name (no persistent hard links) and there are no mutable
    files — so the inode pitfalls from point 2 do not apply to it; Parquet
@@ -940,7 +941,8 @@ IMGW-21). Decisions: A-ADR-049 (D1 to D7 of the author's decision of 2026-10-31)
   settings, by any signed-in person, who owns it (A-ADR-039 erratum 3, kept by A-ADR-049).
 - **Link to the store:** each store root of the file is matched to the producer's
   directory of a configured store by resolved path or alias; no match —
-  "Magazyn projektu nieznany: dodaj magazyn". The first pin of a producer adds its store;
+  "Magazyn projektu nieznany (…): …", whose fix adds the store in the settings or chooses
+  a configured store for the producer. The first pin of a producer adds its store;
   a pin from another store than the one the project names for that producer is refused.
 - **Pins → versions:** by the `version` path (relative to the store) and `sha256`; a pin
   without a present version in the index has the state "brak w magazynie", one with other
@@ -1106,7 +1108,7 @@ to the model.
 
 | Entity | Attributes | Source |
 |---|---|---|
-| **Station** | code — 9 digits as text (e.g. `149190310`; first digit: `1` hydro, `2` or `3` meteo; digits 2–3 and 4–5 are the degrees of latitude and longitude of the 1° square — an inference from the data, to be confirmed with IMGW: consistent for 905 of 910 hydro stations from the map API and 786 of 787 stations of the public meteo API); kind (`hydro`, `meteo`), for meteo also climatological or precipitation (`meteo_kind`: `climate` — a station in the current `pl.imgw.meteo_climate_daily` series, `precipitation` — only in the current `pl.imgw.meteo_precip_daily` series, `null` — a station without a current series, and always for ČHMÚ; Archiwista shows `null` as "rodzaj nieznany" (kind unknown), not as an error; Obserwator `slave` in `cb6af4f` always writes `null` — filling in 3.0.0 (fix on branch fix/archiwista-compat-2)); name; river and its hydrographic code from the IMGW list (e.g. Raba `2138`, Mszanka `21382`); order from the IMGW list (grows along the river's course — an inference from the data); location (lon, lat; EPSG:4326 assumed — IMGW does not declare it) or none, the source and uncertainty of the location, catalog date (the label of the catalog version and `downloaded_at` of its sidecar, not a station field); active (present in the public API on the catalog date; `active`) or historical; year of establishment, gauge zero elevation, river kilometre, height of the meteo station | station catalog (IMGW-9; `stations.geojson` fields) |
+| **Station** | code — 9 digits as text (e.g. `149190310`; first digit: `1` hydro, `2` or `3` meteo; digits 2–3 and 4–5 are the degrees of latitude and longitude of the 1° square — an inference from the data, to be confirmed with IMGW: consistent for 905 of 910 hydro stations from the map API and 786 of 787 stations of the public meteo API); kind (`hydro`, `meteo`), for meteo also climatological or precipitation (`meteo_kind`: `climate` — a station in the current `pl.imgw.meteo_climate_daily` series, `precipitation` — only in the current `pl.imgw.meteo_precip_daily` series, `null` — a station without a current series, and always for ČHMÚ; Archiwista shows a meteo station with `null` as "stacja meteorologiczna" (meteorological station), not as an error); name; river and its hydrographic code from the IMGW list (e.g. Raba `2138`, Mszanka `21382`); order from the IMGW list (grows along the river's course — an inference from the data); location (lon, lat; EPSG:4326 assumed — IMGW does not declare it) or none, the source and uncertainty of the location, catalog date (the label of the catalog version and `downloaded_at` of its sidecar, not a station field); active (present in the public API on the catalog date; `active`) or historical; year of establishment, gauge zero elevation, river kilometre, height of the meteo station | station catalog (IMGW-9; `stations.geojson` fields) |
 | **Series** | station × dataset: variables with units, interval (day, month, half-year, year), kind of years, for each variable the first and last date with a value and a list of gaps | the station's Parquet file in the dataset's series version and the `series.json` listing (IMGW-7, IMGW-8) |
 | **Dataset series** | version = snapshot of the series of all stations in the dataset built from specified versions of archives (`source_files[]`); the periods of the inputs (`periods`, and for ČHMÚ stations — the station periods `stations[<code>].periods`) determine the known years (4.8.4) | `obserwator-meta/1` sidecar and the listing (12.8) |
 | **IMGW archive** | path on the server (slot `archive:<key>:<path relative to the dataset directory>`, e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`), period (year or month), versions with `sha256`, size, `ETag`, `Last-Modified` and download date; for ČHMÚ also signal observations (`observations/`, `obserwator-observation/1`) — the publication history of a file without new content, not versions (4.8.6) | `obserwator-meta/1` sidecar (IMGW-3, IMGW-5, IMGW-16) |
@@ -1308,34 +1310,39 @@ them (ECO-065); each line once. The lines of IMGW-PIB (the standard's marks):
 | RH | "Regulamin serwisu hydrologicznego IMGW-PIB: https://hydro.imgw.pl/#/regulamin" (terms notice: the station positions of the IMGW-PIB catalog, from the hydrological service) |
 | RK | "Regulamin danych PMAXTP: https://klimat.imgw.pl/opady-maksymalne" (terms notice: PMAXTP) |
 
-The ČHMÚ lines C and CP follow M (4.8.6).
+The ČHMÚ lines C and CP follow M (4.8.6). GUGiK's G and ČÚZK's Z follow CP, G before Z: the
+state borders (PRG, RÚIAN) Obserwator checked a station catalog's positions against, named with
+their products and days in the attribution of the catalog's sidecar (A-ADR-055 erratum 3).
 
 | Where | Lines |
 |---|---|
-| archive and station catalog sidecar (`license.attribution`, IMGW-3; Obserwator's text) | §5 para. 3 |
+| archive and station catalog sidecar (`license.attribution`, IMGW-3; Obserwator's text) | §5 para. 3; a station catalog's also G and Z |
 | dataset series sidecar and CSV export (processed data: normalization and format change; Obserwator's text) | §5 para. 3 and 4 |
-| a stored version as it is: the file card ("Kopiuj atrybucję" (Copy attribution) in its strip's dialog), `GET /stores/{store}/versions/{version}`, the version comparison (`GET /compare`, 8.5), the "Katalog" (Catalog) list of files (a page of `GET /slots`, 9.2) | an archive S, RD; a dataset series S, P, RD; the station catalog S, P, RD, RH; a PMAXTP cell PS, PP, M, RK |
-| stations with their positions: the map, the "Katalog" (Catalog) list and "Oś czasu" (Timeline) of stations, the station card and the station comparison ("Kopiuj atrybucję" in the strip's dialog of both) | S, P, RD, RH; when none of the stations has a position, as the next row |
+| a stored version as it is: the file card ("Kopiuj atrybucję" (Copy attribution) in its strip's dialog), `GET /stores/{store}/versions/{version}`, the version comparison (`GET /compare`, 8.5), the "Katalog" (Catalog) list of files (a page of `GET /slots`, 9.2) | an archive S, RD; a dataset series S, P, RD; the station catalog S, P, RD, RH and the G and Z of its sidecar; a PMAXTP cell PS, PP, M, RK |
+| stations with their positions: the map, the "Katalog" (Catalog) list and "Oś czasu" (Timeline) of stations, the station card and the station comparison ("Kopiuj atrybucję" in the strip's dialog of both) | S, P, RD, RH and the G and Z of their catalog; when none of the stations has a position, S, P, RD and those G and Z |
 | a station's series without positions: the chart (values simplified for display), the coverage of `GET /stations/{code}/coverage`, the datasets of stations | S, P, RD |
 | hand-off `nogat-handoff/1` (`GET /stations/{code}/handoff`, 9.2) | S, P, RD |
 | export (the section "Źródła danych i warunki korzystania" of its `README.txt` and `ATTRIBUTION.txt`, 8.4) | the lines of all versions of the export, each once |
 | "Okno planu" (Plan window) and assistant proposals | Obserwator message about the purpose of use (IMGW-11), without blocking |
 
 The lines come from Archiwista's message catalog (`src/archiwista/messages/legal.py`), chosen
-by the provider and the form of the data, never copied from a sidecar: the producer names the
+by the provider and the form of the data, never copied from a sidecar (but G and Z, which
+Archiwista finds by their fixed text in a station catalog's sidecar and carries as written,
+A-ADR-055 erratum 3): the producer names the
 origin of a version's data (`DataOriginAdapter`, 5.3), so versions written by older Obserwator
 releases carry the same lines. A version whose producer names no origin (Kartograf) carries
 the attribution of its sidecar (`license.attribution`) as its one line, without a terms
 notice. The PNG previews draw no lines, an open point against DEV-20.5 (A-ADR-055).
 On screen a view or a card has one strip of Nogat's kit (`<nogat-sources>`, DEV-20.5,
-A-ADR-055 erratum 1): S, P, PS, PP and the short ČHMÚ line CK, each once, then
+A-ADR-055 erratum 1): S, P, PS, PP and the short lines CK, GK and ZK of C, G and Z
+("Źródło: ČHMÚ, CC BY 4.0", "Źródło: GUGiK (PRG)", "Źródło: ČÚZK, CC BY 4.0"), each once, then
 "Źródła i warunki" (Sources and terms), which opens every line and the terms (6.7,
 "Licence"); the answers, the CSV, the hand-off and the exports keep every line in full.
 Archiwista informs about the terms but does not enforce them — it does not know the purpose of use.
 
 #### 4.8.6 ČHMÚ stations (CZ, from v0.6)
 
-From v0.6 Obserwator also writes ČHMÚ data to the same Obserwator directory (Český hydrometeorologický ústav, https://opendata.chmi.cz; user decision 2026-10-18; requirements IMGW-15..IMGW-19). Archiwista reads them with the same Obserwator adapter and shows them in the same views as IMGW stations (6.7): stations on the map and in the "Katalog" (Catalog), the "Zestawienie" (Summary) with series coverage separately for each variable, the "Karta stacji" (Station card) with a chart, freshness and synchronization of archives, IMGW project jobs. Scope (Obserwator 3.0.0 keys and paths, ADR-003 D4 Obserwator):
+From v0.6 Obserwator also writes ČHMÚ data to the same Obserwator directory (Český hydrometeorologický ústav, https://opendata.chmi.cz; user decision 2026-10-18; requirements IMGW-15..IMGW-19). Archiwista reads them with the same Obserwator adapter and shows them in the same views as IMGW stations (6.7): stations on the map and in the "Katalog" (Catalog), the "Zestawienie" (Summary) with series coverage separately for each variable, the "Karta stacji" (Station card) with a chart, freshness and synchronization of archives, project jobs. Scope (Obserwator 3.0.0 keys and paths, ADR-003 D4 Obserwator):
 
 | Dataset | ČHMÚ archives | Variables | Interval, years |
 |---|---|---|---|
@@ -1403,12 +1410,13 @@ flowchart LR
   PRV -. "series (read_series)" .-> AI
 ```
 
-In the current v0.2, `PRV` is a service that supervises
+Since v0.2, `PRV` is a service that supervises
 `archiwista.previews.worker` processes: rio-tiler/GDAL/OGR/laspy do not read
 data files in the server process. The cache and the `work/` directories are local,
 `ObjectResolver` authorizes `ref` before the cache, and writing outside the Archiwista
-directory is limited to snapshots in the project folder; the Obserwator adapter,
-the assistant and the download jobs in the diagram belong to later versions.
+directory is limited to the project folder (the project file with its area files and
+exports, A-ADR-049; own-data snapshots, A-ADR-027); the assistant and the merging jobs
+in the diagram belong to later versions.
 
 Architecture principles:
 
@@ -1429,7 +1437,7 @@ Architecture principles:
 - **Long-running and writing operations in worker processes.** The server does not
   perform downloads or heavy computation in its own process (COG building,
   merging, SHA-256 sums — these are background jobs, 5.6); the server keeps only
-  lightweight tile rendering from ready files. A GDAL crash or an interrupted
+  lightweight tile rendering from ready files, in render processes it supervises (5.7). A GDAL crash or an interrupted
   job does not take down the interface.
 - **The browser does not know the server's file system.** Files are referenced
   by identifiers from the index and served through the API — the same locally
@@ -1461,7 +1469,7 @@ Technology choices adopted in stage 0 (user decision 2026-10-18; A-ADR-004, 006,
 
 ### 5.3 Server modules
 
-Proposed split (the final one will be set by the implementation plan):
+Split of the modules (`src/archiwista/assistant/` is planned, section 7):
 
 | Module | Responsibility |
 |---|---|
@@ -1474,22 +1482,22 @@ Proposed split (the final one will be set by the implementation plan):
 | `src/archiwista/adapter/kartograf/` | the only place that imports Kartograf: KA-KH calls and type conversions |
 | `src/archiwista/adapter/obserwator/` | the only place that imports Obserwator: IMGW-1..IMGW-13 and IMGW-21 calls (from v0.6 also IMGW-15..IMGW-19 — ČHMÚ stations) and type conversions |
 | `src/archiwista/index/` | schema, scanner, queries, footprints, search, stations and series coverage |
-| `src/archiwista/jobs/` | job supervisor, queue, worker process (`python -m archiwista.jobs.worker`), event protocol |
-| `src/archiwista/previews/` | tiles and previews of rasters, vectors, LAZ, ZIP; series chart data (aggregation for display); preview cache |
+| `src/archiwista/jobs/` | job supervisor, queue, worker process (`python -P -m archiwista.jobs.worker`), event protocol |
+| `src/archiwista/previews/` | tiles and previews of rasters, vectors, LAZ, ZIP; preview cache |
 | `src/archiwista/projects/` | the project file `archiwista-project/1`: reading, validation, the lock and the atomic write, area files and the exports `eksport/<name>/` with their ZIPs (4.7, 8.4, A-ADR-049); the QGIS set from v1.1 |
 | `src/archiwista/assistant/` | provider adapters, tools, proposals, conversations, cost counters |
+| `src/archiwista/services/` | the operations the API and the CLI share, e.g. the series chart data (aggregation for display, `series_chart.py`) |
 | `src/archiwista/api/` | `/api/v1` routes (section 9) — thin, only calls to the service layer |
 | `src/archiwista/web/` | interface: ES modules (Preact + htm) and bundled libraries, served statically — no build step (A-ADR-028) |
-| `src/archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostics: Kartograf, Obserwator, stores and producer directories, permissions, port), `archiwista token` (one-time agent session token), `archiwista users`, `groups`, `share` (permission administration), `archiwista state export` and `state import`; read commands `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` with `--json` using the API response schema (`archiwista/reader.py`; `docs/AGENT_API.md`); the text for a person of a data answer (`search`, `version`, `compare`, `stations list`, `timeline`, `show`, `series`, `compare` and `datasets`) ends with the answer's `attribution` and `terms_notice` under „Źródła danych i warunki korzystania:”, one line each, indented two spaces; `--json` gives the fields (9.1, A-ADR-055) |
+| `src/archiwista/cli.py` | `archiwista serve`, `archiwista reindex`, `archiwista doctor` (diagnostics: Kartograf, Obserwator, stores and producer directories, permissions, port), `archiwista token` (one-time agent session token), `archiwista users`, `groups`, `share` (permission administration), `archiwista state export` and `state import`; read commands `status`, `sources`, `search`, `entry`, `version`, `projects`, `project` with `--json` using the API response schema (`archiwista/reader.py`; `docs/AGENT_API.md`); the other commands (previews, own data, comparison, layers, producer commands, availability, jobs, projects and their jobs, stations, log) in `src/archiwista/commands/`, one module each; the text for a person of a data answer (`search`, `version`, `compare`, `stations list`, `timeline`, `show`, `series`, `compare` and `datasets`) ends with the answer's `attribution` and `terms_notice` under „Źródła danych i warunki korzystania:”, one line each, indented two spaces; `--json` gives the fields (9.1, A-ADR-055) |
 
 Interface (`src/archiwista/web/`, A-ADR-028): routes
 with the whole state in the URL (area, product, filters, map view — the link
-can be sent to a colleague), view components from section 6, compliance with the server's OpenAPI
-checked by contract tests, interface texts in a single dictionary (Polish; other languages
+can be sent to a colleague), view components from section 6, compliance with the server's API
+checked by the interface tests against a real `archiwista serve` (`tests/e2e`), interface texts in a single dictionary (`web/src/labels/`; Polish; other languages
 possible later).
 
-**Source interface** (`src/archiwista/sources/`; names will be set by the implementation
-plan). Two adapters, one contract — the layers above do not know
+**Source interface** (`src/archiwista/sources/protocol.py`). Two adapters, one contract — the layers above do not know
 which producer wrote the file:
 
 | Operation | Purpose | Kartograf adapter | Obserwator adapter |
@@ -1499,9 +1507,9 @@ which producer wrote the file:
 | `iter_entries(root, *, scope)` | scan: versions, current versions, problems (4.4) | `list_segments`, `list_partitions`, `iter_store` (KA-1; on a share of segment parts in parallel; current version from the link sidecar, without `link_target`) | `iter_store`, `current_version` (IMGW-10) |
 | `read_meta(entry)` | metadata in a shared envelope: dataset, label and its source, dates, `sha256`, size, license, inputs (`source_files`) | `read_sidecar` (KA-2), `describe_segment` (KA-3) | `read_meta` (IMGW-10) — `obserwator-meta/1` (IMGW-3) |
 | `footprint(entry)` | geometry on the map or no location with a reason (4.3, A-ADR-022) | footprint `file_footprint` (KA-4; network only in the `footprints` job); without a source — `no_source` | country for archives and series; station points from the catalog or the reason for absence (IMGW-9) |
-| `commands()`, `validate(…)`, `format_command(…)` | forms and a command to copy | KB-1, KB-3, KB-4 | IMGW-11: `data_commands` and `command_schema` (Polish or English texts); the catalog is the one command that writes the raw root, `store sync` (A-ADR-050, A-ADR-056: `series build` and `store catalog` build the data root offline and are Obserwator's own) |
-| `plan(command, options)` | "Okno planu" (Plan window) without downloading | `check_command` (KB-5) | `check_command` → `check_store`: `obserwator-plan/1` as the producer-neutral plan, each position named by its slot's directory in the raw root (IMGW-5, A-ADR-050) |
-| `run(command, options, *, on_progress, on_notice, cancel)` | action — only in the worker process (5.6) | `run_command` (KB-5) | `run_command` → `sync_store` into the raw root (a kept plan as its plan file; IMGW-5, IMGW-11); an interrupt goes through and leaves whole versions only; without a plan it always takes the source's newer versions (A-ADR-050) |
+| `commands()`, `validate(…)`, `format(…)` | optional (`ActionAdapter`): forms and a command to copy | KB-1, KB-3, KB-4 | IMGW-11: `data_commands` and `command_schema` (Polish or English texts); the catalog is the one command that writes the raw root, `store sync` (A-ADR-050, A-ADR-056: `series build` and `store catalog` build the data root offline and are Obserwator's own) |
+| `check(command, options, *, root)` | "Okno planu" (Plan window) without downloading | `check_command` (KB-5) | `check_command` → `check_store`: `obserwator-plan/1` as the producer-neutral plan, each position named by its slot's directory in the raw root (IMGW-5, A-ADR-050) |
+| `run(command, options, *, root, plan, upgrade, on_progress, on_notice)` | action — only in the worker process (5.6); an interrupt (`KeyboardInterrupt`) goes through it | `run_command` (KB-5) | `run_command` → `sync_store` into the raw root (a kept plan as its plan file; IMGW-5, IMGW-11); an interrupt goes through and leaves whole versions only; without a plan it always takes the source's newer versions (A-ADR-050) |
 | `with_area(call, *, area_file, geometry, countries)` | optional (`AreaCommandAdapter`): a call of the catalog with an area of Archiwista in place of the options that choose its own (`AreaCommand`: the call, `way` `geometry` or `bbox`, the `replaced` options), offline, no disk access; a command that takes no area is `unsupported` / `no_area_option` (A-ADR-049 erratum 5) | the schema's `one_of` group `area` replaced by `geometry` (the area's GeoJSON), else by `bbox` with `bbox_crs`; the area's `country` when the call gives none (`command_schema`, `pinned_transform`) | every command refused with `no_area_option`: IMGW-PIB's archives are files of the whole country (A-ADR-050) |
 | `command_for_version(version, *, root)` | optional (`VersionCommandAdapter`): the call that selects a stored version, from its metadata, offline; the producer's coded refusal is `unsupported` / `command_not_rebuildable` (4.7, A-ADR-049) | `command_for_file(sidecar)` (KB-6) | `command_for_version(version, root=…)` (IMGW-21) for a version of the raw root; a version of the data root (a series, a station catalog, analyses) is refused as `unsupported` / `command_not_rebuildable` with the text `source.obserwator_data_version`, which names the Obserwator command that builds it (A-ADR-056) |
 | `export_folder(product, dataset_key)` | optional (`ExportFolderAdapter`): the category folder of a version in a project's export (`NMT`, `BDOT`, `ORTO`…), a table in the adapter; without it the upper-cased product id (8.4, A-ADR-049 erratum 1) | a table of Kartograf's products in the adapter | `IMGW` |
@@ -1564,9 +1572,9 @@ ensures that the layers above do not depend on Kartograf (sections 11 and 13).
   their count at low zoom (6.7, M11). Stations without a location are not on the map — the counter
   leads to the "Katalog" (Catalog) (4.3, 6.8). The station layer is not present
   in the "Wachlarz" (the Fan) (it is not a layer of years).
-- Sheet grid (PL-1992, PL-2000, TM33) as an overlay for selecting sheets:
-  the server computes it for the view with Kartograf's functions (`find_sheets_for_bbox`,
-  parsers).
+- Sheet grid (PL-1992, PL-2000) as an overlay for selecting sheets:
+  the server computes it for the view with Kartograf's `find_sheet_outlines`
+  (a PL-2000 sheet in the zone of the powiats it lies over, Kartograf ADR-055).
 - The "Wachlarz" (the Fan) (6.5 c; A-ADR-018, erratum 1) is not a map layer but a
   SVG component of the interface: the result's year layers (campaigns, releases) as
   thumbnails of the area arranged on an arc like a stack of files in the macOS dock —
@@ -1604,12 +1612,12 @@ holds one (the marker `kartograf-store.json`, `obserwator-store.json` or
 `obserwator-data.json` in a parent directory or up to two levels below; the full search of
 the tree is done by the producer's writer), and creates the index.
 The wizard offers the directory each producer itself would use for a store (`default_root`, 5.3) under an empty field of that producer (Kartograf, Obserwator's raw root), and Obserwator's default data root (`default_data_root`) under the empty data-root field, when it exists and holds the marker of its kind; it is entered only by a click and never written by Archiwista.
-`archiwista doctor` prints diagnostics in Polish (versions and state of source
+`archiwista doctor` prints diagnostics in the language of `lang` of `nogat.toml`, Polish by default (versions and state of source
 plugins, compatibility of producer schemas, availability of
 stores and producer directories by settings field, version of the `obserwator-store/1`
 and `obserwator-data/1` contracts, the producers' default store and data roots,
-permissions, hard links on a share, port). A store entry
-in the configuration (the schema will be set by the implementation plan):
+permissions, port). A store entry
+in the configuration (`config.toml`):
 
 ```toml
 [[stores]]
@@ -1664,8 +1672,10 @@ proxy_autocreate = false                        # create a missing account on it
 | `scan` | `list_segments`, `iter_store` (KA-1); the project files `archiwista-project.json` of the project directories (Archiwista's own reader, 4.7); Obserwator: `iter_store` (IMGW-10) of its raw root and of its data root in one pass, each probed by its kind (A-ADR-056) | no | index |
 | `footprints` | `file_footprint(network=True)` (KA-4) for versions without a footprint, with a local unit footprint cache; refused in offline mode | yes | index, unit footprint cache |
 | `link_check` | `link_target` (KA-5) for a single slot, on demand from the "Karta pliku" (File card) | no | index (a problem on mismatch) |
-| `availability` | `check_availability` (heights), for the other products of the KD extension; IMGW datasets: published years from the listing and `HEAD` (`check_store`, IMGW-5) | yes | report in the index |
-| `check` | `check_command` (KB-5) → `check_data`, `check_landcover`, `check_soil`, `check_hsg`, `check_collection` → `kartograf-plan/1` plan; Obserwator: `check_store` (IMGW-5) → the archive freshness plan of the raw root | yes | — |
+| `own_scan` | the data folders of every project, or of one (Archiwista's own reader in the sandbox, A-ADR-027) | no | index |
+| `snapshot` | a snapshot of an own-data file in its folder's `.wersje/` (A-ADR-027) | no | the project's data folder, index |
+| `availability` | `check_availability` (heights: NMT, NMPT, LAZ), for the other products of the KD extension; Obserwator has no availability report (the freshness of IMGW archives is the `check` job's plan) | yes | report in the index |
+| `check` | `check_command` (KB-5) → `check_data`, `check_landcover`, `check_soil`, `check_hsg`, `check_collection` → `kartograf-plan/1` plan; Obserwator: `check_store` (IMGW-5) → the archive freshness plan of the raw root | yes | index (the plan of each call, with the job) |
 | `download` | `run_command` (KB-5) → `download_data`, `download_landcover`, `download_soil`, `calculate_hsg`, `download_collection` with `update` and `plan`; Obserwator: `sync_store` (IMGW-5) | yes | store (through the producer) |
 | `series` | withdrawn (A-ADR-056): Obserwator builds a dataset's series (`build_series`, IMGW-7) offline in its data root, and Archiwista reads them | — | — |
 | `project_verify`, `project_check`, `project_repin`, `project_restore` | over the groups of a project (A-ADR-049): `project_verify` hashes the pinned files itself; `project_check` runs the producer's `check_command` (KB-5) of each group's calls, or of the command of each version pinned locally (`command_for_version`, KB-6, IMGW-21); `project_repin` runs one group's calls with `run_command` in the update mode; `project_restore` runs them in the default mode; started by `POST /projects/{id}/jobs` | yes; `project_verify` no | `project_repin`: store (through the producer) and the project file (its pins); `project_restore`: store (through the producer); a check and a verification nothing |
@@ -1674,28 +1684,29 @@ proxy_autocreate = false                        # create a missing account on it
 | `preview` | local COG or preview of a large file | no | preview cache |
 | `preview_warm` | render processes of its own at the lowest priority: the thumbnail of the preview pane and the map's tiles at the file's smallest zoom of current versions (with a project: its pinned current versions and its own data), within the room the cache has without evicting previews used in the last week; never a local COG (ADR-041) | no | preview cache |
 
-- **Life cycle:** "w kolejce" (queued) → "trwa" (running) → "zakończone" (succeeded) / "błąd" (error) /
+- **Life cycle:** "w kolejce" (queued) → "trwa" (running) → "zakończone" (succeeded) / "zakończone częściowo" (partial: some units or calls failed, the summary names them) / "błąd" (error) /
   "anulowane" (cancelled) / "przerwane" (interrupted) (server stopped midway); in the API
-  `queued`, `running`, `succeeded`, `failed`, `cancelled`, `interrupted`.
+  `queued`, `running`, `succeeded`, `partial`, `failed`, `cancelled`, `interrupted`.
   Each job records its executor (`actor`: `local` locally, the
   account in a team). An assistant's proposal is not a job until a human
   approves it.
 - **Concurrency (default):** 2 network jobs at a time, of them at most
   `network_jobs_per_person` (2) of one person, a free place going to the oldest waiting job
   of the person with the fewest running ones (v0.4, 10.2); 1 job per
-  project (A-ADR-049), compute jobs up to half of the cores,
+  project (A-ADR-049), worker processes up to half of the processors (at least two; the rest wait in the queue),
   1 index-writing job per store (`scan`, `footprints`; the next one
   gets `409 conflict`). Overlapping jobs (the same segment and the same
   units) are marked with a warning — Kartograf will still write the version
   once (exclusive write), but the second person would waste time. From v0.4 a planned
   download leaves out the positions another active download of the store has claimed
-  (`taken`, "pobierane przez <osoba>"), and a download without a plan of the same call as a
+  (`taken`, "2 pozycje pobiera <osoba> (zadanie <id>)"), and a download without a plan of the same call as a
   running one waits for it (10.2, A-ADR-047).
 - **Worker process → job supervisor protocol:** JSON Lines on standard
-  output: `progress` (from `DownloadProgress`: `current`, `total`, unit,
-  status, message; from KC-2 also phase and bytes), `notice` (`Notice`:
-  level, code, text), `result` (Kartograf's report as JSON), `error`
-  (Kartograf exception type and text). The job supervisor stores the events in the index
+  output: `progress` (`current`, `total` and the counts of the job's kind; a download adds
+  the producer event's unit, status and message; from KC-2 also phase and bytes), `notice`
+  (level, code, message), `result` (the job's summary as JSON), `partial` (the summary of a
+  job that did part of its work), `error` (a registry `code`, `detail`, the exception class,
+  `hint` and `details`, as an error of a request is described). The job supervisor stores the events in the index
   and passes them on through SSE.
 - **Cancellation:** eventually cooperative — a `cancel` parameter in
   Kartograf's functions (KC-1): Kartograf finishes the current unit and returns a partial
@@ -1733,17 +1744,18 @@ proxy_autocreate = false                        # create a missing account on it
   48 h, except the newest in a store; full scans stay. Pruning
   runs at server start and every hour.
 - **Kartograf metadata cache:** worker processes get a local
-  `MetadataCache` in Archiwista's data directory — never `cache=True` (a file
+  `MetadataCache` in Archiwista's cache directory (`<cache_dir>/kartograf/`, the plugin's
+  `SourceContext.cache_dir`) — never `cache=True` (a file
   in the current directory) and never on a share (rule M12 of the manifest spec).
-  Obserwator worker processes run without the SQLite cache (default
-  `db_enabled = False`) and without paths relative to the current directory
-  (IMGW-1).
+  Obserwator (version 3 has no SQLite cache) gets the store's root in every call, never a
+  path relative to the current directory (IMGW-1); a run of a kept plan hands it the plan
+  file in its own cache directory.
 - **Source credentials** (e.g. `CLMS_CREDENTIALS`) are passed to the
   worker processes from the environment; Archiwista does not read, store
   or show them — only "CLMS: skonfigurowane / brak (podgląd
   WMS)" (CLMS: configured / missing (WMS preview)) is visible.
-- **Producer command:** every download, check, merge
-  and series job shows the equivalent CLI command — `kartograf …`
+- **Producer command:** every download, check and merge
+  job shows the equivalent CLI command — `kartograf …`
   (`format_command`, KB-4) or `obserwator …` (IMGW-11).
 
 ### 5.7 Previews
@@ -1770,8 +1782,8 @@ limit 20 GB (LRU, a setting); a file larger than 2 GB does not get a preview
 automatically
 — the "Zbuduj podgląd" (Build preview) button.
 
-Release v0.2: `GET /…/preview` returns `ready`, `needs_build`, `building`
-or `unavailable` and an understandable `reason` (`code`, description, recommendation).
+Release v0.2: `GET /…/preview` returns `ready`, `needs_build`, `building`,
+`unavailable` or `failed` (a time or memory limit: try again later) and an understandable `reason` (`code`, description, recommendation).
 Renderers run in isolated processes (`python -P -m
 archiwista.previews.worker`), and the local COG is created in the `preview` job.
 A lasting reason a renderer answers (`unreadable`, `unsupported_format`) is kept in
@@ -1827,7 +1839,8 @@ libraries required (Obserwator Beta would block releases, version conflicts),
 reading formats and calling the CLI without dependencies (breaks A-ADR-014),
 producers as HTTP services (cost).
 
-**Installation.** Kartograf is a required dependency (`kartograf>=0.8.0,<0.9`
+**Installation.** Kartograf is a required dependency (pinned by a commit of its `develop`
+until its release, REL-5.3; the adapter reads `>=0.8.0.dev0,<0.9`, `SUPPORTED_VERSIONS`
 — the public store reading KA-1..KA-6 arrives in Kartograf 0.8.0;
 A-ADR-024 erratum 1), Obserwator is an extra:
 
@@ -1837,9 +1850,9 @@ pip install "archiwista[obserwator]"  # Kartograf + Obserwator
 ```
 
 `pipx` and `uv tool` work the same way (`pipx install "archiwista[obserwator]"`).
-Installing Obserwator into an existing installation requires no configuration
-changes: the Obserwator catalog entry in the store is then loaded at the
-next start, and the index is refreshed by an ordinary scan.
+Installing Obserwator into an existing installation requires no other change: its
+directories are then entered in a store's settings (`obserwator`, `obserwator_data`, 5.5),
+an entry saved earlier is read again at the next start, and the index is refreshed by an ordinary scan.
 
 **Registration.** Source adapters are plugins pointed to by entry points
 in the `archiwista.sources` group (`pyproject.toml`):
@@ -1863,11 +1876,11 @@ and the registry and the rest of Archiwista know only the interface.
 **An unavailable source** (a state other than `available`) is a state, not an
 application failure:
 
-- the interface hides the views of this source (for Obserwator: the station layer, "Zestawienie" (Summary)
+- the interface hides the views of this source (for Obserwator: the station layer
   and "Karta stacji" (Station card), the "bez położenia" (without location) group of stations) and shows in "Ustawienia" (Settings)
   and "Magazyn" (Store) the state and how to fix it (6.2);
 - the API returns `503` with the code `source_unavailable` or `source_incompatible`
-  (message in Polish, e.g. „pip install \"archiwista[obserwator]\"”), and `GET /sources`
+  (message in the request's language, English by default, with a hint such as „pip install \"archiwista[obserwator]\"”), and `GET /sources`
   reports the states (9.1);
 - the assistant does not offer the tools of this source (7.3);
 - a scan skips the source's catalog but does not remove its configuration
@@ -1875,18 +1888,19 @@ application failure:
 
 **Versions and schemas.** At start, in the wizard and in `archiwista doctor`
 Archiwista checks the version of each producer library against the range
-from `pyproject.toml` and the schemas it reads: `kartograf-meta/1`,
-`kartograf-store/1`, `obserwator-meta/1` (contract versions:
-`store_info`, IMGW-10, IMGW-13). A mismatch gives a readable message in
-Polish (installed version, supported range, repair command) and the state
+its adapter reads (`SUPPORTED_VERSIONS`) and the schemas it reads: `kartograf-meta/1`,
+`kartograf-store/1`, `obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1` and
+`obserwator-series/1` (contract versions:
+`store_info`, IMGW-10, IMGW-13). A mismatch gives a readable message
+(installed version, supported range, repair command) and the state
 `incompatible` for that source only. Encountering an unknown schema version
 in a file (e.g. `obserwator-meta/2`) is a file problem in the index, not a state
 of the source.
 
 **Dependencies and CI.** A single dependency lock file covers a consistent
 set of scientific libraries including the `[obserwator]` extra, so both sources work
-in one environment. CI has two configurations (without and with `[obserwator]`) and a job
-of contract tests against the producers' `develop` branch (section 11).
+in one environment. CI has two configurations (without and with `[obserwator]`); the
+contract tests run in both against the producers' `develop` commits pinned in `pyproject.toml` (REL-5.3; section 11).
 
 **A third producer** is a new plugin: a new adapter and entry point, with no changes
 in the layers above; the consideration of a shared contract library then returns
@@ -1974,23 +1988,23 @@ and the mockup.
 
 | Item | Content |
 |---|---|
-| "Mapa" (Map) | main flow (6.3): area → product → availability; modes "Mapa", "Wachlarz", "Katalog"; the "Zestawienie" panel |
+| "Mapa" (Map) | main flow (6.3): area → product → availability; modes "Mapa", "Wachlarz", "Katalog"; the "Szczegóły zestawu" (Set details) panel |
 | "Katalog" (Catalog) | view without a map (6.8): all objects of a product or dataset with search and filters — with or without an area, including objects without a position; the same state as the "Katalog" mode in the "Mapa" |
 | "Projekty" (Projects) | list of known projects, project view (6.5 g) |
 | "Zadania" (Jobs) | queue and history of background jobs (6.5 f): in a team every person's jobs with who runs them; a counter of running ones next to the name |
 | "Łączenie" (Combining) | wizards: "Mozaika" (Mosaic), "PL + CZ", "Zestaw QGIS" (QGIS set), "Porównanie" (Comparison) (section 8) |
 | "Magazyn" (Store) | stores, usage by product, state and problems (UC-13) |
 | "Ustawienia" (Settings) | stores and path aliases, project directories, base maps and offline mode, limits, preview cache, assistant |
-| "Konta", "Grupy", "Dziennik" (Accounts, Groups, Action log) | for administrators only, at the bottom of the navigation (from v0.4): accounts with roles, temporary passwords, sessions; groups and members; the action log with filters and export (6.5 p, q, s; 10.2) |
+| "Konta", "Grupy", "Zgłoszenia", "Dziennik" (Accounts, Groups, Feedback, Action log) | for administrators only, at the bottom of the navigation (from v0.4): accounts with roles, temporary passwords, sessions; groups and members; the reports people sent with "Zgłoś uwagę" (Send feedback, a button of the top bar), shown by Nogat's kit view `<nogat-admin-feedback>` (9.2); the action log with filters and export (6.5 p, q, s; 10.2) |
 | Account menu | in team mode at the right of the top bar (from v0.4): the person, "Zmień hasło…", "Sesje…", "Token dla agenta…", "Moje ścieżki…", "Wyloguj" (6.5 o) |
 | "Instrukcja" (Guide) | at the right of the top bar in both modes, its icon alone on a phone: the user guide in Polish, slides with pictures of the interface, at `/instrukcja` in a new tab; readable without a session and printable one slide a page (A-ADR-048) |
 | "Aplikacje" (Apps) | at the right of the top bar, left of the session, in both modes, its icon alone on a phone: the ecosystem's other GUIs the deployment names in the table `gui` of `nogat.toml` (Archiwista marked as this one), each opened in its own tab `nogat-<name>`; Nogat's kit element `<nogat-app-menu>`, not drawn without another GUI (A-ADR-054; Nogat DEV-15.4) |
 | "Asystent" (Assistant) | chat available from every view: on a computer a pinned side panel (the map narrows), on a phone a drawer (section 7.5, A-ADR-018) |
 | "Karta pliku" (File card) | opened over the current view (with its own URL) from the list, map, the Fan, the Catalog and search |
-| "Karta stacji" (Station card) | an IMGW station: metadata, position or the reason for its absence, coverage, chart, versions (6.5 k, 6.7); opened like the "Karta pliku" from the map, the "Zestawienie", the "Katalog", search and comparison |
+| "Karta stacji" (Station card) | an IMGW station: metadata, position or the reason for its absence, coverage, chart, versions (6.5 k, 6.7); opened like the "Karta pliku" from the map, the "Katalog", search and comparison |
 
 Views and items tied to an unavailable source (e.g. without Obserwator: the station
-layer, the station "Zestawienie", the "Karta stacji", the Obserwator choice in "Ustawienia"
+layer, the stations of the "Katalog", the "Karta stacji", the Obserwator choice in "Ustawienia"
 and the "bez położenia" (without position) group of stations) are hidden; "Ustawienia" and "Magazyn" show
 the state of the sources and how to install the missing ones (`archiwista[obserwator]`; 5.8).
 
@@ -2057,11 +2071,10 @@ the state of the sources and how to install the missing ones (`archiwista[obserw
    is chosen silently.
    For IMGW measurements a row is a station, and the chips are the variable (e.g. "Q") and the kind of
    years (6.7); the list covers all stations of the area, including those with gaps
-   (P14), and the counter "N stacji bez położenia" leads to the "Katalog" (Catalog) (6.8).
+   (P14), and the counter "N bez położenia" (N without location) leads to the "Katalog" (Catalog) (6.8).
 5. **Row actions.** "Pobierz…" (Download…), "Dodaj do projektu…" (Add to project…), "Pokaż na mapie" (Show on map),
    "Porównaj z…" (Compare with…), "Mozaika…" (Mosaic…), "Polecenie Kartografa" (Kartograf command); for IMGW stations:
-   "Karta stacji" (Station card), "Porównaj z…", "Pobierz archiwa…" (Download archives…), "Przygotuj
-   szeregi…" (Prepare series…), "Dodaj do projektu…" (a pin group of the project, A-ADR-049),
+   "Karta stacji" (Station card), "Porównaj z…", "Pobierz archiwa…" (Download archives…), "Dodaj do projektu…" (a pin group of the project, A-ADR-049),
    "Dodaj do zestawu" (Add to set), "Polecenie Obserwatora" (Obserwator command). Each one involving the network or a write
    goes through the "Okno planu" (Plan window).
 
@@ -2108,7 +2121,7 @@ PL-2000 gives "pełne" from a single campaign, so the 2023 row shows "pełne ·
 PL-2000", and PL-1992 is under "+1 wariant" (+1 variant). Whoever needs sheets
 in EPSG:2180 sets "układ arkuszy: PL-1992" (sheet system: PL-1992) and the ranking does not change it.
 
-**Variant and formats (A-ADR-017).** A card in the "Zestawienie" (Summary), the "Wachlarz" (the Fan)
+**Variant and formats (A-ADR-017).** A card in the "Wachlarz" (the Fan)
 and the "Katalog" (Catalog) is a **variant**: (product, year, horizontal system, resolution,
 height system, submission/campaign). The file format is not part of the variant
 key: files of the same set in several formats (e.g. NMT 2019,
@@ -2601,11 +2614,11 @@ wpisy 1–50 z 1204 · starsze niż 365 dni są usuwane           [Dalej]
 
 Filters (in the panel and in the URL): product; country; horizontal reference system; height
 reference system; resolution; data year (range); campaign or release
-(label); versions: "bieżące" (current, default), "wszystkie" (all), "pełne arkusze" (full sheets)
+(label); versions: "bieżące" (current, default), "wszystkie wersje" (all versions), "pełne arkusze" (full sheets)
 (`full_sheet/`), "przypięte w projektach" (pinned in projects), "niebieżące i nieprzypięte" (non-current and unpinned);
 area (from the map, or a project's: "Obszar projektu", A-ADR-049 erratum 5); project ("używane przez" (used by), "nieużywane przez żaden
 projekt" (not used by any project)); state ("w porządku" (OK), "brak pliku" (file missing), "bez sidecara" (no sidecar),
-"nierozpoznane" (unrecognised)); supplier and licence; download date.
+"nieczytelny sidecar" (unreadable sidecar), "nierozpoznany segment" (unrecognised segment)); supplier and licence; download date.
 For IMGW measurements the following are added: station type (water gauge, climatological,
 precipitation); variable (stations that have it; it does not limit the coverage columns); year
 type (hydrological, calendar — for hydro and meteo, 6.7); active
@@ -2613,7 +2626,7 @@ or historical station; coverage filters separately for the chosen variable (P16)
 full years ("Q: ≥ 30") and coverage label ("H: ciągły" (continuous)) — several such
 chips are combined with "and", and the lack of one variable does not hide
 the others; river — name or hydrographic code (P19, user decision
-2026-10-17) in two variants: "dokładnie ta rzeka" (exactly this river) (equal
+2026-10-17) in two variants: exactly this river (equal
 code) or "z dopływami" (with tributaries) (the code starts with the river's code: Raba `2138`
 includes Mszanka `21382` and Stradomka `21388`). The river filter works on
 the attributes of the station catalogue, so it also covers stations without a location;
@@ -2643,7 +2656,7 @@ confirmed by the user on 2026-10-26, M11):
 
 - **Points on the map.** Stations of the area from the `station_points` layer. The
   **shape** of a point says the station type: a water gauge is a triangle, a
-  climatological station a square, a precipitation post a circle; colour is reserved
+  climatological or synoptic station a square, a precipitation post a circle; colour is reserved
   for coverage. The colour and fill say the coverage state of one variable (4.8.4,
   "Wygląd" (Appearance)): "ciągły" green solid, "luki" orange solid, "częściowy" orange
   half fill, "brak danych" grey hollow, "nieznane" grey dashed outline. Label —
@@ -2661,17 +2674,17 @@ confirmed by the user on 2026-10-26, M11):
 - **A station in the area** is a point inside the area polygon (WGS84 points
   converted to the area's system with the pinned transformation, KA-6). A station
   closer to the boundary than its location uncertainty (4.8.1) has the badge "na granicy obszaru" (on the area boundary),
-  and the switch "Uwzględnij stacje na granicy" (Include stations on the boundary)
+  and the switch "Uwzględnij stacje na granicy obszaru" (Include stations on the area boundary)
   (default: yes) is always visible. Stations without a location do not end up
-  on the map or in the selection silently (P13, A-ADR-022): the counter "N stacji bez
-  położenia" (N stations without location) leads to the "Katalog" (Catalog) view (6.8), where they are selected
+  on the map or in the selection silently (P13, A-ADR-022): the counter "N bez
+  położenia" (N without location) leads to the "Katalog" (Catalog) view (6.8), where they are selected
   by attributes — river and hydrographic code (also with tributaries, P19),
   name, type; the 1° square from the code that intersects the area is there only a
   rough hint.
-- **Summary.** "Tabela" (Table), the default (M3): station, river, type, and for each variable of the
+- **Summary.** The "Lista" (List) of the "Katalog", the default (M3): station, river, type, and for each variable of the
   dataset separately the coverage label and full years (P16), series badge;
-  sorting by order along rivers (from the IMGW list), by name or by the number of
-  full years of the chosen variable. "Oś czasu" (the Timeline) of stations is a tab of the
+  sorting along rivers (hydrographic code and the order of the provider's list) or by
+  name. "Oś czasu" (the Timeline) of stations is a tab of the
   "Katalog" (Catalog) next to the "Lista" (List), one click away (M3, M11; sketch 6.5 j):
   a row is a station that expands into its variable rows, a cell is a year whose colour
   saturation is the share of units with a value (full, fraction, none; unknown as in
@@ -2706,8 +2719,9 @@ confirmed by the user on 2026-10-26, M11):
   (`sha256`, `ETag`, `Last-Modified`), the lines of the provider's terms in a strip at the card's foot (6.7, "Licence")
   and the link "Strona stacji IMGW" (IMGW station page) (`https://hydro.imgw.pl/#/station/hydro/<code>`
   — a plain link, no background requests). Actions: "Kopiuj ścieżkę pliku" (Copy file path),
-  "Polecenie Obserwatora" (Obserwator command), "Sprawdź aktualność" (Check freshness), "Przygotuj szeregi…" (Prepare series…),
-  "Porównaj z…" (Compare with…), "Dodaj do projektu…" (Add to project…; a pin group, A-ADR-049), "Dodaj do zestawu" (Add to set).
+  "Polecenie Obserwatora" (Obserwator command), "Sprawdź aktualność" (Check freshness),
+  "Porównaj z…" (Compare with…), "Dodaj do projektu…" (Add to project…; a pin group, A-ADR-049), "Dodaj do zestawu" (Add to set);
+  beside a daily or annual chart "Kopiuj do Hydrologa" and "Plik przekazania" hand the series to Hydrolog (`nogat-handoff/1`, A-ADR-052).
 - **Chart.** One variable or two with different units (two axes);
   range by selection. By default the chart shows the whole available period
   simplified (M11). The server returns at most 2,000 points per series:
@@ -2759,8 +2773,8 @@ confirmed by the user on 2026-10-26, M11):
   beside, merged); an answer without lines shows none.
 - **ČHMÚ stations (from v0.6, 4.8.6).** The same views and rules; the point, row
   and card have a supplier badge ("IMGW-PIB", "ČHMÚ" — the display name
-  for the identifier `CHMI`), the "Dostawca" (Supplier) filter works in the map,
-  the "Zestawienie" (Summary) and the "Katalog" (Catalog), and the comparison combines stations of both suppliers on a
+  for the identifier `CHMI`), the "Dostawca" (Supplier) filter works in the map
+  and the "Katalog" (Catalog), and the comparison combines stations of both suppliers on a
   common timeline. "Sprawdź aktualność" (Check freshness) and "Pobierz archiwa…" (Download archives…) for ČHMÚ
   stations cover only the selected stations (archives per station). The result of the
   check distinguishes "nowy plik u źródła" (new file at the source) (`missing`, to be downloaded)
@@ -2778,8 +2792,7 @@ and product, not only IMGW (sketches 6.5 d, m).
 
 - **Entry.** The "Katalog" navigation item (6.2), the "Katalog" mode
   in the "Mapa" (Map) (the same state: product, area, filters, URL), the counter
-  "N stacji bez położenia" (N stations without a location) or "N files without a footprint" on the map and in
-  the "Zestawienie" (Summary) (it opens the "Katalog" with the same product and filters
+  "N bez położenia" (N without location) or "N bez obrysu" (N without footprint) on the map (it opens the "Katalog" with the same product and filters
   and with the "bez położenia" (without location) group expanded), search (`Ctrl+K`).
 - **Scope.** With an area or without one. With an area, the result is divided into the groups
   from 4.3 (item 3): "w obszarze" (in the area), "na granicy obszaru" (on the area boundary), "cały kraj" (whole country), "bez
@@ -2807,18 +2820,18 @@ and product, not only IMGW (sketches 6.5 d, m).
   4.3), coverage labels separately for each variable (in the "Lista" consecutive
   variable rows, in the "Karty" a list of variables; P16) and store badge,
   current version. Stations are
-  sorted as in the "Zestawienie" (order along rivers from the IMGW list),
+  sorted along rivers (hydrographic code and the order of the provider's list) or by name,
   other objects by name or identifier.
-- **Actions** as on the map and in the "Zestawienie": "Karta pliku" (File card), "Karta
+- **Actions** as on the map: "Karta pliku" (File card), "Karta
   stacji" (Station card), "Pokaż na mapie" (Show on map) (only with a location), "Porównaj z…" (Compare with…),
   "Pobierz…" (Download…), "Dodaj do projektu…" (Add to project…) (stations without a location only explicitly,
   A-ADR-023), "Dodaj do zestawu" (Add to set). In a set (8.4), objects without a location
   are tables without geometry (e.g. a station CSV with the reason for the missing location),
   not map layers.
-- **Completing a station's location.** "Plik współrzędnych…" (Coordinates file…) opens the "Okno
-  planu" (Plan window) with an Obserwator command that builds a new version of the station
-  catalog with the user's coordinates file (`location_source = "user"`,
-  4.8.1, IMGW-9); Archiwista does not write coordinates itself. A station
+- **Completing a station's location.** Obserwator builds a new version of the station
+  catalog with the user's coordinates file offline, with its own command in its data root
+  (`location_source = "user"`, 4.8.1, IMGW-9; A-ADR-056: Archiwista runs only `store sync`);
+  Archiwista does not write coordinates itself. A station
   with a location from the new version appears on the map after reindexing.
 
 ## 7. Assistant (chat agent)
@@ -3141,10 +3154,10 @@ an explicit list of versions (what the user selected in Archiwista).
 true ortho, intensity, TIFF maps) from one segment, and, once reprojection is
 added, also from segments that differ only in the sheet layout
 (PL-2000 zones; CZ: SM5 sheets in EPSG:5514 and TM33 tiles in EPSG:3045).
-Sources of the selection: a year row from the "Zestawienie" (Summary),
-a selection on the map or in the "Katalog" (Catalog),
+Sources of the selection: a year row from the "Katalog" (Catalog),
+a selection on the map or in the "Katalog",
 the pins of a project's group.
-Choosing a variant from the "Zestawienie" (Summary) or the "Katalog" (Catalog) (A-ADR-017) expands to
+Choosing a variant from the "Katalog" (Catalog) (A-ADR-017) expands to
 versions in a single format: by default a raster format ready for mosaicking (ASC,
 GeoTIFF), and when the variant has several such formats, the one chosen in the plan.
 The mosaic does not accept non-raster formats (e.g. ASCII-NMT, archives);
@@ -3352,7 +3365,7 @@ is written in a hidden sibling directory and swapped in, so a failure leaves the
 whole; written without `zip`, the old ZIP of that name is removed (it would show other data).
 The project's list of exports says "projekt zmieniony po eksporcie — wygeneruj ponownie"
 (the project changed after the export — regenerate) when the project file is newer than the
-export's `README.txt` (from v1.1 exactly, by `zestaw.json`). A new current version of a
+export's `README.txt` (from v1.1 exactly, by `zestaw.json`). From v1.1 a new current version of a
 dataset's series marks an export with an older version as "nieaktualny" (outdated) in the
 same way.
 
@@ -3381,7 +3394,7 @@ and presentation without data processing (the IMGW series CSV is exported by Obs
 **Input.** Two versions of the same slot (flights of 2019 and 2025 of a sheet,
 BDOT10k of a county from two dates, SoilGrids in two releases), two slots of the
 same product and area (two extracts from different dates), or two years
-from the "Zestawienie" (Summary) (dataset versions).
+from the "Katalog" (Catalog) (dataset versions).
 
 **Result** — three levels:
 
@@ -3480,7 +3493,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 ### 9.1 Principles
 
 - Prefix `/api/v1`, JSON in UTF-8; field names in English (`snake_case`),
-  texts for people (labels, messages) in Polish. OpenAPI schema:
+  texts for people (labels, messages) in English or Polish (text language below). OpenAPI schema:
   `/api/v1/openapi.json`; interactive documentation `/api/docs` (only
   in local mode). Until v1.0 the API may change; from v1.0 `/api/v1` is
   stable.
@@ -3512,7 +3525,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
   (from the registry), `detail` and `hint`, `instance` (the request path),
   `code` (the code from the registry: `validation_error`, `not_found`, `conflict`,
   `forbidden`, `unauthorized`, `method_not_allowed`, `rate_limited`,
-  `missing_dependency`, `store_unavailable`, `data_error`, `unsupported`,
+  `missing_dependency`, `source_unavailable`, `store_unavailable`, `data_error`, `io_error`, `unsupported`,
   `calculation_error`, `internal_error`), `details` and — for invalid
   values — `errors[]` (JSON `pointer`, `type`, `message`). The project's own cause
   is `details.reason` (`session_required`, `csrf_rejected`,
@@ -3540,7 +3553,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
   the `detail` and `hint` of a job error remember the message key and values and are
   rendered in the request language on read (a row from before this change
   stays in Polish). Commands: text for a person (help, diagnostics, the line
-  before an error document) in Polish, the `--json` output and the
+  before an error document) in `lang` of `nogat.toml`, Polish by default (A-ADR-053), the `--json` output and the
   `archiwista-error/1` document in English.
 - **Provider lines (Nogat DEV §20, A-ADR-055):** the answers with data of versions or
   stations — `GET /slots`, `GET /stores/{store}/versions/{version}`, `GET /compare`,
@@ -3557,7 +3570,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 - **Filters** in the query have the names of the interface filters (6.6); an area
   in the query as `bbox` + `bbox_crs`, in the body as GeoJSON (WGS84) or an
   area identifier.
-- **Security:** no CORS; every `/api` request (except the token exchange),
+- **Security:** no CORS; every `/api` request (except the token exchange, the sign-ins and `GET /session/methods`),
   including reads, requires a session and the `X-Archiwista-CSRF` header with the session's
   CSRF token (10.1); clients without a browser (scripts, the agent) use the same
   session and header; in team mode — the session of a logged-in person and a role (10.2).
@@ -3596,10 +3609,10 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /previews/warm` | the first look at current versions prepared in the preview cache → `202` with the `preview_warm` job (5.7, ADR-041): optional filters `store`, `product`, `segment`, `project` (adds its own data; the job is that project's) and `area_id`; any session; a store that is not configured, a hidden or unknown project and an unknown area → `404` before a job; a request of the filters of a waiting warm-up returns that job |
 | `GET /requests/{parent_request}` | files of one Kartograf job (also PL and CZ); `/groups` belongs to permission groups |
 | `GET /compare?a=…&b=…` | comparison of `ref` metadata of two versions, own files or snapshots (8.5, level 1), with `attribution` and `terms_notice` of both sides' versions merged (9.1; none for own data) |
-| `GET /map/footprints` | footprints in the view (`bbox`, `zoom`, filters) or aggregation |
+| `GET /map/footprints` | footprints in the view (`bbox`, filters, `limit`, `grid_columns`) or, above `limit`, a grid of counts, with the location groups |
 | `GET /map/sheets` | sheet grid in the view (`system`, `scale`): each sheet with its zone and outline; a PL-2000 sheet that a zone boundary cuts is outlined inside its zone (zones of powiats, Kartograf ADR-055) |
 | `GET /map/stations` | the located stations of the view (`bbox` in WGS84, required; `area_id` with `boundary`, the filters of `GET /stations`, `limit`, `grid_columns`) as points, each with the state and label of each variable when `dataset` is given (its colour and tooltip), or above `limit` a grid of counts; `counts` as in `GET /stations` (the stations without a location are counted, never drawn). Unlike `GET /stations`, `dataset` alone labels and keeps every station of the other filters: one without a series of it is drawn with no data of it, so a station catalog downloaded without series shows its stations (2026-11-06); with `variable`, `coverage` or `min_complete_years` it keeps only the stations with its series; `attribution` and `terms_notice` (9.1) of the providers of the stations drawn, points or cells: IMGW-PIB S, P with RD, RH; ČHMÚ C and CP (4.8.5, 4.8.6) |
-| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `meteo_kind` (repeatable: `synoptic`, `climate`, `precipitation`, the station types of the map's chips; the counts follow it, ADR 0045 decision 1), `years`, `year_type` (by default the type remembered for the data's family, `year_types` of `GET /settings`, and for a list of both families, without `dataset`, `kind` or `meteo_kind`, hydro's; P15, ADR 0045 decision 3), `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `q` (a station whose name or river contains the text, case-folded, or whose code begins with it; no character is a wildcard), `sort` (`river`, the default: along rivers, by the hydrographic code, then the provider's order on the river, then the name, 6.8; or `name`; both bound to `cursor`, ADR 0045 decision 4), `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); `attribution` and `terms_notice` (9.1) of the page's stations: IMGW-PIB S, P, RD, with RH when a row has a point; ČHMÚ C and CP (4.8.5, 4.8.6); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while Obserwator is not available |
+| `GET /stations` | stations in an area and filters (`area_id` or `bbox` + `bbox_crs`, `dataset` (the dataset key, e.g. `pl.imgw.hydro_daily`: an IMGW product is the dataset's family, ADR 0032 decisions 10 and 13), `variable` (repeatable: stations having the variable), `kind`, `meteo_kind` (repeatable: `synoptic`, `climate`, `precipitation`, the station types of the map's chips; the counts follow it, ADR 0045 decision 1), `years`, `year_type` (by default the type remembered for the data's family, `year_types` of `GET /preferences`, and for a list of both families, without `dataset`, `kind` or `meteo_kind`, hydro's; P15, ADR 0045 decision 3), `coverage` (repeatable filter of a single variable, e.g. `Q:continuous`, `H:gaps`; several states of one variable are alternatives), `min_complete_years` (repeatable, e.g. `Q:30`; both coverage filters need `dataset`), `active`, `boundary`, `location`, `river_code` + `river_scope`: `exact` or `tributaries`, `q` (a station whose name or river contains the text, case-folded, or whose code begins with it; no character is a wildcard), `sort` (`river`, the default: along rivers, by the hydrographic code, then the provider's order on the river, then the name, 6.8; or `name`; both bound to `cursor`, ADR 0045 decision 4), `store`, `provider`, `limit`, `cursor`) with coverage labels separately for each variable of the station (P16) and location groups with counters: `located` (with the stations on the area's boundary, closer to it than their location uncertainty, unless `boundary=false`), `boundary`, `unlocated` (stations without a location — after attribute and coverage filters, never placed in an area, 6.8) and `hidden` (stations the coverage filters hid); `attribution` and `terms_notice` (9.1) of the page's stations: IMGW-PIB S, P, RD, with RH when a row has a point; ČHMÚ C and CP (4.8.5, 4.8.6); the archive badge is not built yet (it needs the archives of a dataset's years from the producer); this route, the station card, the Timeline and `GET /map/stations` answer `503 missing_dependency` while Obserwator is not available |
 | `GET /stations/datasets` | the datasets with station series in the index (`store` optional): each with its key, the producer's name of its segment, provider, family, time unit, the year type of its labels (the one remembered for its family; hydrological for half-year characteristics), R by default in it (`years`), the label of its current series version and its variables (key, variable, unit, half-year period: the distinct keys of its stations' series, the first the default "Kolor punktów"); `attribution` and `terms_notice` (9.1) of the datasets' providers, without positions (IMGW-PIB S, P, RD; ČHMÚ C and CP); `503` without Obserwator (ADR 0045 decision 1) |
 | `GET /stations/timeline` | a page of the stations of one dataset year by year, the "Oś czasu" (Timeline) tab of the Catalog (6.5 j): the filters, order and cursor of `GET /stations` with `dataset` required; each item the station (code, name, kind, river with its hydrographic code, active, location) and its series as `GET /stations/{code}/coverage` gives it for the same `variable`, `years` and `year_type`; `variable` (repeatable) keeps the stations with a value of each variable and only their rows; the years of the whole page are read from the index at once; `attribution` and `terms_notice` as in `GET /stations`; `503` without Obserwator (ADR 0045 decision 6) |
 | `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the attribution of the version's sidecar (`attribution` of an item of `station.series`, a string; the input archives are not built yet), `paths`: each series file by dataset on this computer and as mounted on others (path aliases, 4.6), and `charts`: the charts of `GET /stations/{code}/series` its series give (`dataset`, `time_unit`, `resolution`, `variables` with their unit and first and last day; days, then months, then the annual charts of half-year characteristics; A-ADR-051); `attribution` and `terms_notice` (9.1), the lines to show: IMGW-PIB S, P, RD, with RH when the station has a point; ČHMÚ C and CP (4.8.5, 4.8.6); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
@@ -3618,14 +3631,14 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /projects/{project}/files/{file_id}/layers` | working file and snapshots as layers (`unavailable` while their data folder breaks the rules of its scan) |
 | `GET`/`POST /projects/{project}/files/{file_id}/preview` and `…/snapshots/{label}/preview` | previews of own data and snapshots; analogous `preview.png`, `tiles`, `features`, `members`; only from a data folder the rules of its scan let be read now and that its last scan read, else `409 own_folder_invalid` (the preview cache answers nothing of it either; v0.4) |
 | `GET /projects/{project}/files/{file_id}/file`, `…/snapshots/{label}/file` | an own file or a file of a snapshot, as `GET …/versions/{version}/file` (`member`: one file of a set; a working file changed since its scan is `409 own_file_changed`; only from a data folder the rules of its scan let be read now, else `409 own_folder_invalid`), for those who can see the project (v0.4) |
-| `POST /availability` | availability of an area for a product → background job; result: local state, source report, rows with labels; for IMGW datasets — published years with publication dates and the area's stations with coverage labels |
+| `POST /availability` | availability of an area for a product → background job; result: local state, source report, rows with labels; Obserwator checks the availability of no area (`422 unsupported`, reason `no_availability`) |
 | `GET /availability` | last report for an area and product (no network) |
 | `GET /commands` | catalog of producers' data commands (KB-1, IMGW-11) |
 | `POST /commands/parse` | pasted command → `command`, `options` (KB-2) |
 | `POST /commands/validate` | validation without the network (KB-3, IMGW-11) |
 | `POST /commands/format` | options → text of the `kartograf …` or `obserwator …` command (KB-4, IMGW-11) |
 | `POST /commands/area` | a call with an area of `/areas` (drawn, uploaded or a project's) in place of the area options it names: the area's GeoJSON as the command's geometry file (`way` `geometry`), else the box that encloses it (`way` `bbox`); the area's country when the command needs one; the line without a store root, the `replaced` options; `422 unsupported` for a command that takes no area (`no_area_option`) or a producer without the capability `AreaCommandAdapter` (`no_area_commands`); no network (A-ADR-049 erratum 5) |
-| `POST /jobs` | background job: `check`, `download`, `compose`, `export`, `preview`; `check` and `download` take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); a `download` with `pin` pins its files and the positions of its plan the store held into that project when it succeeds: `{project, group}` a new set written closed, with `open: true` a new set left open, with `add: true` appended with its calls to the open set `group` (`add` and `open` not both: `400`) — it also needs `project.write`, and is refused before a job: a taken name `409 group_exists` (new sets), no such set `404 group_not_found`, a closed one `409 set_closed`, another producer than the set's `409 set_producer`, more than 1,000 calls together `400 too_many_calls` (`add`); a set closed meanwhile ends the job `partial` with the pin's error, the files kept (A-ADR-049 decision 9, erratum 6); a project's jobs start at `POST /projects/{id}/jobs` |
+| `POST /jobs` | background job: `check` or `download`, which take `calls` (each a command with its options) of one `producer` (9.1, ADR-044); the plans a `check` job kept are read with `GET /jobs/{id}/plan`, and a `download` with `plan_job` runs them (another store, producer or calls: `409 plan_mismatch`); a `download` with `pin` pins its files and the positions of its plan the store held into that project when it succeeds: `{project, group}` a new set written closed, with `open: true` a new set left open, with `add: true` appended with its calls to the open set `group` (`add` and `open` not both: `400`) — it also needs `project.write`, and is refused before a job: a taken name `409 group_exists` (new sets), no such set `404 group_not_found`, a closed one `409 set_closed`, another producer than the set's `409 set_producer`, more than 1,000 calls together `400 too_many_calls` (`add`); a set closed meanwhile ends the job `partial` with the pin's error, the files kept (A-ADR-049 decision 9, erratum 6); a project's jobs start at `POST /projects/{id}/jobs` |
 | `GET /jobs`, `GET /jobs/{id}` | list and state of jobs with the actor (`actor`), `project` filter; from v0.4 the list holds every job of the queue, and a job only of projects the session does not see shows its kind, store, actor, state and progress counts only (`hidden: true`); such a job at its own address → `404` |
 | `GET /jobs/{id}/events` | SSE of a visible job (`progress`, `notice`, `state`), resumption via `Last-Event-ID`; ends after the final state, about a second after its session ends or its account is disabled or removed (as for `…/file`, from v0.4), or once the session no longer sees the job |
 | `POST /jobs/{id}/cancel`, `POST /jobs/{id}/retry` | cancel a waiting or running job (whoever started it or an administrator; also a job another process supervises, through that process; `409` once it ended); retry a job that did not succeed as a new job of the session with the same kind, store and parameters, asking again what its kind needs (a download: `store.write`, with `pin` also `project.write`; a project's re-pin or restore: `project.write` and `store.write`; from v0.4 a store's scan, outlines or link check and the scan of every project's folder: `store.scan`; the scan of one project's folder: the limits of a person's scans, `429`) (ADR-038, A-ADR-049) |
@@ -3641,10 +3654,10 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `POST /projects/{id}/jobs` | a job over the project's groups (`kind`: `verify` — the pinned files hashed in the store, no network; `check` — the pins against the source; `repin` — exactly one group anew in the producer's update mode, its pins replaced after the whole run succeeded; `restore` — missing pinned versions downloaded again and kept by `sha256` or `content_sha256`; `groups` optional, every group by default) → `202` with the job; a re-pin and a restore need `project.write` and `store.write`, a check and a verification only visibility; one job per project (`409`); a group whose producer has no commands is `422 no_commands`, one whose versions have no command is refused for a re-pin (`422 command_not_rebuildable`); a re-pin of a closed set is `409 set_closed` before a job and again under the lock (the job then ends `partial`, no pin changed); the store must be configured (`409 unknown_store`); a retry asks the same (A-ADR-049) |
 | `GET /projects/{id}/activity` | whoever sees the project: its entries of the action log newest first, with a cursor — the project's changes (`project.*`) and its jobs (`job.start`, `job.retry`, `job.cancel`), with who, when, the outcome and the details, without the client address or session (D7, A-ADR-049) |
 | `POST /projects/{id}/exports`, `GET /projects/{id}/exports`, `GET /projects/{id}/exports/{name}/zip` | the owner or an administrator writes `eksport/<name>/` (`{name, groups?, zip}`): copies of the pinned files of every group or of `groups` in category folders with `README.txt` and `ATTRIBUTION.txt`, with `zip` also `eksport/<name>.zip`, replacing an export of that name (`project.export`; a pin left out is counted); the list of exports says whether each has a ZIP and whether the project changed after it; the ZIP route sends it to whoever sees the project; the QGIS set from v1.1 (8.4) |
-| `POST /assistant/conversations`, `GET …`, `DELETE …/{id}` | conversations |
-| `POST /assistant/conversations/{id}/messages` | message → SSE stream (text, tool calls, proposals, effects in the interface) |
-| `GET /assistant/proposals/{id}` | proposal |
-| `POST /assistant/proposals/{id}/execute`, `…/reject` | execution or rejection — only from the interface, with a CSRF token |
+| `POST /assistant/conversations`, `GET …`, `DELETE …/{id}` | from v1.2: conversations |
+| `POST /assistant/conversations/{id}/messages` | from v1.2: message → SSE stream (text, tool calls, proposals, effects in the interface) |
+| `GET /assistant/proposals/{id}` | from v1.2: proposal |
+| `POST /assistant/proposals/{id}/execute`, `…/reject` | from v1.2: execution or rejection — only from the interface, with a CSRF token |
 | `GET /settings`, `PUT /settings` | settings (in team mode: administrator); each store with `kartograf`, `obserwator` (Obserwator's raw root) and `obserwator_data` (its data root, `null` without one; A-ADR-056), each probed by its kind when new or moved (a root of the other kind: a problem with the reason `wrong_root`); from v0.4 also `network_jobs_per_person` (2) and `action_log_retention_days` (365); the table `[team]` of `config.toml` is neither shown nor changed here (10.2); the kind of years is each person's preference since v0.4 (`GET /preferences`), and a `year_types` an earlier build wrote into `config.toml` is ignored and named by `archiwista doctor` (A-ADR-047 erratum 1) |
 | `GET /users`, `POST /users`, `PATCH /users/{id}`, `DELETE /users/{id}` | accounts and their roles (`admin`, `store_writer`) — administrator only; from v0.4 each with the state of its password (`password`: `none`, `set`, `temporary`, `expired`; `password_expires_at`), never a hash; the last administrator who can sign in cannot be removed, disabled or lose the role (`409 last_admin`) |
 | `POST /users/{id}/password` | administrator, from v0.4: a temporary password generated by the server, answered once (`password`, `expires_at`: 72 h), to be changed at the first sign-in; ends the account's sessions |
@@ -3656,7 +3669,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /preferences`, `PUT /preferences` | any session, its own preferences (the owner's in local mode; an agent's are its account's; the defaults before the first change): `year_types` (`hydro`, `meteo`: `hydrological` or `calendar`, by default hydrological and calendar; the numbering of the station routes without `year_type`, 6.7), `basemap` (a configured basemap's name, `""` for none, `null` for the first configured one; another name is `400 unknown_basemap`) and `path_aliases` (at most 20 pairs `server` (an absolute prefix on the server) and `personal` (the same place on the person's computer), each at most 400 characters) applied only to paths shown and copied (`CopyPath.personal`: through the first alias whose server prefix holds the path, `null` without one), never to the server's access to files (10.2); `PUT` replaces them all (an omitted field takes its default) and is not logged (A-ADR-047) |
 | `POST /feedback` | any session: a report of "Zgłoś uwagę" (Hydrograf's mechanism and limits): `message` (1 to 5,000 characters, blank refused), `contact` (at most 200), `page_url` (at most 500), `diagnostics` (any JSON object of at most 100,000 characters as compact JSON: the interface's last 50 events, the view and its parameters, the environment; never a request body, a token or a file's content) → `201 {id, status: "ok"}`; kept with the account that sent it (none for the local owner) and the `User-Agent` (cut to 500); over a limit `400 validation_error`; not logged |
 | `GET /admin/feedback`, `PATCH /admin/feedback/{id}`, `DELETE /admin/feedback/{id}` | administrator (`feedback.manage`), the core feedback API of Nogat DEV-15.13 behind Archiwista's own role check, every answer `Cache-Control: no-store` (as every answer under `/admin/`): the reports newest first (`limit` 1–200, default 50; `offset`) as `{items, total, unread_count}`, each report `{id, created_at, message, context, is_read}` with `context` `{user_id, contact, page_url, user_agent, diagnostics}`; marking one read or unread (`{is_read}`, a strict boolean; answers the report); deleting one (`{"status": "deleted"}`); an unknown report `404 not_found`, reason `feedback_not_found`; the view "Zgłoszenia" (6.5), the kit's `<nogat-admin-feedback>` |
-| `GET /health` | versions of Archiwista, Kartograf and Obserwator, state of stores (producers' directories), index and jobs |
+| `GET /health` | versions of Archiwista, Kartograf and Obserwator, state of stores (producers' directories, a running job), index, the preview cache and the last scan of own data |
 
 ### 9.3 Examples
 
@@ -3668,51 +3681,70 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
     {
       "store": "zespol",
       "slot": "nmt/pl_1992_1m_evrf2007/N-34/130/D/d/2/4/N-34-130-D-d-2-4.asc",
+      "name": "N-34-130-D-d-2-4.asc",
       "segment": {"path": "nmt/pl_1992_1m_evrf2007",
                   "label": "NMT 1 m · PL-1992 · EVRF2007",
-                  "dataset": "pl.gugik.nmt_1m"},
-      "unit": {"kind": "sheet", "code": "N-34-130-D-d-2-4"},
-      "current_version": {
+                  "producer": "kartograf", "product": "nmt", "country": "PL",
+                  "dataset_key": "pl.gugik.nmt_1m", "known": true},
+      "unit": "N-34-130-D-d-2-4",
+      "product": "nmt",
+      "country": "PL",
+      "status": "ok",
+      "location": {"kind": "footprint", "reason": null, "source": "sheet"},
+      "version": {
         "path": "nmt/pl_1992_1m_evrf2007/versions/N-34/130/D/d/2/4/2025-04-26_82710_fdd30535/N-34-130-D-d-2-4.asc",
         "label": "2025-04-26_82710",
         "label_source": "campaign",
         "data_date": "2025-04-26",
         "full_sheet": true,
         "sha256": "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623",
-        "size_bytes": 37798349
+        "size_bytes": 37798349,
+        "crs": {"horizontal": "EPSG:2180", "vertical": "EPSG:9651"},
+        "is_current": true,
+        "pinned_by": [{"project": "raba", "name": "Raba", "group": "NMT 2023",
+                       "sha256": "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623",
+                       "state": "ok"}],
+        "…": "…"
       },
-      "versions_count": 1,
-      "crs": {"horizontal": "EPSG:2180", "vertical": "EPSG:9651"},
-      "pinned_by": [{"project": "raba", "group": "NMT 2023"}]
+      "versions_count": 1
     }
   ],
   "next_cursor": null,
+  "groups": {"footprint": 1, "country": 0, "none": 0},
   "attribution": [],
-  "terms_notice": []
+  "terms_notice": [],
+  "stale": false,
+  "stale_stores": []
 }
 ```
 
-**Availability** — `POST /api/v1/availability` with `{"area_id": "krakow",
-"product": "nmt"}` returns `202` and a job; its result (excerpt):
+**Availability** — `POST /api/v1/availability` with `{"area_id": "5f2b9c0e7d41a3b6",
+"product": "nmt"}` returns `202` and the `availability` job; once it succeeded,
+`GET /api/v1/availability?area_id=5f2b9c0e7d41a3b6&product=nmt` with `Accept-Language: pl`
+returns its report (excerpt):
 
 ```json
 {
-  "area": {"id": "krakow", "area_km2": 120.0, "countries": ["PL"]},
+  "area": {"id": "5f2b9c0e7d41a3b6", "name": "Kraków", "area_km2": 120.0, "countries": ["PL"]},
+  "producer": "kartograf",
   "product": "nmt",
   "checked_at": "2026-10-20T08:15:02Z",
-  "variant": {"resolution": "1m", "vertical_crs": "EVRF2007",
-              "format": "ASC", "sheet_system": "1992", "other_variants": 2},
+  "job_id": "3f9c1a7e5b2d4c60",
+  "store": "zespol",
+  "variant": {"horizontal": null, "resolution": "1m", "vertical_crs": null},
   "rows": [
-    {"year": 2023, "label": "pełne · 2 kampanie",
-     "coverage": {"complete": true, "campaigns": 2, "full_share": 1.0,
-                  "partial_sheets": 0, "sheets": 12},
-     "local": {"label": "pobrane 5/12", "units": 5, "of": 12}},
-    {"year": 2022, "label": "częściowe · 58%",
-     "coverage": {"complete": false, "campaigns": 1, "full_share": 0.58,
-                  "partial_sheets": 4, "sheets": 9},
-     "local": {"label": "niepobrane", "units": 0, "of": 9}}
+    {"country": "PL", "year": 2023, "label": "pełne · 2 kampanie",
+     "coverage": {"kind": "full_campaigns", "campaigns": 2, "full_share": 1.0, "percent": 100,
+                  "below_one": false, "partial_sheets": 0, "missing_sheets": 0},
+     "local": {"store": "zespol", "state": "some", "units": 5, "of": 12, "label": "pobrane 5/12"},
+     "other_variants": 2, "variants": ["…"]},
+    {"country": "PL", "year": 2022, "label": "częściowe · 58% · 4 ark. niepełne",
+     "coverage": {"kind": "partial", "campaigns": 1, "full_share": 0.58, "percent": 58,
+                  "below_one": false, "partial_sheets": 4, "missing_sheets": 0},
+     "local": {"store": "zespol", "state": "none", "units": 0, "of": 9, "label": "niepobrane"},
+     "other_variants": 0, "variants": ["…"]}
   ],
-  "source": {"schema": "kartograf-availability/1", "ok": true}
+  "report": {"producer": "kartograf", "schema": "kartograf-availability/1", "ok": true, "…": "…"}
 }
 ```
 
@@ -3728,23 +3760,27 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
                          "bbox": [561000, 239000, 573000, 249000], "bbox_crs": "EPSG:2180",
                          "sheet_system": "1992", "resolution": "1m",
                          "vertical_crs": "EVRF2007", "year": 2023}}],
-  "update": null,
+  "plan_job": null,
   "pin": {"project": "raba", "group": "NMT 2023"}
 }
 ```
 
-Response `202`: `{"id": "j-2026-10-20-0007", "state": "queued", "events":
-"/api/v1/jobs/j-2026-10-20-0007/events"}`. Event stream:
+Response `202`: the job (`Location: /api/v1/jobs/3f9c1a7e5b2d4c60`), e.g. `{"id":
+"3f9c1a7e5b2d4c60", "kind": "download", "state": "queued", …}`. Event stream
+(`GET /api/v1/jobs/3f9c1a7e5b2d4c60/events`):
 
 ```text
+id: 3
 event: progress
-data: {"current": 3, "total": 7, "unit": "N-34-…", "status": "downloaded"}
+data: {"current":3,"total":7,"call":0,"calls":1,"unit":"N-34-…","status":"completed","message":""}
 
+id: 4
 event: notice
-data: {"level": "info", "code": "sheet_list", "text": "(tekst Kartografa bez zmian)"}
+data: {"level":"info","code":"sheet_list","message":"(tekst Kartografa bez zmian)"}
 
+id: 12
 event: state
-data: {"state": "succeeded", "summary": {"new": 7, "local": 5, "failed": 0}}
+data: {"state":"succeeded","result":{"status":"ok","counts":{"new":7,"unchanged":5,"relabeled":0},"failed":0,"…":"…"}}
 ```
 
 **Error from Kartograf** — `500`, `application/problem+json` (code `data_error`,
@@ -4092,8 +4128,7 @@ over TLS.
   not reach the server, the access log or the `Referer` header. The UI
   exchanges it through `POST /api/v1/session` and removes it from the address
   (`history.replaceState`). Without a session, another user or process on the
-  same computer gets `401`. The token can be disabled in the configuration
-  (not recommended).
+  same computer gets `401`. No setting disables the token.
 - **Session:** the `archiwista_session` cookie (`HttpOnly`,
   `SameSite=Strict`, `Path=/`); the actor is the "local user"
   (`actor` = `local`). Browsers send cookies to every port of a
@@ -4129,7 +4164,7 @@ over TLS.
   an agent script) passes only with a session and the CSRF header — also
   for reads. UI files (the page `/`, the user guide `/instrukcja` of A-ADR-048 and
   `/static/…`) do not require a session, `/api/*` (except the
-  token exchange, and from v0.4 `GET /session/methods` and the two sign-in routes of 10.2)
+  token exchange, the files of `/api/docs` in local mode, and from v0.4 `GET /session/methods` and the two sign-in routes of 10.2)
   does.
 - **Further sessions (external agent):** a single-use token valid for 5 min
   is issued by the owner's browser session (`POST /api/v1/session/tokens`)
@@ -4153,7 +4188,7 @@ over TLS.
 - **Request limits:** request body ≤ 4 KiB for the token exchange, ≤ 16 KiB for a sign-in
   (v0.4) and ≤ 1 MiB for
   the remaining routes (checked before reading the body, also with
-  `Transfer-Encoding: chunked`; `413 request_too_large`); area files
+  `Transfer-Encoding: chunked`; `400 validation_error`, reason `request_too_large`); area files
   have their own limit of 50 MB. The server handles at most 100 connections at a time.
 - **Private local data:** the data directory (index, state database, area
   copies, job logs) has mode `0700` (an existing one too), `archiwista`
@@ -4207,8 +4242,8 @@ over TLS.
   variable (later: the system keyring); never in the browser,
   in API responses or in logs. Source credentials
   (`CLMS_CREDENTIALS`) — as in 5.6.
-- **Dependencies:** pinned versions; a vulnerability audit (`pip-audit`,
-  `npm audit`) in the release gate. External UI files
+- **Dependencies:** pinned versions; a vulnerability audit of the locked PyPI dependencies
+  (`pip-audit` in CI, DEV-13.6). External UI files
   (`src/archiwista/web/vendor/`) and Swagger UI from `/api/docs`
   (`src/archiwista/api/swagger/`) are built into the package, with no CDN. Each of these
   directories has a `vendor.json` manifest: name, version, license, source
@@ -4219,13 +4254,12 @@ over TLS.
   an unknown or changed file is an error. Archiwista's own files
   (`vendor.json`, `archiwista-docs.js`) are excluded by name. Nogat's GUI kit
   (`src/archiwista/web/nogat/`: the menu "Aplikacje", the hand-off module, the strip of
-  the providers' lines `<nogat-sources>`, the regulamin files and the marks of the GUIs;
-  kit 0.6.0) is copied from Nogat whole, byte for byte and never edited; the same
+  the providers' lines `<nogat-sources>`, the administrators' views (`<nogat-admin-feedback>`), the regulamin files and the marks of the GUIs;
+  kit 0.7.0) is copied from Nogat whole, byte for byte and never edited; the same
   test checks each kit file against the kit's own manifest `nogat-kit.json`
   (A-ADR-054). The Python
-  environment is pinned by `requirements.lock` with sha256 sums (`pip install
-  --require-hashes`); local Kartograf and Archiwista are then installed
-  in editable mode with `--no-deps`. Updating an external library: download
+  environment is pinned by `uv.lock` (`uv sync --locked`, DEV-6.3); Kartograf and Obserwator
+  are pinned by commit in `pyproject.toml` until their releases (REL-5.3). Updating an external library: download
   the package from the source, check `integrity`, replace the files and sums
   in the manifest in the same commit.
 
@@ -4416,8 +4450,8 @@ over TLS.
 
 ## 11. Testing and verification
 
-- **Gate (as in Kartograf):** `pytest -m "not live"`, `ruff check .`,
-  `ruff format --check .`, `mypy src tests`; interface: browser tests
+- **Gate (`scripts/gate.sh`, from Nogat's template):** `ruff format --check .`, `ruff check .`,
+  `mypy src tests`, `pytest -m "not live and not perf and not smb"` with coverage; interface: browser tests
   (Playwright) and a syntax check of the ES modules; no build step
   (A-ADR-028). Everything offline.
 - **Test store:** a generator (`tests/fixtures/make_store.py`) builds a
@@ -4490,20 +4524,20 @@ over TLS.
   and IMGW series against the `obserwator …` commands; supported version ranges
   of Kartograf (required dependency) and Obserwator (extra `[obserwator]`)
   in `pyproject.toml` (5.8).
-- **Two configurations (A-ADR-024):** CI runs the full set (the gate
-  above) separately without `[obserwator]` and with `[obserwator]`. Without Obserwator: IMGW tests
+- **Two configurations (A-ADR-024):** CI runs the gate above with `[obserwator]` and its
+  tests again without `[obserwator]`. Without Obserwator: IMGW tests
   are skipped with an explicit reason, and the interface, API and assistant behave
   according to "źródło niedostępne" (source unavailable) (station views hidden, the error
   `source_unavailable` in Polish, no IMGW tools in the assistant);
   the import test ensures that Archiwista starts without the `obserwator` package.
   With `[obserwator]`: tests of the Obserwator adapter and of the contract on a catalog built by
   Obserwator. The check of versions and schemas (`kartograf-meta/1`,
-  `kartograf-store/1`, `obserwator-meta/1`) has tests
+  `kartograf-store/1`, `obserwator-store/1`, `obserwator-data/1`, `obserwator-meta/1`, `obserwator-series/1`) has tests
   of compatibility and incompatibility with a message, and the plugin registry — a test
   with a mock second adapter registered through an entry point and a test of a
   broken plugin (an exception on loading does not bring the server down).
-  A separate CI job: contract tests against Kartograf's `develop`
-  and Obserwator's `develop` (early detection of breaking changes); one
+  The contract tests run against the producers' `develop` commits
+  pinned in `pyproject.toml` (REL-5.3; early detection of breaking changes); one
   lock file for both configurations.
 - **Interface:** Playwright offline on the test store with sources
   from recordings: the main flow (UC-01), the file card, a job with cancellation,
@@ -4520,7 +4554,7 @@ over TLS.
   from v0.5 UC-19 (`HEAD` of the hydro archives 2023–2025, synchronisation of one
   year) and the station catalog from the public IMGW API;
   data only in `<data-dir>` outside the repo and outside `/tmp`; a report
-  in `docs/research/<YYYY-MM-DD>-<topic>/raport.md` with exact commands
+  in `docs/reports/` with exact commands
   and results (paths as `<data-dir>`).
 - **Proof of operation for every version:** starting the application
   (`archiwista serve`), going through the version's acceptance criteria (section 13)
@@ -4974,7 +5008,7 @@ Criteria:
    from an HDD/SMB store is served from the local preview cache within
    the target time for a preview from cache in 4.5 (without changing the thresholds).
 
-Status (2026-10-26): built on the branch `feature/kartograf-data-output` (plan
+Status (2026-10-26): built on the branch `feature/kartograf-data-output`, in `develop` since 2026-11-03 (plan
 `docs/plans/2026-10-25-archiwista-next.md`, Part 3), not released: it is released together
 with v0.4 and the projects (D2 of 2026-10-31), when the author decides. Its project actions are
 rewritten by A-ADR-049. Criteria 3, 5 and 7 are met, criterion 8 on a local disk (the first
@@ -5016,7 +5050,7 @@ Criteria:
    evidence of each: `reports/v0.4-security-checklist.md`.
 
 Status (2026-10-29): implementation, the review's fixes (D1 to D11) and T12's
-automated acceptance on `feature/v0.4-team` (plan `plans/2026-10-26-plan-v0.4.md`):
+automated acceptance on `feature/v0.4-team`, in `develop` since 2026-11-03 (plan `plans/2026-10-26-plan-v0.4.md`):
 the three-person browser scenario (criteria 1 and 3), the action matrix with a call
 of every C9 route by each role, and the security checklist with its five deviations
 accepted for the LAN deployment (criteria 2 and 5). Missing: the live three-computer
@@ -5101,7 +5135,7 @@ IMGW versions pinned in projects (A-ADR-049); in a team, downloading is done by 
 
 Why v0.5: it uses the mechanisms of v0.3–v0.4 (background jobs, the "Okno
 planu", team mode), and Obserwator needs time for the
-store contract (today Beta without a store); it comes before v1.0, because IMGW data
+store contract (Beta without a store until 3.0.0, which is not released yet, 12.7); it comes before v1.0, because IMGW data
 belongs to the release scope (user decision 2026-10-17). If Obserwator
 releases IMGW-1..IMGW-10 earlier, the read-only part (map, card,
 chart) can ship earlier without changing the order of the remaining versions.
@@ -5270,7 +5304,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | Load on public services | slowdowns, blocks on the source side | low | Kartograf's cache, assistant limits, 2 network jobs at a time |
 | UI without type checking (A-ADR-028: Preact + htm with no build step) | errors detected only at runtime | medium | browser tests (Playwright), JSDoc annotations, contract tests with OpenAPI; adding Vite and TypeScript later without rewriting components |
 | Data license terms on handover | attribution violation | low | the lines of the providers' terms (A-ADR-055) in every answer and view of the data, the CLI text, the hand-off and the export (`README.txt`, `ATTRIBUTION.txt`); on screen one strip a view with every line in its dialog, and there "Kopiuj atrybucję" |
-| Dependence on Obserwator (2.1.1, Beta, no store; IMGW-1..IMGW-13, IMGW-21); optional from A-ADR-024 (extra `[obserwator]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for Obserwator; releases v0.1–v0.4 and an installation without Obserwator do not need it | medium | Obserwator is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by Obserwator; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
+| Dependence on Obserwator (3.0.0 with the store, IMGW-1..IMGW-13 and IMGW-21, not released yet: pinned by commit); optional from A-ADR-024 (extra `[obserwator]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for Obserwator; releases v0.1–v0.4 and an installation without Obserwator do not need it | medium | Obserwator is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by Obserwator; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
 | ČHMÚ stations in Obserwator (IMGW-15..IMGW-19; the tool was renamed from IMGWTools in ECO-057) | v0.6, and with it the MVP, waits for Obserwator; a separate package changes the adapter and the extra | medium | requirements reported before v0.5 (section 12.7), the same contracts with the supplier as an additive change, one Obserwator adapter; adapter decision at the Obserwator release (4.8.6, A-ADR-024) |
 | ČHMÚ archives per station (no country-wide archive) | hundreds of requests during synchronization, slow plans | medium | synchronization of selected stations only (area, project), plan with the number of requests, 2 network jobs at a time |
 | Version conflicts of scientific libraries between Kartograf and Obserwator (numpy, pandas, GDAL/rasterio, pyarrow) | installation impossible or environment divergence with `[obserwator]` | medium | one lock file for a consistent set, CI in two configurations (without and with `[obserwator]`), contract tests against the producers' `develop` (5.8, 11, A-ADR-024) |
@@ -5313,7 +5347,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 
 ## 16. Mockup
 
-In parallel with this spec, a clickable interface mockup is being built: the `mockup/` directory in this repository (history of the first versions: branch `feat/mockup`). It is a static
+In parallel with this spec, a clickable interface mockup is being built: the `mockup/` directory in this repository (history of the first versions: branch `feat/mockup`, deleted from `origin` on 2026-11-10). It is a static
 prototype on data from real GUGiK index records (skorowidz) for the area
 "Kraków" (bbox `561000,239000,573000,249000`, EPSG:2180) — not production
 code and not a technology choice. The fields proposed for Kartograf
