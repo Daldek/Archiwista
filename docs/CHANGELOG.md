@@ -1282,6 +1282,14 @@ command-line interface may change.
   „Moje” in „Zadania” and of a job without access, the hint of the company sign-in, the
   texts of a set in the making and the introduction of „Polecenia producenta” no longer
   address the user.
+- Kartograf is re-pinned from `d0990c89` to `c9afdd3f` and Obserwator from `0591b82` to
+  `0394af7`, the commits of Nogat's release set candidate-4 (`pyproject.toml`, `uv.lock`;
+  the supported ranges are unchanged, both builds keep their versions). Kartograf changes
+  its internals and CI only. Obserwator's `store sync` also downloads hydro.imgw.pl's
+  station details (`pl.imgw.hydro_details`, its ADR-021) into the raw root, and the
+  IMGW-PIB station catalog it builds from them gives a hydrological station's „Rok
+  założenia”, „Zero wodowskazu” and „Kilometr rzeki”, with hydro.imgw.pl's line among the
+  catalog's lines; a catalog without them leaves the three empty.
 - **Breaking:** Obserwator is re-pinned from `f9f4ee79` to `0591b82`, which keeps a store
   in two roots (its ADR-015 and ADR-017; A-ADR-056). Archiwista runs only Obserwator's
   `store sync`, into the raw root: `series build` and `store catalog` leave
