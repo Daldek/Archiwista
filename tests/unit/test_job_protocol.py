@@ -111,12 +111,12 @@ def test_job_spec_keeps_settings_and_paths(
         '{"protocol": 2, "job": {"id": "a", "kind": "scan", "store": "s",'
         ' "params": {}, "actor": "local"}, "index_path": "/i", "cache_dir": "/c",'
         ' "previews_dir": "/p", "work_dir": "/w", "settings": {}}',
-        '{"protocol": 3, "job": {"id": "a", "kind": "download"}}',
-        '{"protocol": 3, "job": {"id": "a", "kind": "scan", "store": "s",'
+        '{"protocol": 1, "job": {"id": "a", "kind": "download"}}',
+        '{"protocol": 1, "job": {"id": "a", "kind": "scan", "store": "s",'
         ' "params": {}, "actor": "local", "actor_kind": "robot", "session": null},'
         ' "index_path": "/i", "cache_dir": "/c", "previews_dir": "/p",'
         ' "work_dir": "/w", "settings": {}}',
-        '{"protocol": 3, "job": {"id": "a", "kind": "scan", "store": "s",'
+        '{"protocol": 1, "job": {"id": "a", "kind": "scan", "store": "s",'
         ' "params": {}, "actor": "local", "actor_kind": "local_owner",'
         ' "session": null}, "index_path": "/i", "cache_dir": "/c",'
         ' "previews_dir": "/p", "work_dir": "/w", "settings": {"port": 1}}',

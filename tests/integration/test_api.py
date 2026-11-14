@@ -26,7 +26,7 @@ from archiwista.errors import (
     ProducerError,
     SourceUnavailableError,
 )
-from archiwista.index import IndexQueries, IndexWriter, MapQuery
+from archiwista.index import SCHEMA_VERSION, IndexQueries, IndexWriter, MapQuery
 from archiwista.security import CSRF_HEADER
 from archiwista.sources import SourceAdapter, SourceState
 from archiwista.sources.registry import source_error
@@ -132,7 +132,7 @@ def test_api_every_read_route_answers_from_the_index(served: ServedStore) -> Non
     # Assert
     assert health["stores"][0]["state"]["status"] == "available"
     assert health["stores"][0]["state"]["last_scan"] is None  # scanned in-process
-    assert health["index"]["schema_version"] >= 3
+    assert health["index"]["schema_version"] == SCHEMA_VERSION
     assert stores["items"][0]["state"]["slots"] == health["stores"][0]["state"]["slots"]
     assert store["usage"]["versions"] > 0 and store["projects"]
     assert {item["product"] for item in products["items"]} >= {"nmt"}

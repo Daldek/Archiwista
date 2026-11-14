@@ -2,11 +2,11 @@
 
 Accounts, groups, project access, passwords and the action log cannot be
 rebuilt from files, so an index rebuild must leave them alone, an older
-database must migrate with its data (the permission log of version 2 becomes
-the action log), a newer one must be refused untouched, the action log must
-refuse changes, and ``archiwista state export`` → ``state import`` into an
-empty database must give back the same state (``archiwista-state/2``; a
-``/1`` document still imports).
+database must migrate with its data, a newer one must be refused untouched,
+the action log must refuse changes, and ``archiwista state export`` →
+``state import`` into an empty database must give back the same state
+(``archiwista-state/1``; a copy written as ``/2`` or before v0.4 still
+imports).
 """
 
 import hashlib
@@ -25,7 +25,7 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.cli import main
 from archiwista.config import AppSettings
 from archiwista.errors import StateError
-from archiwista.index import IndexQueries, IndexWriter, initialize
+from archiwista.index import SCHEMA_VERSION, IndexQueries, IndexWriter, initialize
 from archiwista.state import (
     MIGRATIONS,
     STATE_SCHEMA_VERSION,
@@ -103,12 +103,12 @@ def _digest(path: Path) -> str:
 
 
 def _backup(**parts: list[dict[str, Any]]) -> dict[str, Any]:
-    """Return an ``archiwista-state/2`` document; omitted parts are empty."""
+    """Return an ``archiwista-state/1`` document; omitted parts are empty."""
     names = ("users", "groups", "projects", "passwords", "preferences", "actions")
     unknown = set(parts) - set(names)
     assert not unknown, unknown
     return {
-        "schema": "archiwista-state/2",
+        "schema": "archiwista-state/1",
         "exported_at": AT,
         **{name: parts.get(name, []) for name in names},
     }
@@ -167,7 +167,7 @@ def test_index_rebuild_leaves_state_untouched(tmp_path: Path) -> None:
         indexed_project(writer, directory, "Tajny", store=STORE)
     before = (_digest(paths.state_file), state.snapshot())
     with sqlite3.connect(paths.index_file) as connection:
-        connection.execute("PRAGMA user_version = 1")
+        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
     connection.close()
 
     # Act
@@ -267,76 +267,6 @@ def test_newer_state_database_is_refused(tmp_path: Path) -> None:
     assert _digest(path) == before
 
 
-def test_version_2_log_becomes_ok_entries_of_the_action_log(tmp_path: Path) -> None:
-    """Migrating a version 2 database keeps every permission entry, now ``ok``."""
-    # Arrange
-    path = tmp_path / "state.sqlite"
-    initialize_state(path, migrations=MIGRATIONS[:2])
-    with sqlite3.connect(path) as connection:
-        connection.execute(
-            "INSERT INTO users (id, name, disabled, created_at, updated_at)"
-            " VALUES ('ada', 'Ada', 0, ?, ?)",
-            (AT, AT),
-        )
-        connection.executemany(
-            "INSERT INTO permission_log"
-            " (id, at, actor, actor_kind, session, action, target, before, after)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [
-                (4, AT, "local", None, None, "user.add", "ada", None, '{"id": "ada"}'),
-                (9, AT, "ada", "agent", "s-2", "group.remove", "hydro", "{}", None),
-            ],
-        )
-    connection.close()
-
-    # Act
-    state = StateStore(path)
-
-    # Assert
-    assert [
-        (
-            entry.id,
-            entry.actor,
-            entry.actor_kind,
-            entry.session,
-            entry.client,
-            entry.action,
-            entry.target,
-            entry.outcome,
-            entry.before,
-            entry.after,
-            entry.details,
-        )
-        for entry in log_entries(state)
-    ] == [
-        (
-            4,
-            "local",
-            None,
-            None,
-            None,
-            "user.add",
-            "ada",
-            "ok",
-            None,
-            {"id": "ada"},
-            None,
-        ),
-        (9, "ada", "agent", "s-2", None, "group.remove", "hydro", "ok", {}, None, None),
-    ]
-    ada = state.user("ada")
-    assert ada is not None
-    assert (ada.password, ada.sessions_revoked_at) == ("none", None)
-    with sqlite3.connect(path) as connection:
-        version = connection.execute("PRAGMA user_version").fetchone()[0]
-        tables = {
-            row[0] for row in connection.execute("SELECT name FROM sqlite_master")
-        }
-    connection.close()
-    assert version == STATE_SCHEMA_VERSION
-    assert "permission_log" not in tables
-
-
 def test_action_log_refuses_to_change_an_entry(tmp_path: Path) -> None:
     """The trigger stops an UPDATE of the log, even one written by hand."""
     # Arrange
@@ -416,7 +346,7 @@ def test_export_import_gives_the_same_matrix(
     assert restored.snapshot() == original.snapshot()
     assert _matrix(restored) == _matrix(original)
     document = json.loads(backup.read_text(encoding="utf-8"))
-    assert document["schema"] == "archiwista-state/2"
+    assert document["schema"] == "archiwista-state/1"
     assert [password["hash"] for password in document["passwords"]] == [HASH]
     assert {key: value for key, value in copy.items() if key != "exported_at"} == {
         key: value for key, value in document.items() if key != "exported_at"
@@ -497,8 +427,28 @@ def test_backup_round_trips_passwords_preferences_and_actions(tmp_path: Path) ->
     assert [password.user_id for password in after.passwords] == ["ada", "ola"]
 
 
-def test_backup_of_version_1_imports_its_log_as_ok_entries(tmp_path: Path) -> None:
-    """An ``archiwista-state/1`` document restores; its log joins the action log."""
+def test_backup_written_as_version_2_imports_as_version_1(tmp_path: Path) -> None:
+    """A copy of before the renumbering (Nogat REL-1.4) restores whole, as ``/1``."""
+    # Arrange
+    state = StateStore(tmp_path / "state.sqlite")
+    document = _backup(
+        users=[_user("ada")],
+        passwords=[_password("ada", temporary=False, expires=None)],
+        actions=[_action(3, AT)],
+    )
+
+    # Act
+    import_state(state, json.dumps({**document, "schema": "archiwista-state/2"}))
+    again = json.loads(dump_state(export_state(state)))
+
+    # Assert
+    assert {key: value for key, value in again.items() if key != "exported_at"} == {
+        key: value for key, value in document.items() if key != "exported_at"
+    }
+
+
+def test_backup_of_before_v0_4_imports_its_log_as_ok_entries(tmp_path: Path) -> None:
+    """A copy of before v0.4 restores; its permission log joins the action log."""
     # Arrange
     state = StateStore(tmp_path / "state.sqlite")
     user = _user("ada")
@@ -581,7 +531,7 @@ def test_import_into_non_empty_state_is_rejected(tmp_path: Path) -> None:
     ],
 )
 def test_import_rejects_other_documents(tmp_path: Path, text: str) -> None:
-    """Only a complete, consistent ``archiwista-state/2`` or ``/1`` is restored."""
+    """Only a complete, consistent ``archiwista-state/1`` (or ``/2``) is restored."""
     # Arrange
     state = StateStore(tmp_path / "state.sqlite")
 

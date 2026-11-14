@@ -1280,6 +1280,17 @@ command-line interface may change.
   questions (Nogat DOC-6.1); ADRs whose facts changed have errata dated 2026-11-14, and the
   decisions accepted by the merge of 2026-11-03 say so in the index.
 
+- **Breaking:** every format is version 1 until the first release (Nogat REL-1.4,
+  ECO-072; nothing is released yet). `archiwista state export` writes `archiwista-state/1`
+  again, the document that was `archiwista-state/2`; `archiwista state import` reads it, a
+  copy written as `/2` and one of before v0.4. The local index is rebuilt (schema 1) when
+  it is opened and filled by the next full scan; `GET /health` reports
+  `index.schema_version` 1. The state database has one schema version, 1: a database
+  numbered 5, the same tables, is renumbered when it is opened and keeps everything, while
+  one written by an Archiwista older than 2026-11-04 (schema 2 to 4) no longer opens
+  (export it with that Archiwista and import the copy into an empty database). The
+  protocol between the server and its job workers is 1.
+
 - The info texts of the interface follow Nogat DEV-15.14 (ECO-069): titles, hints and notes
   are impersonal, address the user only in an instruction and name no program, file format,
   internal symbol or development status. The offline note at the source reads „Brak sieci —

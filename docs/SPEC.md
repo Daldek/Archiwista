@@ -631,15 +631,16 @@ the directory after `realpath`, independent of the index; owner; `public` /
 `users` / `group` / `private`; entries for people and groups), from v0.4 the passwords
 (Argon2id hashes in a table of their own, 10.2), each person's preferences and the action
 log, which the log of permission changes of v0.1 became (10.2, A-ADR-047), and the
-feedback reports of "Zgłoś uwagę" (table `feedback`, schema version 5: text, contact,
+feedback reports of "Zgłoś uwagę" (table `feedback`: text, contact,
 page, browser, diagnostics, read flag and the sending account; 6.5, 9.2). This state cannot
 be rebuilt from disk, so rebuilding the index
-does not touch it, the schema changes through migrations (not by rebuilding),
-and a backup is provided by `archiwista state export` (JSON
-`archiwista-state/2` from v0.4, with the password hashes: a secret, written with mode `0600`;
-`archiwista-state/1` still imports), restored by `archiwista state import` into an empty
-database; the feedback reports are not in that document and are kept by a copy of the
-file (SQLite `.backup`).
+does not touch it, the schema changes through migrations (not by rebuilding; schema
+version 1 until the first release, Nogat REL-1.4, and a database numbered 5 before that
+is version 1), and a backup is provided by `archiwista state export` (JSON
+`archiwista-state/1`, with the password hashes: a secret, written with mode `0600`; a copy
+written as `archiwista-state/2` or before v0.4 still imports), restored by `archiwista
+state import` into an empty database; the feedback reports are not in that document and
+are kept by a copy of the file (SQLite `.backup`).
 
 In a production deployment the store may remain on an HDD/NAS, but the Archiwista
 data directory (index and preview cache) should be on a local SSD.

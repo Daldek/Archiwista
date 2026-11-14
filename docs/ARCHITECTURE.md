@@ -171,9 +171,9 @@ they are no longer an exhaustive list of helper files. The methods of `IndexWrit
 | `auth/visibility.py` | which projects are visible | `ProjectVisibility`, `ALL_PROJECTS`, `access_key` |
 | `auth/passwords.py` | passwords of accounts (ADR-046): the policy (12 to 1,024 characters after NFKC, not the account's id or name, not in `common-passwords.txt`, the package's list with its manifest and licence), Argon2id hashes of `HASHER` with at most `HASH_SLOTS` at once, verification of one hash on every path (a stand-in without a record), the check of a sign-in (`login_failed` for an unknown account, a wrong password or none, `disabled`, `password_expired`), a person's own change after the current password to another one (`same_as_current`), temporary passwords, the administrators who can sign in (`UserRecord.can_sign_in`: enabled, with a password that has not expired or through the proxy); the only reader and writer of the password table | `policy_problem`, `hash_password`, `verify`, `Verified`, `check_sign_in`, `SignInCheck`, `change_password`, `generate_temporary`, `set_password`, `set_temporary_password`, `TemporaryPassword`, `sign_in_administrators`, `HASHER`, `HASH_SLOTS`, `TEMPORARY_TTL` |
 | `auth/throttle.py` | the wait after failed sign-ins (ADR-046), in memory: per account name and per client address, from the fifth failure 1 s doubling up to 15 min; an attempt is admitted under the lock of the counts, as a failure that may come (attempts at once pass no more than one after another), a refused attempt verifies nothing, a success forgets both keys, a key idle for a day is forgotten | `LoginThrottle`, `LoginAttempt`, `LoginWaitError`, `throttle_keys`, `FREE_FAILURES`, `MAX_WAIT` |
-| `state/schema.py` | schema and migrations of `state.sqlite` | `initialize`, `MIGRATIONS`, `STATE_SCHEMA_VERSION` |
+| `state/schema.py` | schema and migrations of `state.sqlite`; a database numbered 5 before the renumbering (Nogat REL-1.4) is version 1 | `initialize`, `schema_version`, `MIGRATIONS`, `STATE_SCHEMA_VERSION`, `RENUMBERED_VERSION` |
 | `state/store.py` | reading and changing the state database together with the action log (each change and its entries in one transaction; `record` for actions that change nothing here, `actions` pages the log newest first, `project_activity` a project's entries (`project.*` by target, `job.*` by `details.project`, done or failed), `prune_actions` deletes old entries; the password table for `auth/passwords.py`; an account's revocation time; each principal's preferences, `preferences` and `set_preferences`, not logged); `read_users` reads the accounts without creating or upgrading the database (the doctor) | `StateStore`, `UserRecord`, `GroupRecord`, `ProjectAccessRecord`, `PasswordRecord`, `PreferenceRecord`, `ActionEntry`, `ActionName`, `ActionQuery`, `ActionPage`, `StateSnapshot`, `read_users` |
-| `state/export.py` | the `archiwista-state/2` copy of the state database (a secret: it holds the password hashes); `archiwista-state/1` still imports | `export_state`, `import_state`, `dump_state`, `parse_state`, `StateDocument`, `LegacyStateDocument`, `STATE_DOCUMENT_SCHEMA` |
+| `state/export.py` | the `archiwista-state/1` copy of the state database (a secret: it holds the password hashes); a copy written as `archiwista-state/2` or before v0.4 still imports | `export_state`, `import_state`, `dump_state`, `parse_state`, `StateDocument`, `LegacyStateDocument`, `STATE_DOCUMENT_SCHEMA`, `RENUMBERED_STATE_DOCUMENT_SCHEMA` |
 
 **Index**
 
@@ -472,7 +472,7 @@ remains unchanged.
 | Path (`AppPaths`) | Contents | Rebuildable | Who writes |
 |---|---|---|---|
 | `config_file` = `config.toml` | `AppSettings`: port, offline mode, store and project directories, `own_data_dirs` (an exception to `<project directory>/dane/`), `preview_cache_limit_gb` (20), `basemaps` (OpenFreeMap vector and OSM GUGiK by default) and permissions; a retired `year_types` is ignored | no (wizard or Settings) | `SettingsService.update` → `ConfigStore.save` |
-| `index_file` = `index.sqlite` (+ `-wal`, `-shm`) | index of stores, projects, own files, snapshots and areas, job history, token hashes | yes, schema 18 rebuilt with a full scan | `IndexWriter`, `JobSupervisor`, `security.py` |
+| `index_file` = `index.sqlite` (+ `-wal`, `-shm`) | index of stores, projects, own files, snapshots and areas, job history, token hashes | yes, schema 1 rebuilt with a full scan | `IndexWriter`, `JobSupervisor`, `security.py` |
 | `state_file` = `state.sqlite` | accounts, groups, roles, project access, passwords, each person's preferences, the action log, the feedback reports | **no** — backup with `archiwista state export` (the feedback reports only in a copy of the file) | `StateStore` |
 | `cache_dir` = `cache/<producer>/` (beside `previews/`, in `cache_home` when set) | plugin cache (`SourceContext.cache_dir`); Kartograf: `unit_bboxes.sqlite` (`UnitBBoxCache`) | yes, from the network | adapter |
 | `jobs_dir` = `jobs/` | `<id>.log` (stderr of the worker process), `owner-<pid>.lock` (job supervisor lock), `<id>.cancel` (a cancel request for the job's supervisor, ADR-038) | logs not needed for operation | `JobSupervisor`, worker processes |
@@ -526,9 +526,10 @@ computers through `path_aliases` (SPEC 4.6).
 A cache rebuilt from the producers' files (A-ADR-002),
 `index/schema.py`:
 
-- **Schema version** `SCHEMA_VERSION` (6 in release 0.2.0, 7 since the index of
-  IMGW slots, 8 since the availability reports, 9 since the plans of `check` jobs
-  and the job state `partial`, 10 since the stations of the station catalogs, 11 since the coverage of the series of stations, 12 since a plan per call of a `check` job, 13 since a project is its directory with the manifest of each producer, 14 since the claims of planned downloads, 15 since a project is Archiwista's project file with its stores, groups and pins, and `versions.content_sha256`, 16 since the producers' calls of stored versions in `version_calls`, 17 since the sets' states and the pins' calls: `pin_groups.state`, `closed_at`, `closed_by`, `pins_sha256` and `digest_state`, `pins.calls`, 18 since the producer `imgw` is called `obserwator` (Nogat ECO-057)) in `PRAGMA user_version`. Every open (`IndexWriter`, `IndexQueries`,
+- **Schema version** `SCHEMA_VERSION` 1 in `PRAGMA user_version`: until the first
+  release every format is version 1 (Nogat REL-1.4, ECO-072), and an index numbered
+  before that (6 in release 0.2.0, up to 18) is rebuilt like one of any other version.
+  Every open (`IndexWriter`, `IndexQueries`,
   `JobSupervisor` at its start, `serve`, `reindex`, `token`) calls `initialize`: a different version (older
   or newer) means a rebuild instead of a migration — all objects are dropped
   and created anew in a single transaction (`BEGIN IMMEDIATE`), which
@@ -598,38 +599,41 @@ A cache rebuilt from the producers' files (A-ADR-002),
 A separate file next to the index (`state/schema.py`) that no
 file on disk can rebuild (A-ADR-029): rebuilding the index does not touch it.
 
-- **Schema version** `STATE_SCHEMA_VERSION` = number of `MIGRATIONS` (2 in release
-  0.1.0, 3 from v0.4, 4 with the projects' activity, 5 with the feedback reports). `initialize` runs the missing
-  migrations in a single transaction and checks foreign keys; a database from a newer
-  Archiwista (higher `user_version`) raises `StateError`, with no changes to the file.
-  WAL, `synchronous = FULL`.
-- **Tables:** `users` (from version 3 with `sessions_revoked_at`, the time before which
+- **Schema version** `STATE_SCHEMA_VERSION` = number of `MIGRATIONS`, 1: until the
+  first release every format is version 1 (Nogat REL-1.4, ECO-072), so the one
+  migration creates the whole schema. A database numbered 5 (`RENUMBERED_VERSION`), the
+  number of the same schema before the renumbering, is read as version 1 (`schema_version`,
+  also by `read_users`) and renumbered when it is opened, nothing else changed.
+  `initialize` runs the missing migrations in a single transaction and checks foreign
+  keys; a database from a newer Archiwista (higher `user_version`) raises `StateError`,
+  with no changes to the file. WAL, `synchronous = FULL`.
+- **Tables:** `users` (with `sessions_revoked_at`, the time before which
   the account's sessions end), `groups`, `memberships`, `roles` (`admin`,
   `store_writer`), `project_acl` (key = project directory after `realpath`,
-  `owner`, `visibility`), `project_acl_entries` (person or group), and from version 3
+  `owner`, `visibility`), `project_acl_entries` (person or group),
   `passwords` (an Argon2id hash per account, how and by whom it was set, the end of a
   temporary one; read only through `auth/passwords.py` and copied by the backup),
   `preferences` (a JSON document per account or `local`) and `action_log` (A-ADR-047:
   when, who with the kind of actor, the session label and the client address, what and
   about what, the outcome `ok`/`denied`/`failed`, state before and after and details in
-  JSON). The migration to version 3 copies the `permission_log` of versions 1 and 2 into
-  `action_log` with the outcome `ok` and drops it; the trigger
-  `action_log_append_only` refuses every `UPDATE` of an entry, and only
-  `StateStore.prune_actions` deletes entries. Version 4 (A-ADR-049 decision 14) adds
-  the indexes `action_log_target (target, at)` and `action_log_project
-  (json_extract(details, '$.project'), at)`, through which
-  `StateStore.project_activity` reads a project's `project.*` entries and the
-  `job.*` entries of its jobs. Version 5 adds `feedback`, the reports of „Zgłoś uwagę”
+  JSON); the trigger `action_log_append_only` refuses every `UPDATE` of an entry,
+  and only `StateStore.prune_actions` deletes entries. The indexes
+  `action_log_target (target, at)` and `action_log_project
+  (json_extract(details, '$.project'), at)` (A-ADR-049 decision 14) serve
+  `StateStore.project_activity`, which reads a project's `project.*` entries and the
+  `job.*` entries of its jobs. `feedback` keeps the reports of „Zgłoś uwagę”
   (the text, an optional contact, the page, the browser, optional diagnostics as JSON,
   whether an administrator has read it and the account that sent it, `NULL` for the
   local owner; the limits of Hydrograf's table as checks; SPEC 4.3).
 - **Backup:** `archiwista state export [--output PLIK]` writes a JSON
-  document `archiwista-state/2` (`export_state`: one consistent snapshot,
+  document `archiwista-state/1` (`export_state`: one consistent snapshot,
   `dump_state`) with the password hashes, so the file gets mode `0600`;
   `archiwista state import PLIK` (`parse_state`, `import_state`,
   `StateStore.restore`) accepts only an empty database — restoring from a backup, not
-  merging — and reads `archiwista-state/1` too (its log becomes `ok` entries). The
-  feedback reports are not in that document: a copy of the database file keeps them.
+  merging — and reads a copy written as `archiwista-state/2` as `/1`, and one written
+  before v0.4 (`archiwista-state/1` with `permission_log`; its log becomes `ok`
+  entries). The feedback reports are not in that document: a copy of the database
+  file keeps them.
 
 ---
 

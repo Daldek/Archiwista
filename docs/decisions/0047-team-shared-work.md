@@ -42,3 +42,8 @@ limiter. This bounds memory and repeated audit writes, not request admission.
 Refusals due only to a missing session cookie and the first refusal of a known
 revoked or disabled principal add no duplicate session event. Unknown cookies
 and proxy identity mismatches are recorded. D6/D10 are outside this erratum.
+
+**Erratum 3 (2026-11-14, Nogat REL-1.4, ECO-072):** until the first release every format
+is version 1, so the state export of the consequences is `archiwista-state/1` again, the
+same document; a copy written as `archiwista-state/2` imports as `/1`, and one written
+before v0.4 (`archiwista-state/1` with the permission log) still imports.
