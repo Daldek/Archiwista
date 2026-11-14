@@ -1269,9 +1269,9 @@ command-line interface may change.
   zestawienia i wykresy)”. A line „Dane ČHMÚ zostały przetworzone (…)” of an older product,
   whatever its words in parentheses, is read as that line and merges with it. The lines are
   chosen when they are read, so no store or index needs a rebuild (an export written
-  before keeps its `ATTRIBUTION.txt`). Nogat's GUI kit 0.7.1 of `05bf583` is copied whole
+  before keeps its `ATTRIBUTION.txt`). Nogat's GUI kit 0.7.1 of `f5e9697` is copied whole
   into `src/archiwista/web/nogat/` (A-ADR-054 erratum 4): its strip reads an older ČHMÚ
-  line as the new one, and its regulamin template is version 1.1.
+  line as the new one, and its regulamin template stays version 1.0, corrected in place.
 
 - Documentation audited against the code of 2026-11-14: README, `CLAUDE.md`'s maps,
   SPEC, ARCHITECTURE, USAGE, AGENT_API, PRD and SCOPE state what the code does (the Nogat
