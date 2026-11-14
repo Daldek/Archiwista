@@ -49,7 +49,7 @@ def observed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def serve_imgw(serve: Serve, tmp_path: Path) -> Served:
-    """Serve an empty Obserwator store ``imgw`` online."""
+    """Serve an empty Obserwator raw root ``imgw`` online."""
     root = tmp_path / "obserwator"
     root.mkdir()
     store = StoreConfig(id=STORE, name="Dane IMGW", obserwator=root, kind="local")
@@ -75,18 +75,18 @@ def test_store_commands_form_plans_and_downloads_imgw_archives(
     section.get_by_role("button", name="Zaplanuj…").click()
     dialog = page.get_by_role("dialog")
 
-    # Assert: the plan of both national archives and the series, in this store.
+    # Assert: the plan of both national archives, in this store's raw root.
     expect(dialog).to_have_accessible_name("Pobrać? obserwator · store sync")
-    expect(dialog).to_contain_text("brak w magazynie 3")
+    expect(dialog).to_contain_text("brak w magazynie 2")
     line = dialog.locator(".cmd code")
     expect(line).to_contain_text(f"--root {tmp_path / 'obserwator'}")
     expect(line).to_contain_text("--datasets pl.imgw.hydro_daily")
 
     # Act
-    dialog.get_by_role("button", name="Pobierz 3 pozycje").click()
+    dialog.get_by_role("button", name="Pobierz 2 pozycje").click()
 
     # Assert
-    expect(dialog).to_contain_text("Pliki: 3 (nowe 3")
+    expect(dialog).to_contain_text("Pliki: 2 (nowe 2")
     by_kind = {job["kind"]: job for job in action_jobs(page)}
     assert sorted(by_kind) == ["check", "download"]
     assert by_kind["download"]["params"]["plan_job"] == by_kind["check"]["id"]
@@ -123,7 +123,7 @@ def test_pasted_obserwator_line_ignores_the_offered_area(
 
     dialog = page.get_by_role("dialog")
     expect(dialog).to_have_accessible_name("Pobrać? obserwator · store sync")
-    expect(dialog).to_contain_text("brak w magazynie 3")
+    expect(dialog).to_contain_text("brak w magazynie 2")
 
 
 def test_a_licence_repeated_by_obserwator_is_listed_once(
@@ -137,8 +137,8 @@ def test_a_licence_repeated_by_obserwator_is_listed_once(
     dialog = page.get_by_role("dialog")
 
     # Act
-    dialog.get_by_role("button", name="Pobierz 3 pozycje").click()
-    expect(dialog).to_contain_text("Pliki: 3 (nowe 3")
+    dialog.get_by_role("button", name="Pobierz 2 pozycje").click()
+    expect(dialog).to_contain_text("Pliki: 2 (nowe 2")
     (download,) = (job for job in action_jobs(page) if job["kind"] == "download")
     with sqlite3.connect(served.paths.index_file) as db:
         sent = [
@@ -163,6 +163,6 @@ def test_a_licence_repeated_by_obserwator_is_listed_once(
 
     # Assert
     details = listed.locator(".jobs-details")
-    expect(details).to_contain_text("Pliki: 3 (nowe 3")
+    expect(details).to_contain_text("Pliki: 2 (nowe 2")
     expect(details.locator(".job-notices li")).to_have_text(distinct)
     tab.assert_clean()

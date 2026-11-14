@@ -2,13 +2,13 @@
 
 The Obserwator adapter reads a station's values of a series version with
 ``obserwator.read_series``: what it gives must be what the producer itself reads
-in its offline fixture stores (``obserwator.testing``, and IMGW-PIB's half-year
-characteristics Obserwator built in the statistics store), a missing unit as
-``None``, an accumulated sum flagged, an extreme with its dates and
-occurrences; a station outside the series is not found and a version the
-producer refuses is its error. The dataset of the half-year characteristics,
-their extremes and the statistics of monthly and half-year datasets come from
-the producer's registry.
+in the data roots of its offline fixture stores (``obserwator.testing``, its
+ADR-017, and IMGW-PIB's half-year characteristics Obserwator built in the
+statistics store), a missing unit as ``None``, an accumulated sum flagged, an
+extreme with its dates and occurrences; a station outside the series is not
+found and a version the producer refuses is its error. The dataset of the
+half-year characteristics, their extremes and the statistics of monthly and
+half-year datasets come from the producer's registry.
 """
 
 import shutil
@@ -24,6 +24,7 @@ from archiwista.adapter.obserwator import load
 from archiwista.adapter.obserwator.adapter import ObserwatorAdapter
 from archiwista.errors import NotFoundError, ProducerError
 from archiwista.sources import SeriesValuesAdapter, SourceContext
+from tests.fixtures.obserwator_roots import data_root
 
 type Stores = Callable[[str], Path]
 
@@ -40,7 +41,7 @@ def adapter(tmp_path: Path) -> ObserwatorAdapter:
 
 
 def _version(adapter: ObserwatorAdapter, root: Path, dataset: str) -> Path:
-    """Return the current version of a dataset's series, relative to the store."""
+    """Return the current version of a dataset's series, relative to the data root."""
     version = adapter.current_version(root, f"series:{dataset}")
     assert version is not None
     return version
@@ -64,7 +65,7 @@ def test_the_values_of_a_station_are_those_the_producer_reads(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """H of the Raba gauge: the producer's units and values; ``None`` without one."""
-    root = obserwator_store("complete")
+    root = data_root(obserwator_store("complete"))
     version = _version(adapter, root, DAILY)
     produced = list(read_series(root / version, station=RABA, variables=["H"]))
     gaps = read_series_index(root / version).stations[RABA].variables["H"].gaps
@@ -94,7 +95,7 @@ def test_the_range_and_the_variables_select_the_units_and_values(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """Both bounds included; only the variables asked for, in every unit."""
-    root = obserwator_store("complete")
+    root = data_root(obserwator_store("complete"))
     version = _version(adapter, root, DAILY)
 
     values = list(
@@ -128,7 +129,7 @@ def test_an_accumulated_sum_is_flagged_and_keeps_its_value(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """Precipitation: the producer's ``accumulated`` units, no other unit."""
-    root = obserwator_store("complete")
+    root = data_root(obserwator_store("complete"))
     version = _version(adapter, root, "pl.imgw.meteo_precip_daily")
     station = next(iter(read_series_index(root / version).stations))
     produced = list(read_series(root / version, station=station, variables=["P"]))
@@ -148,7 +149,7 @@ def test_a_station_outside_the_series_is_not_found(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A code of the catalog without a series in the version."""
-    root = obserwator_store("complete")
+    root = data_root(obserwator_store("complete"))
     version = _version(adapter, root, DAILY)
 
     with pytest.raises(NotFoundError):
@@ -159,8 +160,9 @@ def test_a_refused_version_or_variable_is_the_producers_error(
     obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A Parquet file unlike the index, a catalog, a variable of no dataset."""
-    root = tmp_path / "store"
-    shutil.copytree(obserwator_store("complete"), root)
+    store = tmp_path / "store"
+    shutil.copytree(obserwator_store("complete"), store)
+    root = data_root(store)
     version = _version(adapter, root, DAILY)
     catalog = adapter.current_version(root, "catalog:pl.imgw.stations")
     assert catalog is not None
@@ -263,7 +265,7 @@ def test_half_year_extremes_carry_the_producers_dates_and_occurrences(
     statistics_store: Path, adapter: ObserwatorAdapter
 ) -> None:
     """Q of the Raba gauge: each half's extremes as ``read_series`` gives them."""
-    root = statistics_store
+    root = data_root(statistics_store)
     version = _version(adapter, root, "pl.imgw.hydro_semiannual")
     names = ["Q_min", "Q_max"]
     produced = list(read_series(root / version, station=RABA, variables=names))

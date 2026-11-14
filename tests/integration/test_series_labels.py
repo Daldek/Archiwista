@@ -25,6 +25,7 @@ from archiwista.index.scanner import scan_store
 from archiwista.messages import language
 from archiwista.sources import YearType
 from archiwista.sources.registry import load_registry
+from tests.fixtures.obserwator_roots import store_fields
 
 STORE = "dane"
 PL_HYDRO = "pl.imgw.hydro_daily"
@@ -44,10 +45,10 @@ def index(
     base = tmp_path_factory.mktemp("labels")
     root = base / "store"
     shutil.copytree(obserwator_store("complete_pl_cz"), root)
-    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
     path = base / "index.sqlite"
     with IndexWriter(path) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         adapter = load_registry(cache_dir=base / "cache").adapter("obserwator")
         scan_store(adapter, writer, AppSettings(stores=(config,)), STORE, mode="full")
     yield path

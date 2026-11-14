@@ -26,6 +26,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from archiwista.config import AppSettings, StoreConfig
 from tests.fixtures.browser import Served, Tab
+from tests.fixtures.obserwator_roots import store_fields
 
 STORE = "dane"
 # Every station of the index: the box of `GET /map/stations` that frames none out.
@@ -58,10 +59,10 @@ SOURCES_DIALOG = "Źródła danych i warunki korzystania"
 
 
 def station_settings(source: Path, base: Path) -> AppSettings:
-    """Copy a fixture store under ``base``; return offline settings with it."""
+    """Copy a fixture store under ``base``; return offline settings with its roots."""
     root = base / "obserwator"
     shutil.copytree(source, root)
-    store = StoreConfig(id=STORE, name="Dane IMGW", obserwator=root, kind="local")
+    store = StoreConfig(id=STORE, name="Dane IMGW", **store_fields(root), kind="local")
     return AppSettings(offline=True, stores=(store,))
 
 

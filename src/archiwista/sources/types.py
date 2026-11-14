@@ -136,11 +136,13 @@ class SourceState:
     ``store`` is the probed producer directory as text, ``None`` for the
     state of the plugin itself. For a store the producer refuses, ``detail``
     says what is wrong, ``reason`` is the machine code of the cause
-    (``no_marker``, ``unsupported_marker``, ``foreign_store`` or
-    ``not_a_store``) and ``hint`` one line that tells how to fix it, the
-    command where one exists (e.g. ``obserwator store init --root <path>``,
-    DEV-19.13); ``detail`` and ``hint`` are catalog messages, and the three
-    stay ``None`` for a state that has nothing to add.
+    (``no_marker``, ``unsupported_marker``, ``foreign_store``,
+    ``not_a_store`` or ``wrong_root``: a producer's root of the other kind,
+    its data root given as its store root or the reverse, A-ADR-056) and
+    ``hint`` one line that tells how to fix it, the command where one exists
+    (e.g. ``obserwator store init --root <path>``, DEV-19.13); ``detail`` and
+    ``hint`` are catalog messages, and the three stay ``None`` for a state
+    that has nothing to add.
     """
 
     producer: str

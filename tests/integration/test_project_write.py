@@ -85,7 +85,7 @@ def place(tmp_path: Path) -> Place:
     ConfigStore(paths.config_file).save(settings)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         key = record_project(writer, directory, stores=settings.stores, geo=None)
     return Place(paths, directory, key)
 

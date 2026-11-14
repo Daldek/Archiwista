@@ -267,8 +267,10 @@ def copy_path(
     """Return a file's path on this computer and as aliased elsewhere (SPEC 4.6).
 
     The store's path aliases give ``aliases``, the person's own the path on
-    their computer (``personal``). ``None`` when the store or its producer
-    directory is no longer configured. Nothing is read from the disk.
+    their computer (``personal``). The path lies in the producer's store root
+    or in its data root (``StoreConfig.root_of``, A-ADR-056). ``None`` when
+    the store or that directory is no longer configured. Nothing is read from
+    the disk.
 
     Raises
     ------
@@ -276,7 +278,7 @@ def copy_path(
         The indexed path would leave the store's directory.
     """
     config = settings.store(store)
-    root = None if config is None else config.roots().get(producer)
+    root = None if config is None else config.root_of(producer, relative)
     if config is None or root is None:
         return None
     local = indexed_path(root, relative)

@@ -22,6 +22,7 @@ from playwright.sync_api import Locator, Page, expect
 
 from archiwista.config import AppSettings, BasemapConfig
 from tests.fixtures.browser import Tab
+from tests.fixtures.obserwator_roots import data_root
 from tests.fixtures.station_browser import (
     STORE,
     api,
@@ -146,7 +147,7 @@ def test_two_people_copy_one_file_as_their_own_computers_have_it(
     served = serve_people(
         team_serve, station_settings(obserwator_store("complete"), tmp_path)
     )
-    root = tmp_path / "obserwator"
+    root = data_root(tmp_path / "obserwator")
     marek = person(team_tab, served, MAREK)
     kasia = person(team_tab, served, KASIA)
     server_path = card_paths(marek.page)["local"]
@@ -168,7 +169,7 @@ def test_two_people_copy_one_file_as_their_own_computers_have_it(
     # Assert
     assert saved == (200, 200)
     assert marek_copied == "Y:\\" + "\\".join(parts)
-    assert kasia_copied == "/home/kasia/nas/obserwator/" + "/".join(parts)
+    assert kasia_copied == "/home/kasia/nas/obserwator/data/" + "/".join(parts)
     assert card_paths(marek.page)["personal"] == marek_copied
     assert card_paths(kasia.page)["personal"] == kasia_copied
     marek.assert_clean()

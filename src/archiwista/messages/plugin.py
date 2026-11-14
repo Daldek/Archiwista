@@ -27,4 +27,8 @@ MESSAGES = {
         'the plugin adapter declares producer "{declared}"',
         "adapter wtyczki deklaruje producenta „{declared}”",
     ),
+    "no_data_root": Text(
+        "producer {producer} keeps no data root",
+        "producent {producer} nie ma katalogu danych",
+    ),
 }

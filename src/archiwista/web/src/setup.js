@@ -1,16 +1,19 @@
 /**
  * The first-run wizard, and later the settings it edits (docs/SPEC.md 5.5,
  * docs/plans/2026-10-18-plan-v0.1.md 10a, plan v0.2 step 12a): stores (Kartograf's store
- * root, the directory with `kartograf-store.json`, and the Obserwator store root, the
- * directory with `obserwator-store.json`, while the source `obserwator` is available or
- * the store already has one, SPEC 5.8), project directories, offline mode and the preview
- * cache limit (with the cache's usage from `/health`), saved at once with `PUT
- * /settings`. The server checks the directories and asks the producer about
- * each new or moved one; anything wrong keeps the settings in effect and
- * comes back as Polish problems per field, shown at the field. The directory a producer
- * itself would use for a store (`default_root` of `GET /sources`) is offered under a
- * store's empty field of that producer (Kartograf, Obserwator) when it exists and holds the
- * marker, and is entered only by the person's click. A new store's
+ * root, the directory with `kartograf-store.json`, and Obserwator's two roots, A-ADR-056:
+ * its raw root, the directory with `obserwator-store.json` where its archives are
+ * downloaded, and its data root, the directory with `obserwator-data.json` holding the
+ * series, station catalogs and analyses Obserwator builds from the raw root; both while
+ * the source `obserwator` is available or the store already has one, SPEC 5.8), project
+ * directories, offline mode and the preview cache limit (with the cache's usage from
+ * `/health`), saved at once with `PUT /settings`. The server checks the directories and
+ * asks the producer about each new or moved one; anything wrong keeps the settings in
+ * effect and comes back as Polish problems per field, shown at the field. The directory a
+ * producer itself would use for a store (`default_root` of `GET /sources`), and for its
+ * data (`default_data_root`, Obserwator's data root), is offered under a store's empty
+ * field of that producer and kind (Kartograf, Obserwator's raw and data roots) when it
+ * exists and holds the marker, and is entered only by the person's click. A new store's
  * full scan is started by the server's scheduler (step 6b) and its progress
  * shows in the index banner. The step lives in the address
  * (`?view=setup&step=projects`, `&saved=1` after a save), so Back walks the
@@ -30,9 +33,9 @@ const L = T.setup;
 const STEPS = ["stores", "projects", "mode", "save"];
 const STORE_ID = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 /** Settings fields of problems: `stores[0].kartograf`, `stores[0].obserwator`,
- * `project_dirs[1]`. */
+ * `stores[0].obserwator_data`, `project_dirs[1]`. */
 const FIELD = /^(stores|project_dirs)\[(\d+)\](?:\.(\w+))?$/;
-const STORE_FIELDS = new Set(["id", "name", "kartograf", "obserwator", "kind"]);
+const STORE_FIELDS = new Set(["id", "name", "kartograf", "obserwator", "obserwator_data", "kind"]);
 const NO_ERRORS = { stores: {}, projects: {}, preview: null, general: [] };
 const LIMIT_GB = { min: 1, max: 10_000 };
 const GIB = 1024 ** 3;
@@ -183,12 +186,15 @@ function Wizard({ initial }) {
 function StoresStep({ draft, change, errors, problem }) {
   const { health } = useApp();
   const roots = useDefaultRoots(
-    draft.stores.some((store) => !store.kartograf.trim() || !store.obserwator.trim()),
+    draft.stores.some(
+      (store) =>
+        !store.kartograf.trim() || !store.obserwator.trim() || !store.obserwator_data.trim(),
+    ),
   );
-  // The offer of a producer: its default root, unless a store already has it.
-  const offered = (producer) => {
-    const root = roots[producer];
-    return root && !draft.stores.some((store) => store[producer].trim() === root.path) ? root : null;
+  // The offer under a store field: the default root of that field, unless a store has it.
+  const offered = (field) => {
+    const root = roots[field];
+    return root && !draft.stores.some((store) => store[field].trim() === root.path) ? root : null;
   };
   const update = (key, patch) =>
     change({
@@ -231,6 +237,17 @@ function StoresStep({ draft, change, errors, problem }) {
                 ? html`<${DefaultRootOffer} producer="obserwator" root=${offered("obserwator")}
                     onUse=${() => update(store.key, { obserwator: offered("obserwator").path })} />`
                 : null}
+            <//>
+            <${TextField} label=${L.store.obserwator_data} hint=${L.store.obserwator_data_hint}
+              value=${store.obserwator_data} mono error=${fieldErrors.obserwator_data}
+              name=${`stores[${index}].obserwator_data`}
+              onInput=${(value) => update(store.key, { obserwator_data: value })}>
+              ${offered("obserwator_data") && !store.obserwator_data.trim()
+                ? html`<${DefaultRootOffer} producer="obserwator" data
+                    root=${offered("obserwator_data")}
+                    onUse=${() =>
+                      update(store.key, { obserwator_data: offered("obserwator_data").path })} />`
+                : null}
             <//>`
           : null}
         <${SelectField} label=${L.store.kind} value=${store.kind} error=${fieldErrors.kind}
@@ -254,13 +271,15 @@ function StoresStep({ draft, change, errors, problem }) {
 /**
  * The directories the producers would use for a store when none is named, for those that
  * are a store: the directory exists and holds the producer's marker (`default_root` of
- * `GET /sources`). It is asked for once, and only while a store waits for a directory
- * (ADR-033). It is an offer: nothing is saved until the person fills the field and saves
- * the settings.
+ * `GET /sources`), and likewise the directory a producer builds its data in
+ * (`default_data_root`: Obserwator's data root, A-ADR-056). It is asked for once, and only
+ * while a store waits for a directory (ADR-033). It is an offer: nothing is saved until the
+ * person fills the field and saves the settings.
  *
  * @param {boolean} wanted - Whether a store has a producer field still empty.
- * @returns {Object<string, import("./types.js").DefaultRoot>} By producer; a producer
- *   without a store at its default root is missing.
+ * @returns {Object<string, import("./types.js").DefaultRoot>} By store field: the producer
+ *   (`kartograf`, `obserwator`) for its store root, `<producer>_data` (`obserwator_data`)
+ *   for its data root; a root that is not there with its marker is missing.
  */
 function useDefaultRoots(wanted) {
   const [roots, setRoots] = useState({});
@@ -271,9 +290,12 @@ function useDefaultRoots(wanted) {
     listSources().then(
       (answer) => {
         const found = {};
+        const usable = (root) => Boolean(root?.exists && root.marked);
         for (const source of answer.items) {
-          const root = source.default_root;
-          if (root?.exists && root.marked) found[source.producer] = root;
+          if (usable(source.default_root)) found[source.producer] = source.default_root;
+          if (usable(source.default_data_root)) {
+            found[`${source.producer}_data`] = source.default_data_root;
+          }
         }
         setRoots(found);
       },
@@ -285,13 +307,15 @@ function useDefaultRoots(wanted) {
 
 /**
  * The offer of a default root under a store's field: what it is and a button that enters it.
+ * `data` marks the producer's default data root rather than its store root.
  *
- * @param {{producer: string, root: import("./types.js").DefaultRoot, onUse: () => void}} props
+ * @param {{producer: string, root: import("./types.js").DefaultRoot, data?: boolean,
+ *   onUse: () => void}} props
  */
-function DefaultRootOffer({ producer, root, onUse }) {
+function DefaultRootOffer({ producer, root, data = false, onUse }) {
   const origin = t(L.store.default_root_origin[root.source] ?? "", { name: root.name ?? "" });
   return html`<span class="field-offer">
-    <span class="field-hint">${t(L.store.default_root, {
+    <span class="field-hint">${t(data ? L.store.default_data_root : L.store.default_root, {
       producer: L.store.producers[producer] ?? producer,
       path: root.path,
       origin,
@@ -385,6 +409,7 @@ function SaveStep({ draft, problem, saving }) {
             <b>${store.name}</b> <code>${store.id}</code>
             <${SummaryPath} label=${L.summary.kartograf} path=${store.kartograf} />
             <${SummaryPath} label=${L.summary.obserwator} path=${store.obserwator} />
+            <${SummaryPath} label=${L.summary.obserwator_data} path=${store.obserwator_data} />
             <div class="muted">${store.kind ? T.common.store_kind[store.kind] : L.summary.kind_auto}</div>
           </div>`,
         )}</dd>
@@ -507,6 +532,7 @@ function draftOf(settings) {
     name: store.name,
     kartograf: store.kartograf ?? "",
     obserwator: store.obserwator ?? "",
+    obserwator_data: store.obserwator_data ?? "",
     kind: store.kind ?? "",
     idEdited: true,
     original: store,
@@ -526,6 +552,7 @@ function emptyStore() {
     name: "",
     kartograf: "",
     obserwator: "",
+    obserwator_data: "",
     kind: "",
     idEdited: false,
     original: null,
@@ -549,6 +576,7 @@ function bodyOf(initial, draft) {
         name: store.name.trim(),
         kartograf: store.kartograf.trim() || null,
         obserwator: store.obserwator.trim() || null,
+        obserwator_data: store.obserwator_data.trim() || null,
         kind: store.kind || null,
         path_aliases: store.original?.path_aliases ?? {},
       })),
@@ -558,13 +586,18 @@ function bodyOf(initial, draft) {
 }
 
 /**
- * Whether a store's Obserwator field is offered: the source `obserwator` is available
- * (SPEC 5.8), or the store has a directory already (saved, or typed): a hidden entry
- * would be dropped silently.
+ * Whether a store's Obserwator fields (its raw and data roots) are offered: the source
+ * `obserwator` is available (SPEC 5.8), or the store has a directory of it already (saved,
+ * or typed): a hidden entry would be dropped silently.
  */
 function obserwatorOffered(store, sources) {
   const obserwator = (sources ?? []).find((source) => source.producer === "obserwator");
-  const held = [store.original?.obserwator, store.obserwator].some((path) => path?.trim());
+  const held = [
+    store.original?.obserwator,
+    store.original?.obserwator_data,
+    store.obserwator,
+    store.obserwator_data,
+  ].some((path) => path?.trim());
   return obserwator?.status === "available" || held;
 }
 
@@ -575,7 +608,8 @@ function storeErrors(stores, sources) {
     const found = {};
     const id = store.id.trim();
     if (!store.name.trim()) found.name = L.store.name_required;
-    if (!store.kartograf.trim() && !store.obserwator.trim()) {
+    const directories = [store.kartograf, store.obserwator, store.obserwator_data];
+    if (!directories.some((path) => path.trim())) {
       const either = obserwatorOffered(store, sources);
       found.kartograf = either ? L.store.directory_required : L.store.kartograf_required;
     }

@@ -2,9 +2,10 @@
 
 Every test scans a copy of a fixture store of the producer's own builder
 (``obserwator.testing``) through the real adapter, offline. The index holds the
-stations of the current version of each provider's catalog: every station of
-it, those without a location with the catalog's reason, a point for the
-others, and a new current version replaces them.
+stations of the current version of each provider's catalog, in the store's data
+root (A-ADR-056): every station of it, those without a location with the
+catalog's reason, a point for the others, and a new current version replaces
+them.
 """
 
 import hashlib
@@ -26,6 +27,7 @@ from archiwista.index import IndexQueries, IndexWriter, ScanEvent, ScanNotice
 from archiwista.index.scanner import ScanMode, ScanSummary, scan_store
 from archiwista.sources import SourceAdapter, Station, StationCatalogAdapter
 from archiwista.sources.registry import load_registry
+from tests.fixtures.obserwator_roots import data_root, root_of, store_fields
 
 STORE = "dane"
 PL_KEY = "catalog:pl.imgw.stations"
@@ -44,7 +46,10 @@ type Row = tuple[object, ...]
 
 @dataclass
 class _Env:
-    """A copy of a fixture store with an index that knows it."""
+    """A copy of a fixture store with an index that knows it.
+
+    ``root`` holds the store's raw and data roots (``obserwator_roots``).
+    """
 
     root: Path
     index: Path
@@ -122,8 +127,8 @@ def open_env(
         index = tmp_path / f"index-{variant}.sqlite"
         writer = IndexWriter(index)
         writers.append(writer)
-        config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
-        writer.sync_stores({STORE: config.roots()})
+        config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
+        writer.sync_stores({STORE: config.directory_paths()})
         adapter = load_registry(cache_dir=tmp_path / "cache").adapter("obserwator")
         return _Env(root, index, adapter, writer, AppSettings(stores=(config,)), [])
 
@@ -132,9 +137,9 @@ def open_env(
         writer.close()
 
 
-def _catalog(root: Path, key: str) -> dict[str, Row]:
+def _catalog(store: Path, key: str) -> dict[str, Row]:
     """Return what ``read_catalog`` reads in the current version of a catalog."""
-    found = current_version(root, slot=key)
+    found = current_version(data_root(store), slot=key)
     assert found is not None and found.version is not None
     return {
         feature.station_code: (
@@ -148,15 +153,15 @@ def _catalog(root: Path, key: str) -> dict[str, Row]:
 
 
 def _publish(
-    root: Path, slot: str, edit: Callable[[list[dict[str, object]]], None]
+    store: Path, slot: str, edit: Callable[[list[dict[str, object]]], None]
 ) -> str:
     """Write a newer version of a catalog with edited stations, as a download does.
 
     The version directory is ``<label>_<sha8>`` with the edited GeoJSON and its
     sidecar (SHA-256, size, label, a later download), so Obserwator takes it as
-    the current version. Returns its file relative to the store.
+    the current version. Returns its file relative to the root it lies in.
     """
-    directory = root / slot
+    directory = root_of(store, slot) / slot
     source = max(
         path
         for path in directory.iterdir()
@@ -306,7 +311,8 @@ def test_a_catalog_without_a_current_version_leaves_its_provider_no_stations(
     env = open_env("complete_pl_cz")
     env.scan("full")
     czech = env.stations("CHMI")
-    shutil.rmtree((env.root / env.catalogs()["IMGW-PIB"]).parent)
+    gone = env.catalogs()["IMGW-PIB"]
+    shutil.rmtree((root_of(env.root, gone) / gone).parent)
 
     # Act
     env.scan("full")

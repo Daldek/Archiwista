@@ -1,12 +1,20 @@
 """Obserwator store reads behind Archiwista's producer-neutral source interface.
 
-Only names of ``obserwator.__all__`` are used. A scan maps the entries of
-``iter_store`` to ``SourceEntry`` values: archives, series, station catalogs
-and PMAXTP cells are ``version`` entries, a version or an observation the
-producer cannot read is a ``problem`` with the producer's own problem code,
-and the observation register of an archive slot (a source that republished
-the same content under a new signal) is ``observation`` entries, never
-versions. The producer's own record rides along as the entry's handle.
+Only names of ``obserwator.__all__`` are used. An Obserwator store is two roots
+(Obserwator ADR-017, A-ADR-056): the raw root (``obserwator-store.json``) holds
+the archives Archiwista downloads and the PMAXTP cells, the data root
+(``obserwator-data.json``) the series, station catalogs and analyses
+Obserwator builds from them. ``probe`` judges a raw root and ``probe_data`` a
+data root (``DataRootAdapter``); every other method takes the root its path
+lies in, which Archiwista tells by the path's first part
+(``archiwista.sources.markers.DATA_TREES``). A scan maps the entries of
+``iter_store`` of each root to ``SourceEntry`` values: archives, series,
+station catalogs, analyses and PMAXTP cells are ``version`` entries, a version
+or an observation the producer cannot read is a ``problem`` with the
+producer's own problem code, and the observation register of an archive slot
+(a source that republished the same content under a new signal) is
+``observation`` entries, never versions. The producer's own record rides along
+as the entry's handle.
 
 Obserwator has no links and cannot scan one segment alone: a slot is the
 directory that holds its versions (``<slot>/<label>_<sha8>/<file>``), named
@@ -102,28 +110,48 @@ from archiwista.sources import (
     TimeUnit,
     VariableCoverage,
 )
-from archiwista.sources.markers import STORE_MARKERS, foreign_markers
+from archiwista.sources.markers import (
+    DATA_MARKERS,
+    DATA_TREES,
+    STORE_MARKERS,
+    directory_field,
+    foreign_markers,
+)
 
-_MARKER = STORE_MARKERS[PRODUCER]
+# The marker of each root, and the schema of the marker, by whether it is the
+# data root (Obserwator ADR-017).
+_MARKERS: Mapping[bool, str] = MappingProxyType(
+    {False: STORE_MARKERS[PRODUCER], True: DATA_MARKERS[PRODUCER]}
+)
+_SCHEMAS: Mapping[bool, str] = MappingProxyType(
+    {False: "obserwator-store/1", True: "obserwator-data/1"}
+)
 # Obserwator's reason of a version whose call its metadata do not rebuild, and
 # the option of a call that names the store root (A-ADR-049 D-10).
 _NOT_REBUILDABLE = "command_not_rebuildable"
 _ROOT = "root"
-# The trees whose presence is the layout of a store, and the state file the
-# server keeps in a default root: Obserwator's own rules (``init_store``). A
-# contract test compares them with its verdicts.
-_LAYOUT = frozenset({"archives", "series", "stations", "pmaxtp"})
+# The trees whose presence is the layout of a root of each kind, and the state
+# file the server keeps in a default root: Obserwator's own rules
+# (``init_store``). A contract test compares them with its verdicts.
+_LAYOUTS: Mapping[bool, frozenset[str]] = MappingProxyType(
+    {False: frozenset({"archives", "pmaxtp"}), True: DATA_TREES[PRODUCER]}
+)
 _STATE_FILES = frozenset({"api_keys.json"})
 # The codes of ``StoreInfo.problem_codes`` of a marker the producer refuses: a
-# file that is no JSON object with a schema, or one of another schema.
-_MARKER_REFUSED = frozenset({"invalid_marker", "unsupported_store"})
+# file that is no JSON object with a schema, one of another schema, or both
+# markers in one directory.
+_MARKER_REFUSED = frozenset(
+    {"invalid_marker", "unsupported_store", "conflicting_markers"}
+)
 # A directory beside the versions of an archive slot: its observation register.
 _REGISTER = "observations"
 # Kinds of a slot ``<kind>:<dataset>[:<selector>]`` (Obserwator spec 13.7).
-_SLOT_KINDS = frozenset({"archive", "series", "catalog", "pmaxtp"})
-# The last part of the key of a provider's station catalog (``pl.imgw.stations``):
-# a slot of the store that is no dataset of the registry.
+_SLOT_KINDS = frozenset({"archive", "series", "catalog", "analyses", "pmaxtp"})
+# The last part of the key of a provider's station catalog (``pl.imgw.stations``)
+# and of its stored analyses (``pl.imgw.analyses``): slots of the data root that
+# are no datasets of the registry.
 _CATALOG = "stations"
+_ANALYSES = "analyses"
 # The slot of a dataset's series: ``series:<dataset key>``.
 _SERIES = "series"
 # The unit of each series a dataset builds, by the registry's time unit.
@@ -156,9 +184,11 @@ _ORIGINS: Mapping[tuple[str, str], DataOrigin] = MappingProxyType(
         ("archives", "IMGW-PIB"): "imgw_file",
         ("series", "IMGW-PIB"): "imgw_processed",
         ("stations", "IMGW-PIB"): "imgw_stations",
+        ("analyses", "IMGW-PIB"): "imgw_processed",
         ("archives", "CHMI"): "chmi_file",
         ("series", "CHMI"): "chmi_processed",
         ("stations", "CHMI"): "chmi_processed",
+        ("analyses", "CHMI"): "chmi_processed",
     }
 )
 _PMAXTP_TREE = "pmaxtp"
@@ -171,7 +201,7 @@ _SLOT_UNREADABLE = frozenset({"data_error", "validation_error"})
 
 
 class ObserwatorAdapter:
-    """Read an Obserwator store (its ``--root`` directory) for Archiwista.
+    """Read an Obserwator store, its raw root and its data root, for Archiwista.
 
     Parameters
     ----------
@@ -180,16 +210,18 @@ class ObserwatorAdapter:
 
     Notes
     -----
-    Implements the source interface, ``SegmentDescriptionAdapter`` (a
+    Implements the source interface, ``DataRootAdapter`` (the data root beside
+    the raw root, A-ADR-056), ``SegmentDescriptionAdapter`` (a
     dataset is a segment that cannot be read alone), ``CurrentVersionAdapter``
     (a slot has no link), ``StationCatalogAdapter`` (each provider's station
     catalog), ``SeriesIndexAdapter`` (the index of each dataset's series),
     ``SeriesValuesAdapter`` (a station's values), ``DefaultRootAdapter``
-    (``store_root()``), ``VersionCommandAdapter`` (``command_for_version``),
+    (``store_root(kind="raw")``), ``VersionCommandAdapter``
+    (``command_for_version`` of the raw root's versions),
     ``ExportFolderAdapter`` (every version under ``IMGW``),
     ``DataOriginAdapter`` (an archive is a provider's file as published, the
     other trees processed forms), ``ActionAdapter``
-    (the commands that write the store, ``actions.py``),
+    (the download into the raw root, ``actions.py``),
     ``AreaCommandAdapter`` (which refuses every area: the archives are
     national files) and ``ProductNameAdapter`` (a family is named after its
     stations); no other optional capability. ``cache_dir`` is the
@@ -210,7 +242,7 @@ class ObserwatorAdapter:
         self._cache_dir = cache_dir
 
     def probe(self, root: Path) -> SourceState:
-        """Report whether ``root`` is a readable Obserwator store.
+        """Report whether ``root`` is a raw root of Obserwator that Archiwista reads.
 
         The marker is judged by its file name and schema (DEV-19.12), the
         other states by the names in the directory.
@@ -218,39 +250,45 @@ class ObserwatorAdapter:
         Parameters
         ----------
         root : Path
-            The store root: the directory that holds ``obserwator-store.json``.
+            The raw root: the directory that holds ``obserwator-store.json``.
 
         Returns
         -------
         SourceState
-            ``available`` for a store with a supported marker and for a new
+            ``available`` for a raw root with a supported marker and for a new
             one (an empty directory, or one holding only the server's
             ``api_keys.json``: its first write creates the marker);
             ``incompatible`` with ``reason`` ``no_marker`` (the layout of a
-            store without its marker: the ``hint`` is the command that
-            writes it), ``unsupported_marker`` (another schema or no usable
-            marker), ``foreign_store`` (the marker of another producer) or
+            raw root without its marker: the ``hint`` is the command that
+            writes it), ``wrong_root`` (Obserwator's data root),
+            ``unsupported_marker`` (another schema, no usable marker, or both
+            markers), ``foreign_store`` (the marker of another producer) or
             ``not_a_store`` (anything else, e.g. the parent of a store);
             ``error`` when the directory cannot be listed or Obserwator
             refuses the path.
         """
-        try:
-            names = frozenset(os.listdir(root))
-            info = store_info(root)
-        except (OSError, ObserwatorError) as error:
-            return self._state("error", root, detail=str(error))
-        if info.supported:
-            return self._state("available", root)
-        return self._unsupported(root, info, names)
+        return self._probe(root, data=False)
+
+    def probe_data(self, root: Path) -> SourceState:
+        """Report whether ``root`` is a data root of Obserwator that Archiwista reads.
+
+        As ``probe``, for the directory that holds ``obserwator-data.json``:
+        ``incompatible`` with ``reason`` ``wrong_root`` is a raw root, or a
+        store written before Obserwator's ADR-017 that is not yet split (its
+        marker is the raw root's); ``no_marker`` a data root without its
+        marker (the hint is ``obserwator store init --kind data``).
+        """
+        return self._probe(root, data=True)
 
     def default_root(self) -> DefaultRoot:
-        """Report the store root Obserwator uses when a call names none.
+        """Report the raw root Obserwator uses when a call names none.
 
-        Read from ``obserwator.store_root()``: ``OBSERWATOR_ROOT``, the same variable
-        in a ``.env`` file, ``[obserwator] root`` of ``nogat.toml``, else
-        ``<data_dir>/obserwator`` (DEV-19.2). Archiwista names the store in every
-        call, so it never uses this directory; it is an offer. The report
-        looks for one file, the marker, and reads no store.
+        Read from ``obserwator.store_root(kind="raw")``: ``OBSERWATOR_RAW_ROOT``,
+        the same variable in a ``.env`` file, ``[obserwator] raw_root`` of
+        ``nogat.toml``, else ``<data_dir>/obserwator-raw`` (DEV-19.2, Obserwator
+        ADR-017 D5). Archiwista names the root in every call, so it never uses
+        this directory; it is an offer. The report looks for one file, the
+        marker, and reads no store.
 
         Returns
         -------
@@ -258,15 +296,17 @@ class ObserwatorAdapter:
             The directory, the layer of the settings that gave it, whether it
             exists and whether it holds ``obserwator-store.json``.
         """
-        default = store_root()
-        return DefaultRoot(
-            path=default.root,
-            # The four layers ``StoreRoot.source`` documents.
-            source=cast(DefaultRootSource, default.source),
-            name=default.name,
-            exists=default.root.is_dir(),
-            marked=default.marker_exists,
-        )
+        return _default_root(data=False)
+
+    def default_data_root(self) -> DefaultRoot:
+        """Report the data root Obserwator uses when a call names none.
+
+        Read from ``obserwator.store_root(kind="data")``: ``OBSERWATOR_ROOT``, the
+        same variable in a ``.env`` file, ``[obserwator] root`` of
+        ``nogat.toml``, else ``<data_dir>/obserwator``; ``marked`` tells whether
+        it holds ``obserwator-data.json``. An offer, as ``default_root``.
+        """
+        return _default_root(data=True)
 
     def iter_entries(
         self, root: Path, *, scope: ScanScope | None = None
@@ -276,7 +316,8 @@ class ObserwatorAdapter:
         Parameters
         ----------
         root : Path
-            The store root.
+            The raw root or the data root: ``iter_store`` reads a root by its
+            marker, and each entry's path is relative to it.
         scope : ScanScope or None, optional
             The store has no segments, units or parts, so only an empty scope
             is valid; ``known_versions`` becomes ``skip_versions``: the named
@@ -329,9 +370,11 @@ class ObserwatorAdapter:
         No disk access. A dataset of the registry has its Polish title for a
         name, its provider's country and the family the registry declares for
         it as a product; a station catalog (``pl.imgw.stations``,
-        ``cz.chmi.stations``: slots of the store that are no datasets of the
-        registry) is named after its provider and is of the family
-        ``stations``; any other key is not recognised and is its own name.
+        ``cz.chmi.stations``) and a provider's stored analyses
+        (``pl.imgw.analyses``, ``cz.chmi.analyses``), slots of the data root
+        that are no datasets of the registry, are named after their provider
+        and are of the family ``stations`` or ``analyses``; any other key is
+        not recognised and is its own name.
 
         Parameters
         ----------
@@ -344,9 +387,10 @@ class ObserwatorAdapter:
             ``dataset_key`` is the current key of the dataset. ``product`` is
             its family: the ``kind`` of the registry (``hydro``, ``meteo``),
             for the dataset that has none (PMAXTP) its short name, ``pmaxtp``,
-            and ``stations`` for a catalog; ``None`` for a key that is not
-            recognised. Obserwator has no products, so it only groups the
-            datasets, and the key itself is not read (SPEC 4.2.1).
+            ``stations`` for a catalog and ``analyses`` for stored analyses;
+            ``None`` for a key that is not recognised. Obserwator has no
+            products, so it only groups the datasets, and the key itself is
+            not read (SPEC 4.2.1).
         """
         return _describe(segment)
 
@@ -355,12 +399,15 @@ class ObserwatorAdapter:
 
         A family (``hydro``, ``meteo``) holds datasets of several kinds
         (daily, monthly, half-year data, the station list), and the map draws
-        it as its stations; any other product keeps the default name.
+        it as its stations; the stored analyses are named as such; any other
+        product keeps the default name.
         """
         if product == "hydro":
             return str(message("source.obserwator_product_hydro", "pl"))
         if product == "meteo":
             return str(message("source.obserwator_product_meteo", "pl"))
+        if product == _ANALYSES:
+            return str(message("source.obserwator_product_analyses", "pl"))
         return None
 
     def current_version(self, root: Path, slot_key: str) -> Path | None:
@@ -374,7 +421,9 @@ class ObserwatorAdapter:
         Parameters
         ----------
         root : Path
-            The store root.
+            The root of the slot: the data root for a series, a catalog or
+            analyses, else the raw root (a root of the other kind is
+            Obserwator's ``store_unavailable``, ``wrong_root``).
         slot_key : str
             The producer's own key of the slot (``SourceEntry.slot_key``), e.g.
             ``archive:pl.imgw.hydro_daily:2024/codz_2024.zip``.
@@ -446,7 +495,7 @@ class ObserwatorAdapter:
         Parameters
         ----------
         root : Path
-            The store root.
+            The data root.
         version : Path
             The version's ``stations.geojson``, relative to ``root``.
 
@@ -508,7 +557,7 @@ class ObserwatorAdapter:
         Parameters
         ----------
         root : Path
-            The store root.
+            The data root.
         version : Path
             The version's ``series.json``, relative to ``root``.
 
@@ -565,7 +614,7 @@ class ObserwatorAdapter:
         Parameters
         ----------
         root : Path
-            The store root.
+            The data root.
         version : Path
             The version's ``series.json``, relative to ``root``.
         station : str
@@ -868,14 +917,27 @@ class ObserwatorAdapter:
         """Return the call that selects a stored version again (Obserwator's).
 
         Obserwator rebuilds it offline from the version's sidecar and the
-        store's layout; its store root (``options["root"]``) is no option of
-        the producer-neutral call, whose caller names the configured store.
+        root's layout; its root (``options["root"]``) is no option of the
+        producer-neutral call, whose caller names the configured store. A
+        version of the data root (a series, a station catalog, analyses) is
+        built by Obserwator from the raw root, never downloaded: Archiwista
+        runs no call of it (A-ADR-056).
+
+        Parameters
+        ----------
+        version : str
+            The version's path relative to ``root``.
+        root : Path
+            The root the version lies in: the raw root, or the data root for a
+            path in one of its trees.
 
         Raises
         ------
         UnsupportedError
             Obserwator cannot rebuild the call (``unsupported``, reason
-            ``command_not_rebuildable``), its text and hint unchanged.
+            ``command_not_rebuildable``), its text and hint unchanged; or the
+            version lies in the data root (the same reason, Archiwista's text
+            naming Obserwator's command).
         ProducerError
             Any other refusal (``not_found``, ``data_error``,
             ``validation_error``, ``store_unavailable``) with its code and hint.
@@ -901,8 +963,39 @@ class ObserwatorAdapter:
                 hint=error.hint,
                 details=details,
             ) from error
+        if directory_field(PRODUCER, version) != PRODUCER:
+            raise UnsupportedError(
+                message("source.obserwator_data_version", command=call.command),
+                details={
+                    "producer": PRODUCER,
+                    "version": version,
+                    "reason": _NOT_REBUILDABLE,
+                },
+            )
         options = {name: value for name, value in call.options.items() if name != _ROOT}
         return CommandCall(PRODUCER, call.command, options, dict(call.run))
+
+    def _probe(self, root: Path, *, data: bool) -> SourceState:
+        """Judge a raw root (``data`` false) or a data root by ``store_info``."""
+        try:
+            names = frozenset(os.listdir(root))
+            info = store_info(root)
+        except (OSError, ObserwatorError) as error:
+            return self._state("error", root, detail=str(error))
+        own, other = _MARKERS[data], _MARKERS[not data]
+        if info.supported and own in names:
+            return self._state("available", root)
+        if other in names and own not in names:
+            text = (
+                message("source.obserwator_found_raw_root", found=other, expected=own)
+                if data
+                else message(
+                    "source.obserwator_found_data_root", found=other, expected=own
+                )
+            )
+            detail = with_detail(text, "; ".join(info.problems))
+            return self._state("incompatible", root, detail=detail, reason="wrong_root")
+        return self._unsupported(root, info, names, data=data)
 
     def _state(
         self,
@@ -926,24 +1019,27 @@ class ObserwatorAdapter:
         )
 
     def _unsupported(
-        self, root: Path, info: StoreInfo, names: frozenset[str]
+        self, root: Path, info: StoreInfo, names: frozenset[str], *, data: bool
     ) -> SourceState:
         """Judge a directory Obserwator does not read, by the codes of ``store_info``.
 
         ``invalid_marker`` and ``unsupported_store`` are a marker the producer
-        refuses. ``missing_marker`` is one code for the layout of a store
-        without its marker and for a directory that is no store, and
-        ``obserwator-store.json`` of another producer is a marker it does not know,
-        so the names in the directory tell those apart.
+        refuses, ``conflicting_markers`` both markers in one directory.
+        ``missing_marker`` is one code for the layout of a root without its
+        marker and for a directory that is no store, and the marker of another
+        producer is a marker it does not know, so the names in the directory
+        tell those apart; the layout is that of the root of the kind asked for.
         """
         codes = frozenset(info.problem_codes)
+        own = _MARKERS[data]
         if "missing_store" in codes:
             return self._state("error", root, detail="; ".join(info.problems))
         if codes & _MARKER_REFUSED:
             text = message(
                 "source.obserwator_unsupported_marker",
+                marker=own,
                 found=info.store_schema or message("source.schema_unknown"),
-                expected=SCHEMAS[0],
+                expected=_SCHEMAS[data],
             )
             detail = with_detail(text, "; ".join(info.problems))
             return self._state(
@@ -957,14 +1053,15 @@ class ObserwatorAdapter:
             return self._state(
                 "incompatible", root, detail=detail, reason="foreign_store"
             )
-        if names & _LAYOUT:
-            hint = f"obserwator store init --root {shlex.quote(str(root))}"
-            detail = message("source.obserwator_no_marker", hint=hint)
+        if names & _LAYOUTS[data]:
+            kind = " --kind data" if data else ""
+            hint = f"obserwator store init{kind} --root {shlex.quote(str(root))}"
+            detail = message("source.obserwator_no_marker", marker=own, hint=hint)
             return self._state(
                 "incompatible", root, detail=detail, reason="no_marker", hint=hint
             )
         if names - _STATE_FILES:
-            detail = message("source.obserwator_not_store")
+            detail = message("source.obserwator_not_store", marker=own)
             return self._state(
                 "incompatible", root, detail=detail, reason="not_a_store"
             )
@@ -1048,15 +1145,16 @@ def _slot_path(kind: str, relative: Path, slot: str | None) -> Path | None:
 def _slot_name(slot: str | None) -> str | None:
     """Name a slot for people where the name of its directory is none.
 
-    An archive is named by its file (its directory has no extension) and a
-    station catalog by its key (the first one lies in a directory called
-    ``versions``); a series and a PMAXTP cell keep the name of their
+    An archive is named by its file (its directory has no extension), a
+    station catalog and a provider's stored analyses by their key (the first
+    catalog lies in a directory called ``versions``, the analyses in one named
+    after the provider); a series and a PMAXTP cell keep the name of their
     directory (``None``).
     """
     kind, _, rest = (slot or "").partition(":")
     if kind == "archive":
         return PurePosixPath(rest.partition(":")[2]).name or None
-    if kind == "catalog":
+    if kind in ("catalog", _ANALYSES):
         return rest or None
     return None
 
@@ -1095,7 +1193,7 @@ def _observation(entry: StoreEntry) -> SourceObservation | None:
 
 
 def _describe(segment: str) -> SourceSegment:
-    """Describe a dataset key: a registry dataset, a station catalog, or none."""
+    """Describe a dataset key: a registry dataset, a catalog, analyses, or none."""
     try:
         dataset = get_dataset(segment)
     except ObserwatorError:
@@ -1113,7 +1211,27 @@ def _describe(segment: str) -> SourceSegment:
             return SourceSegment(
                 segment, _CATALOG, provider.country, segment, str(name), True
             )
+        if segment == f"{provider.key_prefix}.{_ANALYSES}":
+            name = message(
+                "source.obserwator_analyses", "pl", provider=provider.short_name
+            )
+            return SourceSegment(
+                segment, _ANALYSES, provider.country, segment, str(name), True
+            )
     return SourceSegment(segment, None, None, None, segment, False)
+
+
+def _default_root(*, data: bool) -> DefaultRoot:
+    """Report Obserwator's default root of a kind (``store_root``, ADR-017 D5)."""
+    default = store_root(kind="data" if data else "raw")
+    return DefaultRoot(
+        path=default.root,
+        # The four layers ``StoreRoot.source`` documents.
+        source=cast(DefaultRootSource, default.source),
+        name=default.name,
+        exists=default.root.is_dir(),
+        marked=default.marker_exists,
+    )
 
 
 def _polish(text: str) -> str:

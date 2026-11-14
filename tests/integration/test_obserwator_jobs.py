@@ -3,12 +3,14 @@
 Real job workers run Obserwator's ``check_command`` and ``run_command`` with
 IMGW-PIB stood in for by Obserwator's own fixture archives
 (``tests.fixtures.obserwator_worker``): a ``check`` job plans ``store sync``
-of ``pl.imgw.hydro_daily`` 2023 and 2024 into the empty Obserwator directory
-of the store ``zespol``, a ``download`` of that plan pins its files into
-Olga's project, and the index reads the whole store again (Obserwator reads
-no part of it), so the station series are there when the job ends. The
-project then checks, restores and re-pins those pins by the calls Obserwator
-rebuilds of each version (A-ADR-049 D5).
+of ``pl.imgw.hydro_daily`` 2023 and 2024 into the empty raw root of the store
+``zespol``, a ``download`` of that plan pins its archives into Olga's
+project, and the index reads the whole store again (Obserwator reads no part
+of it), so the archives are there when the job ends. The project then
+checks, restores and re-pins those pins by the calls Obserwator rebuilds of
+each version (A-ADR-049 D5). The station series Obserwator builds from them
+in the store's data root has no call Archiwista runs, so its pin is not
+checkable (A-ADR-056).
 """
 
 import json
@@ -19,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from obserwator import build_series
 
 from archiwista.auth import LOCAL_OWNER, access_key
 from archiwista.config import (
@@ -33,6 +36,7 @@ from archiwista.projects import PROJECT_FILE
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Api, Caller, running_api
 from tests.fixtures.jobs import worker_path
+from tests.fixtures.obserwator_roots import data_root, raw_root, store_fields
 from tests.fixtures.obserwator_worker import ETAGS_ENV, OBSERWATOR_WORKER
 from tests.fixtures.permissions import add_people, principal, share
 
@@ -47,8 +51,7 @@ SLOT_2023 = "archives/versions/dane_hydrologiczne/dobowe/2023/codz_2023"
 SLOT_2024 = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
 SERIES = "series/versions/hydro_daily"
 GROUP = "IMGW"
-# A station of the fixture archives (fictional codes, Obserwator's fixtures).
-STATION = "149190310"
+SERIES_GROUP = "Serie"
 
 
 @dataclass(frozen=True)
@@ -58,7 +61,8 @@ class Place:
     api: Api
     jobs: JobSupervisor
     paths: AppPaths
-    root: Path
+    raw: Path
+    data: Path
     directory: Path
     project: str
     owner: Caller
@@ -67,7 +71,7 @@ class Place:
 
 @pytest.fixture
 def place(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Place]:
-    """Serve the store ``zespol`` (an empty Obserwator directory) and a project."""
+    """Serve the store ``zespol`` (Obserwator's empty raw and data roots), a project."""
     worker_path(monkeypatch)
     etags = tmp_path / "etags.json"
     monkeypatch.setenv(ETAGS_ENV, str(etags))
@@ -75,10 +79,12 @@ def place(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Place]:
         config_file=tmp_path / "config" / "config.toml", data_dir=tmp_path / "data"
     )
     root = tmp_path / "obserwator"
-    root.mkdir()
+    raw, data = raw_root(root), data_root(root)
+    raw.mkdir(parents=True)
+    data.mkdir()
     projects = tmp_path / "projekty"
     projects.mkdir()
-    store = StoreConfig(id=STORE, name="Zespół", obserwator=root, kind="local")
+    store = StoreConfig(id=STORE, name="Zespół", **store_fields(root), kind="local")
     ConfigStore(paths.config_file).save(
         AppSettings(stores=(store,), project_dirs=(projects,), store_write_for_all=True)
     )
@@ -98,7 +104,8 @@ def place(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Place]:
             api,
             jobs,
             paths,
-            root,
+            raw,
+            data,
             directory,
             created.json()["project"],
             owner,
@@ -130,25 +137,35 @@ def _planned(
 
 
 def _downloaded(place: Place) -> dict[str, Any]:
-    """Fetch the station catalog, then plan the sync and pin it into ``IMGW``."""
-    catalog = _start(
-        place,
-        "/jobs",
-        {
-            "kind": "download",
-            "store": STORE,
-            "producer": "obserwator",
-            "calls": [{"command": "store catalog", "options": {}}],
-        },
-    )
-    assert catalog["state"] == "succeeded", catalog
+    """Plan the sync, then run the plan and pin it into ``IMGW``."""
     return _planned(place, CALL, {"project": place.project, "group": GROUP})
 
 
-def _pins(place: Place) -> dict[str, str]:
-    """Return the project's pinned versions by their slot (two levels up)."""
+def _scanned(place: Place) -> None:
+    """Read the whole store into the index again."""
+    scanned = place.jobs.submit(
+        "scan", store=STORE, params={"mode": "full"}, actor=LOCAL_OWNER
+    )
+    assert place.jobs.wait(scanned.id, timeout=JOB_TIMEOUT_S).state == "succeeded"
+
+
+def _series(place: Place) -> str:
+    """Build the station series of the stored archives as Obserwator does, offline.
+
+    ``build_series`` writes it into the data root from the raw root; the
+    store is read again. Returns the version's path in the data root.
+    """
+    built = build_series(place.data, raw_root=place.raw, dataset=HYDRO)
+    assert built.status == "new", built
+    assert built.version is not None
+    _scanned(place)
+    return built.version.relative_to(place.data).as_posix()
+
+
+def _pins(place: Place, name: str = GROUP) -> dict[str, str]:
+    """Return a group's pinned versions by their slot (two levels up)."""
     data = json.loads((place.directory / PROJECT_FILE).read_text(encoding="utf-8"))
-    (group,) = data["groups"]
+    group = next(item for item in data["groups"] if item["name"] == name)
     return {
         str(Path(pin["version"]).parent.parent.as_posix()): pin["version"]
         for pin in group["pins"]
@@ -162,10 +179,10 @@ def _states(detail: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def test_obserwator_check_and_download_jobs_pin_and_index_the_series(
+def test_obserwator_check_and_download_jobs_pin_and_index_the_archives(
     place: Place,
 ) -> None:
-    """A planned download writes the archives and the series, pins and indexes them."""
+    """A planned download writes the archives in the raw root, pins and indexes them."""
     # Act
     detail = _downloaded(place)
 
@@ -173,47 +190,70 @@ def test_obserwator_check_and_download_jobs_pin_and_index_the_series(
     assert detail["state"] == "succeeded", detail
     result = detail["result"]
     assert result["producer"] == "obserwator"
-    assert result["counts"]["new"] == 3
-    assert {file["path"] for file in result["files"]} == {SLOT_2023, SLOT_2024, SERIES}
+    assert result["counts"]["new"] == 2
+    assert {file["path"] for file in result["files"]} == {SLOT_2023, SLOT_2024}
     assert result["rescanned"] > 0
     assert result["pin"]["written"] is True
-    assert set(_pins(place)) == {SLOT_2023, SLOT_2024, SERIES}
+    pins = _pins(place)
+    assert set(pins) == {SLOT_2023, SLOT_2024}
+    assert all((place.raw / version).is_file() for version in pins.values())
     plan = place.owner.request("GET", f"/jobs/{detail['params']['plan_job']}/plan")
     assert plan.status_code == 200, plan.text
+    (planned,) = plan.json()["calls"]
+    assert plan.json()["root"] == str(place.raw)
+    assert {entry["path"] for entry in planned["entries"]} == {SLOT_2023, SLOT_2024}
     assert not list((place.paths.cache_dir).rglob("obserwator-plan-*.json"))
-    series = place.owner.request(
-        "GET", f"/stations/{STATION}/series?dataset={HYDRO}&variable=H"
-    )
-    assert series.status_code == 200, series.text
-    assert series.json()["dataset"] == HYDRO
+    current = {
+        slot: place.owner.request("GET", f"/stores/{STORE}/slots/{slot}").json()
+        for slot in pins
+    }
+    assert {slot: card["current"] for slot, card in current.items()} == pins
 
 
 def test_obserwator_project_check_restore_and_repin(place: Place) -> None:
-    """The pins are checked by their versions' calls, restored and re-pinned."""
+    """The pins are checked by their versions' calls, restored and re-pinned.
+
+    A pin of the station series built in the data root is ``not_checkable``:
+    Obserwator builds it from the raw root, Archiwista runs no call of it.
+    """
     # Arrange
     assert _downloaded(place)["state"] == "succeeded"
+    series = _series(place)
+    pinned = place.owner.request(
+        "POST",
+        f"/projects/{place.project}/groups",
+        json={
+            "name": SERIES_GROUP,
+            "from": "file",
+            "versions": [{"store": STORE, "version": series}],
+        },
+    )
+    assert pinned.status_code == 201, pinned.text
 
-    # Act: every pin is current at the source
+    # Act: every archive is current at the source; the series has no call
     checked = _start(place, f"/projects/{place.project}/jobs", {"kind": "check"})
 
     # Assert
-    assert checked["state"] == "succeeded", checked
-    assert set(_states(checked).values()) == {"current"}
+    assert checked["state"] == "partial", checked
+    assert _states(checked) == {
+        SLOT_2023: "current",
+        SLOT_2024: "current",
+        SERIES: "not_checkable",
+    }
+    (refused,) = [row for row in checked["result"]["pins"] if row["version"] == series]
+    assert "(obserwator series build)" in refused["detail"]
 
     # Arrange: the 2023 archive is gone from the store
     version = _pins(place)[SLOT_2023]
-    shutil.rmtree(place.root / Path(version).parent)
-    scanned = place.jobs.submit(
-        "scan", store=STORE, params={"mode": "full"}, actor=LOCAL_OWNER
-    )
-    assert place.jobs.wait(scanned.id, timeout=JOB_TIMEOUT_S).state == "succeeded"
+    shutil.rmtree(place.raw / Path(version).parent)
+    _scanned(place)
 
     # Act
     restored = _start(place, f"/projects/{place.project}/jobs", {"kind": "restore"})
 
     # Assert
     assert restored["state"] == "succeeded", restored
-    assert (place.root / version).is_file()
+    assert (place.raw / version).is_file()
 
     # Arrange: IMGW-PIB republished the 2024 archive (a new signal)
     place.etags.write_text(
@@ -235,4 +275,5 @@ def test_obserwator_project_check_restore_and_repin(place: Place) -> None:
     assert _states(newer)[SLOT_2024] == "newer"
     assert repinned["state"] == "succeeded", repinned
     assert repinned["result"]["written"] is True
-    assert set(_pins(place)) == {SLOT_2023, SLOT_2024, SERIES}
+    assert set(_pins(place)) == {SLOT_2023, SLOT_2024}
+    assert _pins(place, SERIES_GROUP) == {SERIES: series}

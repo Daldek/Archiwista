@@ -82,7 +82,7 @@ def paths(tmp_path: Path) -> AppPaths:
     )
     initialize(created.index_file)
     with IndexWriter(created.index_file) as writer:
-        writer.sync_stores({STORE: store.roots()})
+        writer.sync_stores({STORE: store.directory_paths()})
         writer.write_area(AREA)
     return created
 

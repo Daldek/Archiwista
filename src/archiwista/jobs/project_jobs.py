@@ -121,6 +121,7 @@ from archiwista.sources import (
     PlanEntry,
     SourceAdapter,
 )
+from archiwista.sources.markers import directory_field
 from archiwista.sources.registry import SourceRegistry, load_registry
 
 if TYPE_CHECKING:
@@ -180,10 +181,10 @@ class _GroupCalls:
 
 
 class _Stores:
-    """The store and root of each producer of a project job, read once.
+    """The store and directories of each producer of a project job, read once.
 
-    ``readable`` probes the store's root the first time (``store_unavailable``
-    when it cannot be read).
+    A directory is probed by its kind the first time it is used
+    (``store_unavailable`` when it cannot be read).
     """
 
     def __init__(self, spec: JobSpec, job: _Job) -> None:
@@ -192,20 +193,31 @@ class _Stores:
         self._probed: set[Path] = set()
 
     def of(self, producer: str) -> tuple[str, Path]:
-        """Return the configured store and root of ``producer`` of the project."""
-        store = group_store(self._job.project, producer)
-        return store, self.root(store, producer)
+        """Return the configured store of ``producer`` of the project and its root.
 
-    def root(self, store: str, producer: str) -> Path:
-        """Return the producer's directory of a configured store, probed once."""
+        The store root: the directory the producer's commands write
+        (Obserwator's raw root, A-ADR-056).
+        """
+        store = group_store(self._job.project, producer)
+        return store, self._reachable(store, producer, producer)
+
+    def root(self, store: str, producer: str, path: str) -> Path:
+        """Return the directory of a configured store a producer's path lies in.
+
+        The producer's store root or its data root (A-ADR-056), probed once.
+        """
+        return self._reachable(store, producer, directory_field(producer, path))
+
+    def _reachable(self, store: str, producer: str, field: str) -> Path:
+        """Return a store's directory of a settings field, probed once."""
         config = self._spec.settings.store(store)
-        root = None if config is None else config.roots().get(producer)
-        if root is None:
+        directory = None if config is None else config.directory(field)
+        if directory is None:
             raise NotFoundError(message("api.store_not_configured", store=store))
+        root = directory.path
         if root not in self._probed:
-            refused = store_unreachable(
-                self._job.registry.probe(producer, root), root, indexed=True
-            )
+            state = self._job.registry.probe(producer, root, data=directory.data)
+            refused = store_unreachable(state, root, indexed=True)
             if refused is not None:
                 raise refused
             self._probed.add(root)
@@ -224,7 +236,7 @@ def verify(spec: JobSpec, emit: "Emitter") -> tuple[JsonObject, bool]:
             for pin in group.pins:
                 status, found = "no_store", None
                 if pin.store is not None:
-                    root = stores.root(pin.store, pin.producer)
+                    root = stores.root(pin.store, pin.producer, pin.version)
                     status, found = _verified(queries, root, pin)
                 rows.append(_pin_row(group, pin, status=status, found=found))
                 emit.progress(len(rows), total)
@@ -547,11 +559,12 @@ def _group_calls(
         for producer in dict.fromkeys(pin.producer for pin in own):
             adapter = version_commands(job.registry, producer)
             installed = job.registry.state(producer).package_version or ""
-            store, root = stores.of(producer)
+            store = group_store(job.project, producer)
             for pin in own:
                 if pin.producer != producer:
                     continue
                 key = (pin.producer, pin.version)
+                root = stores.root(store, producer, pin.version)
                 try:
                     answer = version_calls(
                         adapter,

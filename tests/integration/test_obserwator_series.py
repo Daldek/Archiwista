@@ -2,10 +2,10 @@
 
 Every test scans a copy of a fixture store of the producer's own builder
 (``obserwator.testing``) through the real adapter, offline. The index holds the
-coverage of the current version of each dataset's series: every variable of
-every station as the series index gives it, and each of its years in both year
-types computed from the gap lists against the known periods (SPEC 4.8.4); a
-new current version replaces them.
+coverage of the current version of each dataset's series, in the store's data
+root (A-ADR-056): every variable of every station as the series index gives it,
+and each of its years in both year types computed from the gap lists against
+the known periods (SPEC 4.8.4); a new current version replaces them.
 """
 
 import hashlib
@@ -28,6 +28,7 @@ from archiwista.index import IndexQueries, IndexWriter, ScanEvent, ScanNotice
 from archiwista.index.scanner import ScanMode, ScanSummary, scan_store
 from archiwista.sources import SeriesIndexAdapter, SeriesListing, SourceAdapter
 from archiwista.sources.registry import load_registry
+from tests.fixtures.obserwator_roots import data_root, root_of, store_fields
 
 STORE = "dane"
 SERIES = "series.json"
@@ -48,7 +49,10 @@ type Row = tuple[object, ...]
 
 @dataclass
 class _Env:
-    """A copy of a fixture store with an index that knows it."""
+    """A copy of a fixture store with an index that knows it.
+
+    ``root`` holds the store's raw and data roots (``obserwator_roots``).
+    """
 
     root: Path
     index: Path
@@ -123,8 +127,8 @@ def open_env(
         index = tmp_path / f"index-{variant}.sqlite"
         writer = IndexWriter(index)
         writers.append(writer)
-        config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
-        writer.sync_stores({STORE: config.roots()})
+        config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
+        writer.sync_stores({STORE: config.directory_paths()})
         adapter = load_registry(cache_dir=tmp_path / "cache").adapter("obserwator")
         return _Env(root, index, adapter, writer, AppSettings(stores=(config,)), [])
 
@@ -133,17 +137,18 @@ def open_env(
         writer.close()
 
 
-def _current(root: Path, dataset: str) -> Path:
-    found = current_version(root, slot=f"series:{dataset}")
+def _current(store: Path, dataset: str) -> Path:
+    """Return the current version of a dataset's series in a store's data root."""
+    found = current_version(data_root(store), slot=f"series:{dataset}")
     assert found is not None and found.version is not None
     return found.version
 
 
-def _producer_rows(root: Path, dataset: str) -> list[Row]:
+def _producer_rows(store: Path, dataset: str) -> list[Row]:
     """Return what ``read_series_index`` reads in the current version, as rows."""
-    version = _current(root, dataset)
+    version = _current(store, dataset)
     index = read_series_index(version)
-    relative = version.parent.relative_to(root)
+    relative = version.parent.relative_to(data_root(store))
     return sorted(
         (
             code,
@@ -163,15 +168,15 @@ def _producer_rows(root: Path, dataset: str) -> list[Row]:
     )
 
 
-def _publish(root: Path, dataset: str, edit: Callable[[dict[str, Any]], None]) -> str:
+def _publish(store: Path, dataset: str, edit: Callable[[dict[str, Any]], None]) -> str:
     """Write a newer version of a dataset's series with an edited index.
 
     The version directory is ``<label>_<sha8>`` with the edited ``series.json``,
     the series files of the current version and the sidecar (SHA-256, size,
     label, a later build), so Obserwator takes it as the current version.
-    Returns its ``series.json`` relative to the store.
+    Returns its ``series.json`` relative to the data root.
     """
-    source = _current(root, dataset).parent
+    source = _current(store, dataset).parent
     document = json.loads((source / SERIES).read_text(encoding="utf-8"))
     edit(document)
     data = json.dumps(document).encode()
@@ -189,7 +194,7 @@ def _publish(root: Path, dataset: str, edit: Callable[[dict[str, Any]], None]) -
     shutil.copytree(source, target)
     (target / SERIES).write_bytes(data)
     (target / (SERIES + META)).write_text(json.dumps(sidecar), encoding="utf-8")
-    return (target / SERIES).relative_to(root).as_posix()
+    return (target / SERIES).relative_to(data_root(store)).as_posix()
 
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
@@ -208,7 +213,7 @@ def test_the_index_holds_every_variable_of_each_current_series(
 
     # Assert
     assert env.catalogs() == {
-        dataset: _current(env.root, dataset).relative_to(env.root).as_posix()
+        dataset: _current(env.root, dataset).relative_to(data_root(env.root)).as_posix()
         for dataset in datasets
     }
     for dataset in datasets:
@@ -395,7 +400,8 @@ def test_a_series_without_a_current_version_leaves_its_dataset_no_coverage(
     env = open_env("complete_pl_cz")
     env.scan("full")
     czech = env.series(CZ_HYDRO)
-    shutil.rmtree((env.root / env.catalogs()[PL_PRECIP]).parent)
+    gone = env.catalogs()[PL_PRECIP]
+    shutil.rmtree((root_of(env.root, gone) / gone).parent)
 
     # Act
     env.scan("full")

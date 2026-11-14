@@ -38,6 +38,7 @@ from archiwista.services.commands import (
 )
 from archiwista.sources import CommandCall
 from archiwista.sources.registry import PluginRegistry, load_registry
+from tests.fixtures.actions import StandinStore
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import local_paths
@@ -75,14 +76,6 @@ KRAKOW = {
 }
 
 
-class _StandinStore(StoreConfig):
-    """A store of the stand-in: the settings know only the producers' directories."""
-
-    def roots(self) -> dict[str, Path]:
-        """Return the stand-in's directory: the one given as Kartograf's."""
-        return {"standin": super().roots()["kartograf"]}
-
-
 @pytest.fixture
 def standin(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     """Register the stand-in (and the second source); return its producer library."""
@@ -99,7 +92,7 @@ def _settings(tmp_path: Path) -> AppSettings:
     (tmp_path / "zespol").mkdir()
     return AppSettings(
         stores=(
-            _StandinStore(
+            StandinStore(
                 id="pomiary",
                 name="Pomiary",
                 kartograf=tmp_path / "pomiary",
@@ -253,8 +246,6 @@ def test_a_missing_producer_refuses_only_its_own_commands(
 
     assert [(info.producer, info.command) for info in listed] == [
         ("obserwator", "store sync"),
-        ("obserwator", "store catalog"),
-        ("obserwator", "series build"),
         ("standin", "series fetch"),
         ("standin", "stations list"),
     ]

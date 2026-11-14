@@ -681,15 +681,22 @@ def _check_version(version: str | None, series: StationCoverage) -> None:
 
 
 def _producer_root(settings: AppSettings, series: StationCoverage) -> FilePath:
-    """Return the Obserwator directory of a series' store.
+    """Return the Obserwator directory a series of a store lies in.
+
+    Its data root, where every series lies (``StoreConfig.root_of``,
+    A-ADR-056).
 
     Raises
     ------
     NotFoundError
-        The station's store has no Obserwator directory configured.
+        The station's store has no such Obserwator directory configured.
     """
     config = settings.store(series.store)
-    root = None if config is None else config.roots().get(STATION_PRODUCER)
+    root = (
+        None
+        if config is None
+        else config.root_of(STATION_PRODUCER, series.series_version)
+    )
     if root is None:
         raise NotFoundError(message("api.store_not_configured", store=series.store))
     return FilePath(root)

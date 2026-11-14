@@ -30,7 +30,7 @@ from archiwista.sources.registry import PluginRegistry, load_registry
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.local_server import NoSources, local_paths
 from tests.fixtures.missing_package import hide_packages
-from tests.fixtures.obserwator_edits import name_borders
+from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED_VIEWS,
     CHMI_SOURCE,
@@ -99,17 +99,19 @@ class Served:
         return response.json()
 
 
-def _scanned(paths: AppPaths, roots: dict[str, Path], registry: PluginRegistry) -> None:
-    """Configure a store over each root and scan it fully into the index."""
+def _scanned(
+    paths: AppPaths, stores: dict[str, Path], registry: PluginRegistry
+) -> None:
+    """Configure a store over each fixture copy and scan it fully into the index."""
     configs = tuple(
-        StoreConfig(id=store, name=store.title(), obserwator=root, kind="local")
-        for store, root in roots.items()
+        StoreConfig(id=store, name=store.title(), **store_fields(root), kind="local")
+        for store, root in stores.items()
     )
     settings = AppSettings(stores=configs)
     ConfigStore(paths.config_file).save(settings)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({config.id: config.roots() for config in configs})
+        writer.sync_stores({config.id: config.directory_paths() for config in configs})
         writer.write_area(AREA)
         for config in configs:
             adapter = registry.adapter("obserwator")
@@ -169,7 +171,7 @@ def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
     """The card names the series version, the file with its digest and paths."""
     # Arrange
     config = ConfigStore(served.paths.config_file).load().store(STORE)
-    assert config is not None and config.obserwator is not None
+    assert config is not None and config.obserwator_data is not None
 
     # Act
     answer = served.json(f"/stations/{RABA}")
@@ -210,7 +212,7 @@ def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
     assert series["coverage"]["Q"]["unknown_years"] == [{"from": 1951, "to": 2023}]
     assert answer["paths"] == {
         DAILY: {
-            "local": str(config.obserwator / series["file"]),
+            "local": str(config.obserwator_data / series["file"]),
             "aliases": [],
             "personal": None,
         }
@@ -380,21 +382,40 @@ def test_the_map_draws_located_stations_or_their_grid(served: Served) -> None:
 @pytest.mark.parametrize(
     ("path", "attribution", "terms_notice"),
     [
-        pytest.param(f"/stations/{RABA}", IMGW, LOCATED_TERMS, id="card"),
-        pytest.param("/stations/149190311", IMGW, UNLOCATED_TERMS, id="card-unlocated"),
-        pytest.param("/stations/0-203-1-900001", CZECH, [], id="card-chmi"),
-        pytest.param("/stations?limit=50", IMGW + CZECH, LOCATED_TERMS, id="list"),
+        pytest.param(f"/stations/{RABA}", [*IMGW, GUGIK_PRG], LOCATED_TERMS, id="card"),
+        pytest.param(
+            "/stations/149190311",
+            [*IMGW, GUGIK_PRG],
+            UNLOCATED_TERMS,
+            id="card-unlocated",
+        ),
+        pytest.param(
+            "/stations/0-203-1-900001", [*CZECH, CUZK_RUIAN], [], id="card-chmi"
+        ),
+        pytest.param(
+            "/stations?limit=50",
+            [*IMGW, *CZECH, GUGIK_PRG, CUZK_RUIAN],
+            LOCATED_TERMS,
+            id="list",
+        ),
         pytest.param(
             f"/stations?dataset={DAILY}&location=none",
-            IMGW,
+            [*IMGW, GUGIK_PRG],
             UNLOCATED_TERMS,
             id="list-unlocated",
         ),
         pytest.param(
             f"/stations/timeline?dataset={DAILY}",
-            IMGW,
+            [*IMGW, GUGIK_PRG],
             LOCATED_TERMS,
             id="timeline",
+        ),
+        pytest.param(
+            f"/stations/compare?station={STORE}/IMGW-PIB/{RABA}"
+            f"&station={STORE}/IMGW-PIB/149190311&dataset={DAILY}&variable=H",
+            [*IMGW, GUGIK_PRG],
+            LOCATED_TERMS,
+            id="compare",
         ),
         pytest.param(
             f"/stations/{RABA}/coverage", IMGW, UNLOCATED_TERMS, id="coverage"
@@ -407,13 +428,13 @@ def test_the_map_draws_located_stations_or_their_grid(served: Served) -> None:
         ),
         pytest.param(
             "/map/stations?bbox=14,48,24,55",
-            IMGW + CZECH,
+            [*IMGW, *CZECH, GUGIK_PRG, CUZK_RUIAN],
             LOCATED_TERMS,
             id="map",
         ),
         pytest.param(
             "/map/stations?bbox=14,48,24,55&limit=3&grid_columns=4",
-            IMGW + CZECH,
+            [*IMGW, *CZECH, GUGIK_PRG, CUZK_RUIAN],
             LOCATED_TERMS,
             id="map-grid",
         ),
@@ -422,7 +443,11 @@ def test_the_map_draws_located_stations_or_their_grid(served: Served) -> None:
 def test_station_answers_carry_the_lines_their_providers_terms_require(
     served: Served, path: str, attribution: list[str], terms_notice: list[str]
 ) -> None:
-    """Each line once, in the standard's order; RH only with positions."""
+    """Each line once, in the standard's order; RH only with positions.
+
+    The border lines G and Z the station catalogs name come with every place
+    of their stations, none with series alone.
+    """
     # Act
     answer = served.json(path)
 
@@ -431,52 +456,6 @@ def test_station_answers_carry_the_lines_their_providers_terms_require(
         attribution,
         terms_notice,
     )
-
-
-def test_station_places_carry_the_border_lines_their_catalog_names(
-    obserwator_store: Stores, tmp_path: Path
-) -> None:
-    """G and Z of the catalogs, as written, with every place; none with series."""
-    # Arrange
-    root = tmp_path / "store"
-    shutil.copytree(obserwator_store("complete_pl_cz"), root)
-    name_borders(root, {"IMGW-PIB": GUGIK_PRG, "CHMI": CUZK_RUIAN})
-    paths = local_paths(tmp_path)
-    registry = load_registry(cache_dir=paths.cache_dir)
-    _scanned(paths, {STORE: root}, registry)
-    routes = {
-        "card": f"/stations/{RABA}",
-        "card-unlocated": "/stations/149190311",
-        "card-chmi": "/stations/0-203-1-900001",
-        "list": "/stations?limit=50",
-        "timeline": f"/stations/timeline?dataset={DAILY}",
-        "map": "/map/stations?bbox=14,48,24,55",
-        "map-grid": "/map/stations?bbox=14,48,24,55&limit=3&grid_columns=4",
-        "compare": f"/stations/compare?station={STORE}/IMGW-PIB/{RABA}"
-        f"&station={STORE}/IMGW-PIB/149190311&dataset={DAILY}&variable=H",
-        "coverage": f"/stations/{RABA}/coverage",
-        "datasets": "/stations/datasets",
-    }
-
-    # Act
-    with running_api(paths, registry) as api:
-        owner = api.session(LOCAL_OWNER)
-        answers = {name: owner.request("GET", path) for name, path in routes.items()}
-
-    # Assert
-    lines = {name: answer.json()["attribution"] for name, answer in answers.items()}
-    assert lines == {
-        "card": [*IMGW, GUGIK_PRG],
-        "card-unlocated": [*IMGW, GUGIK_PRG],
-        "card-chmi": [*CZECH, CUZK_RUIAN],
-        "list": [*IMGW, *CZECH, GUGIK_PRG, CUZK_RUIAN],
-        "timeline": [*IMGW, GUGIK_PRG],
-        "map": [*IMGW, *CZECH, GUGIK_PRG, CUZK_RUIAN],
-        "map-grid": [*IMGW, *CZECH, GUGIK_PRG, CUZK_RUIAN],
-        "compare": [*IMGW, GUGIK_PRG],
-        "coverage": IMGW,
-        "datasets": IMGW + CZECH,
-    }
 
 
 def test_a_code_of_two_stations_names_them_until_store_and_provider_choose(

@@ -1,20 +1,22 @@
 """Obserwator's commands as producer-neutral commands (``ActionAdapter``, SPEC 12.2).
 
 Only names of ``obserwator.__all__`` are used (A-ADR-050, D1). The catalog is
-the commands of Obserwator's catalog (``data_commands``) that write its store:
-``store sync`` (IMGW-PIB's and ČHMÚ's archives, then the series of their
-datasets), ``store catalog`` (a provider's station catalog) and ``series
-build`` (``STORE_COMMANDS``), described by ``command_schema`` in the language
-of the call (Polish or English). Their options are those of the schema without
-what Archiwista names beside them: the store root (``root``, taken from the
-configured store, never from a request), the plain mode of a run
-(``output_dir``, ``force``: a run writes no plain file) and the plan
-(``plan``: Archiwista hands a kept plan to the run itself).
+the one command of Obserwator's catalog (``data_commands``) that downloads
+into a raw root: ``store sync`` (IMGW-PIB's and ČHMÚ's archives and station
+sources, ``STORE_COMMANDS``), described by ``command_schema`` in the language
+of the call (Polish or English). Obserwator builds the series and station
+catalogs offline into its data root (``series build``, ``store catalog``),
+so they are not Archiwista's (Obserwator ADR-015, ADR-017; Nogat's plan
+``2026-11-12-station-data-and-analyses`` D5; A-ADR-056). The options are those
+of the schema without what Archiwista names beside them: the raw root
+(``root``, taken from the configured store, never from a request), the plain
+mode of a run (``output_dir``, ``force``: a run writes no plain file) and the
+plan (``plan``: Archiwista hands a kept plan to the run itself).
 
 ``parse_command``, ``validate_command`` and ``format_command`` read, check and
 write a call; Obserwator's call names the root among its options, Archiwista's
 beside them (``CommandCall.run``), so the adapter moves it. ``check_command``
-plans a run of a call in the configured store: its ``obserwator-plan/1`` is
+plans a run of a call in the configured raw root: its ``obserwator-plan/1`` is
 read as the producer-neutral ``ActionPlan`` and kept whole as its
 ``document``. ``run_command`` runs it, with the kept plan as the plan file of
 ``store sync`` (written beside the adapter's cache, outside the store, and
@@ -22,13 +24,12 @@ removed after the run); an interrupt (``KeyboardInterrupt``) goes through,
 and Obserwator publishes each version whole (its ``publish``), so nothing of a
 version is left. A unit that fails is an item of the result.
 
-Positions and files are named by their slot's directory below the store root
-(``archives/versions/<server path without its suffix>``,
-``series/versions/<dataset slug>``, ``stations/versions[/<catalog>]``): the
-path the index keeps a slot of the store under (the adapter's ``slot_path``),
-so a plan's position and a run's file of one slot share it; a run's file also
-names its version (``version_path``). Obserwator scans only its whole store, so
-the scope of every path is the whole store (``scope``).
+Positions and files are named by their slot's directory below the raw root
+(``archives/versions/<server path without its suffix>``): the path the index
+keeps a slot of the store under (the adapter's ``slot_path``), so a plan's
+position and a run's file of one slot share it; a run's file also names its
+version (``version_path``). Obserwator scans only a whole root, so the scope
+of every path is the whole store (``scope``).
 
 IMGW-PIB's archives are national files (a year or a month of the country per
 file): no area narrows a download (``with_area`` refuses with
@@ -47,19 +48,16 @@ from pathlib import Path, PurePosixPath
 from typing import Any, cast
 
 from obserwator import (
-    CatalogReport,
     CommandResult,
     ObserwatorError,
     PlanAction,
     PlanItem,
-    SeriesReport,
     StorePlan,
     SyncReport,
     check_command,
     command_schema,
     data_commands,
     format_command,
-    get_dataset,
     parse_command,
     run_command,
     validate_command,
@@ -87,15 +85,13 @@ from archiwista.sources import (
     OptionType,
     PathRole,
     PlanEntry,
-    PlanStatus,
     RunStatus,
     ScanScope,
 )
 
-# The commands of Obserwator's catalog that write its store, in its order: the
-# archives with the series of their datasets, a provider's station catalog,
-# and the series of one dataset (plan 2026-11-05, A1).
-STORE_COMMANDS = ("store sync", "store catalog", "series build")
+# The command of Obserwator's catalog that downloads into a raw root
+# (A-ADR-050, A-ADR-056).
+STORE_COMMANDS = ("store sync",)
 # The options of a call Archiwista names beside them: the store root, the plain
 # mode of a run (a directory of plain files, ``--force``) and the plan file.
 _ROOT = "root"
@@ -109,27 +105,15 @@ _SELECTION = frozenset({"datasets", "years", "months", "stations"})
 _ROOT_ROLE = "root"
 _PATH_ROLES: frozenset[str] = frozenset({"input", "output"})
 _LANGUAGES = frozenset({"en", "pl"})
-# Where Obserwator's store keeps the versions of each kind of slot (its layout,
-# ``archives/versions/…``, ``series/versions/<slug>/…``,
-# ``stations/versions/…``); contract tests compare them with the versions a
-# run writes.
+# Where the raw root keeps the versions of an archive slot (Obserwator's
+# layout, ``archives/versions/…``); contract tests compare it with the versions
+# a run writes. The trees of both roots are the places of a slot (``scope``).
 _ARCHIVES = PurePosixPath("archives/versions")
-_SERIES = PurePosixPath("series/versions")
-_CATALOGS = {
-    "IMGW-PIB": PurePosixPath("stations/versions"),
-    "CHMI": PurePosixPath("stations/versions/chmi_stations"),
-}
-_DEFAULT_PROVIDER = "IMGW-PIB"
+_TREES = frozenset({"archives", "pmaxtp", "series", "stations", "analyses"})
 # The place of a position about the store root itself (a root a run refuses).
 _STORE = "."
 # The statuses of an item of a run that is no success.
 _FAILED_ITEMS = frozenset({"failed", "stale_plan", "cancelled"})
-# Obserwator's plan of a series: ``outdated`` is a series to build again.
-_SERIES_STATUSES: Mapping[str, PlanStatus] = {
-    "current": "current",
-    "outdated": "newer",
-    "missing": "missing",
-}
 # The schema of Obserwator's plan (``StorePlan.schema``).
 PLAN_SCHEMA = "obserwator-plan/1"
 # The name of a plan file handed to ``store sync`` (beside the adapter's cache).
@@ -137,11 +121,11 @@ _PLAN_PREFIX = "obserwator-plan-"
 
 
 def catalog() -> tuple[CommandInfo, ...]:
-    """Return the commands of Obserwator's catalog that write its store.
+    """Return the commands of Obserwator's catalog that download into a raw root.
 
     In the order of ``data_commands``, their summary, description and the
     descriptions of their options in the call's language (Polish or English,
-    ``command_schema(lang=…)``).
+    ``command_schema(lang=…)``): ``store sync`` alone (A-ADR-056).
 
     Raises
     ------
@@ -265,21 +249,21 @@ def check(
     root: Path,
     on_notice: Callable[[AvailabilityNotice], None] | None,
 ) -> ActionPlan:
-    """Plan a run of a command in the store at ``root`` (``check_command``).
+    """Plan a run of a command in the raw root at ``root`` (``check_command``).
 
-    The positions of ``obserwator-plan/1``: each archive of ``items``, the
-    series of ``series_state`` (``outdated`` is ``newer``) and each other
-    action of ``actions`` (a series or a catalog to build; a root a run would
-    refuse, ``nested_store`` or ``not_empty``, is ``conflict``). The size of an
-    archive is the one the source tells (``content_length``).
+    The positions of ``obserwator-plan/1``: each archive of ``items`` and each
+    action of ``actions`` (a station source a check could not list, a root a
+    run would refuse: ``nested_store`` or ``not_empty``, a ``conflict``). The
+    size of an archive is the one the source tells (``content_length``).
 
     Raises
     ------
     ProducerError
         Obserwator refused the call (an unknown command, an invalid option, a
-        root it cannot read) or the whole check failed.
+        root it cannot read, Obserwator's data root: ``wrong_root``) or the
+        whole check failed.
     UnsupportedError
-        The command is no command of the catalog that plans a store
+        The command is no command of the catalog that plans a download
         (``no_plan``).
     """
     if command not in STORE_COMMANDS:
@@ -308,7 +292,7 @@ def check(
         schema=plan.schema,
         root=str(plan.root),
         checked_at=plan.checked_at,
-        entries=_plan_entries(plan, root, options),
+        entries=_plan_entries(plan, root),
         notices=tuple(_notice(notice) for notice in result.notices),
         document=_document(plan),
     )
@@ -324,16 +308,15 @@ def run(
     on_progress: Callable[[ActionProgress], None] | None,
     on_notice: Callable[[AvailabilityNotice], None] | None,
 ) -> ActionResult:
-    """Run a command in the store at ``root`` (``run_command``).
+    """Run a command in the raw root at ``root`` (``run_command``).
 
     With ``plan``, ``store sync`` runs that plan: its document goes back to
     Obserwator as a plan file in ``cache_dir`` (outside the store, removed
     after the run) in place of the options it stands for (datasets, years,
     months, stations), and a position whose source changed since fails as
-    ``conflict`` (reason ``stale_plan``). The other commands have no plan: a
-    plan of them is the same call. Without a plan Obserwator downloads what is
-    new or missing at the source, newer versions included (it has no mode that
-    keeps the stored ones). ``files[]`` come back below the root.
+    ``conflict`` (reason ``stale_plan``). Without a plan Obserwator downloads
+    what is new or missing at the source, newer versions included (it has no
+    mode that keeps the stored ones). ``files[]`` come back below the root.
 
     Raises
     ------
@@ -364,9 +347,7 @@ def narrow(plan: ActionPlan, paths: Collection[str]) -> ActionPlan:
 
     The archives to download (``newer``, ``missing``) elsewhere go from the
     entries and from Obserwator's plan (``items`` of the document), which
-    ``store sync`` then never fetches; the series and catalogs of the plan stay
-    in its document (a run builds them from what the store holds, and builds
-    an unchanged one as ``unchanged``). The positions a run does not download
+    ``store sync`` then never fetches. The positions a run does not download
     stay as they are.
 
     Raises
@@ -399,22 +380,22 @@ def narrow(plan: ActionPlan, paths: Collection[str]) -> ActionPlan:
 def scope(path: str) -> ScanScope:
     """Return the scope that reads the slot at ``path`` again: the whole store.
 
-    Obserwator scans only its whole store (``iter_store``), skipping the
-    versions the index knows, so the scope names no segment and no unit.
+    Obserwator scans only a whole root (``iter_store``), skipping the versions
+    the index knows, so the scope names no segment and no unit; a scan reads
+    both roots of the store.
 
     Raises
     ------
     ValueError
-        ``path`` is not relative, or lies in no tree of the store's versions.
+        ``path`` is not relative, or lies in no tree of the roots' versions.
     """
     place = PurePosixPath(path)
     parts = place.parts
-    trees = {_ARCHIVES.parts[0], _SERIES.parts[0], "stations", "pmaxtp"}
     if (
         place.is_absolute()
         or len(parts) < 2
         or {".", ".."} & set(parts)
-        or parts[0] not in trees
+        or parts[0] not in _TREES
     ):
         raise ValueError(f"{path!r} is no place of a slot in an Obserwator store")
     return ScanScope()
@@ -536,20 +517,10 @@ def _works_on_store(entry: Mapping[str, Any]) -> bool:
     )
 
 
-def _plan_entries(
-    plan: StorePlan, root: Path, options: Mapping[str, object]
-) -> tuple[PlanEntry, ...]:
-    """Return the positions of a plan: archives, series, then the other actions."""
+def _plan_entries(plan: StorePlan, root: Path) -> tuple[PlanEntry, ...]:
+    """Return the positions of a plan: archives, then the other actions."""
     entries = [_archive_entry(item, root) for item in plan.items]
-    entries += [
-        PlanEntry(
-            path=str(_SERIES / slug),
-            unit=slug,
-            status=_SERIES_STATUSES.get(state, "unverifiable"),
-        )
-        for slug, state in plan.series_state.items()
-    ]
-    entries += [_action_entry(action, options) for action in plan.actions]
+    entries += [_action_entry(action) for action in plan.actions]
     return tuple(entries)
 
 
@@ -568,20 +539,15 @@ def _archive_entry(item: PlanItem, root: Path) -> PlanEntry:
     )
 
 
-def _action_entry(action: PlanAction, options: Mapping[str, object]) -> PlanEntry:
-    """Convert an action of ``actions``: a series, a catalog or a refused root."""
+def _action_entry(action: PlanAction) -> PlanEntry:
+    """Convert an action of ``actions``, a place in the root itself.
+
+    A station source a check could not list or a root a run would refuse (a
+    ``conflict`` with its reason).
+    """
     conflict = action.reason if action.action == "conflict" else None
-    if conflict is not None:
-        path = _STORE
-    elif action.command == "series build":
-        path = str(_SERIES / _slug(options.get("dataset")))
-    elif action.command == "store catalog":
-        provider = str(options.get("provider") or _DEFAULT_PROVIDER)
-        path = str(_CATALOGS.get(provider, _CATALOGS[_DEFAULT_PROVIDER]))
-    else:
-        path = _STORE
     return PlanEntry(
-        path=path,
+        path=_STORE,
         unit=action.command,
         status=action.status,
         error=_text(action.detail)
@@ -595,14 +561,6 @@ def _archive_slot(server_path: str) -> str:
     """Return the slot directory of an archive (its server path without suffix)."""
     place = PurePosixPath(server_path)
     return str(_ARCHIVES / place.parent / place.stem)
-
-
-def _slug(dataset: object) -> str:
-    """Return the series directory of a dataset (its slug in the registry)."""
-    try:
-        return get_dataset(str(dataset)).slug
-    except ObserwatorError as error:
-        raise call_error(error) from error
 
 
 def _label(version: PurePosixPath) -> str:
@@ -683,7 +641,7 @@ def _plan_file(
 
 
 def _run_result(result: CommandResult[object], root: Path) -> ActionResult:
-    """Convert the envelope of a run and its report (sync, catalog or series)."""
+    """Convert the envelope of a run and its report (a sync)."""
     report = result.result
     files: tuple[Any, ...] = ()
     items: list[ActionItem] = []
@@ -691,14 +649,7 @@ def _run_result(result: CommandResult[object], root: Path) -> ActionResult:
     if isinstance(report, SyncReport):
         files = report.files
         items = [_sync_item(item) for item in report.items]
-        items += [_built_item(series, "series build", root) for series in report.series]
         schema = report.SCHEMA
-    elif isinstance(report, SeriesReport | CatalogReport):
-        files = report.files
-        command = (
-            "series build" if isinstance(report, SeriesReport) else "store catalog"
-        )
-        items = [_built_item(report, command, root)]
     status = result.status
     run_status: RunStatus = "failed" if status == "cancelled" else status
     return ActionResult(
@@ -723,23 +674,6 @@ def _sync_item(item: Any) -> ActionItem:
         code="conflict" if stale else item.error_code if failed else None,
         reason="stale_plan" if stale else None,
         message=_text(item.error) if failed and item.error else None,
-    )
-
-
-def _built_item(report: Any, command: str, root: Path) -> ActionItem:
-    """Convert a series or catalog built (``SeriesReport``, ``CatalogReport``).
-
-    Its id is the slot's directory of the version built, else the command.
-    """
-    failed = report.status in ("failed", "cancelled")
-    version = None if report.version is None else _relative(report.version, root)
-    problems = tuple(str(problem) for problem in report.problems)
-    slot = None if version is None or len(version.parts) < 3 else version.parent.parent
-    return ActionItem(
-        id=command if slot is None else slot.as_posix(),
-        status="failed" if failed else "ok",
-        code="data_error" if failed else None,
-        message="; ".join(problems) if failed and problems else None,
     )
 
 

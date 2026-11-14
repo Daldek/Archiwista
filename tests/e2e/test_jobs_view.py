@@ -121,7 +121,7 @@ def team_paths(
     ConfigStore(paths.config_file).save(settings)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: store.roots()})
+        writer.sync_stores({STORE: store.directory_paths()})
         key = record_project(writer, directory, stores=settings.stores, geo=None)
     state = StateStore(paths.state_file)
     add_people(state)

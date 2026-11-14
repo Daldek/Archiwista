@@ -2,8 +2,10 @@
 
 A download adds an immutable ``<label>_<sha8>`` version directory (the data
 file and its ``.meta.json`` sidecar) next to the other versions of a slot. The
-helpers change a store built by ``obserwator.testing`` after a scan; paths are
-relative to the store root (Obserwator's ``--root`` directory) with ``/``.
+helpers change a store built by ``obserwator.testing`` after a scan; ``root`` is
+the root a path lies in (the raw root of the archives, the data root of the
+series and catalogs: ``obserwator_roots.root_of``) and paths are relative to it,
+with ``/``.
 """
 
 import json
@@ -28,7 +30,7 @@ def add_version(root: Path, slot: str, *, label: str, like: str | None = None) -
     Parameters
     ----------
     root : Path
-        The store.
+        The root of the slot (raw or data).
     slot : str
         The slot's directory.
     label : str
@@ -75,21 +77,6 @@ def rewrite_sidecar(root: Path, version: str, **fields: object) -> None:
     document = _read(sidecar)
     document.update(fields)
     _write(sidecar, document)
-
-
-def name_borders(root: Path, lines: dict[str, str]) -> None:
-    """Add a line to the attribution of every station catalog, by its provider.
-
-    Obserwator's catalogs name the state borders their places were checked
-    against (G of PRG for IMGW-PIB, Z of RÚIAN for ČHMÚ) in their sidecar's
-    attribution, joined to the provider's lines by ``. ``, as a catalog
-    written since Obserwator's borders of the national registers does.
-    """
-    for sidecar in root.glob("stations/versions/**/*" + META_SUFFIX):
-        document = _read(sidecar)
-        license_ = document["license"]
-        license_["attribution"] += f". {lines[document['provider']]}"
-        _write(sidecar, document)
 
 
 def _version_directories(slot: Path) -> list[str]:

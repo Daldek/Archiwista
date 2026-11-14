@@ -28,7 +28,9 @@ from archiwista.sources.registry import PluginRegistry, load_registry
 from tests.fixtures.api_session import Caller, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import NoSources, local_paths
+from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
+    GUGIK_PRG,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_HYDRO,
@@ -39,10 +41,17 @@ STORE = "dane"
 DAILY = "pl.imgw.hydro_daily"
 RABA = "149190310"
 # The title of the providers' lines of a person's text, and the lines of IMGW-PIB
-# stations with a position (from the hydrological service) and without one.
+# stations with a position (from the hydrological service) and without one; the
+# border line G of their catalog comes with the places of both.
 LINES_TITLE = "Źródła danych i warunki korzystania:"
-LOCATED = [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO]
-UNLOCATED = [IMGW_SOURCE, IMGW_PROCESSED, IMGW_TERMS_PUBLIC_DATA]
+LOCATED = [
+    IMGW_SOURCE,
+    IMGW_PROCESSED,
+    GUGIK_PRG,
+    IMGW_TERMS_PUBLIC_DATA,
+    IMGW_TERMS_HYDRO,
+]
+UNLOCATED = [IMGW_SOURCE, IMGW_PROCESSED, GUGIK_PRG, IMGW_TERMS_PUBLIC_DATA]
 AREA = AreaRecord(
     id="zlewnia",
     source="drawn",
@@ -104,13 +113,13 @@ def served(
     root = base / "store"
     shutil.copytree(obserwator_store("complete_pl_cz"), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         writer.write_area(AREA)
         scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
     with running_api(paths, registry) as api:
@@ -338,7 +347,7 @@ def test_stations_cli_writes_polish_lines_for_a_person(doors: Doors) -> None:
         f"  {DAILY} (szeregi 2026-10-19, lata hydrologiczne 1951–2024): H: luki 91%"
     )
     assert "bez położenia (źródło podało 0,0)" in lines[2]
-    assert lines[-6:] == [
+    assert lines[-7:] == [
         "Stacje na stronie: 2. Z położeniem: 1 (na granicy obszaru: 0), bez"
         " położenia: 1, ukryte filtrem: 0.",
         LINES_TITLE,
@@ -346,9 +355,9 @@ def test_stations_cli_writes_polish_lines_for_a_person(doors: Doors) -> None:
     ]
     assert "czynna: tak" in card
     assert "Położenie: 20.1, 49.7 (źródło api_hydro, niepewność 5566.0 m" in card
-    assert card.splitlines()[-5:] == [LINES_TITLE, *(f"  {line}" for line in LOCATED)]
+    assert card.splitlines()[-6:] == [LINES_TITLE, *(f"  {line}" for line in LOCATED)]
     assert "Bez położenia: źródło podało 0,0" in unlocated
-    assert unlocated.splitlines()[-4:] == [
+    assert unlocated.splitlines()[-5:] == [
         LINES_TITLE,
         *(f"  {line}" for line in UNLOCATED),
     ]

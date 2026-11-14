@@ -530,14 +530,16 @@ def folder_rules(
 ) -> tuple[list[Path], dict[str, Path]]:
     """Return the stores' directories and every project's folder, by access key.
 
-    The stores are the configured producer directories and the absolute
-    store directories the projects' files name.
+    The stores are the configured directories (store roots and data roots,
+    A-ADR-056) and the absolute store directories the projects' files name.
     """
     folders = {
         project.access_key: settings.own_data_dir(project.access_key)[0]
         for project in known_projects
     }
-    stores = [root for store in settings.stores for root in store.roots().values()]
+    stores = [
+        directory.path for store in settings.stores for directory in store.directories()
+    ]
     stores += [
         Path(entry.root)
         for project in known_projects

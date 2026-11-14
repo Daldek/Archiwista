@@ -224,7 +224,7 @@ def test_scan_projects_unknown_store_matches_once_configured(
     first = _scan(writer, store.projects_dir, stores[0])
     again = _scan(writer, store.projects_dir, stores[0])
     unknown = project_detail(queries, "inny-magazyn", visible=ALL_PROJECTS)
-    writer.sync_stores({s.id: s.roots() for s in stores})
+    writer.sync_stores({s.id: s.directory_paths() for s in stores})
     _scan(writer, store.projects_dir, *stores)
     known = project_detail(queries, "inny-magazyn", visible=ALL_PROJECTS)
 

@@ -12,9 +12,10 @@ from pathlib import Path
 import pytest
 
 from archiwista.auth import LOCAL_OWNER
-from archiwista.config import AppSettings, StoreConfig
+from archiwista.config import AppSettings, StoreConfig, StoreDirectory
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.sources.registry import load_registry
+from tests.fixtures.actions import as_producer
 from tests.fixtures.api_session import running_api
 from tests.fixtures.local_server import local_paths
 
@@ -28,6 +29,10 @@ class _ExternalStore(StoreConfig):
     def roots(self) -> dict[str, Path]:
         """Return the test producer's directory."""
         return {"external": super().roots()["kartograf"]}
+
+    def directories(self) -> tuple[StoreDirectory, ...]:
+        """Return the test producer's directory, the one given as Kartograf's."""
+        return as_producer("external", super().directories())
 
 
 def test_second_adapter_indexes_and_browses_without_core_changes(
@@ -47,7 +52,7 @@ def test_second_adapter_indexes_and_browses_without_core_changes(
     config = _ExternalStore(id="pomiary", name="Pomiary", kartograf=store, kind="local")
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({"pomiary": {"external": str(store)}})
+        writer.sync_stores({"pomiary": config.directory_paths()})
         scan_store(
             registry.adapter("external"),
             writer,

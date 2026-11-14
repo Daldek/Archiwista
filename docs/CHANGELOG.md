@@ -9,6 +9,22 @@ command-line interface may change.
 
 ### Added
 
+- Obserwator's data root beside its raw root in a store (A-ADR-056; Obserwator's ADR-017,
+  Nogat plan `2026-11-12-station-data-and-analyses` D5, R2): the new store field
+  `obserwator_data` (`config.toml`, `GET`/`PUT /settings` `StoreSettings.obserwator_data`,
+  „Katalog danych Obserwatora” in the wizard and „Ustawienia”) names the directory of
+  `obserwator-data.json` with the series, station catalogs and analyses Obserwator builds
+  offline; Archiwista only reads it. Each directory is probed by its kind, and a root of
+  the other kind is refused with the new reason `wrong_root`. One scan reads both
+  directories, and every path stays relative to the root of its first part (`series/`,
+  `stations/`, `analyses/` in the data root), so indexed paths and project pins are the
+  ones of the single store before, with no index rebuild. The items of `GET /sources` gain
+  `default_data_root` (Obserwator's `store_root(kind="data")`), which the wizard offers
+  under the empty data-root field and `archiwista doctor` prints; source plugins may
+  answer the new optional capability `DataRootAdapter` (`probe_data`,
+  `default_data_root`; in `archiwista.sources`). The guide (USAGE) has the steps for an
+  administrator.
+
 - The lines of the state borders a station catalog was checked against (Nogat DEV-20.9,
   DEV-20.11, ECO-068; A-ADR-055 erratum 3): where a station's place (a position or the
   reason it has none) comes from Obserwator's catalog, its GUGiK line „Źródło: Główny
@@ -1226,6 +1242,21 @@ command-line interface may change.
 
 ### Changed
 
+- **Breaking:** Obserwator is re-pinned from `f9f4ee79` to `0591b82`, which keeps a store
+  in two roots (its ADR-015 and ADR-017; A-ADR-056). Archiwista runs only Obserwator's
+  `store sync`, into the raw root: `series build` and `store catalog` leave
+  `GET /commands`, „Polecenia producenta” and the plan window, and Obserwator builds the
+  series and station catalogs itself, offline. A project's pins of series and station
+  catalogs are `not_checkable` (the call of such a version is refused as
+  `command_not_rebuildable`); pins of archives are checked, re-pinned and restored as
+  before. The field `obserwator` keeps its meaning (the directory of
+  `obserwator-store.json`, now called the raw root, „Katalog surowy Obserwatora”); the
+  default root offered under it is Obserwator's default raw root (`OBSERWATOR_RAW_ROOT`,
+  else `<data_dir>/obserwator-raw`). A store Obserwator wrote before its ADR-017 is read as
+  a raw root: its `series/` and `stations/` are `unknown_entry` problems and its stations
+  and series are not shown until it is split (Obserwator's `docs/USAGE.md` "Splitting a
+  store") and `obserwator_data` is set; entered as `obserwator_data` it is refused
+  (`wrong_root`). The `stores.roots` JSON of the index is keyed by settings field.
 - „Zgłoszenia” is Nogat's kit view `<nogat-admin-feedback>` (kit 0.7.0, Nogat DEV-15.13,
   ECO-067; A-ADR-054 erratum 3) with Archiwista's sign-in and roles: „Nieprzeczytane: N z
   M”, „Tylko nieprzeczytane”, „Oznacz jako przeczytane” and back, „Usuń” after a
@@ -1666,6 +1697,10 @@ command-line interface may change.
 
 ### Fixed
 
+- „Aktywność” of the project card is read again with every change made on the card: a
+  change in the same second as the project's last read („Usuń zestaw” at once after the
+  card opened, say) left the old entries in the list until the card was opened again.
+
 - „Kopiuj do Hydrologa” of the station card copies on a plain-HTTP address of the
   network too (A-ADR-054): where the browser has no Clipboard API, or refuses it, the
   hand-off's text appears selected in a field under the buttons, with „Przeglądarka nie
@@ -1872,6 +1907,7 @@ command-line interface may change.
 
 ### Security
 
+- `opentelemetry-api` 1.45.2 in `uv.lock` (CVE-2026-126360 in 1.45.1).
 - Security refusals now reach the action log (D7): `request.refused` records
   Host, CSRF, TLS, proxy, session and temporary-password request-rule refusals,
   and paths outside their allowed root. Rejected tokens and missing or refused

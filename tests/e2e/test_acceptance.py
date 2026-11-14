@@ -25,12 +25,20 @@ import pytest
 from playwright.sync_api import APIResponse, Browser, FloatRect, Locator, Page, expect
 
 from archiwista.api.errors import PROBLEM_MEDIA_TYPE
-from archiwista.config import AppPaths, AppSettings, ConfigStore, StoreConfig, StoreKind
+from archiwista.config import (
+    AppPaths,
+    AppSettings,
+    ConfigStore,
+    StoreConfig,
+    StoreDirectory,
+    StoreKind,
+)
 from archiwista.index import IndexWriter, initialize, scan_store
 from archiwista.jobs import FINISHED_STATES, scheduler
 from archiwista.messages import message
 from archiwista.security import CSRF_HEADER
 from archiwista.sources.registry import load_registry
+from tests.fixtures.actions import as_producer
 from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.make_store import (
@@ -831,20 +839,26 @@ def test_acceptance_second_plugin_beside_kartograf(
 
     The test plugin is registered by its entry point; as in
     ``test_second_adapter_entries_in_catalog`` (v0.1 settings name only
-    Kartograf's directory) ``roots()`` gives it the store's directory, both
-    stores are indexed in the test process and the scheduler plans no scan.
+    Kartograf's directory) ``roots()`` and ``directories()`` give it the store's
+    directory, both stores are indexed in the test process and the scheduler
+    plans no scan.
     """
     for name in FIXTURE_MODULES:
         monkeypatch.delitem(sys.modules, name, raising=False)
     monkeypatch.syspath_prepend(str(SECOND_SOURCE))
-    kartograf_roots = StoreConfig.roots
+    kartograf_roots, kartograf_directories = StoreConfig.roots, StoreConfig.directories
 
     def roots(config: StoreConfig) -> dict[str, Path]:
         if config.id == "pomiary":
             return {"external": kartograf_roots(config)["kartograf"]}
         return kartograf_roots(config)
 
+    def directories(config: StoreConfig) -> tuple[StoreDirectory, ...]:
+        found = kartograf_directories(config)
+        return as_producer("external", found) if config.id == "pomiary" else found
+
     monkeypatch.setattr(StoreConfig, "roots", roots)
+    monkeypatch.setattr(StoreConfig, "directories", directories)
     monkeypatch.setattr(scheduler, "plan_scans", lambda *args, **kwargs: ())
     store = generate(tmp_path)
     folder = tmp_path / "pomiary"
@@ -857,9 +871,11 @@ def test_acceptance_second_plugin_beside_kartograf(
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({config.id: config.roots() for config in settings.stores})
+        writer.sync_stores(
+            {config.id: config.directory_paths() for config in settings.stores}
+        )
         for config in settings.stores:
-            for producer in config.roots():
+            for producer in config.producers():
                 scan_store(
                     registry.adapter(producer), writer, settings, config.id, mode="full"
                 )

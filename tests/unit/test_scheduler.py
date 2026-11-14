@@ -197,6 +197,6 @@ class _NoSources:
         """Report no plugin."""
         return ()
 
-    def probe(self, producer: str, root: Path) -> SourceState:
+    def probe(self, producer: str, root: Path, *, data: bool = False) -> SourceState:
         """Report the producer missing."""
         return SourceState(producer=producer, status="not_installed")

@@ -1,17 +1,20 @@
 """Contract with Obserwator's store API and of Archiwista's Obserwator adapter.
 
-The adapter must see exactly what ``obserwator.iter_store`` sees in the
-producer's own offline fixture stores (``obserwator.testing``): archives,
-series and station catalogs as versions, a version the producer cannot read
-as its problem and nothing parsed, an observation never as a version; the
+The adapter must see exactly what ``obserwator.iter_store`` sees in each root
+of the producer's own offline fixture stores (``obserwator.testing``, its
+ADR-017): archives and their observations in the raw root, series and station
+catalogs in the data root, every version as a version, a version the producer
+cannot read as its problem and nothing parsed, an observation never as a
+version; each path lies in a tree Archiwista places in that root, and the
 origin of each version's data follows its tree and the provider the producer
-names (A-ADR-055). It judges a directory by the marker file name and schema,
-and every judgement is pinned to what the producer itself does with the same
-directory.
+names (A-ADR-055). It judges a directory as either root by the marker file
+names and schemas, and every judgement is pinned to what the producer itself
+does with the same directory as a root of that kind.
 """
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -20,6 +23,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 
 import obserwator
 import pytest
@@ -28,6 +32,7 @@ from obserwator import (
     ObserwatorDataError,
     ObserwatorError,
     ObserwatorStoreConflictError,
+    StoreHandle,
     init_store,
     iter_store,
     open_store,
@@ -49,6 +54,7 @@ from archiwista.errors import ProducerError, SourceUnavailableError, Unsupported
 from archiwista.sources import (
     CurrentVersionAdapter,
     DataOriginAdapter,
+    DataRootAdapter,
     GeoAdapter,
     LinkCheckAdapter,
     PartitionedAdapter,
@@ -60,13 +66,45 @@ from archiwista.sources import (
     SourceContext,
     SourceEntry,
     SourceSegment,
+    SourceState,
     VersionCommandAdapter,
 )
+from archiwista.sources.markers import directory_field
 from tests.fixtures.network import no_network
 from tests.fixtures.obserwator_edits import add_version, drop_sidecar, rewrite_sidecar
+from tests.fixtures.obserwator_roots import data_root, raw_root, root_of
 
 type Stores = Callable[[str], Path]
 type Row = tuple[object, ...]
+# A kind of Obserwator root (its ADR-017): the raw root of the archives, the
+# data root of what Obserwator builds from them.
+type Kind = Literal["raw", "data"]
+
+KINDS: tuple[Kind, ...] = ("raw", "data")
+OTHER: Mapping[Kind, Kind] = {"raw": "data", "data": "raw"}
+# The root of each kind in a fixture store, how the adapter judges it, the
+# marker Obserwator writes into it, a tree of its layout and the settings field
+# Archiwista keeps it in.
+ROOTS: Mapping[Kind, Callable[[Path], Path]] = {"raw": raw_root, "data": data_root}
+PROBES: Mapping[Kind, Callable[[ObserwatorAdapter, Path], SourceState]] = {
+    "raw": ObserwatorAdapter.probe,
+    "data": ObserwatorAdapter.probe_data,
+}
+MARKERS: Mapping[Kind, str] = {
+    "raw": "obserwator-store.json",
+    "data": "obserwator-data.json",
+}
+LAYOUTS: Mapping[Kind, str] = {"raw": "archives", "data": "series"}
+FIELDS: Mapping[Kind, str] = {"raw": "obserwator", "data": "obserwator_data"}
+# The schema of each marker this Obserwator writes, and a later one it refuses.
+MARKER_SCHEMAS: Mapping[Kind, str] = {
+    "raw": "obserwator-store/1",
+    "data": "obserwator-data/1",
+}
+NEWER_SCHEMAS: Mapping[Kind, str] = {
+    "raw": "obserwator-store/2",
+    "data": "obserwator-data/2",
+}
 
 HYDRO = "pl.imgw.hydro_daily"
 ARCHIVE_SLOT = Path("archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024")
@@ -139,10 +177,18 @@ def _entries(adapter: ObserwatorAdapter, root: Path) -> list[SourceEntry]:
     return list(adapter.iter_entries(root))
 
 
-def _copy(obserwator_store: Stores, root: Path, variant: str = "complete") -> Path:
-    """Copy a shared fixture store so that a test can change it."""
-    shutil.copytree(obserwator_store(variant), root)
-    return root
+def _store_entries(adapter: ObserwatorAdapter, store: Path) -> list[SourceEntry]:
+    """Return the entries of both roots of a fixture store, each relative to its root.
+
+    The trees of the two roots differ, so no path of one is a path of the other.
+    """
+    return [entry for kind in KINDS for entry in _entries(adapter, ROOTS[kind](store))]
+
+
+def _copy(obserwator_store: Stores, store: Path, variant: str = "complete") -> Path:
+    """Copy a shared fixture store, both roots, so that a test can change it."""
+    shutil.copytree(obserwator_store(variant), store)
+    return store
 
 
 def test_installed_obserwator_within_supported_range() -> None:
@@ -151,7 +197,12 @@ def test_installed_obserwator_within_supported_range() -> None:
 
     assert supported.contains(Version(obserwator.__version__), prereleases=True)
     assert (PRODUCER, PACKAGE) == ("obserwator", "obserwator")
-    assert SCHEMAS == ("obserwator-store/1", "obserwator-meta/1", "obserwator-series/1")
+    assert SCHEMAS == (
+        "obserwator-store/1",
+        "obserwator-data/1",
+        "obserwator-meta/1",
+        "obserwator-series/1",
+    )
 
 
 def test_adapter_implements_the_source_interface_and_describes_its_datasets(
@@ -159,6 +210,7 @@ def test_adapter_implements_the_source_interface_and_describes_its_datasets(
 ) -> None:
     """The store has no segments to scan, links, sheets or coordinate operations."""
     assert isinstance(adapter, SourceAdapter)
+    assert isinstance(adapter, DataRootAdapter)
     assert isinstance(adapter, SegmentDescriptionAdapter)
     assert isinstance(adapter, CurrentVersionAdapter)
     assert not any(
@@ -173,25 +225,33 @@ def test_adapter_implements_the_source_interface_and_describes_its_datasets(
     )
 
 
+@pytest.mark.parametrize("kind", KINDS)
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
 def test_entries_equal_what_iter_store_yields(
-    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str, kind: Kind
 ) -> None:
-    """Kind, slot, path, label and SHA-256 of every entry are the producer's."""
-    root = obserwator_store(variant)
+    """Kind, slot, path, label and SHA-256 of every entry of a root are the producer's.
+
+    Each path lies in a tree that Archiwista places in that root by its first
+    part (``directory_field``, A-ADR-056), so the index reads it there again.
+    """
+    root = ROOTS[kind](obserwator_store(variant))
 
     entries = _entries(adapter, root)
 
     assert _rows(entries) == _producer_rows(root)
     assert {entry.store for entry in entries} == {str(root)}
     assert {entry.producer for entry in entries} == {"obserwator"}
+    assert {directory_field(PRODUCER, e.relative_path) for e in entries} == {
+        FIELDS[kind]
+    }
 
 
 def test_a_relabeled_version_is_the_same_content_under_a_new_label(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A republished archive is its own version; older ones stay versions."""
-    entries = _entries(adapter, obserwator_store("complete"))
+    entries = _entries(adapter, raw_root(obserwator_store("complete")))
 
     versions = [e for e in entries if e.slot_path == ARCHIVE_SLOT]
 
@@ -208,7 +268,7 @@ def test_series_and_catalogs_are_versions_and_nothing_is_a_problem(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """Series (also an outdated one) and the station catalog are versions."""
-    entries = _entries(adapter, obserwator_store("complete"))
+    entries = _store_entries(adapter, obserwator_store("complete"))
 
     series = Counter(e.segment for e in entries if e.relative_path.parts[0] == "series")
 
@@ -233,8 +293,8 @@ def test_a_version_the_producer_cannot_read_is_its_problem_and_nothing_is_parsed
     code: str,
     slot: Path,
 ) -> None:
-    """The producer's problem code is the entry's; the rest of the store is read."""
-    root = obserwator_store(variant)
+    """The producer's problem code is the entry's; the rest of its root is read."""
+    root = root_of(obserwator_store(variant), slot)
 
     entries = _entries(adapter, root)
 
@@ -250,7 +310,7 @@ def test_an_observation_is_history_and_never_a_version(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A source republished the same content: the register belongs to the slot."""
-    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
+    entries = _entries(adapter, raw_root(obserwator_store("complete_pl_cz")))
 
     (observation,) = [e for e in entries if e.kind == "observation"]
     (version,) = [
@@ -276,7 +336,7 @@ def test_an_observation_carries_the_signal_the_producer_kept(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """When the source served the bytes, from where, and their size and digest."""
-    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
+    entries = _entries(adapter, raw_root(obserwator_store("complete_pl_cz")))
 
     (observation,) = [e for e in entries if e.kind == "observation"]
 
@@ -304,13 +364,16 @@ def test_a_slot_has_the_producers_key_and_a_name_for_people(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """The key is the producer's own; an archive is its file, a catalog its key."""
-    root = obserwator_store("complete_pl_cz")
+    store = obserwator_store("complete_pl_cz")
 
-    entries = _entries(adapter, root)
+    entries = _store_entries(adapter, store)
 
-    keys = {e.relative_path: e.slot_key for e in entries}
+    keys = {(e.store, e.relative_path): e.slot_key for e in entries}
     assert keys == {
-        e.version.relative_to(root): e.slot for e in iter_store(root) if e.version
+        (str(root), e.version.relative_to(root)): e.slot
+        for root in (raw_root(store), data_root(store))
+        for e in iter_store(root)
+        if e.version
     }
     names = {e.slot_key: e.slot_name for e in entries}
     assert names["archive:pl.imgw.hydro_daily:2024/codz_2024.zip"] == "codz_2024.zip"
@@ -333,7 +396,7 @@ def test_a_problem_without_a_slot_has_no_key_and_no_dataset(
     obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A stray item of the store belongs to no slot, so it has no segment."""
-    root = _copy(obserwator_store, tmp_path / "store")
+    root = raw_root(_copy(obserwator_store, tmp_path / "store"))
     stray = root / "archives" / "versions" / "stray"
     stray.mkdir()
     (stray / "notes.txt").write_text("x", encoding="utf-8")
@@ -424,9 +487,9 @@ def test_every_dataset_a_fixture_store_names_is_recognised(
     obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
     """What the producer writes into a store, its registry knows."""
-    segments = {
-        e.segment for e in _entries(adapter, obserwator_store(variant)) if e.segment
-    }
+    entries = _store_entries(adapter, obserwator_store(variant))
+
+    segments = {e.segment for e in entries if e.segment}
 
     assert segments
     assert all(adapter.describe_segment(name).known for name in segments)
@@ -436,7 +499,7 @@ def test_the_two_providers_keep_their_datasets_catalogs_and_countries_apart(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """IMGW-PIB and ČHMÚ files and station catalogs do not collide."""
-    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
+    entries = _store_entries(adapter, obserwator_store("complete_pl_cz"))
 
     metas = [e.meta for e in entries if e.meta is not None]
     catalogs = {e.segment: e for e in entries if e.relative_path.parts[0] == "stations"}
@@ -462,7 +525,7 @@ def test_the_canonical_content_of_a_chmi_file_is_kept_and_is_none_for_imgw(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """The producer's canonical content rides along; nothing is computed."""
-    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
+    entries = _entries(adapter, raw_root(obserwator_store("complete_pl_cz")))
 
     forms = {
         (e.segment, e.meta.content_form, e.meta.content_sha256 is None)
@@ -479,7 +542,7 @@ def test_the_origin_of_a_version_is_its_trees_form_of_its_providers_data(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """An archive is the file as published, a series or catalog a processed form."""
-    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
+    entries = _store_entries(adapter, obserwator_store("complete_pl_cz"))
 
     origins = {
         (
@@ -510,7 +573,7 @@ def test_read_meta_carries_the_common_core_for_an_archive_a_series_and_a_catalog
     obserwator_store: Stores, adapter: ObserwatorAdapter, slot: Path
 ) -> None:
     """DEV-19.16: the fields every sidecar has, read again on demand."""
-    root = obserwator_store("complete")
+    root = root_of(obserwator_store("complete"), slot)
     entry = next(e for e in _entries(adapter, root) if e.slot_path == slot)
 
     meta = adapter.read_meta(replace(entry, meta=None, handle=None))
@@ -557,13 +620,13 @@ def test_an_unknown_dataset_key_has_no_current_key(
     obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """``dataset_key`` is ``None`` for a key the producer does not know."""
-    root = _copy(obserwator_store, tmp_path / "store")
-    sidecar = next(root.glob(f"{ARCHIVE_SLOT}/*/codz_2024.zip.meta.json"))
+    store = _copy(obserwator_store, tmp_path / "store")
+    sidecar = next(raw_root(store).glob(f"{ARCHIVE_SLOT}/*/codz_2024.zip.meta.json"))
     document = json.loads(sidecar.read_text(encoding="utf-8"))
     document["dataset"] = "pl.imgw.removed_dataset"
     sidecar.write_text(json.dumps(document), encoding="utf-8")
 
-    entries = _entries(adapter, root)
+    entries = _store_entries(adapter, store)
 
     (renamed,) = [
         e.meta
@@ -578,7 +641,7 @@ def test_footprint_of_an_archive_and_a_series_is_their_country(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A file of IMGW-PIB or ČHMÚ covers a country; a catalog has no place."""
-    entries = _entries(adapter, obserwator_store("complete_pl_cz"))
+    entries = _store_entries(adapter, obserwator_store("complete_pl_cz"))
 
     found = {
         (e.relative_path.parts[0], adapter.footprint(e).location)
@@ -629,12 +692,13 @@ def _places(entries: list[SourceEntry]) -> Counter[Row]:
     )
 
 
+@pytest.mark.parametrize("kind", KINDS)
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
 def test_known_versions_come_back_skipped_with_no_sidecar_read(
-    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
+    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str, kind: Kind
 ) -> None:
     """``known_versions`` is ``skip_versions``: the same entries, no version read."""
-    root = obserwator_store(variant)
+    root = ROOTS[kind](obserwator_store(variant))
     full = _entries(adapter, root)
 
     again = list(
@@ -655,17 +719,24 @@ def test_what_is_not_known_is_read_in_full(
     A new version has its meta and a new broken one is a problem; the caller
     vouches for a known one, and a scan that names none sees what broke.
     """
-    root = _copy(obserwator_store, tmp_path / "store")
-    known = _known(_entries(adapter, root))
-    fresh = add_version(root, ARCHIVE_SLOT.as_posix(), label="2026-10-22")
-    broken = add_version(root, ARCHIVE_SLOT.as_posix(), label="2026-10-23")
-    drop_sidecar(root, broken)
-    (series,) = [p for p in known if p.startswith(f"{HYDRO_SERIES}/")][:1]
+    store = _copy(obserwator_store, tmp_path / "store")
+    raw, data = raw_root(store), data_root(store)
+    known = {root: _known(_entries(adapter, root)) for root in (raw, data)}
+    fresh = add_version(raw, ARCHIVE_SLOT.as_posix(), label="2026-10-22")
+    broken = add_version(raw, ARCHIVE_SLOT.as_posix(), label="2026-10-23")
+    drop_sidecar(raw, broken)
+    (series,) = [p for p in known[data] if p.startswith(f"{HYDRO_SERIES}/")][:1]
     vouched = f"{series}/series.json"
-    drop_sidecar(root, vouched)
+    drop_sidecar(data, vouched)
 
-    scoped = list(adapter.iter_entries(root, scope=ScanScope(known_versions=known)))
-    unscoped = _entries(adapter, root)
+    scoped = [
+        entry
+        for root, versions in known.items()
+        for entry in adapter.iter_entries(
+            root, scope=ScanScope(known_versions=versions)
+        )
+    ]
+    unscoped = _store_entries(adapter, store)
 
     by_path = {e.relative_path.as_posix(): e for e in scoped}
     assert (by_path[fresh].skipped, by_path[fresh].meta is not None) == (False, True)
@@ -681,11 +752,12 @@ def test_a_version_written_by_an_older_release_keeps_its_number(
     obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """The sidecar's ``producer`` and ``producer_version`` are the file's own."""
-    root = _copy(obserwator_store, tmp_path / "store")
-    older = next(e for e in _entries(adapter, root) if e.slot_path == ARCHIVE_SLOT)
-    rewrite_sidecar(root, older.relative_path.as_posix(), producer_version="2.9.0")
+    store = _copy(obserwator_store, tmp_path / "store")
+    raw = raw_root(store)
+    older = next(e for e in _entries(adapter, raw) if e.slot_path == ARCHIVE_SLOT)
+    rewrite_sidecar(raw, older.relative_path.as_posix(), producer_version="2.9.0")
 
-    entries = {e.relative_path: e for e in _entries(adapter, root)}
+    entries = {e.relative_path: e for e in _store_entries(adapter, store)}
 
     meta = entries[older.relative_path].meta
     assert meta is not None and meta.raw_sidecar is not None
@@ -699,12 +771,13 @@ def test_a_version_written_by_an_older_release_keeps_its_number(
     assert others == {obserwator.__version__}
 
 
+@pytest.mark.parametrize("kind", KINDS)
 def test_a_path_with_a_link_is_refused_by_the_producer_with_its_message(
-    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path, kind: Kind
 ) -> None:
     """Obserwator reads no path with a symbolic link; its message is kept."""
     link = tmp_path / "link"
-    link.symlink_to(obserwator_store("complete"), target_is_directory=True)
+    link.symlink_to(ROOTS[kind](obserwator_store("complete")), target_is_directory=True)
 
     with pytest.raises(ProducerError) as raised:
         list(adapter.iter_entries(link))
@@ -713,30 +786,35 @@ def test_a_path_with_a_link_is_refused_by_the_producer_with_its_message(
         "obserwator",
         "ObserwatorStoreError",
     )
-    state = adapter.probe(link)
+    state = PROBES[kind](adapter, link)
     assert (state.status, state.detail) == ("error", raised.value.message)
 
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
-def test_the_current_version_of_every_slot_is_the_producers_relative_to_the_store(
+def test_the_current_version_of_every_slot_is_the_producers_relative_to_its_root(
     obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str
 ) -> None:
-    """The adapter asks Obserwator and answers with the path of a version it lists."""
-    root = obserwator_store(variant)
-    entries = _entries(adapter, root)
-    keys = sorted({e.slot_key for e in entries if e.slot_key})
+    """The adapter asks Obserwator and answers with the path of a version it lists.
 
-    answers = {key: adapter.current_version(root, key) for key in keys}
+    Each slot is asked of the root it lies in: an archive of the raw root, a
+    series and a station catalog of the data root.
+    """
+    entries = _store_entries(adapter, obserwator_store(variant))
+    roots = {e.slot_key: Path(e.store) for e in entries if e.slot_key}
 
-    produced = {key: obserwator.current_version(root, slot=key) for key in keys}
-    assert keys and all(answers.values())
+    answers = {key: adapter.current_version(root, key) for key, root in roots.items()}
+
+    produced = {
+        key: obserwator.current_version(root, slot=key) for key, root in roots.items()
+    }
+    assert roots and all(answers.values())
     assert answers == {
-        key: found.version.relative_to(root)
+        key: found.version.relative_to(roots[key])
         for key, found in produced.items()
         if found is not None and found.version is not None
     }
-    listed = {e.relative_path for e in entries if e.kind == "version"}
-    assert {answer for answer in answers.values() if answer} <= listed
+    listed = {(e.slot_key, e.relative_path) for e in entries if e.kind == "version"}
+    assert {(key, answer) for key, answer in answers.items() if answer} <= listed
     # Of the three versions of an archive, the newest is the current one.
     by_label = {
         _label(e): e.relative_path for e in entries if e.slot_path == ARCHIVE_SLOT
@@ -744,11 +822,34 @@ def test_the_current_version_of_every_slot_is_the_producers_relative_to_the_stor
     assert answers[ARCHIVE_KEY] == by_label[max(map(str, by_label))]
 
 
+@pytest.mark.parametrize(
+    ("key", "kind"),
+    [(ARCHIVE_KEY, "data"), (SERIES_KEY, "raw"), ("catalog:pl.imgw.stations", "raw")],
+    ids=["archive", "series", "catalog"],
+)
+def test_a_slot_asked_of_the_root_of_the_other_kind_is_the_producers_refusal(
+    obserwator_store: Stores, adapter: ObserwatorAdapter, key: str, kind: Kind
+) -> None:
+    """Not a slot without a version: Obserwator refuses the root (``wrong_root``)."""
+    root = ROOTS[kind](obserwator_store("complete"))
+    with pytest.raises(ObserwatorError) as produced:
+        obserwator.current_version(root, slot=key)
+
+    with pytest.raises(ProducerError) as raised:
+        adapter.current_version(root, key)
+
+    assert produced.value.details["reason"] == "wrong_root"
+    assert (raised.value.exception, raised.value.message) == (
+        type(produced.value).__name__,
+        str(produced.value),
+    )
+
+
 def test_a_version_without_its_sidecar_is_skipped_and_the_older_one_answers(
     obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """An interrupted publication is no version: the version before it is current."""
-    root = _copy(obserwator_store, tmp_path / "store")
+    root = raw_root(_copy(obserwator_store, tmp_path / "store"))
     before = adapter.current_version(root, ARCHIVE_KEY)
     newest = add_version(root, ARCHIVE_SLOT.as_posix(), label="2026-10-30")
     assert adapter.current_version(root, ARCHIVE_KEY) == Path(newest)
@@ -760,13 +861,18 @@ def test_a_version_without_its_sidecar_is_skipped_and_the_older_one_answers(
 
 
 @pytest.mark.parametrize(
-    ("variant", "key"), [("corrupt", ARCHIVE_KEY), ("unknown_schema", SERIES_KEY)]
+    ("variant", "key", "kind"),
+    [("corrupt", ARCHIVE_KEY, "raw"), ("unknown_schema", SERIES_KEY, "data")],
 )
 def test_a_broken_version_leaves_its_slot_without_a_current_version(
-    obserwator_store: Stores, adapter: ObserwatorAdapter, variant: str, key: str
+    obserwator_store: Stores,
+    adapter: ObserwatorAdapter,
+    variant: str,
+    key: str,
+    kind: Kind,
 ) -> None:
     """The producer refuses to choose, and an older version is not chosen instead."""
-    root = obserwator_store(variant)
+    root = ROOTS[kind](obserwator_store(variant))
     older = [e for e in _entries(adapter, root) if e.slot_key == key and e.meta]
 
     with pytest.raises(ObserwatorDataError):
@@ -792,7 +898,7 @@ def test_every_way_a_version_is_broken_leaves_the_slot_without_a_current_version
     damage: Callable[[Path, str], object],
 ) -> None:
     """A size that differs, an invalid field and a stray file are all refused."""
-    root = _copy(obserwator_store, tmp_path / "store")
+    root = raw_root(_copy(obserwator_store, tmp_path / "store"))
     version = adapter.current_version(root, ARCHIVE_KEY)
     assert version is not None
 
@@ -807,28 +913,34 @@ def test_a_slot_the_producer_cannot_read_has_no_current_version_and_no_error(
     obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A slot an earlier scan indexed must not fail the scan that finds it gone."""
-    root = _copy(obserwator_store, tmp_path / "store")
-    directory = root / ARCHIVE_SLOT
+    store = _copy(obserwator_store, tmp_path / "store")
+    raw, data = raw_root(store), data_root(store)
+    directory = raw / ARCHIVE_SLOT
     moved = directory.with_name("codz_2024_moved")
     directory.rename(moved)
     directory.symlink_to(moved, target_is_directory=True)
 
-    assert adapter.current_version(root, ARCHIVE_KEY) is None
-    assert adapter.current_version(root, "series:pl.imgw.removed_dataset") is None
-    assert adapter.current_version(root, "no grammar of the producer") is None
+    assert adapter.current_version(raw, ARCHIVE_KEY) is None
+    assert adapter.current_version(data, "series:pl.imgw.removed_dataset") is None
+    assert adapter.current_version(raw, "no grammar of the producer") is None
     absent = "archive:pl.imgw.hydro_daily:1999/codz_1999.zip"
-    assert adapter.current_version(root, absent) is None
+    assert adapter.current_version(raw, absent) is None
 
 
+@pytest.mark.parametrize(("kind", "key"), [("raw", ARCHIVE_KEY), ("data", SERIES_KEY)])
 def test_a_root_that_is_no_store_anymore_is_the_producers_refusal(
-    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
+    obserwator_store: Stores,
+    adapter: ObserwatorAdapter,
+    tmp_path: Path,
+    kind: Kind,
+    key: str,
 ) -> None:
-    """The store, not the slot, is the problem: the error of Obserwator is kept."""
-    root = _copy(obserwator_store, tmp_path / "store")
-    (root / "obserwator-store.json").unlink()
+    """The root, not the slot, is the problem: the error of Obserwator is kept."""
+    root = ROOTS[kind](_copy(obserwator_store, tmp_path / "store"))
+    (root / MARKERS[kind]).unlink()
 
     with pytest.raises(ProducerError) as raised:
-        adapter.current_version(root, ARCHIVE_KEY)
+        adapter.current_version(root, key)
 
     assert (raised.value.package, raised.value.exception) == (
         "obserwator",
@@ -841,7 +953,7 @@ def test_a_sidecar_the_system_cannot_read_is_an_unavailable_store(
     obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
 ) -> None:
     """A file that cannot be read is the system's problem, as in a scan."""
-    root = _copy(obserwator_store, tmp_path / "store")
+    root = raw_root(_copy(obserwator_store, tmp_path / "store"))
     version = adapter.current_version(root, ARCHIVE_KEY)
     assert version is not None
     sidecar = root / f"{version.as_posix()}.meta.json"
@@ -854,20 +966,27 @@ def test_a_sidecar_the_system_cannot_read_is_an_unavailable_store(
         sidecar.chmod(0o644)
 
 
+type Build = Callable[[Path, Path, Kind], None]
+
+
 @dataclass(frozen=True)
 class Case:
     """A directory of the probe table: how it is built, the verdict, the producer's.
 
+    The directory is judged as a root of either kind (``probe`` the raw root,
+    ``probe_data`` the data root): ``build`` makes it, for the kind judged, of
+    the fixture store's roots, and the verdict is the same for both kinds.
     ``code`` is the first of the ``StoreInfo.problem_codes`` the reader gives
-    (``None`` for a store it reads): the adapter judges by it, and by the
+    (``None`` for a root it reads): the adapter judges by it, and by the
     names in the directory where one code covers several directories.
-    ``call`` is the Obserwator writer call that pins the verdict: ``init_store``
-    or ``open_store``. ``refused`` says whether the writer refuses the
-    directory and ``why`` is the ``details.reason`` of the refusal.
+    ``call`` is the Obserwator writer call that pins the verdict, given the
+    kind judged: ``init_store`` or ``open_store``. ``refused`` says whether the
+    writer refuses the directory and ``why`` is the ``details.reason`` of the
+    refusal.
     """
 
     name: str
-    build: Callable[[Path, Path], None]
+    build: Build
     status: str
     reason: str | None
     code: str | None
@@ -876,74 +995,99 @@ class Case:
     why: str | None = None
 
 
-def _marker_of(root: Path) -> dict[str, object]:
-    return json.loads((root / "obserwator-store.json").read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+def _marker_of(root: Path, kind: Kind) -> dict[str, object]:
+    return json.loads((root / MARKERS[kind]).read_text(encoding="utf-8"))  # type: ignore[no-any-return]
 
 
-def _empty(root: Path, store: Path) -> None:
+def _empty(root: Path, store: Path, kind: Kind) -> None:
     root.mkdir()
 
 
-def _state_file_only(root: Path, store: Path) -> None:
+def _state_file_only(root: Path, store: Path, kind: Kind) -> None:
     root.mkdir()
     (root / "api_keys.json").write_text("{}", encoding="utf-8")
 
 
-def _whole_store(root: Path, store: Path) -> None:
-    shutil.copytree(store, root)
+def _whole_root(root: Path, store: Path, kind: Kind) -> None:
+    shutil.copytree(ROOTS[kind](store), root)
 
 
-def _no_marker(root: Path, store: Path) -> None:
-    shutil.copytree(store, root)
-    (root / "obserwator-store.json").unlink()
+def _other_root(root: Path, store: Path, kind: Kind) -> None:
+    _whole_root(root, store, OTHER[kind])
 
 
-def _layout_only(root: Path, store: Path) -> None:
-    (root / "series").mkdir(parents=True)
+def _with_other_trees(root: Path, store: Path, kind: Kind) -> None:
+    """Copy the root with the trees of the other kind beside its own: not yet split."""
+    _whole_root(root, store, kind)
+    for tree in ROOTS[OTHER[kind]](store).iterdir():
+        if tree.is_dir() and not tree.name.startswith("."):
+            shutil.copytree(tree, root / tree.name)
 
 
-def _other_schema(root: Path, store: Path) -> None:
-    shutil.copytree(store, root)
-    marker = _marker_of(root)
-    (root / "obserwator-store.json").write_text(
-        json.dumps({**marker, "schema": "obserwator-store/2"}), encoding="utf-8"
-    )
+def _other_root_with_these_trees(root: Path, store: Path, kind: Kind) -> None:
+    _with_other_trees(root, store, OTHER[kind])
 
 
-def _marker_not_json(root: Path, store: Path) -> None:
-    shutil.copytree(store, root)
-    (root / "obserwator-store.json").write_text("{not json", encoding="utf-8")
+def _no_marker(root: Path, store: Path, kind: Kind) -> None:
+    _whole_root(root, store, kind)
+    (root / MARKERS[kind]).unlink()
 
 
-def _without_created_by(root: Path, store: Path) -> None:
-    shutil.copytree(store, root)
-    marker = _marker_of(root)
+def _layout_only(root: Path, store: Path, kind: Kind) -> None:
+    (root / LAYOUTS[kind]).mkdir(parents=True)
+
+
+def _other_layout_only(root: Path, store: Path, kind: Kind) -> None:
+    _layout_only(root, store, OTHER[kind])
+
+
+def _other_schema(root: Path, store: Path, kind: Kind) -> None:
+    _whole_root(root, store, kind)
+    marker = {**_marker_of(root, kind), "schema": NEWER_SCHEMAS[kind]}
+    (root / MARKERS[kind]).write_text(json.dumps(marker), encoding="utf-8")
+
+
+def _marker_not_json(root: Path, store: Path, kind: Kind) -> None:
+    _whole_root(root, store, kind)
+    (root / MARKERS[kind]).write_text("{not json", encoding="utf-8")
+
+
+def _without_created_by(root: Path, store: Path, kind: Kind) -> None:
+    _whole_root(root, store, kind)
+    marker = _marker_of(root, kind)
     del marker["created_by"]
-    (root / "obserwator-store.json").write_text(json.dumps(marker), encoding="utf-8")
+    (root / MARKERS[kind]).write_text(json.dumps(marker), encoding="utf-8")
 
 
-def _kartograf(root: Path, store: Path) -> None:
+def _both_markers(root: Path, store: Path, kind: Kind) -> None:
+    _whole_root(root, store, kind)
+    other = OTHER[kind]
+    shutil.copy(ROOTS[other](store) / MARKERS[other], root)
+
+
+def _kartograf(root: Path, store: Path, kind: Kind) -> None:
     root.mkdir()
     marker = {"schema": "kartograf-store/1", "tool": "kartograf"}
     (root / "kartograf-store.json").write_text(json.dumps(marker), encoding="utf-8")
 
 
-def _kartograf_with_layout(root: Path, store: Path) -> None:
-    _kartograf(root, store)
-    (root / "archives").mkdir()
+def _kartograf_with_layout(root: Path, store: Path, kind: Kind) -> None:
+    _kartograf(root, store, kind)
+    (root / LAYOUTS[kind]).mkdir()
 
 
-def _parent_of_a_store(root: Path, store: Path) -> None:
+def _parent_of_a_store(root: Path, store: Path, kind: Kind) -> None:
     root.mkdir()
-    shutil.copytree(store, root / "magazyn")
+    shutil.copytree(ROOTS[kind](store), root / "magazyn")
 
 
-def _other_files(root: Path, store: Path) -> None:
+def _other_files(root: Path, store: Path, kind: Kind) -> None:
     root.mkdir()
     (root / "notatki.txt").write_text("to nie magazyn", encoding="utf-8")
 
 
 UNSUPPORTED = ("incompatible", "unsupported_marker")
+WRONG_ROOT = ("incompatible", "wrong_root")
 NO_MARKER = "missing_marker"
 CASES = [
     Case("empty", _empty, "available", None, NO_MARKER, "init_store", False),
@@ -956,7 +1100,34 @@ CASES = [
         "init_store",
         False,
     ),
-    Case("store", _whole_store, "available", None, None, "open_store", False),
+    Case("root", _whole_root, "available", None, None, "open_store", False),
+    Case(
+        "with_other_trees",
+        _with_other_trees,
+        "available",
+        None,
+        None,
+        "open_store",
+        False,
+    ),
+    Case(
+        "other_root",
+        _other_root,
+        *WRONG_ROOT,
+        None,
+        "open_store",
+        True,
+        "wrong_root",
+    ),
+    Case(
+        "other_root_with_these_trees",
+        _other_root_with_these_trees,
+        *WRONG_ROOT,
+        None,
+        "open_store",
+        True,
+        "wrong_root",
+    ),
     Case(
         "no_marker",
         _no_marker,
@@ -978,6 +1149,16 @@ CASES = [
         "no_marker",
     ),
     Case(
+        "other_layout_only",
+        _other_layout_only,
+        "incompatible",
+        "not_a_store",
+        NO_MARKER,
+        "init_store",
+        True,
+        "not_empty",
+    ),
+    Case(
         "other_schema",
         _other_schema,
         *UNSUPPORTED,
@@ -994,6 +1175,15 @@ CASES = [
         "open_store",
         True,
         "invalid_marker",
+    ),
+    Case(
+        "both_markers",
+        _both_markers,
+        *UNSUPPORTED,
+        "conflicting_markers",
+        "init_store",
+        True,
+        "nested_store",
     ),
     Case(
         "no_created_by",
@@ -1047,15 +1237,20 @@ CASES = [
 ]
 
 
+@pytest.mark.parametrize("kind", KINDS)
 @pytest.mark.parametrize("case", CASES, ids=lambda case: case.name)
 def test_probe_judges_a_directory_as_the_producer_does(
-    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path, case: Case
+    obserwator_store: Stores,
+    adapter: ObserwatorAdapter,
+    tmp_path: Path,
+    case: Case,
+    kind: Kind,
 ) -> None:
-    """Each verdict on a directory is pinned to what Obserwator does with it."""
+    """Each verdict on a directory as either root is pinned to what Obserwator does."""
     root = tmp_path / "root"
-    case.build(root, obserwator_store("complete"))
+    case.build(root, obserwator_store("complete"), kind)
 
-    state = adapter.probe(root)
+    state = PROBES[kind](adapter, root)
 
     assert (state.status, state.reason) == (case.status, case.reason)
     assert (state.store, state.package_version) == (str(root), obserwator.__version__)
@@ -1063,56 +1258,79 @@ def test_probe_judges_a_directory_as_the_producer_does(
     assert (state.detail is None) == (case.status == "available")
     assert (state.hint is None) == (case.reason != "no_marker")
     assert next(iter(store_info(root).problem_codes), None) == case.code
-    calls = {"init_store": init_store, "open_store": open_store}
+    calls: Mapping[str, Callable[..., StoreHandle]] = {
+        "init_store": init_store,
+        "open_store": open_store,
+    }
     if not case.refused:
-        assert calls[case.call](root).root == root
+        assert calls[case.call](root, kind=kind).root == root
     else:
         with pytest.raises(ObserwatorError) as refused:
-            calls[case.call](root)
+            calls[case.call](root, kind=kind)
         assert refused.value.details.get("reason") == case.why
         assert isinstance(refused.value, ObserwatorStoreConflictError) == (
             case.call == "init_store"
         )
 
 
+@pytest.mark.parametrize(
+    ("kind", "options"),
+    [("raw", {}), ("data", {"kind": "data"})],
+    ids=["raw", "data"],
+)
 def test_init_store_turns_a_missing_marker_into_an_available_store(
-    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
+    obserwator_store: Stores,
+    adapter: ObserwatorAdapter,
+    tmp_path: Path,
+    kind: Kind,
+    options: dict[str, str],
 ) -> None:
-    """``obserwator store init`` is the fix the hint names; after it the store reads."""
-    root = tmp_path / "magazyn z spacją"
-    _no_marker(root, obserwator_store("complete"))
+    """``obserwator store init`` of the kind, the hint, makes the root readable.
 
-    before = adapter.probe(root)
-    init_store(root)
-    after = adapter.probe(root)
+    The hint is a command line that Obserwator itself reads as that call.
+    """
+    root = tmp_path / "magazyn z spacją"
+    _no_marker(root, obserwator_store("complete"), kind)
+
+    before = PROBES[kind](adapter, root)
+    init_store(root, kind=kind)
+    after = PROBES[kind](adapter, root)
 
     assert (before.status, before.reason) == ("incompatible", "no_marker")
-    assert before.hint == f"obserwator store init --root '{root}'"
+    assert before.hint is not None and shlex.split(before.hint)[0] == "obserwator"
+    hinted = obserwator.parse_command(before.hint)
+    assert (hinted.command, dict(hinted.options)) == (
+        "store init",
+        {"root": str(root), **options},
+    )
     assert before.detail is not None and before.hint in before.detail
     assert (after.status, after.reason, after.hint) == ("available", None, None)
     assert _rows(_entries(adapter, root)) == _producer_rows(root)
 
 
+@pytest.mark.parametrize("kind", KINDS)
 def test_an_unsupported_marker_names_both_schemas(
-    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path
+    obserwator_store: Stores, adapter: ObserwatorAdapter, tmp_path: Path, kind: Kind
 ) -> None:
     """The text says what the marker has and what this version reads."""
     root = tmp_path / "root"
-    _other_schema(root, obserwator_store("complete"))
+    _other_schema(root, obserwator_store("complete"), kind)
 
-    state = adapter.probe(root)
+    state = PROBES[kind](adapter, root)
 
     assert state.detail is not None
-    assert "obserwator-store/2" in state.detail and "obserwator-store/1" in state.detail
+    assert NEWER_SCHEMAS[kind] in state.detail
+    assert MARKER_SCHEMAS[kind] in state.detail
 
 
+@pytest.mark.parametrize("kind", KINDS)
 def test_a_directory_that_cannot_be_listed_is_an_error_not_a_verdict(
-    adapter: ObserwatorAdapter, tmp_path: Path
+    adapter: ObserwatorAdapter, tmp_path: Path, kind: Kind
 ) -> None:
     """A missing directory and a file are ``error`` with no reason."""
     (tmp_path / "file").write_text("x", encoding="utf-8")
 
-    states = [adapter.probe(tmp_path / "missing"), adapter.probe(tmp_path / "file")]
+    states = [PROBES[kind](adapter, tmp_path / name) for name in ("missing", "file")]
 
     assert [state.status for state in states] == ["error", "error"]
     assert all(state.detail and state.reason is None for state in states)
@@ -1122,7 +1340,7 @@ def test_the_adapter_reads_a_store_without_pyarrow(
     obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Reading needs no Parquet file: the adapter never imports ``pyarrow``."""
-    root = obserwator_store("complete_pl_cz")
+    store = obserwator_store("complete_pl_cz")
     script = """
 import sys
 from pathlib import Path
@@ -1131,19 +1349,21 @@ sys.modules["pyarrow"] = None
 from archiwista.adapter.obserwator import load
 from archiwista.sources import SourceContext
 
-adapter = load(SourceContext(cache_dir=Path(sys.argv[2])))
-root = Path(sys.argv[1])
-assert adapter.probe(root).status == "available"
-entries = list(adapter.iter_entries(root))
+adapter = load(SourceContext(cache_dir=Path(sys.argv[3])))
+raw, data = Path(sys.argv[1]), Path(sys.argv[2])
+assert adapter.probe(raw).status == "available"
+assert adapter.probe_data(data).status == "available"
+entries = [*adapter.iter_entries(raw), *adapter.iter_entries(data)]
 for entry in entries:
     if entry.kind == "version":
         adapter.read_meta(entry)
         adapter.footprint(entry)
 print(len(entries))
 """
+    roots = [str(raw_root(store)), str(data_root(store))]
 
     result = subprocess.run(
-        [sys.executable, "-c", script, str(root), str(tmp_path / "cache")],
+        [sys.executable, "-c", script, *roots, str(tmp_path / "cache")],
         capture_output=True,
         text=True,
         check=False,
@@ -1153,14 +1373,14 @@ print(len(entries))
     assert int(result.stdout) > 20
 
 
-def _stored(root: Path, kind: str) -> str:
-    """Return the first version of ``kind`` (``archive``, ``catalog``) in ``root``."""
+def _stored(root: Path, slot: str) -> str:
+    """Return the first version in ``root`` of a slot whose key begins with ``slot``."""
     return next(
         entry.version.relative_to(root).as_posix()
         for entry in iter_store(root)
         if entry.version is not None
         and entry.slot is not None
-        and entry.slot.startswith(f"{kind}:")
+        and entry.slot.startswith(slot)
     )
 
 
@@ -1169,8 +1389,8 @@ def test_command_for_version_of_an_archive_is_obserwator_call_without_the_root(
 ) -> None:
     """The call Obserwator rebuilds offline, the store root left to the caller."""
     # Arrange
-    root = obserwator_store("complete")
-    version = _stored(root, "archive")
+    root = raw_root(obserwator_store("complete"))
+    version = _stored(root, ARCHIVE_KEY)
     produced = obserwator.command_for_version(version, root=root)
 
     # Act
@@ -1193,8 +1413,8 @@ def test_command_for_version_of_a_catalog_built_from_a_users_file_is_refused(
 ) -> None:
     """``unsupported``, ``command_not_rebuildable``, Obserwator's text unchanged."""
     # Arrange
-    root = _copy(obserwator_store, tmp_path / "store")
-    version = _stored(root, "catalog")
+    root = data_root(_copy(obserwator_store, tmp_path / "store"))
+    version = _stored(root, "catalog:")
     request = dict(read_meta(root / version).request)
     rewrite_sidecar(root, version, request={**request, "user_locations": "moje.csv"})
     with pytest.raises(ObserwatorError) as produced:
@@ -1214,12 +1434,43 @@ def test_command_for_version_of_a_catalog_built_from_a_users_file_is_refused(
     assert error.details["version"] == version
 
 
+@pytest.mark.parametrize("kind", ["series", "catalog"])
+def test_command_for_version_of_a_series_or_a_catalog_is_refused_as_built_offline(
+    obserwator_store: Stores, adapter: ObserwatorAdapter, kind: str
+) -> None:
+    """``unsupported``, ``command_not_rebuildable``: Archiwista runs no build.
+
+    Obserwator rebuilds the call of a version of the data root, a build from the
+    raw root, which is no command of the adapter (A-ADR-056).
+    """
+    # Arrange
+    root = data_root(obserwator_store("complete"))
+    version = _stored(root, f"{kind}:")
+    produced = obserwator.command_for_version(version, root=root)
+
+    # Act
+    with pytest.raises(UnsupportedError) as raised:
+        adapter.command_for_version(version, root=root)
+
+    # Assert
+    error = raised.value
+    assert (error.code, error.details["reason"]) == (
+        "unsupported",
+        "command_not_rebuildable",
+    )
+    assert (error.details["producer"], error.details["version"]) == (
+        "obserwator",
+        version,
+    )
+    assert produced.command not in {command.command for command in adapter.commands()}
+
+
 def test_command_for_version_of_no_version_is_obserwator_refusal_with_its_code(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """A path that is no stored version: ``ProducerError``, never ``unsupported``."""
     # Arrange
-    root = obserwator_store("complete")
+    root = raw_root(obserwator_store("complete"))
     version = "archives/versions/nic/2026-01-01_00000000/nic.zip"
     with pytest.raises(ObserwatorError) as produced:
         obserwator.command_for_version(version, root=root)

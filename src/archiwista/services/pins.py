@@ -338,7 +338,7 @@ def pin_local(
     roots: dict[tuple[str, str], str] = {}
     for fact in candidates:
         config = settings.store(fact.store)
-        root = None if config is None else config.roots().get(fact.producer)
+        root = None if config is None else config.producer_root(fact.producer)
         if config is None or root is None:
             raise NotFoundError(message("api.store_not_configured", store=fact.store))
         roots.setdefault(
@@ -1012,7 +1012,7 @@ def pin_download(
             places.setdefault(current.path, set()).add(place)
     directory = project_directory(record.project, settings)
     config = settings.store(store)
-    root = None if config is None else config.roots().get(producer)
+    root = None if config is None else config.producer_root(producer)
     if config is None or root is None:
         raise NotFoundError(message("api.store_not_configured", store=store))
     written = written_root(root, directory, relative=bool(config.path_aliases))
@@ -1279,19 +1279,18 @@ def _keep_calls(
     """Keep the producer's call of each pinned version in the index (D-10).
 
     Offline: ``command_for_version`` of the versions whose answer the index
-    does not keep for the installed producer. A producer without the
-    capability, or one that refuses otherwise than D5, leaves its versions
-    unknown: a job asks again.
+    does not keep for the installed producer, each in the directory it lies
+    in (A-ADR-056). A producer without the capability, or one that refuses
+    otherwise than D5, leaves its versions unknown: a job asks again.
     """
-    paths: dict[tuple[str, str], list[str]] = {}
+    paths: dict[tuple[str, str, Path], list[str]] = {}
     for fact in facts:
-        paths.setdefault((fact.store, fact.producer), []).append(fact.path)
+        config = settings.store(fact.store)
+        root = None if config is None else config.root_of(fact.producer, fact.path)
+        if root is not None:
+            paths.setdefault((fact.store, fact.producer, root), []).append(fact.path)
     with IndexWriter(index_path) as writer:
-        for (store, producer), chosen in paths.items():
-            config = settings.store(store)
-            root = None if config is None else config.roots().get(producer)
-            if root is None:
-                continue
+        for (store, producer, root), chosen in paths.items():
             try:
                 version_calls(
                     version_commands(registry, producer),

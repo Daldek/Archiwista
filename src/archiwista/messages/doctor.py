@@ -116,6 +116,22 @@ MESSAGES = {
         "a store with its marker",
         "magazyn ze znacznikiem",
     ),
+    "default_data_root": Text(
+        "Plugin {producer}: default data root {path} ({origin}; {state})",
+        "Wtyczka {producer}: domyślny katalog danych {path} ({origin}; {state})",
+    ),
+    "default_data_root_absent": Text(
+        "does not exist",
+        "nie istnieje",
+    ),
+    "default_data_root_unmarked": Text(
+        "exists, without a data root marker",
+        "istnieje, bez znacznika katalogu danych",
+    ),
+    "default_data_root_marked": Text(
+        "a data root with its marker",
+        "katalog danych ze znacznikiem",
+    ),
     "store_ok": Text(
         'Store "{store}" ({producer}, {kind}): {path}',
         "Magazyn „{store}” ({producer}, {kind}): {path}",

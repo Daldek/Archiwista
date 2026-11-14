@@ -3,8 +3,8 @@
 Every test runs real worker processes (``tests.fixtures.job_worker``) on a generated
 Kartograf store and, where a test says so, on a store of Obserwator beside it or
 instead of it, offline. The index knows the owner of a segment from the scan that
-described it; a producer that reads only its whole directory (Obserwator) cannot scan
-one segment, and refuses the job as ``unsupported``.
+described it; a producer that reads only the whole of its directories (Obserwator's
+raw and data roots) cannot scan one segment, and refuses the job as ``unsupported``.
 """
 
 from collections.abc import Callable
@@ -16,6 +16,7 @@ from archiwista.jobs import JobRecord
 from archiwista.messages import message
 from tests.fixtures.jobs import STORE, JobsEnv, jobs_env
 from tests.fixtures.make_store import NMT
+from tests.fixtures.obserwator_roots import store_fields
 
 # Headers of the synthetic JPEG sheets carry no geotransform (their outline
 # comes from the world file); rasterio says so while reading them.
@@ -71,7 +72,10 @@ def test_a_store_of_only_obserwator_files_refuses_a_segment_scan_and_scans_whole
     # Arrange
     pytest.importorskip("obserwator")
     with jobs_env(
-        tmp_path, monkeypatch, obserwator=obserwator_store("complete"), kartograf=False
+        tmp_path,
+        monkeypatch,
+        **store_fields(obserwator_store("complete")),
+        kartograf=False,
     ) as env:
         whole = env.scan("full")
         indexed = env.state()
@@ -98,11 +102,11 @@ def test_a_store_of_only_obserwator_files_refuses_a_segment_scan_and_scans_whole
 def test_a_mixed_store_scans_a_segment_only_through_its_owner(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, obserwator_store: Stores
 ) -> None:
-    """The owner of a Kartograf segment scans it; the Obserwator directory is unread."""
+    """The owner of a Kartograf segment scans it; the Obserwator roots are unread."""
     # Arrange
     pytest.importorskip("obserwator")
     with jobs_env(
-        tmp_path, monkeypatch, obserwator=obserwator_store("complete")
+        tmp_path, monkeypatch, **store_fields(obserwator_store("complete"))
     ) as env:
         whole = env.scan("full")
 

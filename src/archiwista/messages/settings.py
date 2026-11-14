@@ -56,10 +56,11 @@ MESSAGES = {
         "identyfikator: małe litery, cyfry, „-” i „_”, najwyżej 32 znaki",
     ),
     "store_needs_directory": Text(
-        "a store needs at least one producer directory: kartograf or obserwator",
+        "a store needs at least one producer directory: kartograf, obserwator"
+        " or obserwator_data",
         (
-            "magazyn wymaga co najmniej jednego katalogu producenta: kartograf albo"
-            " obserwator"
+            "magazyn wymaga co najmniej jednego katalogu producenta: kartograf,"
+            " obserwator albo obserwator_data"
         ),
     ),
     "empty_text": Text(

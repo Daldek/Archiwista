@@ -78,7 +78,7 @@ from typing import IO, cast
 from archiwista._errors import BY_CODE
 from archiwista.areas import write_area_geojson
 from archiwista.auth import ALL_PROJECTS
-from archiwista.config import StoreConfig
+from archiwista.config import StoreConfig, StoreDirectory
 from archiwista.error_document import Problem, describe
 from archiwista.errors import (
     ArchiwistaError,
@@ -170,7 +170,8 @@ from archiwista.sources import (
     SourceAdapter,
     SourceEntry,
 )
-from archiwista.sources.registry import SourceRegistry, load_registry
+from archiwista.sources.markers import directory_field
+from archiwista.sources.registry import SourceRegistry, load_registry, probe_root
 
 # Versions whose outlines are written in one transaction and reported in one
 # progress event by the ``footprints`` job.
@@ -316,22 +317,23 @@ def _run() -> int:
 
 
 def run_scan(spec: JobSpec, emit: Emitter) -> JsonObject:
-    """Scan every producer directory of the store (``mode``, ``segment``).
+    """Scan every producer's directories of the store (``mode``, ``segment``).
 
-    A directory whose source is not available (not installed, incompatible,
-    failed to load) is skipped with a notice, and its entry stays in the
-    settings (SPEC 5.8); the store's other directories are scanned. A
-    ``segment`` is scanned by the producers that own it in the index (or by
-    those that scan by segment, for a name it does not know); a producer that
-    reads only its whole directory (Obserwator) refuses the job as
-    ``unsupported`` before anything is scanned.
+    A producer whose source is not available (not installed, incompatible,
+    failed to load) is skipped with a notice, and its entries stay in the
+    settings (SPEC 5.8); the store's other producers are scanned, each
+    reading its store root and its data root (A-ADR-056). A ``segment`` is
+    scanned by the producers that own it in the index (or by those that scan
+    by segment, for a name it does not know); a producer that reads only its
+    whole directories (Obserwator) refuses the job as ``unsupported`` before
+    anything is scanned.
     """
     config = _store(spec)
     mode = cast(ScanMode, spec.params["mode"])
     segment = spec.params.get("segment")
     registry = load_registry(cache_dir=spec.cache_dir)
     adapters: dict[str, SourceAdapter] = {}
-    for producer in config.roots():
+    for producer in config.producers():
         try:
             adapters[producer] = registry.adapter(producer)
         except SourceStateError as error:
@@ -382,12 +384,17 @@ def run_footprints(spec: JobSpec, emit: Emitter) -> JsonObject:
         IndexQueries(spec.index_path) as queries,
     ):
         pending = queries.entries_without_footprint(config.id)
-        for producer, root in config.roots().items():
+        for producer in config.producers():
             entries = [entry for entry in pending if entry.producer == producer]
             if not entries:
                 continue
             adapter = registry.adapter(producer)
-            _require_reachable(adapter, root, writer, config.id)
+            fields = {
+                directory_field(producer, entry.relative_path) for entry in entries
+            }
+            for directory in config.producer_directories(producer):
+                if directory.field in fields:
+                    _require_reachable(adapter, directory, writer, config.id)
             done = 0
             emit.progress(done, len(entries), written=written, failed=failed)
             for batch in _batches(entries, FOOTPRINT_BATCH):
@@ -449,16 +456,17 @@ def run_link_check(spec: JobSpec, emit: Emitter) -> JsonObject:
     }
     if expected is None or expected == slot:
         return {**result, "status": "not_a_link"}
-    root = config.roots().get(producer)
-    if root is None:
+    directory = config.directory(directory_field(producer, slot))
+    if directory is None:
         text = message("job.slot_not_found", slot=slot, store=config.id)
         raise NotFoundError(text)
+    root = directory.path
     adapter = load_registry(cache_dir=spec.cache_dir).adapter(producer)
     if not isinstance(adapter, LinkCheckAdapter):
         text = message("job.link_check_unsupported", producer=producer)
         raise UnsupportedError(text)
     with IndexWriter(spec.index_path) as writer:
-        _require_reachable(adapter, root, writer, config.id)
+        _require_reachable(adapter, directory, writer, config.id)
         try:
             resolve_indexed_path(root, slot)
         except (FileNotFoundError, NotADirectoryError):
@@ -1411,14 +1419,18 @@ def _store(spec: JobSpec) -> StoreConfig:
 
 
 def _require_reachable(
-    adapter: SourceAdapter, root: Path, writer: IndexWriter, store: str
+    adapter: SourceAdapter, directory: StoreDirectory, writer: IndexWriter, store: str
 ) -> None:
-    """Stop the job when the store cannot be read (probe, empty mount point).
+    """Stop the job when a store's directory cannot be read (probe, empty mount).
 
     The job works on versions the index holds, so an empty store directory
-    is a share that is not mounted. The store is recorded ``unavailable``.
+    is a share that is not mounted. The directory is probed by its kind (a
+    data root by its own rules, A-ADR-056); the store is recorded
+    ``unavailable``.
     """
-    error = store_unreachable(adapter.probe(root), root, indexed=True)
+    root = directory.path
+    state = probe_root(adapter, root, data=directory.data)
+    error = store_unreachable(state, root, indexed=True)
     if error is not None:
         writer.set_store_status(store, "unavailable", detail=str(error))
         raise error

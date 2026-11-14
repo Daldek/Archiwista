@@ -20,6 +20,7 @@ https://archiwista-test.debever.pl, user unit `archiwista-public.service`) runs 
 
 | Component | State | Note |
 |---|---|---|
+| Obserwator pin `0591b82` and a store's raw and data roots (`feat/obserwator-data-root`, A-ADR-056; Obserwator's ADR-015, ADR-017; Nogat plan `2026-11-12-station-data-and-analyses` D5, R2) | code and docs committed on the topic branch, not pushed, merged or deployed; the tests are being migrated to the two-root fixture, full gate not run (ruff, mypy, `tests/unit/test_messages.py` and a throwaway smoke of one scan over both roots pass) | `obserwator` stays the raw root (`obserwator-store.json`), new `obserwator_data` the data root (`obserwator-data.json`, read only); each probed by its kind (`DataRootAdapter`, reason `wrong_root`), one scan over both, paths relative to the root of their first part (no index change, pins valid); only `store sync` left of Obserwator's commands (**breaking**: `series build` and `store catalog` gone, pins of series and catalogs `not_checkable`); `GET /sources` `default_data_root`, wizard field and offer, doctor; USAGE has the administrator's steps, including the split of a store written before Obserwator's ADR-017. The pin holds Obserwator's `fix/terms-1.0`, so its station catalogs carry the G and Z lines of `feat/admin-panel` (below) |
 | Kit 0.7.0, „Zgłoszenia” on `<nogat-admin-feedback>`, the catalogs' G and Z (`feat/admin-panel`, A-ADR-054 erratum 3, A-ADR-055 erratum 3; Nogat DEV-15.13, ECO-067, ECO-068, plans `2026-11-13-admin-panel` step 5 and `2026-11-13-terms-fix` step 6, kit 0.7.0 of `229ade3`) | committed on the topic branch, not pushed, merged or deployed; full gate left to the parent session (ruff, mypy and the touched tests pass) | „Zgłoszenia” is the kit's view with `auth="session"` and `adminFetch` of `api.js`; **breaking**: a report is `{id, created_at, message, context, is_read}`, `DELETE` answers `{"status": "deleted"}`, `/api/v1/admin/*` is `no-store`. The station answers, the catalog version's card, `/slots` and exports carry the G and Z the catalog's sidecar names (`attribution.filled`, `station`); the pinned Obserwator `f9f4ee79` writes none yet, so they appear once the pin moves to Obserwator's borders of PRG and RÚIAN (its `fix/terms-1.0`) |
 | The providers' lines in one compact strip, the terms linked (`feature/compact-sources`, A-ADR-055 errata 1 and 2, A-ADR-054 errata 1 and 2, A-ADR-052 erratum 3; Nogat DEV-20.5, ECO-064, ECO-065, kit 0.6.0 of `b46eb5b`) | committed on the topic branch in two commits, the strip (ECO-064) and the linked terms (ECO-065), not pushed, merged or deployed; gate: see Gate | Nogat's `<nogat-sources>` once per view or overlay (`SourcesScope`, `useProviderLines`, `SourcesStrip` of `provider-lines.js`) in place of `ProviderLines`: S, P, PS, PP and CK on screen, then „Źródła i warunki”, every line and the links to the terms in its dialog with „Kopiuj atrybucję”; the station chart reports into the card's strip. Second commit (ECO-065): H and N gone from every product, the terms lines RD, RH, RK name whose terms they link (IMGW-PIB file S + RD; processed S, P + RD; located stations S, P + RD, RH; PMAXTP PS, PP, M + RK; ČHMÚ unchanged); lines chosen at read time, so nothing stored needs a rebuild; kit 0.6.0 copied whole into `web/nogat/`, `handoff-1` of Nogat `b46eb5b`; guide slide 10 no longer quotes N. Lines of text of the strip measured in Chromium at 1440×900 / 390×844 (first commit), before → after: map 7 → 2 / 19 → 5; Katalog stations 7 → 2 / 19 → 5; Katalog files 7 → 2 / 18 → 5; station card (Raba Górna, chart) 10 + 13 → 3 / 12 + 16 → 4; ČHMÚ card 4 + 5 → 1 / 6 + 7 → 1; file card 9 → 2 / 11 → 3; station comparison (ČHMÚ) 4 → 1 / 5 → 1; version comparison 6 → 2 / 13 → 4 |
 | The providers' lines with every product (`fix/provider-attribution`, A-ADR-055; Nogat ECO-060, DEV §20, plan `2026-11-13-provider-attribution` step 5) | merged into `develop` (`3a02da8`); gate: see Gate | `attribution` and `terms_notice` on every station, map, Katalog, version and comparison answer, by the data's origin (`attribution.py`, catalog area `legal`, the capability `DataOriginAdapter`); **breaking**: the chart's and the version card's `attribution` is an array; the block „Źródło danych i warunki” in every view with such data (replaced by the strip of `feature/compact-sources`, above), the CLI block, `ATTRIBUTION.txt` in exports, the hand-off's arrays (`handoff-1` of Nogat `develop` `55a2d4b`), guide slide 10 of 13 |
@@ -78,10 +79,11 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
 2. The author decides (next session): a `request` to Obserwator to keep the precision of an
    occurrence date IMGW-PIB publishes without a day (`2020-03`), which the store keeps as
    the month's first (plan `2026-11-05-monthly-annual-charts.md`, Risks).
-3. Flaky tests. (a) The activity test of the project card (CI, Status): after „Usuń zestaw”
-   the list kept its old first entry for 30 s. The activity re-reads on `card.scanned_at`,
-   which has one-second precision; whether the card was read again with the same stamp is
-   not established. (b) `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens`
+3. Flaky tests. (a) Fixed on 2026-11-14: the activity test of the project card (CI): after
+   „Usuń zestaw” the list kept its old first entry. The activity re-read on
+   `card.scanned_at`, which has one-second precision, so a change in the second of the
+   project's last read left it unread (reproduced with the index clock cut to minutes);
+   it now re-reads with every read of the card. (b) `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens`
    failed once in the gate of 2026-11-10 (the heading „Logowanie” never showed in 30 s) and
    passes alone and with its file; cause not found. (c) Fixed on 2026-11-10:
    `test_timeline.py::test_timeline_shows_years_without_data` failed in that gate on an
@@ -116,20 +118,27 @@ database's schema version 5 (table `feedback`); merged into `develop` after a gr
 11. AGI-4.1: a top-level `schema` (`archiwista-<kind>/1`) in every API response and
    `--json` output, added with the catalog work (the author's decision of 2026-11-09);
    until then the deviation of `CLAUDE.md` (AGI-3.2, AGI-4.1, AGI-4.2) stands.
-12. After `fix/provider-attribution` (A-ADR-055): raise the Obserwator pin once its own
-   attribution fix (Obserwator `fix/provider-attribution`, `1358e20`) is merged (Archiwista
-   does not read the sidecars' texts, so nothing waits on it); draw the lines in PNG
+12. After `fix/provider-attribution` (A-ADR-055): the Obserwator pin `0591b82` of
+   `feat/obserwator-data-root` holds its own attribution fix (`1358e20`); draw the lines in PNG
    previews (DEV-20.5; today they are shown only inside views that carry the lines); the
    regulamin of DEV-15.7 (ECO-061; its files are in the kit's copy, but Archiwista serves no
    `regulamin.html`, as it runs without `[nogat.operator]`). Hydrolog shows and carries on the
    hand-off's lines in its own repository.
+13. After `feat/obserwator-data-root` (A-ADR-056) is merged, deploy :8090 with the
+   author: its store `hydroni` names an empty raw root
+   (`/mnt/magazyn/agent-tmp/hydroni/obserwator`), which keeps working unchanged; to show
+   series and station catalogs add `obserwator_data` (e.g. Obserwator's production data
+   root `/home/claude-agent/data/obserwator-target/data`) and restart. The old combined
+   store `/mnt/magazyn/agent-tmp/archiwista-zespol/obserwator` (not configured on :8090)
+   must be split (USAGE, "Obserwator's raw root and data root") before use.
 
 Known gaps:
 
-- Obserwator: a plan of `store catalog` has nothing to download once a catalog exists (the
-  public API gives no freshness signal), so its refresh runs without a plan; Obserwator has
-  no run mode that keeps the stored versions (a restore takes the source's current file);
-  `pmaxtp sync` is not in Archiwista's catalog (A-ADR-050 option C).
+- Obserwator: Archiwista runs only `store sync` (A-ADR-056): its series and station
+  catalogs are built offline by Obserwator in the data root, so a project's pins of them
+  are `not_checkable`; Obserwator has no run mode that keeps the stored versions (a
+  restore takes the source's current file); `pmaxtp sync` is not in Archiwista's catalog
+  (A-ADR-050 option C).
 - „U źródła” offers only NMT, NMPT and LAZ until Kartograf KD-3/KD-4 (availability of
   orthophoto, BDOT10k and unit products); meanwhile paste the producer's command
   („Wklej polecenie producenta”), which „Obszar polecenia” now runs on a project's area.

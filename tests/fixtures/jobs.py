@@ -66,20 +66,23 @@ def store_settings(
     *,
     kind: StoreKind = "local",
     obserwator: Path | None = None,
+    obserwator_data: Path | None = None,
     kartograf: bool = True,
     **options: Any,
 ) -> AppSettings:
     """Return settings with the generated store as ``zespol``.
 
-    ``obserwator`` adds an Obserwator directory to the store; ``kartograf=False``
-    leaves the generated store's directory out of it (a store of the Obserwator
-    directory only).
+    ``obserwator`` and ``obserwator_data`` add Obserwator's raw and data roots to
+    the store (``**store_fields(...)`` of ``obserwator_roots`` names both);
+    ``kartograf=False`` leaves the generated store's directory out of it (a store
+    of Obserwator's directories only).
     """
     config = StoreConfig(
         id=STORE,
         name="Zespół",
         kartograf=store.root if kartograf else None,
         obserwator=obserwator,
+        obserwator_data=obserwator_data,
         kind=kind,
     )
     return AppSettings(stores=(config,), project_dirs=(store.projects_dir,), **options)
@@ -168,6 +171,7 @@ def jobs_env(
     *,
     kind: StoreKind = "local",
     obserwator: Path | None = None,
+    obserwator_data: Path | None = None,
     kartograf: bool = True,
     **supervisor: Any,
 ) -> Iterator[JobsEnv]:
@@ -178,7 +182,13 @@ def jobs_env(
         config_file=tmp_path / "config" / "config.toml", data_dir=tmp_path / "data"
     )
     ConfigStore(paths.config_file).save(
-        store_settings(store, kind=kind, obserwator=obserwator, kartograf=kartograf)
+        store_settings(
+            store,
+            kind=kind,
+            obserwator=obserwator,
+            obserwator_data=obserwator_data,
+            kartograf=kartograf,
+        )
     )
     registry = load_registry(cache_dir=paths.cache_dir)
     settings = SettingsService(ConfigStore(paths.config_file), registry)

@@ -309,7 +309,7 @@ class ObjectResolver:
         return _version_source(
             store,
             version.path,
-            self._root(store, version.producer),
+            self._root(store, version.producer, version.path),
             sha256=version.sha256,
             size_bytes=version.size_bytes,
             crs=version.horizontal_crs,
@@ -340,7 +340,7 @@ class ObjectResolver:
             text = message("api.version_unknown", version=ref.path, store=ref.store)
             raise NotFoundError(text)
         summary = detail.summary
-        root = self._root(ref.store, detail.segment.producer)
+        root = self._root(ref.store, detail.segment.producer, ref.path)
         native = None
         if summary.location.source == "header" and detail.native_crs is not None:
             native = self._queries.native_outline(ref.store, ref.path)
@@ -360,10 +360,14 @@ class ObjectResolver:
             on_disk=on_disk,
         )
 
-    def _root(self, store: str, producer: str) -> Path:
-        """Return the directory of a store's producer; refuse an unknown one."""
+    def _root(self, store: str, producer: str, path: str) -> Path:
+        """Return the directory a path of a store's producer lies in.
+
+        The producer's store root, or its data root (A-ADR-056); an unknown
+        store or a directory it no longer names is refused.
+        """
         config = self._settings().store(store)
-        root = None if config is None else config.roots().get(producer)
+        root = None if config is None else config.root_of(producer, path)
         if root is None:
             raise SourceUnavailableError(message("preview.reason_store_unavailable"))
         return root

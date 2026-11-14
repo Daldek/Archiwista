@@ -55,7 +55,7 @@ def test_scan_and_probe_go_on_without_the_directory_of_an_unavailable_source(
             later = datetime.now(UTC) + timedelta(minutes=16)
             (probed,) = _scans(scheduler.tick(later))
             second = env.wait(probed.id)
-            kept = env.settings.get().stores[0].roots()
+            kept = env.settings.get().stores[0].directory_paths()
             indexed = env.state()
         finally:
             scheduler.stop()

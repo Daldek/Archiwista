@@ -7,6 +7,7 @@ from archiwista.sources import (
     ActionAdapter,
     AreaCommandAdapter,
     CurrentVersionAdapter,
+    DataRootAdapter,
     DefaultRootAdapter,
     EntryMeta,
     ExportFolderAdapter,
@@ -61,7 +62,7 @@ def load_minimal(context: SourceContext) -> SourceAdapter:
 
 
 def test_source_protocol_does_not_require_optional_capabilities() -> None:
-    """A producer without segments, CRSs, links or sheets is still a source."""
+    """A producer without segments, CRSs, links, sheets or a data root is a source."""
     factory: SourceFactory = load_minimal
 
     adapter = factory(SourceContext(cache_dir=Path("cache")))
@@ -77,6 +78,7 @@ def test_source_protocol_does_not_require_optional_capabilities() -> None:
         GeoAdapter,
         LinkCheckAdapter,
         DefaultRootAdapter,
+        DataRootAdapter,
         SheetGridAdapter,
         ExportFolderAdapter,
     ):

@@ -29,7 +29,12 @@ from archiwista.errors import (
     SourceUnavailableError,
 )
 from archiwista.messages import lookup, message, with_detail
-from archiwista.sources.protocol import ActionAdapter, DefaultRootAdapter, SourceAdapter
+from archiwista.sources.protocol import (
+    ActionAdapter,
+    DataRootAdapter,
+    DefaultRootAdapter,
+    SourceAdapter,
+)
 from archiwista.sources.types import (
     DefaultRoot,
     SourceContext,
@@ -67,8 +72,11 @@ class PluginRegistry(Protocol):
         """Return an available plugin's adapter or raise ``SourceStateError``."""
         ...
 
-    def probe(self, producer: str, root: Path) -> SourceState:
-        """Probe a producer directory, or return the plugin's unavailable state."""
+    def probe(self, producer: str, root: Path, *, data: bool = False) -> SourceState:
+        """Probe a producer directory, or return the plugin's unavailable state.
+
+        ``data`` probes ``root`` as the producer's data root (A-ADR-056).
+        """
         ...
 
 
@@ -215,7 +223,9 @@ def source_error(state: SourceState) -> SourceStateError:
     return SourceUnavailableError(with_detail(text, state.detail), state=state)
 
 
-def read_default_root(registry: PluginRegistry, producer: str) -> DefaultRoot | None:
+def read_default_root(
+    registry: PluginRegistry, producer: str, *, data: bool = False
+) -> DefaultRoot | None:
     """Return a producer's default store root, ``None`` when it has none to report.
 
     Parameters
@@ -224,26 +234,62 @@ def read_default_root(registry: PluginRegistry, producer: str) -> DefaultRoot | 
         Producer plugins.
     producer : str
         Producer id, e.g. ``"kartograf"``.
+    data : bool, default False
+        The default data root instead (``DataRootAdapter``, A-ADR-056).
 
     Returns
     -------
     DefaultRoot or None
-        What the adapter's ``default_root`` reports. ``None`` when the plugin is
-        not available, its adapter has no such capability
-        (``DefaultRootAdapter``) or reading it failed (logged): the root is an
-        offer, so a faulty plugin must not stop the caller.
+        What the adapter's ``default_root`` (or ``default_data_root``) reports.
+        ``None`` when the plugin is not available, its adapter has no such
+        capability (``DefaultRootAdapter``, ``DataRootAdapter``) or reading it
+        failed (logged): the root is an offer, so a faulty plugin must not stop
+        the caller.
     """
     try:
         adapter = registry.adapter(producer)
     except SourceStateError:
         return None
-    if not isinstance(adapter, DefaultRootAdapter):
-        return None
     try:
-        return adapter.default_root()
+        if data:
+            if isinstance(adapter, DataRootAdapter):
+                return adapter.default_data_root()
+            return None
+        if isinstance(adapter, DefaultRootAdapter):
+            return adapter.default_root()
+        return None
     except Exception:  # an offer only: a faulty plugin must not stop the caller
         logger.exception("Reading the default root of producer %s failed", producer)
         return None
+
+
+def probe_root(
+    adapter: SourceAdapter, root: Path, *, data: bool = False
+) -> SourceState:
+    """Return an adapter's verdict on a store root, or on a data root.
+
+    Parameters
+    ----------
+    adapter : SourceAdapter
+        The producer's adapter.
+    root : Path
+        The directory.
+    data : bool, default False
+        Judge ``root`` as the producer's data root (``DataRootAdapter.probe_data``,
+        A-ADR-056), else as its store root (``SourceAdapter.probe``).
+
+    Returns
+    -------
+    SourceState
+        The adapter's state; ``error`` for a data root of a producer that keeps
+        none.
+    """
+    if not data:
+        return adapter.probe(root)
+    if isinstance(adapter, DataRootAdapter):
+        return adapter.probe_data(root)
+    detail = message("plugin.no_data_root", producer=adapter.producer)
+    return SourceState(adapter.producer, "error", store=str(root), detail=detail)
 
 
 def read_availability_products(
@@ -349,7 +395,7 @@ class SourceRegistry:
             raise source_error(plugin.state)
         return plugin.adapter
 
-    def probe(self, producer: str, root: Path) -> SourceState:
+    def probe(self, producer: str, root: Path, *, data: bool = False) -> SourceState:
         """Probe a producer directory, or return the plugin's unavailable state.
 
         Parameters
@@ -358,20 +404,24 @@ class SourceRegistry:
             Producer id.
         root : Path
             The producer directory of a store.
+        data : bool, default False
+            Probe ``root`` as the producer's data root (``DataRootAdapter``,
+            A-ADR-056).
 
         Returns
         -------
         SourceState
             The plugin's versions and schemas with the adapter's verdict on
             ``root`` (``status``, ``detail``, ``reason`` and ``hint``);
-            ``error`` when the adapter's probe raised.
+            ``error`` when the adapter's probe raised, and for a data root of a
+            producer that keeps none.
         """
         plugin = self._plugin(producer)
         store = str(root)
         if plugin.adapter is None:
             return replace(plugin.state, store=store)
         try:
-            found = plugin.adapter.probe(root)
+            found = probe_root(plugin.adapter, root, data=data)
         except Exception as error:  # a faulty plugin must not stop the caller
             return replace(
                 plugin.state, status="error", store=store, detail=_describe(error)

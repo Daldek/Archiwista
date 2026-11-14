@@ -42,8 +42,8 @@ class NoSources:
         """Refuse every producer as not installed (``source_unavailable``)."""
         raise source_error(self.state(producer))
 
-    def probe(self, producer: str, root: Path) -> SourceState:
-        """Report every producer as not installed."""
+    def probe(self, producer: str, root: Path, *, data: bool = False) -> SourceState:
+        """Report every producer as not installed, whatever the kind of root."""
         return self.state(producer)
 
 

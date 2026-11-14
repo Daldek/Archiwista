@@ -31,6 +31,7 @@ from archiwista.sources.registry import load_registry
 from archiwista.state import StateStore
 from tests.fixtures.api_session import Caller, assert_problem, running_api
 from tests.fixtures.local_server import local_paths
+from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.permissions import add_people, principal
 
 STORE = "dane"
@@ -116,13 +117,13 @@ def served(
     root = base / "store"
     shutil.copytree(obserwator_store("complete"), root)
     paths = local_paths(base)
-    config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
+    config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
     settings = AppSettings(stores=(config,))
     ConfigStore(paths.config_file).save(settings)
     registry = load_registry(cache_dir=paths.cache_dir)
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
-        writer.sync_stores({STORE: config.roots()})
+        writer.sync_stores({STORE: config.directory_paths()})
         scan_store(registry.adapter("obserwator"), writer, settings, STORE, mode="full")
         _half_years(writer)
     with running_api(paths, registry) as api:

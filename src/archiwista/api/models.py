@@ -338,6 +338,7 @@ _DEFAULT_ROOT_EXAMPLE = {
 _LISTED_SOURCE_EXAMPLE = {
     **_SOURCE_EXAMPLE,
     "default_root": _DEFAULT_ROOT_EXAMPLE,
+    "default_data_root": None,
     "availability": ["nmt", "nmpt", "laz"],
 }
 _PROJECT_STORE_EXAMPLE = {
@@ -515,7 +516,8 @@ _STORE_SETTINGS_EXAMPLE = {
     "id": _STORE,
     "name": "Zespół",
     "kartograf": "/mnt/nas/kartograf/data",
-    "obserwator": "/mnt/nas/obserwator",
+    "obserwator": "/mnt/nas/obserwator-raw",
+    "obserwator_data": "/mnt/nas/obserwator",
     "kind": "share",
     "path_aliases": {"/mnt/nas/": "Z:\\"},
 }
@@ -1855,7 +1857,7 @@ class SourceInfo(BaseModel):
 
 
 class DefaultRootInfo(BaseModel):
-    """The directory a producer uses for a store when a call names none."""
+    """The directory a producer uses for a root of a store when a call names none."""
 
     model_config = _examples(_DEFAULT_ROOT_EXAMPLE)
 
@@ -1872,7 +1874,10 @@ class DefaultRootInfo(BaseModel):
     )
     exists: bool = Field(description="Whether it is a directory.")
     marked: bool = Field(
-        description="Whether it holds the producer's store marker (a store)."
+        description=(
+            "Whether it holds the producer's marker of that root: a store, or a"
+            " data root."
+        )
     )
     message: str = Field(description="Description of the root.")
 
@@ -1890,17 +1895,25 @@ class DefaultRootInfo(BaseModel):
 
 
 class SourceListItem(SourceInfo):
-    """A producer plugin of ``GET /sources``: its state and its default store root."""
+    """A producer plugin of ``GET /sources``: its state and its default roots."""
 
     model_config = _examples(_LISTED_SOURCE_EXAMPLE)
 
     default_root: DefaultRootInfo | None = Field(
         description=(
-            "The directory the producer uses for a store when a call names none:"
-            " nothing in it is ever used by Archiwista, it is an offer for the"
-            " first-run wizard. Null when the plugin is not available or the"
-            " producer has no such directory. Reading it may take as long as"
-            " the producer needs to size it."
+            "The directory the producer uses for a store when a call names none"
+            " (Obserwator's raw root): nothing in it is ever used by Archiwista,"
+            " it is an offer for the first-run wizard. Null when the plugin is"
+            " not available or the producer has no such directory. Reading it may"
+            " take as long as the producer needs to size it."
+        )
+    )
+    default_data_root: DefaultRootInfo | None = Field(
+        description=(
+            "The directory the producer uses for its data root when a call names"
+            " none (Obserwator's series, station catalogs and analyses,"
+            " A-ADR-056): an offer, as `default_root`. Null when the plugin is"
+            " not available or the producer keeps no data root."
         )
     )
     availability: list[str] = Field(
@@ -1916,11 +1929,15 @@ class SourceListItem(SourceInfo):
         cls,
         info: SourceInfo,
         root: DefaultRootInfo | None,
+        data_root: DefaultRootInfo | None,
         availability: tuple[str, ...],
     ) -> Self:
-        """Return the listing of a plugin: its state, default root and products."""
+        """Return the listing of a plugin: its state, default roots and products."""
         return cls(
-            **info.model_dump(), default_root=root, availability=list(availability)
+            **info.model_dump(),
+            default_root=root,
+            default_data_root=data_root,
+            availability=list(availability),
         )
 
 
@@ -2015,8 +2032,9 @@ class JobFailure(BaseModel):
         description=(
             "`reason`, the job's own cause, and the context. Reasons:"
             " `store_unreadable`, or the producer's refusal of the directory"
-            " (`no_marker`, `unsupported_marker`, `foreign_store`, `not_a_store`;"
-            " the `hint` has the command) (`store_unavailable`); `source_unavailable`"
+            " (`no_marker`, `unsupported_marker`, `foreign_store`, `not_a_store`,"
+            " `wrong_root`; the `hint` has the command) (`store_unavailable`);"
+            " `source_unavailable`"
             " or `source_incompatible` (a plugin; `details.source` and the fix),"
             " `own_reader_failed` and `renderer_not_started` (`missing_dependency`);"
             " `offline_mode` and"
@@ -2447,7 +2465,9 @@ class StoreItem(BaseModel):
     store: str = Field(description="Store id.")
     name: str
     kind: StoreKind = Field(description="`local` disk or network `share`.")
-    producers: list[str] = Field(description="Producers with a directory in it.")
+    producers: list[str] = Field(
+        description="Producers with a directory in it (a store root or a data root)."
+    )
     state: StoreState
 
     @classmethod
@@ -2457,7 +2477,7 @@ class StoreItem(BaseModel):
             store=store.id,
             name=store.name,
             kind=store.kind,
-            producers=list(store.roots()),
+            producers=list(store.producers()),
             state=StoreState.of(state),
         )
 
@@ -2680,7 +2700,7 @@ class StoreDetail(BaseModel):
             store=summary.store,
             name=summary.name,
             kind=summary.kind,
-            producers=list(store.roots()),
+            producers=list(store.producers()),
             state=StoreState.of(summary.state),
             usage=Usage.of(summary.usage),
             unused=Unused.of(summary.unused),
@@ -3411,16 +3431,30 @@ class StoreSettings(BaseModel):
         description=(
             "Kartograf's store root: the directory that holds kartograf-store.json"
             " and the product directories (usually called data). Left out when the"
-            " store has only `obserwator`; one of the two is required."
+            " store has only Obserwator's directories; one of the three directories"
+            " is required."
         ),
     )
     obserwator: str | None = Field(
         default=None,
         description=(
-            "Obserwator's store root, the directory that holds"
-            " `obserwator-store.json`. Left out when the store has only `kartograf`; a"
-            " new or moved directory needs the source `obserwator` to be available"
-            " (`GET /sources`)."
+            "Obserwator's raw root, the directory that holds"
+            " `obserwator-store.json`: the archives Archiwista downloads into"
+            " (A-ADR-056). A new or moved directory needs the source `obserwator`"
+            " to be available (`GET /sources`); Obserwator's data root there is"
+            " refused with the reason `wrong_root`."
+        ),
+    )
+    obserwator_data: str | None = Field(
+        default=None,
+        description=(
+            "Obserwator's data root, the directory that holds"
+            " `obserwator-data.json`: the series, station catalogs and analyses"
+            " Obserwator builds from its raw root, which Archiwista only reads"
+            " (A-ADR-056). A new or moved directory needs the source `obserwator`"
+            " to be available; a raw root, or a store written before Obserwator"
+            " kept a data root and not yet split, is refused with the reason"
+            " `wrong_root`."
         ),
     )
     kind: StoreKind | None = Field(
@@ -3440,6 +3474,9 @@ class StoreSettings(BaseModel):
             name=store.name,
             kartograf=None if store.kartograf is None else str(store.kartograf),
             obserwator=None if store.obserwator is None else str(store.obserwator),
+            obserwator_data=(
+                None if store.obserwator_data is None else str(store.obserwator_data)
+            ),
             kind=store.kind,
             path_aliases=dict(store.path_aliases),
         )

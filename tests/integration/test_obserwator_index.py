@@ -3,7 +3,8 @@
 Every test scans a fixture store of the producer's own builder
 (``obserwator.testing``) through the real adapter, offline, and asks the index
 with ``IndexQueries``: what it holds must be what ``obserwator.iter_store``
-yields, with the datasets named from the producer's registry.
+yields in the store's raw and data roots together (A-ADR-056), with the
+datasets named from the producer's registry.
 """
 
 import hashlib
@@ -32,6 +33,7 @@ from archiwista.sources import CurrentVersionAdapter, SourceAdapter
 from archiwista.sources.registry import load_registry
 from archiwista.state import StateStore
 from tests.fixtures.obserwator_edits import META_SUFFIX, add_version, drop_sidecar
+from tests.fixtures.obserwator_roots import data_root, raw_root, root_of, store_fields
 from tests.fixtures.permissions import add_people
 from tests.fixtures.read_only_mount import set_read_only, tree
 
@@ -45,7 +47,10 @@ type Stores = Callable[[str], Path]
 
 @dataclass
 class _Env:
-    """A store of Obserwator with an index that knows it."""
+    """A store of Obserwator with an index that knows it.
+
+    ``root`` holds the store's raw and data roots (``obserwator_roots``).
+    """
 
     root: Path
     index: Path
@@ -118,8 +123,8 @@ def open_env(
         writers.append(writer)
         reader = IndexQueries(index)
         readers.append(reader)
-        config = StoreConfig(id=STORE, name="Dane", obserwator=root, kind="local")
-        writer.sync_stores({STORE: config.roots()})
+        config = StoreConfig(id=STORE, name="Dane", **store_fields(root), kind="local")
+        writer.sync_stores({STORE: config.directory_paths()})
         registry = load_registry(cache_dir=tmp_path / "cache")
         return _Env(
             root,
@@ -137,11 +142,18 @@ def open_env(
         writer.close()
 
 
-def _produced(root: Path) -> tuple[set[str], set[tuple[str, str]]]:
-    """Return the versions and the problems ``iter_store`` finds in a store."""
+def _entries(store: Path) -> Iterator[tuple[Path, StoreEntry]]:
+    """Yield what ``iter_store`` lists in each root of a store, with the root."""
+    for root in (raw_root(store), data_root(store)):
+        for entry in iter_store(root):
+            yield root, entry
+
+
+def _produced(store: Path) -> tuple[set[str], set[tuple[str, str]]]:
+    """Return the versions and the problems ``iter_store`` finds in both roots."""
     versions: set[str] = set()
     problems: set[tuple[str, str]] = set()
-    for entry in iter_store(root):
+    for root, entry in _entries(store):
         if entry.version is None:
             continue
         path = entry.version.relative_to(root).as_posix()
@@ -196,7 +208,7 @@ def test_a_segment_is_a_dataset_named_by_the_registry_with_its_country(
 
     # Assert
     datasets = {
-        entry.slot.split(":")[1] for entry in iter_store(env.root) if entry.slot
+        entry.slot.split(":")[1] for _, entry in _entries(env.root) if entry.slot
     }
     assert set(segments) == datasets and datasets
     hydro = segments["pl.imgw.hydro_daily"]
@@ -238,13 +250,17 @@ def test_the_store_view_groups_the_datasets_of_both_providers_by_their_family(
     assert grouped == {
         "hydro": [
             "cz.chmi.hydro_daily",
+            "cz.chmi.hydro_now",
             "cz.chmi.hydro_stations",
             "pl.imgw.hydro_daily",
+            "pl.imgw.hydro_now",
             "pl.imgw.hydro_stations",
         ],
         "meteo": [
             "cz.chmi.meteo_daily",
+            "cz.chmi.meteo_now",
             "cz.chmi.meteo_stations",
+            "pl.imgw.meteo_now",
             "pl.imgw.meteo_precip_daily",
             "pl.imgw.meteo_stations",
         ],
@@ -291,12 +307,10 @@ def test_a_slot_keeps_its_key_a_name_for_people_and_its_versions_a_provider(
         "cz.chmi.stations",
         "catalog:cz.chmi.stations",
     )
-    assert {key for _, key in keys.values()} == {
-        entry.slot for entry in iter_store(env.root) if entry.slot
-    }
+    assert {key for _, key in keys.values()} == set(_slots(env.root))
     by_producer = {
-        entry.version.relative_to(env.root).as_posix(): entry.provider
-        for entry in iter_store(env.root)
+        entry.version.relative_to(root).as_posix(): entry.provider
+        for root, entry in _entries(env.root)
         if entry.version and entry.kind not in ("problem", "observation")
     }
     assert providers == by_producer
@@ -304,7 +318,7 @@ def test_a_slot_keeps_its_key_a_name_for_people_and_its_versions_a_provider(
 
 
 def _register(root: Path) -> tuple[StoreEntry, StoreEntry]:
-    """Return the producer's observation and the version whose content it repeats."""
+    """Return the observation in a raw root and the version whose content it repeats."""
     entries = list(iter_store(root))
     (observed,) = [e for e in entries if e.kind == "observation"]
     assert observed.observation is not None
@@ -331,8 +345,9 @@ def test_an_observation_is_the_history_of_its_slot_and_changes_no_count(
     # Arrange
     env = open_env("complete_pl_cz")
     produced, _ = _produced(env.root)
-    observed, repeated = _register(env.root)
-    slot = Path(_relative(env.root, repeated)).parent.parent.as_posix()
+    raw = raw_root(env.root)
+    observed, repeated = _register(raw)
+    slot = Path(_relative(raw, repeated)).parent.parent.as_posix()
 
     # Act
     first = env.scan("full")
@@ -344,8 +359,8 @@ def test_an_observation_is_the_history_of_its_slot_and_changes_no_count(
     (record,) = history
     kept = observed.observation
     assert kept is not None
-    assert record.path == _relative(env.root, observed)
-    assert record.version == _relative(env.root, repeated)
+    assert record.path == _relative(raw, observed)
+    assert record.version == _relative(raw, repeated)
     assert record.seen_at.isoformat() == kept.seen_at.replace("Z", "+00:00")
     assert (record.url, record.etag, record.last_modified) == (
         kept.url,
@@ -354,7 +369,7 @@ def test_an_observation_is_the_history_of_its_slot_and_changes_no_count(
     )
     assert (record.size_bytes, record.sha256) == (kept.size_bytes, kept.sha256)
     assert detail is not None
-    assert [v.path for v in detail.versions] == [_relative(env.root, repeated)]
+    assert [v.path for v in detail.versions] == [_relative(raw, repeated)]
     assert first.versions_written == len(produced)
     assert env.versions() == produced
     assert sum(p.versions for p in env.queries.products()) == len(produced)
@@ -371,8 +386,9 @@ def test_an_observation_the_producer_no_longer_lists_is_forgotten(
     """The history is the register as the last pass saw it, not what the index kept."""
     # Arrange
     env = open_env("complete_pl_cz")
-    observed, repeated = _register(env.root)
-    slot = Path(_relative(env.root, repeated)).parent.parent.as_posix()
+    raw = raw_root(env.root)
+    observed, repeated = _register(raw)
+    slot = Path(_relative(raw, repeated)).parent.parent.as_posix()
     env.scan("full")
     assert env.queries.observations(STORE, slot)
     assert observed.version is not None
@@ -385,12 +401,12 @@ def test_an_observation_the_producer_no_longer_lists_is_forgotten(
     assert env.queries.observations(STORE, slot) == ()
     detail = env.queries.slot(STORE, slot, visible=ALL_PROJECTS)
     assert detail is not None
-    assert [v.path for v in detail.versions] == [_relative(env.root, repeated)]
+    assert [v.path for v in detail.versions] == [_relative(raw, repeated)]
 
 
-def _slot_keys(root: Path) -> set[str]:
-    """Return the key of every slot the producer lists."""
-    return {entry.slot for entry in iter_store(root) if entry.slot}
+def _slots(store: Path) -> dict[str, Path]:
+    """Return the key of every slot the producer lists, with the root it lies in."""
+    return {entry.slot: root for root, entry in _entries(store) if entry.slot}
 
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
@@ -400,12 +416,12 @@ def test_the_current_version_of_each_slot_is_the_one_the_producer_names(
     """No link says which version is current: Obserwator does, and the index agrees."""
     # Arrange
     env = open_env(variant)
-    keys = _slot_keys(env.root)
+    keys = _slots(env.root)
     produced: dict[str, str] = {}
-    for key in keys:
-        found = current_version(env.root, slot=key)
+    for key, root in keys.items():
+        found = current_version(root, slot=key)
         assert found is not None and found.version is not None
-        produced[key] = found.version.relative_to(env.root).as_posix()
+        produced[key] = found.version.relative_to(root).as_posix()
 
     # Act
     env.scan("full")
@@ -469,7 +485,7 @@ def test_an_incremental_scan_that_changed_nothing_asks_for_no_slot(
     asked = env.watch(monkeypatch)
     first = env.scan("full")
     before = env.current()
-    keys = _slot_keys(env.root)
+    keys = _slots(env.root)
     assert sorted(asked) == sorted(keys)
     asked.clear()
 
@@ -492,7 +508,7 @@ def test_a_new_version_asks_for_its_slot_only_and_becomes_its_current_version(
     env.scan("full")
     before = env.current()
     asked = env.watch(monkeypatch)
-    newest = add_version(env.root, HYDRO_SLOT, label="2026-10-30")
+    newest = add_version(root_of(env.root, HYDRO_SLOT), HYDRO_SLOT, label="2026-10-30")
 
     # Act
     summary = env.scan()
@@ -533,7 +549,7 @@ def test_slots_a_scan_left_without_a_current_version_are_given_one_by_the_next(
     # Assert
     assert {status for status, _ in stopped.values()} == {"missing"}
     assert {path for _, path in stopped.values()} == {None}
-    assert sorted(healed) == sorted(_slot_keys(env.root))
+    assert sorted(healed) == sorted(_slots(env.root))
     assert {status for status, _ in after.values()} == {"ok"}
     assert asked == healed
 
@@ -546,10 +562,11 @@ def test_an_interrupted_publication_is_a_problem_until_its_sidecar_makes_it_curr
     env = open_env("complete")
     env.scan("full")
     older = env.current()[HYDRO_SLOT]
-    newest = add_version(env.root, HYDRO_SLOT, label="2026-10-30")
-    sidecar = env.root / f"{newest}{META_SUFFIX}"
+    root = root_of(env.root, HYDRO_SLOT)
+    newest = add_version(root, HYDRO_SLOT, label="2026-10-30")
+    sidecar = root / f"{newest}{META_SUFFIX}"
     kept = sidecar.read_text(encoding="utf-8")
-    drop_sidecar(env.root, newest)
+    drop_sidecar(root, newest)
     directory = Path(newest).parent.as_posix()
 
     # Act
@@ -578,7 +595,7 @@ def test_a_store_without_write_permission_is_scanned_and_read_unchanged(
         locked = tree(env.root)
 
         # Act
-        entries = list(env.adapter.iter_entries(env.root))
+        entries = list(env.adapter.iter_entries(root_of(env.root, HYDRO_SLOT)))
         first = env.scan("full")
         after_full = tree(env.root)
         again = env.scan()
@@ -644,7 +661,7 @@ def test_an_index_of_the_previous_schema_is_rebuilt_and_a_scan_fills_it_again(
         " (SELECT count(*) FROM versions), (SELECT count(*) FROM observations)"
     )
     with IndexWriter(env.index) as writer, IndexQueries(env.index) as queries:
-        writer.sync_stores({STORE: env.settings.stores[0].roots()})
+        writer.sync_stores({STORE: env.settings.stores[0].directory_paths()})
         fresh = replace(env, writer=writer, queries=queries)
         fresh.scan("full")
         after = _held(fresh)
