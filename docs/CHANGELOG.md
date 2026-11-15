@@ -1415,7 +1415,11 @@ command-line interface may change.
   versions). Kartograf's catalog, which the producer commands follow, offers `soil hsg
   --depth-rule least-permeable` (`--depth` is no longer required) and `hydro download
   --product pgw`, and Kartograf refuses NMT and NMPT sheets of different cell sizes
-  (`ResolutionMismatchError`, a data error); Obserwator changes wording only.
+  (`ResolutionMismatchError`, a data error); a store's PGW data (Kartograf ADR-059:
+  `hydro/pl_pgw_gdb` for the whole-country archive, `hydro/pl_pgw` for an area
+  GeoPackage) are known segments of the index, `unrecognized` with the previous pin, so
+  their versions can be searched and pinned in a project's set; Obserwator changes
+  wording only.
 - A re-pin and a restore of a project's set confirm the plan of the set's check (ADR-042
   erratum 2, option H; the author's decision of 2026-11-09): `POST
   /projects/{project}/jobs` takes `plan_job` with `repin` and `restore` (`archiwista
