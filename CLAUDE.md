@@ -176,6 +176,11 @@ its commands, A-ADR-050).
   store of 50,000 slots) and `smb` (a real SMB share), besides `live`.
 - DEV-15.1: about 1,100 lines of the build-free JavaScript exceed 100 columns (templates
   and long Polish texts); there is no formatter (A-ADR-028). New lines keep the limit.
+- DEV-15.13: no page at `/admin/` and no `/admin` redirect; the view „Zgłoszenia” of the
+  app is the kit's `<nogat-admin-feedback>` on `/api/v1/admin/feedback`, behind the
+  session and the action `feedback.manage` instead of `X-Admin-Key`; Archiwista keeps no
+  statistics, so it has no „Statystyki”, and no „Stan” (A-ADR-054 erratum 3, Nogat plan
+  `2026-11-13-admin-panel` step 5).
 - DEV-16.5: the CLA is signed by a comment on the pull request, as the author's
   `docs/CLA.md` says; the template also carries the checkbox.
 - AGI-6.2: the OpenAPI document is `/api/v1/openapi.json` (behind the session, like every
