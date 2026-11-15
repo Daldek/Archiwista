@@ -1135,21 +1135,29 @@ class JobSupervisor:
     def recover(self) -> int:
         """Mark jobs whose supervising process is gone as ``interrupted``.
 
+        The active jobs are read first, outside a transaction; the write
+        transaction is taken, and the jobs read again in it, only when one
+        lost its supervisor. The scheduler recovers at each tick, and a scan
+        may hold the index's write lock longer than the busy timeout.
+
         Returns
         -------
         int
             Jobs marked.
         """
+        query = f"SELECT id, pid FROM jobs WHERE state IN {_ACTIVE_SQL}"
         with self._lock:
             db = self._open_db()
+            if all(
+                self._owner_alive(row["id"], row["pid"])
+                for row in db.execute(query).fetchall()
+            ):
+                return 0
             now = _now()
             with _transaction(db):
-                rows = db.execute(
-                    f"SELECT id, pid FROM jobs WHERE state IN {_ACTIVE_SQL}"
-                ).fetchall()
                 events = [
                     self._mark_stale(db, row["id"], now)
-                    for row in rows
+                    for row in db.execute(query).fetchall()
                     if not self._owner_alive(row["id"], row["pid"])
                 ]
             for event in events:

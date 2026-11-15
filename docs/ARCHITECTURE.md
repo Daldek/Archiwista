@@ -1027,8 +1027,10 @@ ends all of them.
    that arrives before the worker process imports the modules and sets up the handling:
    the supervisor kills such a process. A job without a live supervisor (the lock
    `owner-<pid>.lock` released by the system) gets `interrupted` at the
-   nearest encounter: `recover` at supervisor start or `submit`
-   of a job writing the index of the same store.
+   nearest encounter: `recover` at supervisor start and at each tick of the
+   scheduler, or `submit` of a job writing the index of the same store; `recover`
+   takes the index's write lock only when it finds such a job, so a scan writing
+   the index does not hold up the scheduler's planning.
 6. **History** — `prune` at start and from the scheduler: finished jobs
    and logs of 90 days (`LOG_MAX_AGE`; the last job of each store
    and kind stays), logs together at most 1 GB, routine scans

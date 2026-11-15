@@ -1793,6 +1793,12 @@ command-line interface may change.
   signal again after its shutdown and the process ended at once, without `stop` (Nogat
   DEV-12.4) and with its running jobs left for the next start to mark interrupted.
 
+- While a scan wrote the index for longer than its 10 s busy timeout, the planning of
+  scheduled scans failed with `database is locked`, an error record in the application
+  log and on standard error, minute after minute: it took the index's write lock to
+  look for jobs whose supervisor was gone. It now reads them first and takes the lock
+  only when such a job is there.
+
 - „Aktywność” of the project card is read again with every change made on the card: a
   change in the same second as the project's last read („Usuń zestaw” at once after the
   card opened, say) left the old entries in the list until the card was opened again.
