@@ -4,8 +4,11 @@ import io
 import json
 import os
 import re
+import signal
 import socket
 import stat
+import subprocess
+import sys
 import threading
 import time
 import webbrowser
@@ -117,6 +120,56 @@ def test_serve_prints_only_its_lifecycle_when_not_on_a_terminal(
     ]
     assert lines == records(paths.logs_dir, "lifecycle")
     assert lines[0]["settings"] == {"origin": f"http://127.0.0.1:{server.port}"}
+
+
+def test_serve_stops_by_itself_at_sigterm(tmp_path: Path) -> None:
+    """SIGTERM, a service manager's stop, stops the server as Ctrl+C does.
+
+    Uvicorn raises the signal again after its shutdown; the server still stops
+    its scheduler, jobs and render pool, writes the lifecycle record ``stop``
+    and exits with status 0 (Nogat DEV-12.4).
+    """
+    port = free_port()
+    env = {
+        **os.environ,
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "XDG_DATA_HOME": str(tmp_path / "data"),
+        "XDG_STATE_HOME": str(tmp_path / "state"),
+    }
+    logs = tmp_path / "state" / "nogat" / "archiwista" / "logs"
+    console = Path(sys.executable).with_name("archiwista")
+    command = [str(console), "serve", "--no-browser", "--port", str(port)]
+    errors = tmp_path / "serve.err"
+    with errors.open("wb") as err:
+        process = subprocess.Popen(
+            command, env=env, stdout=subprocess.DEVNULL, stderr=err
+        )
+        try:
+            # An answer means Uvicorn serves, its signal handlers in place.
+            deadline = time.monotonic() + 60
+            while True:
+                try:
+                    answer = httpx.get(
+                        f"http://127.0.0.1:{port}/api/v1/session/methods", timeout=1
+                    )
+                    break
+                except httpx.TransportError:
+                    assert process.poll() is None, errors.read_text("utf-8")
+                    assert time.monotonic() < deadline, errors.read_text("utf-8")
+                    time.sleep(0.1)
+            process.send_signal(signal.SIGTERM)
+            status = process.wait(timeout=60)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+
+    assert answer.status_code == 200
+    assert status == 0, errors.read_text("utf-8")
+    assert [record["event"] for record in records(logs, "lifecycle")] == [
+        "start",
+        "stop",
+    ]
 
 
 def test_serve_logs_each_request_once_without_its_secrets(tmp_path: Path) -> None:

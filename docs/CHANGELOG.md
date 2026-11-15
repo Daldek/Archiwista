@@ -1787,6 +1787,12 @@ command-line interface may change.
 
 ### Fixed
 
+- `archiwista serve` stopped by SIGTERM, as a service manager such as systemd stops it,
+  stops as at Ctrl+C: it ends the scan scheduler, the jobs and the render processes,
+  writes the lifecycle record `stop` and exits with status 0. Before, Uvicorn raised the
+  signal again after its shutdown and the process ended at once, without `stop` (Nogat
+  DEV-12.4) and with its running jobs left for the next start to mark interrupted.
+
 - „Aktywność” of the project card is read again with every change made on the card: a
   change in the same second as the project's last read („Usuń zestaw” at once after the
   card opened, say) left the old entries in the list until the card was opened again.

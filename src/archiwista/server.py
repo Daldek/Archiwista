@@ -9,10 +9,11 @@ issues the one-time startup token and optionally opens
 ``http://127.0.0.1:<port>/#token=…`` in the browser; in team mode it issues no
 token and opens no browser. On a terminal it prints that address, or the
 team's ``origin``; anywhere else (a service manager, whose journal keeps
-standard output) it prints nothing. It serves until Ctrl+C. The browser gets
-the address through a private file (``LaunchFile``), never on its command
-line, which other accounts of the computer can read. It serves at most
-``LIMIT_CONCURRENCY`` connections at once.
+standard output) it prints nothing. It serves until Ctrl+C or SIGTERM (a
+service manager's stop). The browser gets the address through a private file
+(``LaunchFile``), never on its command line, which other accounts of the
+computer can read. It serves at most ``LIMIT_CONCURRENCY`` connections at
+once.
 
 The server keeps Nogat's logs (DEV-12.4 to DEV-12.9, A-ADR-057) in
 ``AppPaths.logs_dir`` (``<state_dir>/archiwista/logs``) with
@@ -41,6 +42,7 @@ import html
 import ipaddress
 import os
 import secrets
+import signal
 import socket
 import sqlite3
 import ssl
@@ -49,6 +51,7 @@ import webbrowser
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from types import FrameType
 from typing import TextIO
 
 import uvicorn
@@ -400,10 +403,29 @@ class AppServer:
         self._server = _Uvicorn(config, on_stop)
 
     def run(self) -> None:
-        """Serve until ``stop`` or, in the main thread, Ctrl+C."""
-        # On Ctrl+C Uvicorn shuts down gracefully, then re-raises the signal.
-        with contextlib.suppress(KeyboardInterrupt):
-            self._server.run(sockets=[self._socket])
+        """Serve until ``stop`` or, in the main thread, Ctrl+C or SIGTERM.
+
+        Uvicorn stops gracefully at either signal, then raises it again under
+        the handler it found. Ctrl+C becomes ``KeyboardInterrupt``, which ends
+        here; SIGTERM, a service manager's stop, finds ``_terminate`` instead
+        of its default, which would end the process before ``serve_main``
+        stops the scheduler, the jobs and the render pool and writes the
+        lifecycle record ``stop``.
+        """
+        main = threading.current_thread() is threading.main_thread()
+        previous = signal.signal(signal.SIGTERM, self._terminate) if main else None
+        try:
+            with contextlib.suppress(KeyboardInterrupt):
+                self._server.run(sockets=[self._socket])
+        finally:
+            if main:
+                signal.signal(
+                    signal.SIGTERM, signal.SIG_DFL if previous is None else previous
+                )
+
+    def _terminate(self, signum: int, frame: FrameType | None) -> None:
+        """Stop at SIGTERM as ``stop`` does, also before Uvicorn serves."""
+        self.stop()
 
     def stop(self) -> None:
         """Ask the server to finish; ``run`` returns shortly. Thread-safe."""
