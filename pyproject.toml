@@ -65,7 +65,7 @@ dependencies = [
 # `[store]` brings `pyarrow` for the Parquet series. The versions the adapter reads
 # are `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator`.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@3816b3c6a4d769a62335c63f2c6d02ae5af60b8b",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@f4f6a8deddbc8f2811e623e6c58147d4fb6a2ec8",
 ]
 
 [dependency-groups]

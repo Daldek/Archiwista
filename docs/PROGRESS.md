@@ -25,10 +25,10 @@ The working branch is `develop`; every branch named below is merged into it. Not
 | Nogat standard 1.0 | done | structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry (A-ADR-030); the items that need the author: Open questions |
 | Test server :8090 | done | https://archiwista-test.debever.pl, user unit `archiwista-public.service`, runs `7a11c76` (`develop`) since 2026-11-15. One store, `agent-tmp` („Magazyn agent-tmp”, kind share), the author's single place for downloaded data (2026-11-15): `kartograf` = `/mnt/magazyn/agent-tmp/hydroni/kartograf` and `obserwator` = `/mnt/magazyn/agent-tmp/obserwator` on the NAS (CIFS), `obserwator_data` = `/home/claude-agent/data/obserwator-target/data` on the local disk (processed, served fast). Store `hydroni` removed; projects `h07` (4 sets, 2909 pins) and `kaczawa` (Hydrograf :8080's Kaczawa, set `2026-1`, 205 pins) use `agent-tmp`, 0 missing; one known problem (`missing_sidecar` of an `.aux.xml`). State schema 1 and index schema 1 since `1c18fb3`. Backups in `/home/claude-agent/data/archiwista-public/backup-2026-11-14-v1/`, rollback steps in `/home/claude-agent/data/archiwista-public/backup-2026-11-13/ROLLBACK.txt` |
 | Tidy-up of 2026-11-14 (`refactor/tidy-2026-11-14`) | done | merged as `8573a93`: dead and duplicated code removed (`values.py`), Nogat's server logs (A-ADR-057, ECO-066), the documentation audited against the code, the info texts by Nogat DEV-15.14 |
-| Pins of Nogat's release set candidate-4 | done | merged as `0ff788e`; Obserwator's pin has since moved to `3816b3c` (its daily synoptic data), ahead of the set. The author names no new candidate yet (2026-11-15) |
+| Pins of Nogat's release set candidate-5 | done | the first joint release (Next 7): Kartograf `c9afdd3` (as in candidate-4), Obserwator `f4f6a8d` (`chore/pins-candidate-5`, from the set's draft); candidate-4's were merged as `0ff788e` |
 | Every format at version 1 (Nogat REL-1.4, ECO-072) | done | merged and deployed (`1c18fb3`): the state backup `archiwista-state/1` (a `/2` copy still imports), the job protocol 1, the index schema 1 (an index of another number is rebuilt) and the state schema 1 in one migration (a database numbered 5 is renumbered when it opens; schema 2 to 4 no longer opens) |
-| Gate | done | last full run: 2026-11-15 on `feat/obserwator-synop` (merged as `7a11c76`), 3018 passed; on `docs/session-2026-11-15` one e2e test, `test_map_previews.py::test_year_buttons_select_layer_and_tiles`, failed under load and passed alone three times (Next 2) |
-| CI (Linux) | in progress | `ci.yml` runs the gate, the suite without the extra `obserwator` and a dependency audit; the three failures of `develop` at `0ff788e` (2026-11-14) were fixed by `1c18fb3` (timing of `test_serve` and of the side-by-side maps, Obserwator's roots without the extra). Python 3.15 (reported, not blocking) failed on an unraisable `sqlite3` finalizer warning in an e2e test. `live.yml` has not run (Next 9) |
+| Gate | in progress | last full run: 2026-11-15 on `feat/obserwator-synop` (merged as `7a11c76`), 3018 passed; on `docs/session-2026-11-15` one e2e test, `test_map_previews.py::test_year_buttons_select_layer_and_tiles`, failed under load and passed alone three times (Next 2). `chore/release-prep-2026-11-15` (the fixes of SIGTERM and of the scheduler's write lock, not deployed): ruff, mypy and the unit, contract, serve and job tests pass (1557); its full gate, the user unit `archiwista-gate-release-prep` started 2026-11-15 15:47, had not ended when the branch was pushed, so it waits to be merged |
+| CI (Linux) | done | `ci.yml` runs the gate (Python 3.12, the required check, and 3.15), the suite without the extra `obserwator` and a dependency audit; every job passed on `develop` at `1c18fb3`, `7a11c76` and `747ee1f` (2026-11-14 and 2026-11-15). `live.yml` ran once, on its schedule of 2026-11-09 (`90c5ac9`), and passed (Next 9) |
 | v0.5 "IMGW stations" release | blocked | the Obserwator release with its store (REL-5.3: today pinned by commit); the archive badge of the stations (SPEC 9.2, 4.8.4) and the input archives of the station card need a producer capability the source interface lacks |
 | v0.6 "PL + CZ" | blocked | Kartograf KF (merged PL + CZ surface) |
 | Producer requirements behind open gaps | blocked | „U źródła” offers only NMT, NMPT and LAZ until Kartograf KD-3/KD-4 (meanwhile paste the producer's command, which „Obszar polecenia” runs on a project's area); plans show „rozmiar nieznany” until Kartograf KH; the „pobrane” badge cannot match LAZ, whose sidecar records no survey work (Kartograf `docs/PROGRESS.md` Next 30); A15 waits for Kartograf KB-7; Archiwista's later versions need KA-4, KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4, KH |
@@ -56,10 +56,12 @@ The working branch is `develop`; every branch named below is merged into it. Not
    shown only inside views that carry the lines); the regulamin of DEV-15.7 (ECO-061; its
    files are in the kit's copy, but Archiwista serves no `regulamin.html`, as it runs
    without `[nogat.operator]`).
-7. Release, per decisions D2 and D3 of Nogat's plan
-   `2026-10-31-archiwista-projects.md`: one Archiwista release holds v0.3, v0.4 and the
-   projects (all in `develop` since 2026-11-03), outside the first release set
-   (Archiwista follows the producers' tags in its own session, REL-5.4). Then: replace
+7. Release: the author puts Archiwista in the first joint release set, Nogat's
+   candidate-5, with Nogat, Hydrograf, Hydrolog and Obserwator (2026-11-15); that replaces
+   "outside the first release set" of decision D3 of Nogat's plan
+   `2026-10-31-archiwista-projects.md`, while its D2 stands: one Archiwista release holds
+   v0.3, v0.4 and the projects (all in `develop` since 2026-11-03). The set's pins come
+   first (each consumer re-pins in its own session, REL-5.4). Then: replace
    the commit pins by the producers' tags (REL-5.3, REL-2.1), CHANGELOG version and tag
    with the author's approval, the Nogat registry (the edge Archiwista → Obserwator is
    still `planned`). Re-pin first if a producer commits on its branch again: `uv lock
@@ -70,7 +72,8 @@ The working branch is `develop`; every branch named below is merged into it. Not
    in three browsers, the store on the share); a full `scripts/gate.sh` on the Mac; the
    live run of `tests/integration/test_live_actions.py` (`ARCHIWISTA_LIVE_ACTIONS=1`)
    and the SMB run of v0.3 criterion 8.
-9. CI: the weekly `live.yml` has not run yet.
+9. CI: read the weekly `live.yml` runs; without `ARCHIWISTA_LIVE_STORE` and
+   `ARCHIWISTA_LIVE_ACTIONS` its store and action tests skip there (Next 8 runs them).
 10. Use `kartograf.testing` instead of the hand-made `tests/fixtures/make_store.py` where
     it covers the case (DEV-10.6).
 11. Adopt the ecosystem's visual identity (Nogat `design/`, plan

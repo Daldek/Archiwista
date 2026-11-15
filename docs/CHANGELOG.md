@@ -1262,6 +1262,11 @@ command-line interface may change.
 
 ### Changed
 
+- Obserwator is re-pinned from `3816b3c` to `f4f6a8d`, its commit in Nogat's release set
+  candidate-5, the first joint release (`pyproject.toml`, `uv.lock`); Kartograf stays at
+  `c9afdd3f`. Obserwator changed only its documentation between the two; the supported
+  ranges are unchanged and both builds keep their versions.
+
 - Obserwator moves to `3816b3c` of its `develop` (`pyproject.toml`, `uv.lock`), with the
   daily synoptic data `pl.imgw.meteo_synop_daily` in its store (Obserwator ADR-022) and
   the download-only `pl.imgw.meteo_synop_terms`, `pl.imgw.warnings_hydro_archive`,
@@ -1415,7 +1420,11 @@ command-line interface may change.
   versions). Kartograf's catalog, which the producer commands follow, offers `soil hsg
   --depth-rule least-permeable` (`--depth` is no longer required) and `hydro download
   --product pgw`, and Kartograf refuses NMT and NMPT sheets of different cell sizes
-  (`ResolutionMismatchError`, a data error); Obserwator changes wording only.
+  (`ResolutionMismatchError`, a data error); a store's PGW data (Kartograf ADR-059:
+  `hydro/pl_pgw_gdb` for the whole-country archive, `hydro/pl_pgw` for an area
+  GeoPackage) are known segments of the index, `unrecognized` with the previous pin, so
+  their versions can be searched and pinned in a project's set; Obserwator changes
+  wording only.
 - A re-pin and a restore of a project's set confirm the plan of the set's check (ADR-042
   erratum 2, option H; the author's decision of 2026-11-09): `POST
   /projects/{project}/jobs` takes `plan_job` with `repin` and `restore` (`archiwista
@@ -1782,6 +1791,18 @@ command-line interface may change.
   both once with `uv run playwright install chromium firefox`.
 
 ### Fixed
+
+- `archiwista serve` stopped by SIGTERM, as a service manager such as systemd stops it,
+  stops as at Ctrl+C: it ends the scan scheduler, the jobs and the render processes,
+  writes the lifecycle record `stop` and exits with status 0. Before, Uvicorn raised the
+  signal again after its shutdown and the process ended at once, without `stop` (Nogat
+  DEV-12.4) and with its running jobs left for the next start to mark interrupted.
+
+- While a scan wrote the index for longer than its 10 s busy timeout, the planning of
+  scheduled scans failed with `database is locked`, an error record in the application
+  log and on standard error, minute after minute: it took the index's write lock to
+  look for jobs whose supervisor was gone. It now reads them first and takes the lock
+  only when such a job is there.
 
 - „Aktywność” of the project card is read again with every change made on the card: a
   change in the same second as the project's last read („Usuń zestaw” at once after the

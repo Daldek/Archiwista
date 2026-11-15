@@ -355,6 +355,29 @@ def test_restart_marks_running_job_interrupted(
     assert (state.missing_versions, state.indexed_at) == (0, None)
 
 
+def test_recover_takes_no_write_lock_while_every_job_has_its_supervisor(
+    env: JobsEnv,
+) -> None:
+    """Recovering writes the index only for a job whose supervisor is gone.
+
+    The scheduler recovers at each tick; a scan writing the index for longer
+    than the busy timeout made each of them fail with ``database is locked``.
+    """
+    # Arrange: another process's write transaction holds the index.
+    writer = sqlite3.connect(env.paths.index_file, isolation_level=None)
+    try:
+        writer.execute("BEGIN IMMEDIATE")
+
+        # Act
+        recovered = env.jobs.recover()
+    finally:
+        writer.execute("ROLLBACK")
+        writer.close()
+
+    # Assert
+    assert recovered == 0
+
+
 def test_jobs_record_actor(env: JobsEnv) -> None:
     """Each job keeps who asked for it, also as the store's last scan."""
     # Arrange
