@@ -1262,6 +1262,11 @@ command-line interface may change.
 
 ### Changed
 
+- Kartograf is re-pinned from `c9afdd3f` to `e14bc78c`, its commit in Nogat's release set
+  candidate-5 once Kartograf became a member of the first joint release (`pyproject.toml`,
+  `uv.lock`). Kartograf changed only its PROGRESS, CHANGELOG and a docstring between the
+  two; the supported range is unchanged.
+
 - Obserwator is re-pinned from `3816b3c` to `f4f6a8d`, its commit in Nogat's release set
   candidate-5, the first joint release (`pyproject.toml`, `uv.lock`); Kartograf stays at
   `c9afdd3f`. Obserwator changed only its documentation between the two; the supported
