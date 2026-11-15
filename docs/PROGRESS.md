@@ -7,9 +7,8 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 
 ## Status
 
-The working branch is `develop`; every branch named below is merged into it, except
-`chore/pins-candidate-4`, `chore/everything-v1` and `fix/ci-develop`. Nothing after 0.2.0
-is released.
+The working branch is `develop`; every branch named below is merged into it. Nothing after
+0.2.0 is released.
 
 | Component | State | Note |
 |---|---|---|
@@ -19,17 +18,17 @@ is released.
 | Projects (A-ADR-049 and its errata 1 to 7) | done | `archiwista-project.json` (`archiwista-project/1`) with its area files in `obszary/`; sets („Zestaw”) open or closed with their pins; the jobs verify, check, re-pin and restore; the card's „Przepnij” and „Przywróć brakujące” open the plan window of the set's check (ADR-042 erratum 2); exports in `eksport/<name>/`. Not released |
 | Data output (DEV §19, ECO-051) and `nogat.toml` | done | store markers and roots, the producers' default roots offered in the wizard, tests isolated from the producers' settings (ADR-031, ADR-033); `data_dir`, `cache_dir`, `lang` and the table `gui` of `nogat.toml` (A-ADR-053) |
 | Obserwator source and station views | done | Obserwator stores indexed, stations, series coverage, the station map, Katalog list, Timeline, card, chart and comparison (ADR-032, ADR-045); monthly charts and annual extremes (A-ADR-051); a station's series handed to Hydrolog through Nogat's kit, with „Dane” and „Zmienna” (A-ADR-052, A-ADR-054) |
-| Obserwator's commands and its two roots (A-ADR-050, A-ADR-056; Obserwator pin `0394af7`) | done | each store names Obserwator's raw root (`obserwator`, `obserwator-store.json`) and its data root (`obserwator_data`, `obserwator-data.json`, read only), each probed by its kind (reason `wrong_root`); Archiwista runs only `store sync` into the raw root. Limits: series and station catalogs are built by Obserwator offline, so a project's pins of them are `not_checkable`; Obserwator has no run mode that keeps the stored versions (a restore takes the source's current file); `pmaxtp sync` is not in Archiwista's catalog (A-ADR-050 option C) |
-| The providers' lines (A-ADR-055 and its errata 1 to 4) | done | `attribution` and `terms_notice` on every station, map, Katalog, version and comparison answer, the CLI, `ATTRIBUTION.txt` in exports and the hand-off; one compact strip of Nogat's kit per view or overlay, the terms linked, the G and Z lines of station catalogs' sidecars, one CP without the detail of processing (ECO-071, branch `feat/cp-without-detail`, not merged). Not in PNG previews (Next 6) |
+| Obserwator's commands and its two roots (A-ADR-050, A-ADR-056; Obserwator pin `3816b3c`) | done | each store names Obserwator's raw root (`obserwator`, `obserwator-store.json`) and its data root (`obserwator_data`, `obserwator-data.json`, read only), each probed by its kind (reason `wrong_root`); Archiwista runs only `store sync` into the raw root. Obserwator's catalog kind `synop` (its daily synoptic data, Obserwator ADR-022) is shown as `synoptic`, „stacja synoptyczna”; its four download-only datasets (ADR-023) are not indexed. Limits: series and station catalogs are built by Obserwator offline, so a project's pins of them are `not_checkable`; Obserwator has no run mode that keeps the stored versions (a restore takes the source's current file); `pmaxtp sync` is not in Archiwista's catalog (A-ADR-050 option C) |
+| The providers' lines (A-ADR-055 and its errata 1 to 4) | done | `attribution` and `terms_notice` on every station, map, Katalog, version and comparison answer, the CLI, `ATTRIBUTION.txt` in exports and the hand-off; one compact strip of Nogat's kit per view or overlay, the terms linked, the G and Z lines of station catalogs' sidecars, one CP without the detail of processing (ECO-071). Not in PNG previews (Next 6) |
 | Nogat's GUI kit (A-ADR-054 and its errata 1 to 4) | done | kit 1.0.0 of Nogat `8dbdcaa` in `web/nogat/` (byte for byte, checked against `nogat-kit.json`): the menu „Aplikacje”, the hand-off, the strip `<nogat-sources>`, „Zgłoszenia” on `<nogat-admin-feedback>` |
 | User guide `/instrukcja` (A-ADR-048) | done | 13 Polish slides served without a session, „Instrukcja” in the top bar; no link on the sign-in page; its pictures need taking again when the views they show change |
 | Nogat standard 1.0 | done | structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry (A-ADR-030); the items that need the author: Open questions |
-| Test server :8090 | done | https://archiwista-test.debever.pl, user unit `archiwista-public.service`, runs `55d97a7` (`develop`) since 2026-11-14; rollback steps in `/home/claude-agent/data/archiwista-public/backup-2026-11-13/ROLLBACK.txt`. Its `nogat.toml` (in its `XDG_CONFIG_HOME`) holds only the table `gui`; its store `hydroni` names only a raw root (Next 1) |
+| Test server :8090 | done | https://archiwista-test.debever.pl, user unit `archiwista-public.service`, runs `7a11c76` (`develop`) since 2026-11-15. One store, `agent-tmp` („Magazyn agent-tmp”, kind share), the author's single place for downloaded data (2026-11-15): `kartograf` = `/mnt/magazyn/agent-tmp/hydroni/kartograf` and `obserwator` = `/mnt/magazyn/agent-tmp/obserwator` on the NAS (CIFS), `obserwator_data` = `/home/claude-agent/data/obserwator-target/data` on the local disk (processed, served fast). Store `hydroni` removed; projects `h07` (4 sets, 2909 pins) and `kaczawa` (Hydrograf :8080's Kaczawa, set `2026-1`, 205 pins) use `agent-tmp`, 0 missing; one known problem (`missing_sidecar` of an `.aux.xml`). State schema 1 and index schema 1 since `1c18fb3`. Backups in `/home/claude-agent/data/archiwista-public/backup-2026-11-14-v1/`, rollback steps in `/home/claude-agent/data/archiwista-public/backup-2026-11-13/ROLLBACK.txt` |
 | Tidy-up of 2026-11-14 (`refactor/tidy-2026-11-14`) | done | merged as `8573a93`: dead and duplicated code removed (`values.py`), Nogat's server logs (A-ADR-057, ECO-066), the documentation audited against the code, the info texts by Nogat DEV-15.14 |
-| Pins of Nogat's release set candidate-4 (`chore/pins-candidate-4`) | in progress | Kartograf `c9afdd3f`, Obserwator `0394af7` (Hydrolog is no dependency); ruff, mypy, unit and contract tests and the integration tests that touch the producers pass; not merged, the full gate is left to the parent session |
-| Every format at version 1 (`chore/everything-v1`, Nogat REL-1.4, ECO-072) | in progress | the state backup `archiwista-state/1` (a `/2` copy still imports), the job protocol 1, the index schema 1 (an index of another number is rebuilt) and the state schema 1 in one migration (a database numbered 5 is renumbered when it opens; schema 2 to 4 no longer opens); on :8090 the next start renumbers `state.sqlite` (5) and rebuilds `index.sqlite` (18) by a full scan of `hydroni`; ruff, mypy, unit and contract tests and the touched tests pass; not merged, the full gate is left to the parent session |
-| Gate | done | last recorded full run: 2026-11-14 on `feat/obserwator-data-root` (`0ee0906`, merged as `55d97a7`), 3006 passed, coverage 93.45 %, 55 min with `TMPDIR` on a local disk, `GATE OK`; none yet on `refactor/tidy-2026-11-14` |
-| CI (Linux) | in progress | `ci.yml` runs the gate, the suite without the extra `obserwator` and a dependency audit. The run of `develop` at `0ff788e` (2026-11-14) failed three tests, fixed on `fix/ci-develop` (not merged): in the gate `test_serve` took the warning of the own-data scan a quick stop interrupts (the server starts it at once) for the server's app record; without the extra the CLI test expected Obserwator's roots, and the side-by-side maps were measured one before and one after the providers' strip came under them. Python 3.15 (reported, not blocking) failed on an unraisable `sqlite3` finalizer warning in an e2e test. `live.yml` has not run (Next 9) |
+| Pins of Nogat's release set candidate-4 | done | merged as `0ff788e`; Obserwator's pin has since moved to `3816b3c` (its daily synoptic data), ahead of the set. The author names no new candidate yet (2026-11-15) |
+| Every format at version 1 (Nogat REL-1.4, ECO-072) | done | merged and deployed (`1c18fb3`): the state backup `archiwista-state/1` (a `/2` copy still imports), the job protocol 1, the index schema 1 (an index of another number is rebuilt) and the state schema 1 in one migration (a database numbered 5 is renumbered when it opens; schema 2 to 4 no longer opens) |
+| Gate | done | last full run: 2026-11-15 on `feat/obserwator-synop` (merged as `7a11c76`), 3018 passed; on `docs/session-2026-11-15` one e2e test, `test_map_previews.py::test_year_buttons_select_layer_and_tiles`, failed under load and passed alone three times (Next 2) |
+| CI (Linux) | in progress | `ci.yml` runs the gate, the suite without the extra `obserwator` and a dependency audit; the three failures of `develop` at `0ff788e` (2026-11-14) were fixed by `1c18fb3` (timing of `test_serve` and of the side-by-side maps, Obserwator's roots without the extra). Python 3.15 (reported, not blocking) failed on an unraisable `sqlite3` finalizer warning in an e2e test. `live.yml` has not run (Next 9) |
 | v0.5 "IMGW stations" release | blocked | the Obserwator release with its store (REL-5.3: today pinned by commit); the archive badge of the stations (SPEC 9.2, 4.8.4) and the input archives of the station card need a producer capability the source interface lacks |
 | v0.6 "PL + CZ" | blocked | Kartograf KF (merged PL + CZ surface) |
 | Producer requirements behind open gaps | blocked | „U źródła” offers only NMT, NMPT and LAZ until Kartograf KD-3/KD-4 (meanwhile paste the producer's command, which „Obszar polecenia” runs on a project's area); plans show „rozmiar nieznany” until Kartograf KH; the „pobrane” badge cannot match LAZ, whose sidecar records no survey work (Kartograf `docs/PROGRESS.md` Next 30); A15 waits for Kartograf KB-7; Archiwista's later versions need KA-4, KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4, KH |
@@ -37,15 +36,13 @@ is released.
 
 ## Next
 
-1. :8090 with the author: its store `hydroni` names an empty raw root
-   (`/mnt/magazyn/agent-tmp/hydroni/obserwator`), which keeps working unchanged; to show
-   series and station catalogs add `obserwator_data` (e.g. Obserwator's production data
-   root `/home/claude-agent/data/obserwator-target/data`) and restart. The old combined
-   store `/mnt/magazyn/agent-tmp/archiwista-zespol/obserwator` (not configured on :8090)
-   must be split (USAGE, "Obserwator's raw root and data root") before use.
-2. Flaky test: `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens`
-   failed once in the gate of 2026-11-10 (the heading „Logowanie” never showed in 30 s) and
-   passes alone and with its file; cause not found.
+1. Hydrograf's admin panel cannot re-process from a store; the author moved that fix to the
+   release after the first joint release (2026-11-15). Kaczawa's re-processing runs from the
+   command line with project `kaczawa`, set `2026-1` (Hydrograf PROGRESS).
+2. Flaky e2e tests: `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens`
+   (gate of 2026-11-10, „Logowanie” never showed in 30 s) and
+   `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (gate of
+   2026-11-15); both pass alone; cause not found.
 3. The author decides: „Pobierz CSV” on the station card, through Obserwator's
    `export_series` (CSV with the provider's attribution); today a series leaves as the
    hand-off JSON, the parquet path, or a Python call of `obserwator.export_series`.
