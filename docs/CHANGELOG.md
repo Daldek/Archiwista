@@ -1262,6 +1262,11 @@ command-line interface may change.
 
 ### Changed
 
+- Obserwator is re-pinned from `3816b3c` to `f4f6a8d`, its commit in Nogat's release set
+  candidate-5, the first joint release (`pyproject.toml`, `uv.lock`); Kartograf stays at
+  `c9afdd3f`. Obserwator changed only its documentation between the two; the supported
+  ranges are unchanged and both builds keep their versions.
+
 - Obserwator moves to `3816b3c` of its `develop` (`pyproject.toml`, `uv.lock`), with the
   daily synoptic data `pl.imgw.meteo_synop_daily` in its store (Obserwator ADR-022) and
   the download-only `pl.imgw.meteo_synop_terms`, `pl.imgw.warnings_hydro_archive`,
