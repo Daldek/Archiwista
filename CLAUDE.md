@@ -44,7 +44,7 @@ file (A-ADR-049), and preparing data for merging. Profile `app` (DEV-1.1;
 - Python only from `.venv`, through `uv` (DEV-6.2). `uv.lock` is committed; install
   with `uv sync --locked --all-extras` (DEV-6.3; the extra `obserwator` is the Obserwator
   source). Kartograf and Obserwator are pinned by commit in `pyproject.toml` until their
-  releases (REL-5.3); the release pull request replaces each commit with the tag.
+  tags (REL-5.3); the release commit of 0.3.0 replaces them with `v0.8.0` and `v3.0.0`.
 - Code, identifiers, comments, docstrings, logs, commit messages, ADRs, plans and
   documents are English (DEV-2.1). Every text for a person has an English and a Polish
   variant in the catalog `src/archiwista/messages/` (one module per area, key
@@ -71,9 +71,9 @@ Python 3.12 or newer. The default run and the gate leave out the markers `live` 
 network services and stores), `perf` (the synthetic store of 50,000 slots) and `smb`
 (a real SMB share); each needs its own setup (`.env.example`). `db` and `slow` are
 registered (DEV-10.1) and not used yet. Coverage floor 80% (`fail_under` of
-`[tool.coverage.report]`; the gate passes `--cov`). Run tests with `TMPDIR` on a local
-disk: a network share breaks SQLite and hard links. The full gate takes about 50 to 60
-minutes (the interface tests drive Chromium; those that depend on the engine also Firefox).
+`[tool.coverage.report]`; the gate passes `--cov`). Run tests with `TMPDIR` on a local disk
+(not a share, which breaks SQLite and hard links; not setgid) under `umask 077` (PROGRESS
+Next 14: E7-12, C2). The full gate takes about 75 to 90 minutes (Chromium; Firefox too).
 
 ## Code map
 

@@ -1,6 +1,7 @@
-# User guide: Archiwista 0.3
+# User guide: Archiwista 0.3.0
 
-Archiwista 0.3 "Actions" shows a Kartograf store, and the files of an Obserwator
+Archiwista 0.3.0 (v0.3 "Actions", v0.4 "Team" and the projects in one release) shows a
+Kartograf store, and the files of an Obserwator
 store, on a map, in a catalog and in file cards, with previews, the Fan, the
 Timeline and comparison; projects have a folder of own data and snapshots. It
 acts through the producer: it asks the source what it has for an area, plans and
@@ -994,8 +995,7 @@ shows nor changes it) and check it with `archiwista doctor`.
 The three-computer SMB/TLS deployment and shared-queue acceptance procedure is
 in [`reports/v0.4-lan-runbook.md`](reports/v0.4-lan-runbook.md). It ran on the
 LAN on 2026-10-30, on two computers with three people's sessions (a third
-computer remains untested); this section describes the built
-interface, not a released installation.
+computer remains untested). Team mode is part of release 0.3.0.
 
 ```toml
 [team]

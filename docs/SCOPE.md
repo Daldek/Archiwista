@@ -2,7 +2,7 @@
 
 2026-10-17 · @Piotr
 
-**Status:** MVP scope approved; v0.1 and v0.2 released · requirements:
+**Status:** MVP scope approved; v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0 · requirements:
 [`PRD.md`](PRD.md) · details of each version and acceptance criteria:
 [`SPEC.md`](SPEC.md) section 13 · decision on the scope: A-ADR-025
 ([`DECISIONS.md`](DECISIONS.md)). The interface is Polish; the names of views
@@ -161,11 +161,11 @@ Full acceptance criteria: SPEC 13.
      after pre-building, the first thumbnail of a current version from an
      HDD/SMB store is served from the local memory within the target time of a
      preview from memory (SPEC 4.5).
-   - Status (2026-10-26): built, not released; criteria 3, 5, 7 and 8 (local disk)
+   - Status (2026-10-26): built; criteria 3, 5, 7 and 8 (local disk)
      met, the live criteria written for the user to run. Evidence and conditions:
-     [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md). Released together
-     with v0.4 and the projects (stage 6; D2 of 2026-10-31); its project actions are
-     rewritten by A-ADR-049.
+     [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md). Ships in release
+     0.3.0 with v0.4 and the projects (stage 6; D2 of 2026-10-31; the release named and
+     frozen by the author on 2026-11-16); its project actions are rewritten by A-ADR-049.
 5. **v0.4 "Team".** A server on the local network: sign-in, account management
    and project sharing in the interface, TLS, an action log, a shared queue, limits per
    person, file download, preferences (A-ADR-046, A-ADR-047; LDAP/AD groups deferred).
@@ -173,13 +173,13 @@ Full acceptance criteria: SPEC 13.
      the user from a runbook); the permissions of the roles checked by tests; the action log
      complete; no start outside `127.0.0.1` without sign-in and TLS; a security checklist
      (OWASP ASVS 5.0 level 1 subset).
-   - Status (2026-11-14): implementation, the review's fixes and T12's automated
+   - Status (2026-11-16): implementation, the review's fixes and T12's automated
      acceptance in `develop` since 2026-11-03, every C9 route called by each role as the
      matrix says; the checklist's five deviations accepted for the LAN deployment
-     (delegated approval). The LAN runbook (`reports/v0.4-lan-runbook.md`) ran once on one
-     machine; its run on three computers is the author's; release approval remains the
-     author's decision.
-6. **Projects (A-ADR-049)**, released together with v0.3 and v0.4 as one release (the
+     (delegated approval). The LAN runbook (`reports/v0.4-lan-runbook.md`) ran on 2026-10-30
+     on one machine and on the LAN (SMB, TLS, two computers with three people's sessions;
+     a third computer is untested). Ships in release 0.3.0 (2026-11-16, the author).
+6. **Projects (A-ADR-049)**, released together with v0.3 and v0.4 as one release, 0.3.0 (the
    author's decisions of 2026-10-31: option B of the Nogat plan, ECO-054, D2 and D6).
    Archiwista's own project file `archiwista-project/1`, pins of stored versions from
    "Stan lokalny", the "Catalog" and the file card, and of new data from the plan window;
@@ -190,17 +190,17 @@ Full acceptance criteria: SPEC 13.
    - Gate: SPEC 13 "Projects" (the file written and read back, two writers, pinning
      offline, the plan window's pins, the four jobs, D5, the activity, the exports, UC-06
      live).
-   - Status (2026-11-14): P1 to P6 done, in `develop` since 2026-11-03; not released.
+   - Status (2026-11-16): P1 to P6 done, in `develop` since 2026-11-03; ships in release 0.3.0.
 7. **v0.5 "IMGW stations".** The Obserwator add-on, stations, coverage of series,
    station card, freshness and synchronisation of archives, the check, re-pin and
    restore of IMGW archive versions pinned in projects (Obserwator builds the series
    offline, A-ADR-056).
    - Gate: the IMGW catalog index agrees with the Obserwator API; parity with
      the `obserwator` CLI; coverage labels agree with the table of edge cases.
-   - Status (2026-11-14): the Obserwator source, the station views and the
+   - Status (2026-11-16): the Obserwator source, the station views and the
      synchronisation of archives are in `develop` (A-ADR-032, A-ADR-045, A-ADR-050,
-     A-ADR-056); the archive badge of the stations is not built; not released, it waits
-     for Obserwator's release.
+     A-ADR-056) and ship in release 0.3.0 with Obserwator 3.0.0; the archive badge of the
+     stations is not built.
 8. **v0.6 "PL + CZ".** A PL + CZ view without merging, the merged border
    surface by Kartograf (KF), ČHMÚ stations through Obserwator in the v0.5
    views.
@@ -253,7 +253,7 @@ The full list: SPEC 14.
 
 | Risk | Effect | Countermeasure |
 | --- | --- | --- |
-| The MVP depends on an Obserwator release with a store (today unreleased: 3.0.0 in development, pinned by commit; IMGW-1 to IMGW-13, IMGW-21) | v1.0 waits for Obserwator | requirements agreed early; v0.1 to v0.4 without Obserwator; the Obserwator source is an add-on |
+| The MVP depends on an Obserwator release with a store (3.0.0, released with Archiwista 0.3.0 in the first joint release of the ecosystem; IMGW-1 to IMGW-13, IMGW-21) | v1.0 waits for Obserwator | requirements agreed early; v0.1 to v0.4 without Obserwator; the Obserwator source is an add-on |
 | The MVP depends on ČHMÚ stations in Obserwator (IMGW-15 to IMGW-19, in its development version and read by the Obserwator adapter; the tool was renamed from IMGWTools in ECO-057) | v0.6, and with it v1.0, waits for Obserwator; a separate package changes the adapter | requirements reported early (SPEC 12.7); the same contracts with the supplier as an additive change; one Obserwator adapter, the adapter decision at the Obserwator release |
 | Dependence on Kartograf releases (KA to KH); KF (merged surface, today R6 in the backlog) blocks the MVP | stages wait, v0.6 and v1.0 wait for KF | KA small and first; KF reported as an MVP requirement; a common schedule with the Kartograf roadmap |
 | Team mode in the MVP widens the security scope | a longer way to v1.0 | v0.4 before the IMGW data; a security review in the v1.0 gate |
