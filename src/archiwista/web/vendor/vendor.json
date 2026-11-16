@@ -1,0 +1,108 @@
+{
+  "description": "Third-party files of the interface, served from the package (no CDN at run time). Each file is byte-identical to the listed source except where 'modified' says otherwise.",
+  "libraries": [
+    {
+      "name": "preact",
+      "version": "10.29.8",
+      "license": "MIT",
+      "license_file": "preact/LICENSE",
+      "source": "https://registry.npmjs.org/preact/-/preact-10.29.8.tgz",
+      "integrity": "sha512-ej2aVZ+vZ8WO7tvlQWRM9N63A0KzF9q4mWJfDUHgYaIofWY9hu74QdnQrjoPMmZi2/nZ5gN0bJCQF49xQqx09Q==",
+      "files": {
+        "preact/preact.mjs": {
+          "from": "package/dist/preact.module.js",
+          "sha256": "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8"
+        },
+        "preact/hooks.mjs": {
+          "from": "package/hooks/dist/hooks.module.js",
+          "from_sha256": "a6ee626f2d01570592dd569a792e3f050154aa02890eead8c223fa3ed5aa3d5a",
+          "sha256": "ffff498c3006fea511e5a523c9494199bf6d80d3c5d3fe5161bb745203e98932",
+          "modified": "import{options as n}from\"preact\"; rewritten to import { options as n } from \"./preact.mjs\"; (the CSP script-src 'self' blocks inline import maps, so modules use relative paths)"
+        },
+        "preact/LICENSE": {
+          "from": "package/LICENSE",
+          "sha256": "1fe6958409c8c257a70c587a18b6f7f412b179b456630790d30b2ec9a8e4b7d4"
+        }
+      }
+    },
+    {
+      "name": "htm",
+      "version": "3.1.1",
+      "license": "Apache-2.0",
+      "license_file": "htm/LICENSE",
+      "source": "https://registry.npmjs.org/htm/-/htm-3.1.1.tgz",
+      "integrity": "sha512-983Vyg8NwUE7JkZ6NmOqpCZ+sh1bKv2iYTlUkzlWmA5JD2acKoxd4KVxbMmxX/85mtfdnDmTFoNKcg5DGAvxNQ==",
+      "files": {
+        "htm/htm.mjs": {
+          "from": "package/dist/htm.module.js",
+          "sha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
+        },
+        "htm/LICENSE": {
+          "from": "package/LICENSE",
+          "sha256": "740725f7252e750af735d0028cc534970772f513331e9f68150fede8fb3ce00f"
+        }
+      }
+    },
+    {
+      "name": "maplibre-gl",
+      "version": "6.14.0",
+      "license": "BSD-3-Clause",
+      "license_file": "maplibre-gl/LICENSE.txt",
+      "source": "https://registry.npmjs.org/maplibre-gl/-/maplibre-gl-6.14.0.tgz",
+      "integrity": "sha512-L7U9y9TyPJ3P/JJbW+eH+A3FzdPq+3fnZFqqeCwf/S6cRGganHwVI5b/C8/zOYzreUzsloDPZVVaMQA94wOt4A==",
+      "files": {
+        "maplibre-gl/maplibre-gl.mjs": {
+          "from": "package/dist/maplibre-gl.mjs",
+          "sha256": "244d36122c1398da3a8259817cc6d71e04321afe6404f32606b4b6c6cc4f26fb"
+        },
+        "maplibre-gl/maplibre-gl-worker.mjs": {
+          "from": "package/dist/maplibre-gl-worker.mjs",
+          "sha256": "5f1e2f0e1624082b7e88a06e4c86085992b0f8c02929801e552f3f7a119856a9"
+        },
+        "maplibre-gl/maplibre-gl.css": {
+          "from": "package/dist/maplibre-gl.css",
+          "sha256": "bacba6a85a867fcf602f2ff88331b8acf7edf3fbd063a519888cfbff39970193"
+        },
+        "maplibre-gl/LICENSE.txt": {
+          "from": "package/LICENSE.txt",
+          "sha256": "ee5fc05a0677eaf69601d2c7db0d9ecd6cc27c3abc1d0733bc9ed34707cf8ef2"
+        }
+      }
+    },
+    {
+      "name": "openmaptiles/fonts (Noto Sans Regular glyphs)",
+      "version": "2.0",
+      "license": "OFL-1.1",
+      "license_file": "glyphs/noto-sans-regular/LICENSE",
+      "source": "https://github.com/openmaptiles/fonts/releases/download/v2.0/noto-sans.zip",
+      "sha256": "d117316544b43a5dde7ee761b36e17701e9f85574e181d76a74814240fdbaf34",
+      "files": {
+        "glyphs/noto-sans-regular/0-255.pbf": {
+          "from": "Noto Sans Regular/0-255.pbf",
+          "sha256": "ef1f38a3f1978591e846e9eaddf8a54f7047f546fc6aaed7872cc53151a5de78"
+        },
+        "glyphs/noto-sans-regular/256-511.pbf": {
+          "from": "Noto Sans Regular/256-511.pbf",
+          "sha256": "992557f9e2574cfb9a75e16c7b52832578849772b7c9a6e480d6213fb008fe5d"
+        },
+        "glyphs/noto-sans-regular/512-767.pbf": {
+          "from": "Noto Sans Regular/512-767.pbf",
+          "sha256": "a4c5cdf9623cb0bf7e9c6b0e8be4bf38b524bc29819dd2276c8ca63d5e43dd21"
+        },
+        "glyphs/noto-sans-regular/1024-1279.pbf": {
+          "from": "Noto Sans Regular/1024-1279.pbf",
+          "sha256": "834adb7f3ea9944ea530214841ee098e5482e85180f14df85036939261e0ffbb"
+        },
+        "glyphs/noto-sans-regular/8192-8447.pbf": {
+          "from": "Noto Sans Regular/8192-8447.pbf",
+          "sha256": "f061e5b4e42e5925228534d8822b423a029569263db09f5ce44573600d45295f"
+        },
+        "glyphs/noto-sans-regular/LICENSE": {
+          "source": "https://raw.githubusercontent.com/openmaptiles/fonts/v2.0/noto-sans/LICENSE",
+          "sha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+        }
+      },
+      "note": "Only the ranges of the map's labels: Latin with Latin Extended-A, -B and the IPA and spacing modifier letters (U+0000-U+02FF), Cyrillic (U+0400-U+04FF) for local names of the basemap without a Polish or Latin one, and general punctuation (U+2000-U+20FF); the license file is noto-sans/LICENSE of the openmaptiles/fonts repository at tag v2.0."
+    }
+  ]
+}

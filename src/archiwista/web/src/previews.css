@@ -1,0 +1,65 @@
+/* Previews (previews.js; plan v0.2 step 12a): a file's preview pane, its
+   legend and reason, the build of its local preview and the details of
+   vectors, point clouds and archives. Loaded by the module with
+   loadStylesheet; tokens and shared controls come from styles.css. */
+
+.pv-pane { display: grid; gap: 12px; min-width: 0; justify-items: stretch; }
+.pv-pane > .seg, .pv-pane > .pv-retry { justify-self: start; }
+.pv-pane .section-title { margin: 0; }
+.pv-note { margin: 0; }
+
+/* the thumbnail: transparency (nodata) over a checkerboard */
+.pv-figure { margin: 0; display: grid; gap: 6px; }
+.pv-frame { position: relative; display: grid; place-items: center; min-height: 180px; padding: 6px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: repeating-conic-gradient(#eef0f4 0 25%, #fff 0 50%) 0 0 / 16px 16px; }
+.pv-image { display: block; width: 100%; height: auto; max-height: 400px; object-fit: contain; }
+.pv-frame-note { margin: 0; max-width: 34ch; text-align: center; font-size: 12.5px; color: var(--text-2); line-height: 1.45; }
+.pv-frame > .loading { position: absolute; right: 8px; bottom: 8px; background: rgba(255, 255, 255, 0.92); border-radius: 8px; padding: 4px 8px; font-size: 12px; }
+.pv-frame > .problem, .pv-frame > .pv-reason { width: 100%; }
+.pv-caption { font-size: 11.5px; color: var(--text-3); line-height: 1.4; }
+
+/* legends: a colour ramp with its range, or classes with swatches */
+.pv-legend { display: grid; gap: 5px; }
+.pv-ramp { display: block; height: 12px; border-radius: 6px; background: var(--ramp); border: 1px solid rgba(16, 24, 40, 0.1); }
+.pv-range { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--text-2); }
+.pv-classes { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 14px; font-size: 12px; max-height: 260px; overflow-y: auto; }
+.pv-classes li { display: flex; align-items: flex-start; gap: 7px; line-height: 1.35; color: var(--text-2); }
+.pv-classes .sw { margin-top: 2px; border: 1px solid rgba(16, 24, 40, 0.15); }
+
+/* why something is missing, and what to do about it */
+.pv-reason { display: flex; gap: 8px; align-items: flex-start; border-radius: 10px; padding: 8px 10px; font-size: 12.5px; line-height: 1.45; border: 1px solid transparent; }
+.pv-reason > svg { flex: none; margin-top: 2px; }
+.pv-reason > div { display: grid; gap: 3px; min-width: 0; }
+.pv-reason p { margin: 0; overflow-wrap: anywhere; }
+.pv-reason.info { background: var(--accent-soft); border-color: #c7d2fe; color: var(--text); }
+.pv-reason.info > svg { color: var(--accent-2); }
+.pv-reason.warn { background: var(--warn-bg); border-color: #fde68a; color: var(--warn-ink); }
+.pv-reason-message { font-weight: 500; }
+.pv-reason-fix b { font-weight: 600; }
+
+.pv-facts, .pv-kv { margin: 0; grid-template-columns: 136px minmax(0, 1fr); }
+.pv-facts dd, .pv-kv dd { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+
+/* the build of a local preview and its job */
+.pv-build { display: grid; gap: 8px; justify-items: start; }
+.pv-build .hint { margin: 0; }
+.pv-build .job-status { justify-self: stretch; }
+.pv-failures { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+
+/* vectors, point clouds, archives */
+.pv-block { display: grid; gap: 8px; min-width: 0; }
+.pv-layer { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); min-width: 0; }
+.pv-layer summary { cursor: pointer; padding: 7px 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.pv-layer[open] summary { border-bottom: 1px solid var(--line); }
+.pv-layer-body { padding: 8px 10px 10px; display: grid; gap: 8px; min-width: 0; }
+.pv-fields { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.pv-fields li { display: inline-flex; align-items: baseline; gap: 5px; border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; background: var(--panel-2); font-size: 11.5px; }
+.pv-table { max-height: 300px; overflow: auto; }
+.pv-table table { font-size: 11.5px; }
+.pv-table caption { caption-side: top; text-align: left; padding: 6px 10px; font-size: 11.5px; color: var(--text-2); background: var(--panel-2); border-bottom: 1px solid var(--line); }
+.pv-table td.num, .pv-table th.num { text-align: right; white-space: nowrap; }
+.pv-sample td { max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pv-member { overflow-wrap: anywhere; }
+.pv-member svg { vertical-align: -2px; margin-right: 4px; color: var(--text-3); }
+.pv-share { display: inline-block; width: 64px; height: 6px; border-radius: 3px; vertical-align: middle; background: linear-gradient(90deg, var(--accent-2) var(--share), #e0e7ff 0); }
+
+.pv-actions { display: flex; flex-wrap: wrap; gap: 6px; }

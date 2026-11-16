@@ -1,0 +1,8 @@
+/* The top bar's search button (search.js): Ctrl+K or / opens the catalog's search. */
+.search-trigger { gap: 7px; color: var(--text-2); min-width: 0; }
+.search-trigger .kbd { margin-left: 2px; }
+
+@media (max-width: 860px) {
+  .search-trigger { width: 32px; padding: 0; }
+  .search-trigger-text, .search-trigger .kbd { display: none; }
+}

@@ -1,0 +1,12 @@
+/* The one strip of the providers' lines of a view or a card (provider-lines.js,
+   Nogat DEV-20.5): the kit's <nogat-sources> (nogat/nogat-sources.css) at the
+   foot of the data, on the panel's ground under a line. */
+.view-sources { flex: none; min-width: 0; padding: 5px 14px; border-top: 1px solid var(--line); background: var(--panel-2); }
+.drawer > .view-sources { margin-top: auto; padding: 5px 16px; }
+
+/* „Kopiuj atrybucję” at the end of the strip's dialog. */
+.nogat-sources-content > .sources-copy { margin: 16px 0 0; }
+
+@media (max-width: 860px) {
+  .view-sources { padding: 5px 10px; }
+}

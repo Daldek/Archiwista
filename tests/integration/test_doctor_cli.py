@@ -1,0 +1,186 @@
+"""End-to-end ``archiwista doctor`` with the installed plugin registry."""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from archiwista.config import AppSettings, ConfigStore, TeamSettings
+from tests.fixtures.isolation import Canary
+from tests.fixtures.team_server import team_tls
+
+
+def _archiwista(
+    tmp_path: Path, *argv: str, stdin: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run ``archiwista ARGV`` as a fresh installation would, under ``tmp_path``."""
+    env = {
+        **os.environ,
+        "XDG_CONFIG_HOME": str(tmp_path / "config"),
+        "XDG_DATA_HOME": str(tmp_path / "data"),
+    }
+    return subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from archiwista.cli import main; raise SystemExit(main())",
+            *argv,
+        ],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+
+def _doctor(tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    """Run ``archiwista doctor`` as a fresh installation would, under ``tmp_path``."""
+    return _archiwista(tmp_path, "doctor")
+
+
+def test_doctor_cli_reports_installed_kartograf_plugin(tmp_path: Path) -> None:
+    """A fresh installation finds both entry points and passes, installed or not."""
+    result = _doctor(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "[OK] Wtyczka kartograf: wersja 0.8.0" in result.stdout
+    assert "] Wtyczka obserwator: " in result.stdout
+    assert not (tmp_path / "config").exists()
+
+
+def test_doctor_cli_names_the_default_store_root_of_kartograf(
+    tmp_path: Path, producer_canary: Canary
+) -> None:
+    """The root Kartograf would use, and the variable that gave it, are printed."""
+    result = _doctor(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "[OK] Wtyczka kartograf: domyślny katalog główny magazynu"
+        f" {producer_canary.kartograf_root} (zmienna KARTOGRAF_ROOT; nie istnieje)"
+    ) in result.stdout
+    assert producer_canary.appeared() == []
+
+
+def test_doctor_cli_names_the_default_raw_and_data_roots_of_obserwator(
+    tmp_path: Path, producer_canary: Canary
+) -> None:
+    """The roots Obserwator would use, and the variables that gave them, are printed.
+
+    The raw root is its store root; the line of its data root follows.
+    """
+    pytest.importorskip("obserwator")
+    raw, data = producer_canary.obserwator_raw_root, producer_canary.obserwator_root
+
+    result = _doctor(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        f"[OK] Wtyczka obserwator: domyślny katalog główny magazynu {raw}"
+        " (zmienna OBSERWATOR_RAW_ROOT; nie istnieje)\n"
+        f"[OK] Wtyczka obserwator: domyślny katalog danych {data}"
+        " (zmienna OBSERWATOR_ROOT; nie istnieje)\n"
+    ) in result.stdout
+    assert producer_canary.appeared() == []
+
+
+def _configure(tmp_path: Path, team: TeamSettings) -> None:
+    """Write the settings file ``_doctor`` reads, with the table ``[team]``."""
+    config = ConfigStore(tmp_path / "config" / "archiwista" / "config.toml")
+    config.save(AppSettings(team=team))
+
+
+def test_doctor_cli_reports_team_mode(tmp_path: Path) -> None:
+    """The origin, the TLS pair, a key others may read, and the trusted proxies."""
+    tls = team_tls(tmp_path / "tls")
+    tls.key.chmod(0o644)
+    team = TeamSettings(
+        enabled=True,
+        origin="https://archiwista.firma.local",
+        tls_cert=tls.cert,
+        tls_key=tls.key,
+        trusted_proxies=("127.0.0.1", "10.0.0.0/24"),
+    )
+    _configure(tmp_path, team)
+    for argv, stdin in [
+        (("users", "add", "anna", "--role", "admin"), None),
+        (("users", "password", "anna", "--stdin"), "kajak-po-Rabie-o-swicie\n"),
+    ]:
+        made = _archiwista(tmp_path, *argv, stdin=stdin)
+        assert made.returncode == 0, made.stderr
+
+    result = _doctor(tmp_path)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines = result.stdout.splitlines()
+    assert "[OK] Tryb zespołu: ludzie otwierają https://archiwista.firma.local" in lines
+    assert (
+        f"[OK] Tryb zespołu: TLS w serwerze, certyfikat {tls.cert} i klucz {tls.key}"
+        " wczytują się jako para"
+    ) in lines
+    assert (
+        f"[UWAGA] Klucz TLS {tls.key} jest dostępny dla innych kont tego komputera"
+        " (uprawnienia 0644)"
+    ) in lines
+    assert (
+        f"    Naprawa: chmod 600 {tls.key} (do odczytu tylko przez konto serwera)"
+        in (lines)
+    )
+    assert (
+        "[OK] Tryb zespołu: zaufane serwery pośredniczące 127.0.0.1, 10.0.0.0/24"
+        in lines
+    )
+    assert (
+        "[OK] Tryb zespołu: administratorzy, którzy mogą się zalogować: anna" in lines
+    )
+
+
+def test_doctor_cli_reports_team_mode_without_tls_as_an_error(tmp_path: Path) -> None:
+    """Neither TLS files nor a trusted proxy: the error serve would refuse with."""
+    _configure(
+        tmp_path, TeamSettings(enabled=True, origin="https://archiwista.firma.local")
+    )
+
+    result = _doctor(tmp_path)
+
+    assert result.returncode == 10, result.stdout + result.stderr
+    assert "[BŁĄD] Tryb zespołu wymaga TLS" in result.stdout
+    assert "Tryb zespołu: zaufane serwery" not in result.stdout
+    assert "[BŁĄD] Tryb zespołu wymaga włączonego administratora" in result.stdout
+    assert "Naprawa: Na tym komputerze: archiwista users add ID --role admin" in (
+        result.stdout
+    )
+    assert not (tmp_path / "data").exists()
+
+
+def test_doctor_cli_keeps_the_data_where_nogat_toml_puts_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``data_dir`` of the shared file in the user configuration directory wins."""
+    # Arrange
+    shared = tmp_path / "nogat-data"
+    settings = tmp_path / "config" / "nogat" / "nogat.toml"
+    settings.parent.mkdir(parents=True)
+    settings.write_text(f'[nogat]\ndata_dir = "{shared}"\n', encoding="utf-8")
+    monkeypatch.delenv("NOGAT_CONFIG")
+
+    # Act
+    doctor = _doctor(tmp_path)
+    token = _archiwista(tmp_path, "token", "--port", "8090")
+
+    # Assert
+    assert doctor.returncode == 0, doctor.stdout + doctor.stderr
+    assert (
+        f"[OK] Ustawienia narzędzi Nogat: {settings}"
+        " (katalog konfiguracji użytkownika; odczytany)"
+    ) in doctor.stdout
+    assert (
+        f"[OK] Dane lokalne (indeks, stan, zadania): {shared / 'archiwista'}"
+        " ([nogat] data_dir w pliku nogat.toml)"
+    ) in doctor.stdout
+    assert token.returncode == 0, token.stdout + token.stderr
+    assert (shared / "archiwista" / "index.sqlite").is_file()
+    assert not (tmp_path / "data").exists()

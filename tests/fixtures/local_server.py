@@ -1,0 +1,167 @@
+"""Run ``archiwista serve`` in a background thread, on a free or a given port."""
+
+import io
+import os
+import queue
+import socket
+import stat
+import threading
+import time
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import ExitStack, contextmanager
+from functools import partial
+from pathlib import Path
+from unittest import mock
+
+import archiwista.server
+from archiwista.app import create_app
+from archiwista.config import AppPaths
+from archiwista.server import AppServer, serve_main
+from archiwista.sources import SourceAdapter, SourceState
+from archiwista.sources.registry import PluginRegistry, source_error
+
+START_TIMEOUT_S = 10.0
+
+
+class NoSources:
+    """Plugin registry without producers, enough for a server without stores."""
+
+    def producers(self) -> tuple[str, ...]:
+        """Return no producer ids."""
+        return ()
+
+    def states(self) -> tuple[SourceState, ...]:
+        """Return no plugin states."""
+        return ()
+
+    def state(self, producer: str) -> SourceState:
+        """Report every producer as not installed."""
+        return SourceState(producer=producer, status="not_installed")
+
+    def adapter(self, producer: str) -> SourceAdapter:
+        """Refuse every producer as not installed (``source_unavailable``)."""
+        raise source_error(self.state(producer))
+
+    def probe(self, producer: str, root: Path, *, data: bool = False) -> SourceState:
+        """Report every producer as not installed, whatever the kind of root."""
+        return self.state(producer)
+
+
+def server_nodelay(client: socket.socket) -> int:
+    """Return ``TCP_NODELAY`` of the server's end of ``client``'s connection.
+
+    The server of a test runs in this process, so its end is one of the
+    process's descriptors (listed in ``/dev/fd`` on Linux and macOS): the
+    socket whose peer is ``client``. ``client`` must have had an answer, so
+    that the server has taken the connection.
+    """
+    local, peer = client.getsockname(), client.getpeername()
+    for name in os.listdir("/dev/fd"):
+        descriptor = int(name)
+        try:
+            if not stat.S_ISSOCK(os.fstat(descriptor).st_mode):
+                continue
+            with socket.socket(fileno=os.dup(descriptor)) as end:
+                if end.getsockname() == peer and end.getpeername() == local:
+                    return end.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
+        except OSError:  # closed meanwhile, or a socket without a peer
+            continue
+    raise AssertionError(f"no socket of this process is connected to {local}")
+
+
+class Terminal(io.StringIO):
+    """Standard output that is a terminal, as a person's shell (``isatty``)."""
+
+    def isatty(self) -> bool:
+        """Return ``True``: ``archiwista serve`` prints its address here."""
+        return True
+
+
+def local_paths(tmp_path: Path) -> AppPaths:
+    """Place configuration and local data inside the test directory.
+
+    The server's logs lie in the data directory too (``AppPaths.logs_dir``),
+    never in the user's state directory.
+    """
+    return AppPaths(
+        config_file=tmp_path / "config" / "config.toml",
+        data_dir=tmp_path / "data",
+    )
+
+
+@contextmanager
+def serving(
+    paths: AppPaths,
+    *,
+    registry: PluginRegistry | None = None,
+    on_ready: Callable[[AppServer], object] | None = None,
+    port: int = 0,
+    web_dir: Path | None = None,
+    gui: Mapping[str, str] | None = None,
+    terminal: bool = False,
+    err: io.StringIO | None = None,
+) -> Iterator[tuple[AppServer, str]]:
+    """Run ``serve_main`` on ``port``; yield the server and what it printed.
+
+    Without ``registry`` the server has no producers (``NoSources``);
+    ``on_ready`` runs as ``archiwista serve`` runs it (e.g. opening the
+    browser). ``port`` ``0`` is a free one; the port of a stopped server
+    serves the same address again. ``web_dir`` replaces the package's
+    interface files (an upgrade of the interface); ``gui`` is the table of
+    the GUIs ``nogat.toml`` would give. Standard output is a terminal with
+    ``terminal`` (the server prints its address only there; ``server.url``
+    holds it anyway); ``err`` receives standard error, the lifecycle records
+    of the server's logs among them. The server stops when the block ends
+    and must then exit with status 0.
+    """
+    out = Terminal() if terminal else io.StringIO()
+    err = io.StringIO() if err is None else err
+    ready: queue.Queue[AppServer] = queue.Queue()
+    statuses: list[int] = []
+
+    def ready_now(server: AppServer) -> None:
+        if on_ready is not None:
+            on_ready(server)
+        ready.put(server)
+
+    def run() -> None:
+        statuses.append(
+            serve_main(
+                paths,
+                registry if registry is not None else NoSources(),
+                out,
+                err,
+                port=port,
+                on_ready=ready_now,
+                gui=gui,
+            )
+        )
+
+    with ExitStack() as patches:
+        if web_dir is not None:
+            patches.enter_context(
+                mock.patch.object(
+                    archiwista.server,
+                    "create_app",
+                    partial(create_app, web_dir=web_dir),
+                )
+            )
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        deadline = time.monotonic() + START_TIMEOUT_S
+        while True:
+            try:
+                server = ready.get(timeout=0.05)
+                break
+            except queue.Empty:
+                if not thread.is_alive() or time.monotonic() > deadline:
+                    raise AssertionError(
+                        f"serve did not start: {err.getvalue()}"
+                    ) from None
+        try:
+            yield server, out.getvalue()
+        finally:
+            server.stop()
+            thread.join(timeout=START_TIMEOUT_S)
+    assert not thread.is_alive()
+    assert statuses == [0], err.getvalue()

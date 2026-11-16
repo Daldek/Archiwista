@@ -1,0 +1,221 @@
+/**
+ * Texts of the station card (views/station.js, docs/SPEC.md 6.7 and sketch
+ * 6.5 k; plan I8.5): the header with the station's type, river and the
+ * year-type switch, the location or the reason without one, the coverage of
+ * each variable, the tabs, the series versions and the actions; and of the
+ * comparison of stations (views/station-compare.js, plan I8.6). The lines of
+ * the providers' terms have their own texts (labels/provider-lines.js).
+ */
+
+export const station = {
+  eyebrow: "Karta stacji",
+  close: "Zamknij kartę stacji",
+  bad_address: "Adres karty stacji „{value}” nie wskazuje magazynu, dostawcy i kodu stacji.",
+  unnamed: "(bez nazwy)",
+  river: "{river} (kod hydrograficzny {code})",
+  active: "czynna",
+  historical: "historyczna",
+  year_type: "Lata",
+  year_types: { hydrological: "hydrologiczne", calendar: "kalendarzowe" },
+  year_type_hint:
+    "Rok hydrologiczny trwa od 1 XI do 31 X. Wybór trafia do adresu i jest zapamiętywany " +
+    "dla danych {family}.",
+  year_type_annual: "Wykres roczny: zawsze lata hydrologiczne",
+  year_type_failed: "Nie udało się zapamiętać wyboru lat.",
+  families: { hydro: "hydrologicznych", meteo: "meteorologicznych" },
+  location: {
+    point: "Położenie: {lat}° N, {lon}° E",
+    source: "źródło: {source}",
+    catalog: "katalog {date}",
+    uncertainty: "niepewność ±{metres} m",
+    on_boundary: "na granicy obszaru",
+    none: "Bez położenia: {reason}",
+    none_note: "Stacji nie ma na mapie: Archiwista nie zgaduje położenia.",
+  },
+  station_page: "Strona stacji IMGW",
+  station_page_title: "Strona stacji w serwisie hydro.imgw.pl (otwiera się w nowej karcie)",
+  actions: {
+    label: "Działania",
+    show_on_map: "Pokaż na mapie",
+    show_on_map_title: "Mapa produktu stacji, przybliżona na tę stację",
+    copy_path: "Kopiuj ścieżkę pliku",
+    compare: "Porównaj z…",
+    compare_title:
+      "Ta zmienna tej stacji obok innych stacji (najwyżej pięciu) na jednej osi czasu",
+  },
+  coverage: {
+    title: "Pokrycie — osobno dla każdej zmiennej",
+    none: "Stacja nie ma szeregów w indeksie.",
+    series: "{dataset} · lata {year_type} {years}",
+    full_years: ["pełny rok", "pełne lata", "pełnych lat"],
+    longest_gap: "najdł. przerwa {from}–{to} ({units})",
+    longest_gap_units: "najdł. przerwa: {units}",
+    variable_title: "{variable} ({unit}): {label}",
+  },
+  units: {
+    day: ["dzień", "dni", "dni"],
+    month: ["miesiąc", "miesiące", "miesięcy"],
+    half_year: ["półrocze", "półrocza", "półroczy"],
+    year: ["rok", "lata", "lat"],
+  },
+  tabs: {
+    label: "Widoki karty stacji",
+    chart: "Wykres",
+    meta: "Metadane",
+    origin: "Pochodzenie",
+    tech: "Szczegóły techniczne",
+  },
+  chart: {
+    series: "Szereg",
+    series_units: { day: "dobowe", month: "miesięczne" },
+    series_annual: "Roczne (z charakterystyk półrocznych)",
+    variable: "Zmienna",
+    second: "Druga zmienna",
+    second_none: "brak",
+    second_title: "Zmienna innej jednostki ma prawą oś",
+    range: "zakres: {from}–{to}",
+    whole: "Cały okres",
+    whole_title: "Cały szereg (Home)",
+    simplified: "wykres uproszczony: min./śr./maks. z {interval}",
+    simplified_whole: "cały okres",
+    simplified_more: {
+      day: "po przybliżeniu wartości dobowe",
+      month: "po przybliżeniu wartości miesięczne",
+    },
+    values: { day: "wartości dobowe", month: "wartości miesięczne" },
+    interval_units: {
+      day: ["dnia", "dni", "dni"],
+      month: ["miesiąca", "miesięcy", "miesięcy"],
+    },
+    annual_note:
+      "roczne maksimum i minimum wyznaczone z charakterystyk półrocznych {provider}",
+    annual_legend:
+      "● maksimum (linia ciągła) i minimum (przerywana) roku hydrologicznego, większe " +
+      "i mniejsze z obu półroczy · ○ niepełny rok: wartość jedynego półrocza",
+    monthly_legend:
+      "linia: średnia miesięczna, pasmo: minimum i maksimum miesiąca, " +
+      "jak je opublikował dostawca",
+    gap_note: "luka etykiety = brak danych: linia przerwana i szare pasmo, bez interpolacji",
+    annual_gap_note: "luka = rok bez wartości w obu półroczach: linia przerwana i szare pasmo",
+    unknown_note: "brak wartości poza luką etykiety (nieznany albo poza jej latami): bez pasma",
+    extremes_note: "○ min. i maks. opublikowane przez dostawcę (z datą w podpowiedzi)",
+    accumulated_note: "◇ suma zbiorcza: suma dni przed nią, nie wartość dnia",
+    summary_range: "{from}–{to} ({units})",
+    summary_variable: "{key}: {valued} z {points} z wartością",
+    points: ["punktu", "punktów", "punktów"],
+    years_of: ["roku", "lat", "lat"],
+    gaps: ["luka", "luki", "luk"],
+    summary_gaps: "{gaps} ({units})",
+    summary_no_gaps: "bez luk",
+    handoff: {
+      title: "Do Hydrologa",
+      kind: "Dane",
+      kind_daily: "wartości dobowe",
+      kind_annual: "maksima roczne (pełne lata hydrologiczne)",
+      variable: "Zmienna",
+      summary: "przekazanie: {what} {variable} [{unit}]",
+      range_shown: " w zakresie wykresu",
+      copy_title:
+        "Skopiuj {what} {variable} jako przekazanie dla Hydrologa (Statystyka przepływów → " +
+        "„{load}” → „{paste}”)",
+      file_title:
+        "Zapisz {what} {variable} jako plik .handoff.json do wczytania w Hydrologu " +
+        "(Statystyka przepływów → „{load}” → „{open_file}”)",
+      field: "Tekst przekazania dla Hydrologa",
+      what_daily: "wartości dobowe",
+      what_annual: "maksima roczne pełnych lat hydrologicznych",
+      left_out: "pominięte lata bez jednego z półroczy: {years}",
+    },
+    tip_value: "{key}: {value} {unit}",
+    tip_simplified: "{key}: śr. {mean} (min. {min} – maks. {max}) {unit}",
+    tip_gap: "{key}: luka (brak danych)",
+    tip_unknown: "{key}: brak wartości, nie luka etykiety",
+    tip_year: "rok hydrologiczny {year}",
+    tip_annual: "{key} {kind}: {value} {unit} · {when} ({half})",
+    halves: { winter: "półrocze zimowe", summer: "półrocze letnie" },
+    halves_both: "oba półrocza",
+    occurrences: ["wystąpienie", "wystąpienia", "wystąpień"],
+    partial: {
+      winter: "niepełny rok: brak półrocza zimowego",
+      summer: "niepełny rok: brak półrocza letniego",
+    },
+    undated: "bez daty",
+    marker: { min: "min.", max: "maks." },
+    periods: { winter: "półrocza zimowego", summer: "półrocza letniego", annual: "roku" },
+    extreme: "{kind} {period}: {value} {unit} · {when} (wartość opublikowana przez dostawcę)",
+    accumulated: "suma zbiorcza {value} {unit} · {day}: suma dni przed nią, nie wartość dnia",
+    plot_label: "Wykres {variables}, {from}–{to}",
+    keys:
+      "Przeciągnij, by przybliżyć zakres; kółko myszy, + i − przybliżają i oddalają, " +
+      "strzałki przesuwają, Home pokazuje cały okres.",
+    empty: "Żadna jednostka szeregu nie leży w zakresie.",
+    none: "Stacja nie ma szeregu, który można narysować na wykresie.",
+    api: "Adres API wykresu",
+  },
+  meta: {
+    code: "Kod",
+    provider: "Dostawca",
+    type: "Rodzaj",
+    river: "Rzeka",
+    hydrographic_code: "Kod hydrograficzny",
+    river_order: "Kolejność na rzece",
+    established: "Rok założenia",
+    gauge_zero: "Zero wodowskazu",
+    river_km: "Kilometr rzeki",
+    elevation: "Wysokość",
+    state: "Stan",
+    catalog: "Katalog stacji",
+    metres: "{value} m n.p.m.",
+    kilometres: "{value} km",
+  },
+  origin: {
+    series: "Szereg: {dataset}",
+    version: "Wersja szeregów",
+    file: "Plik stacji",
+    sha256: "SHA-256",
+    index: "Spis szeregów",
+    license: "Licencja",
+    catalog: "Katalog stacji",
+    catalog_version: "Wersja {label}",
+    location_source: "Źródło położenia",
+    no_series: "Stacja nie ma szeregów w indeksie: żadnego pliku stacji.",
+  },
+  tech: {
+    api: "Odpowiedź API karty",
+    copy_json: "Kopiuj JSON",
+  },
+  compare: {
+    title: "Porównanie stacji",
+    lead: "{variable} z {dataset} · lata {year_type}",
+    stations: "Stacje porównania",
+    remove: "Usuń {name} z porównania",
+    add: "Dodaj stację",
+    add_placeholder: "nazwa, rzeka albo kod",
+    add_title: "Stacja z szeregiem tego zbioru danych, po nazwie, rzece albo kodzie",
+    add_full: "Porównanie ma już pięć stacji: najpierw usuń którąś.",
+    add_none: "Żadna stacja z szeregiem tego zbioru danych nie pasuje.",
+    fewer:
+      "Porównanie potrzebuje co najmniej dwóch stacji (najwyżej pięciu): dodaj stację " +
+      "albo wybierz wiersze listy stacji w Katalogu.",
+    no_dataset: "Adres porównania nie podaje zbioru danych ani zmiennej.",
+    variable: "Zmienna",
+    no_series: "brak danych: stacja nie ma szeregu „{dataset}”",
+    no_variable: "brak danych: szereg stacji nie ma zmiennej {variable}",
+    panel_label: "{name}: {variable}, {from}–{to}",
+    empty: "Żadna jednostka szeregów nie leży w zakresie.",
+    facts: "Fakty stacji",
+    station: "Stacja",
+    years: "Lata z wartością",
+    label: "Etykieta",
+    longest: "Najdłuższa luka",
+    full: "Pełne lata",
+    location: "Położenie",
+    located: "źródło: {source}",
+    unlocated: "bez położenia: {reason}",
+    none: "brak danych",
+    keys:
+      "Zaznaczenie, kółko myszy, + i − oraz strzałki w jednym panelu zmieniają zakres " +
+      "wszystkich; Home pokazuje cały okres.",
+    api: "Adres API porównania",
+  },
+};

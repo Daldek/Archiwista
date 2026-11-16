@@ -1,0 +1,37 @@
+/* „Dziennik” (views/log.js): the action log for administrators.
+   Tokens and shared controls come from styles.css, the badges and the page from cards.css. */
+
+.log-page { max-width: 1280px; }
+.log-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.log-head h1 { font-size: 20px; }
+.log-export { display: grid; justify-items: end; gap: 6px; min-width: 0; }
+.log-export-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.log-export .hint { margin: 0; }
+.log-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+.log-filters .field { margin: 0; flex: 0 1 170px; }
+.log-filters .log-who { flex-basis: 210px; }
+.log-filters .field input, .log-filters .field select { height: 32px; }
+.log-clear { margin-bottom: 3px; }
+.log-table tr.log-row { cursor: pointer; }
+.log-table tr.log-row.open td { background: var(--panel-2); }
+.log-at { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.log-toggle { width: 22px; height: 22px; margin-left: -4px; color: var(--text-3); }
+.log-toggle svg { transition: transform 0.12s ease; }
+.log-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.log-target { overflow-wrap: anywhere; max-width: 280px; }
+.log-table tr.log-details-row td { background: var(--panel-2); padding: 8px 12px 12px 36px; }
+.log-details { display: grid; gap: 10px; min-width: 0; }
+.log-meta { margin: 0; grid-template-columns: 90px minmax(0, 1fr); }
+.log-states { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.log-state { min-width: 0; }
+.log-state p { margin: 0; font-size: 12px; }
+.log-json { margin: 0; max-height: 260px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-family: var(--mono); font-size: 11.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.log-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.log-foot .hint { margin: 0; }
+.log-pages { display: flex; align-items: center; gap: 6px; }
+
+@media (max-width: 860px) {
+  .log-export { justify-items: start; }
+  .log-states { grid-template-columns: minmax(0, 1fr); }
+  .log-table tr.log-details-row td { padding-left: 12px; }
+}

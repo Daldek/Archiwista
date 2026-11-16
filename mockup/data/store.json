@@ -1,0 +1,113 @@
+{
+ "note": "Symulowany stan magazynu (mockup). W Archiwiście stan pochodzi z lokalnego indeksu sidecarów kartograf-meta/1 w magazynie Kartografa.",
+ "root": "<katalog-danych>",
+ "project": "Kraków — hydrologia",
+ "items": [
+  {
+   "product": "nmt",
+   "year": 2023,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.nmt_1m",
+   "vertical_crs": "EVRF2007",
+   "sheets": [
+    "M-34-64-D-d-1-2",
+    "M-34-64-D-d-1-3",
+    "M-34-64-D-d-1-4",
+    "M-34-64-D-d-2-1",
+    "M-34-64-D-d-2-3"
+   ],
+   "downloaded_at": "2026-09-30"
+  },
+  {
+   "product": "nmt",
+   "year": 2019,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.nmt_5m",
+   "vertical_crs": "EVRF2007",
+   "sheets": "all",
+   "downloaded_at": "2026-06-12"
+  },
+  {
+   "product": "nmt",
+   "year": 2017,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.nmt_1m",
+   "vertical_crs": "KRON86",
+   "sheets": "all",
+   "downloaded_at": "2026-03-02"
+  },
+  {
+   "product": "laz",
+   "year": 2023,
+   "horizontal": "PL-1992",
+   "source": "pl.gugik.laz",
+   "vertical_crs": "EVRF2007",
+   "sheets": [
+    "M-34-64-D-d-1-2-2-3",
+    "M-34-64-D-d-1-2-2-4",
+    "M-34-64-D-d-1-2-3-2",
+    "M-34-64-D-d-1-2-3-3",
+    "M-34-64-D-d-1-2-3-4",
+    "M-34-64-D-d-1-2-4-1",
+    "M-34-64-D-d-1-2-4-2",
+    "M-34-64-D-d-1-2-4-3",
+    "M-34-64-D-d-1-2-4-4",
+    "M-34-64-D-d-1-4-1-1",
+    "M-34-64-D-d-1-4-1-2",
+    "M-34-64-D-d-1-4-1-3",
+    "M-34-64-D-d-1-4-1-4",
+    "M-34-64-D-d-1-4-2-1",
+    "M-34-64-D-d-1-4-2-2",
+    "M-34-64-D-d-1-4-2-3",
+    "M-34-64-D-d-1-4-2-4",
+    "M-34-64-D-d-1-4-4-1",
+    "M-34-64-D-d-1-4-4-2",
+    "M-34-64-D-d-2-1-3-1",
+    "M-34-64-D-d-2-1-3-3",
+    "M-34-64-D-d-2-3-1-1",
+    "M-34-64-D-d-2-3-1-2",
+    "M-34-64-D-d-2-3-1-3"
+   ],
+   "downloaded_at": "2026-10-01"
+  },
+  {
+   "product": "orto",
+   "year": 2023,
+   "horizontal": "PL-2000",
+   "source": "pl.gugik.orto",
+   "color": "RGB",
+   "resolution": "0.05m",
+   "sheets": [
+    "7.125.11.02",
+    "7.125.11.03",
+    "7.125.11.07",
+    "7.125.11.08",
+    "7.125.11.09",
+    "7.125.11.11",
+    "7.125.11.12",
+    "7.125.11.13",
+    "7.125.11.14",
+    "7.125.11.17",
+    "7.125.11.18",
+    "7.125.11.23"
+   ],
+   "downloaded_at": "2026-10-02"
+  },
+  {
+   "product": "bdot10k",
+   "year": 2024,
+   "format": "GML",
+   "units": "all",
+   "downloaded_at": "2026-05-20"
+  },
+  {
+   "product": "bdot10k",
+   "current": true,
+   "format": "GPKG",
+   "units": [
+    "1261"
+   ],
+   "downloaded_at": "2026-10-12"
+  }
+ ]
+}

@@ -1,0 +1,131 @@
+"""The real ``archiwista serve`` where a directory is bind-mounted read-only.
+
+An unprivileged user and mount namespace (``unshare``) binds a directory
+onto itself read-only and executes the console script installed next to the
+interpreter; the network namespace is shared, so a browser reaches the
+server. ``tree`` records a directory's names, sizes, modification times and
+inodes, so a test can show that nothing was written below it. ``set_read_only``
+takes the write permission from a tree by its modes, for tests that run in the
+process.
+"""
+
+import os
+import re
+import shlex
+import shutil
+import signal
+import subprocess
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
+
+import pytest
+
+from tests.fixtures.terminal import Terminal
+
+type Snapshot = dict[str, tuple[int, int, int]]
+
+SERVE_URL = re.compile(r"http://127\.0\.0\.1:\d+/#token=\S+")
+START_TIMEOUT_S = 30.0
+STOP_TIMEOUT_S = 30.0
+
+
+def tree(directory: Path) -> Snapshot:
+    """Return every name below ``directory`` with its size, mtime and inode."""
+    found = {}
+    for top, dirnames, filenames in os.walk(directory):
+        for name in [*dirnames, *filenames]:
+            info = os.lstat(os.path.join(top, name))
+            found[os.path.relpath(os.path.join(top, name), directory)] = (
+                info.st_size,
+                info.st_mtime_ns,
+                info.st_ino,
+            )
+    return found
+
+
+def set_read_only(directory: Path, *, read_only: bool) -> None:
+    """Make ``directory`` and all below it read-only, or writable again.
+
+    Directories get the mode ``0555`` and files ``0444``; back, ``0755`` and
+    ``0644``. A test that locks a tree unlocks it in a ``finally`` block, so that
+    its directory can be removed.
+    """
+    for top, _, filenames in os.walk(directory):
+        os.chmod(top, 0o555 if read_only else 0o755)
+        for name in filenames:
+            os.chmod(os.path.join(top, name), 0o444 if read_only else 0o644)
+
+
+def require_read_only_mounts(tmp_path: Path) -> None:
+    """Skip unless an unprivileged mount namespace makes a directory read-only."""
+    if shutil.which("unshare") is None:
+        pytest.skip("unshare (util-linux) is not installed")
+    probe = tmp_path / "probe"
+    probe.mkdir()
+    where = shlex.quote(str(probe))
+    script = (
+        f"mount --bind {where} {where} && mount -o remount,bind,ro {where}"
+        f" && ! touch {where}/written 2>/dev/null"
+    )
+    done = subprocess.run(
+        ["unshare", "--user", "--map-root-user", "--mount", "sh", "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    shutil.rmtree(probe)
+    if done.returncode != 0:
+        reason = done.stderr.strip() or f"exit status {done.returncode}"
+        pytest.skip(f"no read-only bind mount in a user namespace: {reason}")
+
+
+def mount_options(pid: int, mount_point: Path) -> list[str]:
+    """Return the options of the mount at ``mount_point`` as process ``pid`` sees it."""
+    found = [
+        fields[5].split(",")
+        for fields in (
+            line.split(" ")
+            for line in Path(f"/proc/{pid}/mountinfo").read_text().splitlines()
+        )
+        if fields[4] == str(mount_point)
+    ]
+    assert found, f"no mount at {mount_point} in process {pid}"
+    return found[-1]
+
+
+@contextmanager
+def serving_read_only(
+    directory: Path, env: dict[str, str], logs: Path
+) -> Iterator[tuple["subprocess.Popen[bytes]", str]]:
+    """Run ``archiwista serve`` on a terminal where ``directory`` is mounted read-only.
+
+    Yields the process and the one-time address it printed there (its output
+    in ``logs``); afterwards the server gets ``SIGINT`` (Ctrl+C) and must stop
+    by itself.
+    """
+    console = Path(sys.executable).with_name("archiwista")
+    where = shlex.quote(str(directory))
+    script = (
+        f"mount --bind {where} {where} && mount -o remount,bind,ro {where}"
+        f" && exec {shlex.quote(str(console))} serve --no-browser --port 0"
+    )
+    err = logs / "serve.err"
+    with Terminal(logs / "serve.out") as terminal, err.open("wb") as stderr:
+        process = subprocess.Popen(
+            ["unshare", "--user", "--map-root-user", "--mount", "sh", "-c", script],
+            stdout=terminal.child,
+            stderr=stderr,
+            env=env,
+        )
+        terminal.started()
+        try:
+            found = terminal.wait_for(SERVE_URL, process, START_TIMEOUT_S, err)
+            yield process, found[0]
+            process.send_signal(signal.SIGINT)
+            process.wait(timeout=STOP_TIMEOUT_S)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()

@@ -1,0 +1,4 @@
+Metadata-Version: 2.1
+Name: standin-producer
+Version: 2.0.0
+Summary: Fake producer library of the action-source plugin fixture.

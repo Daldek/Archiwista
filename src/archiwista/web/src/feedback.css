@@ -1,0 +1,23 @@
+/* „Zgłoś uwagę” (feedback.js): the top bar's button and its window.
+   Fields, check boxes and modal windows come from styles.css. */
+
+.feedback-trigger { gap: 7px; color: var(--text-2); }
+.feedback-form { display: grid; gap: 12px; }
+.feedback-form .field { margin: 0; }
+.feedback-form textarea { width: 100%; min-height: 120px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 8px; background: #fff; color: var(--text); font: inherit; line-height: 1.45; resize: vertical; }
+.feedback-form input[type="text"] { height: 34px; }
+.feedback-form textarea:focus { border-color: var(--accent-2); box-shadow: 0 0 0 3px #eef2ff; outline: none; }
+.feedback-counter { justify-self: end; font-size: 11.5px; color: var(--text-3); }
+.feedback-check { align-items: flex-start; font-weight: 400; font-size: 12.5px; color: var(--text-2); }
+.feedback-check input { flex: none; margin-top: 1px; }
+.feedback-preview { font-size: 12.5px; }
+.feedback-preview summary { color: var(--text-3); cursor: pointer; }
+.feedback-preview pre { max-height: 200px; overflow: auto; margin: 6px 0 0; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 11px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedback-status { font-size: 12.5px; font-weight: 600; }
+.feedback-status.ok { color: var(--ok-ink); }
+.feedback-status.bad { color: var(--bad-ink); }
+
+@media (max-width: 860px) {
+  .feedback-trigger { width: 32px; padding: 0; }
+  .feedback-trigger-text { display: none; }
+}
