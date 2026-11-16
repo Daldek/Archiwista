@@ -1292,6 +1292,11 @@ Known limitations, deferred to the next release (`docs/PROGRESS.md`, Next 14):
 
 ### Changed
 
+- Kartograf is re-pinned from `e14bc78c` to `7a1eb119` and Obserwator (extra `obserwator`)
+  from `f4f6a8d` to `11eedea`, their commits in Nogat's release set candidate-6
+  (`pyproject.toml`, `uv.lock`). Both changed only their documentation between the two
+  sets; the supported ranges are unchanged.
+
 - Kartograf is re-pinned from `c9afdd3f` to `e14bc78c`, its commit in Nogat's release set
   candidate-5 once Kartograf became a member of the first joint release (`pyproject.toml`,
   `uv.lock`). Kartograf changed only its PROGRESS, CHANGELOG and a docstring between the
