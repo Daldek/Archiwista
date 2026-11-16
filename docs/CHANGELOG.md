@@ -5,7 +5,7 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
-## [Unreleased]
+## [0.3.0] - 2026-11-16
 
 The first tagged release, a member of the first joint release of the Nogat ecosystem
 (Nogat release set candidate-6). One release holds v0.3 "Actions", v0.4 "Team", the
