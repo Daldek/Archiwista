@@ -1,15 +1,12 @@
 # Archiwista: instructions for agents developing the project
 
-Archiwista is a web application (locally: one person on `localhost`; in team mode,
-`[team]` of `config.toml`, a team on a local network) for working with the spatial data
-stores that Kartograf writes and the IMGW-PIB and ČHMÚ archives that Obserwator writes:
-browsing and search, a map with previews, availability and
-freshness checks, downloads through the producer's API, projects in Archiwista's own
-file (A-ADR-049), and preparing data for merging. Profile `app` (DEV-1.1;
-`ecosystem.yaml` is authoritative). Introduction: [README.md](README.md); specification:
-[docs/SPEC.md](docs/SPEC.md). The Nogat standard 1.0 is in
-[standards/](https://github.com/Daldek/Nogat/tree/main/standards)
-(DEVELOPMENT_STANDARDS, DOCUMENTATION_STANDARDS, AGENT_INTERFACE, ERROR_REGISTRY).
+Archiwista is a web application for browsing the spatial-data stores that Kartograf writes
+and the IMGW-PIB and ČHMÚ archives that Obserwator writes, downloading into them through the
+producers' API and keeping projects in its own file (A-ADR-049), for one person on
+`localhost` or a team on a local network (`[team]` of `config.toml`). Profile `app`
+(DEV-1.1; `ecosystem.yaml` is authoritative). Introduction: [README.md](README.md);
+specification: [docs/SPEC.md](docs/SPEC.md); the Nogat standard 1.0:
+[standards/](https://github.com/Daldek/Nogat/tree/main/standards).
 
 ## Critical rules
 
@@ -49,9 +46,8 @@ file (A-ADR-049), and preparing data for merging. Profile `app` (DEV-1.1;
   documents are English (DEV-2.1). Every text for a person has an English and a Polish
   variant in the catalog `src/archiwista/messages/` (one module per area, key
   `<area>.<name>`, rendered with `message`; `tests/unit/test_messages.py` checks every
-  call and that no other module holds such a text) and in `web/src/labels/` (DEV-2.3).
-  The documents under `docs/` are English; Polish interface labels are quoted as they
-  appear. New and edited documents are English.
+  call and that no other module holds such a text) and in `src/archiwista/web/src/labels/`
+  (DEV-2.3). Documents quote Polish interface labels as they appear.
 - A change that users see ships with its `docs/CHANGELOG.md` entry in the same commit
   (DOC-7.2); `docs/PROGRESS.md` is updated before the last commit of a session
   (DEV-17.3).
@@ -98,24 +94,13 @@ tests/{unit,integration,contract,e2e,perf,fixtures}
 
 ## Project rules
 
-- **Tests** (DEV §10): `unit` (the fixture `index` is an empty index over a generated
-  store), `integration` (real worker processes and HTTP: scanner, jobs, CLI equal to
-  API, agent flow), `contract` (public API of the producers, the import boundary, the
-  error registry, README examples), `e2e` (a real `archiwista serve` and Chromium),
-  `perf`, and `fixtures` (`make_store.py` generates a Kartograf store, also of 50,000
-  slots from the command line). Markers: `live` (network and real services; a real
-  store in `ARCHIWISTA_LIVE_STORE`), `perf` (the synthetic store of 50,000 slots on an
-  SSD in `ARCHIWISTA_PERF_STORE`), `smb` (that store on a real SMB 3 share in
-  `ARCHIWISTA_SMB_STORE`, the local index directory in `ARCHIWISTA_SMB_WORK`); `perf`
-  and `smb` run with `--no-cov`. Names `test_<module>_<function>_<scenario>`; arrange,
-  act, assert; a change in `src/archiwista/web/` runs `tests/e2e` too. Every test runs as
-  on a computer without settings of the producers (`tests/fixtures/isolation.py`, applied
-  in `tests/conftest.py`): `nogat.toml` is an empty file and `NOGAT_*`, `KARTOGRAF_*` and
-  `OBSERWATOR_*` lead every default root and directory into a canary tree that must stay empty,
-  so a test after which anything lies there fails (a producer call that names no store
-  root wrote into a default root). A test that needs another value sets it itself. An
-  `AppPaths` built directly keeps the server's logs in its data directory; a test that
-  runs the real `archiwista serve` sets `XDG_STATE_HOME` beside `XDG_DATA_HOME`.
+- **Tests** (DEV §10; the test tree, the markers and their stores: ARCHITECTURE section
+  12): names `test_<module>_<function>_<scenario>`; arrange, act, assert; a change in
+  `src/archiwista/web/` runs `tests/e2e` too; `perf` and `smb` run with `--no-cov`. Every
+  test runs isolated from the producers' settings (`tests/fixtures/isolation.py`): pass
+  every producer call a store root, as a file left in the canary tree fails the test; a
+  test that needs another value sets it itself, and one that runs the real
+  `archiwista serve` sets `XDG_STATE_HOME` beside `XDG_DATA_HOME`.
 - **Public surface**: Archiwista is an application, not a library. Public are the HTTP
   API `/api/v1` (SPEC 9), the `archiwista` command and the source interface for
   plugins (entry-point group `archiwista.sources`, A-ADR-024; `archiwista.sources`

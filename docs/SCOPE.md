@@ -163,9 +163,9 @@ Full acceptance criteria: SPEC 13.
      preview from memory (SPEC 4.5).
    - Status (2026-10-26): built; criteria 3, 5, 7 and 8 (local disk)
      met, the live criteria written for the user to run. Evidence and conditions:
-     [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md). Ships in release
-     0.3.0 with v0.4 and the projects (stage 6; D2 of 2026-10-31; the release named and
-     frozen by the author on 2026-11-16); its project actions are rewritten by A-ADR-049.
+     [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md). In release 0.3.0
+     with v0.4 and the projects (stage 6; D2 of 2026-10-31; the release named and frozen
+     by the author on 2026-11-16); its project actions are rewritten by A-ADR-049.
 5. **v0.4 "Team".** A server on the local network: sign-in, account management
    and project sharing in the interface, TLS, an action log, a shared queue, limits per
    person, file download, preferences (A-ADR-046, A-ADR-047; LDAP/AD groups deferred).
@@ -178,8 +178,8 @@ Full acceptance criteria: SPEC 13.
      matrix says; the checklist's five deviations accepted for the LAN deployment
      (delegated approval). The LAN runbook (`reports/v0.4-lan-runbook.md`) ran on 2026-10-30
      on one machine and on the LAN (SMB, TLS, two computers with three people's sessions;
-     a third computer is untested). Ships in release 0.3.0 (2026-11-16, the author).
-6. **Projects (A-ADR-049)**, released together with v0.3 and v0.4 as one release, 0.3.0 (the
+     a third computer is untested). In release 0.3.0 (the author's decision of 2026-11-16).
+6. **Projects (A-ADR-049)**, in release 0.3.0 together with v0.3 and v0.4 (the
    author's decisions of 2026-10-31: option B of the Nogat plan, ECO-054, D2 and D6).
    Archiwista's own project file `archiwista-project/1`, pins of stored versions from
    "Stan lokalny", the "Catalog" and the file card, and of new data from the plan window;
@@ -190,7 +190,7 @@ Full acceptance criteria: SPEC 13.
    - Gate: SPEC 13 "Projects" (the file written and read back, two writers, pinning
      offline, the plan window's pins, the four jobs, D5, the activity, the exports, UC-06
      live).
-   - Status (2026-11-16): P1 to P6 done, in `develop` since 2026-11-03; ships in release 0.3.0.
+   - Status (2026-11-16): P1 to P6 done, in `develop` since 2026-11-03; in release 0.3.0.
 7. **v0.5 "IMGW stations".** The Obserwator add-on, stations, coverage of series,
    station card, freshness and synchronisation of archives, the check, re-pin and
    restore of IMGW archive versions pinned in projects (Obserwator builds the series
@@ -199,7 +199,7 @@ Full acceptance criteria: SPEC 13.
      the `obserwator` CLI; coverage labels agree with the table of edge cases.
    - Status (2026-11-16): the Obserwator source, the station views and the
      synchronisation of archives are in `develop` (A-ADR-032, A-ADR-045, A-ADR-050,
-     A-ADR-056) and ship in release 0.3.0 with Obserwator 3.0.0; the archive badge of the
+     A-ADR-056) and are in release 0.3.0 with Obserwator 3.0.0; the archive badge of the
      stations is not built.
 8. **v0.6 "PL + CZ".** A PL + CZ view without merging, the merged border
    surface by Kartograf (KF), ČHMÚ stations through Obserwator in the v0.5

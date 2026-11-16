@@ -44,8 +44,8 @@ develop it.
   documentation, commit messages and contributor-facing files are in English.
   Every text for a person has an English and a Polish variant in the message
   catalog (`src/archiwista/messages/`) or, for the interface, in
-  `src/archiwista/web/src/labels/`; no other module holds such a text. Some
-  documents under `docs/` are still Polish and are being translated.
+  `src/archiwista/web/src/labels/`; no other module holds such a text.
+  Documents quote Polish interface labels as they appear.
 - **Commits.** Use [Conventional Commits](https://www.conventionalcommits.org/)
   in English, for example `docs(spec): clarify the coverage labels`. Messages
   carry no AI attribution.

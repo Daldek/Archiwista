@@ -38,7 +38,7 @@ The first start after an update that changes the schema of the local index (`SCH
 
 ## Deploy
 
-Archiwista runs for one person on one computer by default: the server listens on `127.0.0.1` only and every `/api` request needs the session that the one-time address starts. A server for a team on a local network (sign-in, roles, project sharing; A-ADR-013) is v0.4 "Team", part of release 0.3.0: the table `[team]` of `config.toml` ([USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md), "Team server"); Windows comes with v1.0. The server is a foreground process (`archiwista serve`); the previews of files are rendered by isolated processes, not by the server.
+Archiwista runs for one person on one computer by default: the server listens on `127.0.0.1` only and every `/api` request needs the session that the one-time address starts. A server for a team on a local network (sign-in, roles, project sharing; A-ADR-013) is v0.4 "Team", in release 0.3.0: the table `[team]` of `config.toml` ([USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md), "Team server"); Windows comes with v1.0. The server is a foreground process (`archiwista serve`); the previews of files are rendered by isolated processes, not by the server.
 
 Archiwista itself writes nothing in a store: from v0.3 a download goes through the producer's API, which writes it, on the command of a person allowed to (`store.write`). The local index and the preview cache live in the user's account. Its own writes, on the command of a person allowed to change the project (`project.write`), are in a project directory only: the project file `archiwista-project.json` with its area in `obszary/` (`project-init`, `project-edit`, `project-area`, `project-store`; A-ADR-049), its exports in `eksport/<name>/` and `eksport/<name>.zip`: copies of the pinned files with `README.txt` (`project-export`), and a snapshot in the data folder of a project (`<project directory>/dane/.wersje/` by default). The data folder is indexed read-only. `archiwista doctor` prints the local paths below.
 
@@ -141,7 +141,7 @@ Archiwista holds no data of its own besides the project files it writes on a per
 | Document | Content |
 |---|---|
 | [CHANGELOG.md](https://github.com/Daldek/Archiwista/blob/main/docs/CHANGELOG.md) | changes by release |
-| [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md) | the user guide of 0.3: the views, projects and own data, jobs, the action log, IMGW stations, the team server |
+| [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md) | the user guide of 0.3.0: the views, projects and own data, jobs, the action log, IMGW stations, the team server |
 | [AGENT_API.md](https://github.com/Daldek/Archiwista/blob/main/docs/AGENT_API.md) | the HTTP API and the CLI with `--json` for scripts and AI agents |
 | [PRD.md](https://github.com/Daldek/Archiwista/blob/main/docs/PRD.md) | product requirements: problem, users, requirements, success measures, open decisions |
 | [SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md) | scope: the MVP, what is out of it, stages with gates, dependencies on the producers, risks |

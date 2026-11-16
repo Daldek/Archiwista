@@ -1,10 +1,10 @@
 # Archiwista — specification
 
 **Date:** 2026-10-17
-**Status:** living specification: v0.1 and v0.2 released; v0.3, v0.4 and the projects released as 0.3.0; the later versions in development or planned (section 13); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
+**Status:** living specification: v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0; the later versions in development or planned (section 13); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
 [`docs/DECISIONS.md`](DECISIONS.md); interface mockup: the `mockup/` directory
 (section 16)
-**Dependency:** Kartograf 0.8.0 (`develop`) — public API
+**Dependency:** Kartograf 0.8.0 (tag `v0.8.0` from release 0.3.0) — public API
 (`kartograf/__init__.py`, `__all__`) and on-disk formats: sidecar
 `kartograf-meta/1`, the `data/` layout with a version store (`versions/`),
 update plan `kartograf-plan/1`, availability report
@@ -4913,7 +4913,7 @@ MVP = v1.0 (user decision 2026-10-17, A-ADR-025; v0.6 "PL + CZ" is in the MVP �
 | v0.2 "Previews" | previews, the Fan and the Timeline for local data, metadata comparison and the curtain; project own data and snapshots | — |
 | v0.3 "Actions" | availability at the source with labels (PL and CZ heights, PL images, releases of single-unit products), Plan window, downloading, background jobs, freshness, project actions (since A-ADR-049 those of "Projects"); preliminary preview building; the "write to store" permission checked during actions | KA-4 for plan items, KB-1..KB-5, KB-7, KC-1..KC-3, KD-1..KD-4 |
 | v0.4 "Team" | server on the local network: sign-in (local accounts, optionally a reverse proxy), sessions, account and group management and the project sharing screen in the interface, TLS, action log, shared queue without double downloads, limits per person, file download, preferences and path aliases per person; groups from LDAP/AD deferred (A-ADR-046) | — |
-| Projects (A-ADR-049; released with v0.3 and v0.4) | the project file `archiwista-project/1` of Archiwista: area, stores, groups of pins from "Stan lokalny", the "Katalog", the file card and the plan window; the jobs verify, check, re-pin and restore; the project card with its activity; the exports of copies in category folders with `README.txt` and a ZIP; the command of a version on the file card | Kartograf: KB-6; Obserwator: IMGW-21 |
+| Projects (A-ADR-049; in release 0.3.0 with v0.3 and v0.4) | the project file `archiwista-project/1` of Archiwista: area, stores, groups of pins from "Stan lokalny", the "Katalog", the file card and the plan window; the jobs verify, check, re-pin and restore; the project card with its activity; the exports of copies in category folders with `README.txt` and a ZIP; the command of a version on the file card | Kartograf: KB-6; Obserwator: IMGW-21 |
 | v0.5 "IMGW stations" | extra `archiwista[obserwator]` (Obserwator adapter as a plugin); Obserwator catalog: stations on the map and in the "Katalog" (Catalog) (also without a location), Summary and Station card with a chart, station comparison, series coverage labels separately for each variable, in both year types, freshness and archive synchronization, series, the check, re-pin and restore of pinned IMGW versions | Obserwator: IMGW-1..IMGW-13 |
 | v0.6 "PL + CZ" | border area: PL + CZ summary without merging (the `parent_request` group, consistency check) and a merged border surface via Kartograf (mode 2, 8.3); ČHMÚ stations via Obserwator in the v0.5 views (4.8.6) | Kartograf: KF; Obserwator: IMGW-15..IMGW-19 |
 | v1.0 "Release (MVP)" | stable API, Linux and Windows installation, user documentation, audits; MVP scenarios | Kartograf and Obserwator releases required for v0.6 |
@@ -5017,7 +5017,7 @@ Criteria:
    the target time for a preview from cache in 4.5 (without changing the thresholds).
 
 Status (2026-10-26): built on the branch `feature/kartograf-data-output`, in `develop` since 2026-11-03 (plan
-`docs/plans/2026-10-25-archiwista-next.md`, Part 3); it ships in release 0.3.0 together
+`docs/plans/2026-10-25-archiwista-next.md`, Part 3); it is in release 0.3.0 together
 with v0.4 and the projects (D2 of 2026-10-31; the author's decision of 2026-11-16). Its project actions are
 rewritten by A-ADR-049. Criteria 3, 5 and 7 are met, criterion 8 on a local disk (the first
 thumbnail of a warmed version p95 4.1 ms), and criterion 4 for the downloads of the map
@@ -5063,10 +5063,10 @@ the three-person browser scenario (criteria 1 and 3), the action matrix with a c
 of every C9 route by each role, and the security checklist with its five deviations
 accepted for the LAN deployment (criteria 2 and 5). The live SMB/TLS scenario of
 `reports/v0.4-lan-runbook.md` ran on the LAN on 2026-10-30 on two computers with three
-people's sessions; a third computer is untested. v0.4 ships in release 0.3.0 with v0.3 and
+people's sessions; a third computer is untested. v0.4 is in release 0.3.0 with v0.3 and
 the projects (D2 of 2026-10-31; the author's decision of 2026-11-16).
 
-### Projects (A-ADR-049; released in 0.3.0 with v0.3 and v0.4)
+### Projects (A-ADR-049; in release 0.3.0 with v0.3 and v0.4)
 
 Scope (the author's decision of 2026-10-31, ECO-054, D1 to D7; plan
 `docs/plans/2026-10-31-archiwista-projects.md`, phases P2 to P6): the project file

@@ -995,7 +995,7 @@ shows nor changes it) and check it with `archiwista doctor`.
 The three-computer SMB/TLS deployment and shared-queue acceptance procedure is
 in [`reports/v0.4-lan-runbook.md`](reports/v0.4-lan-runbook.md). It ran on the
 LAN on 2026-10-30, on two computers with three people's sessions (a third
-computer remains untested). Team mode is part of release 0.3.0.
+computer remains untested). Team mode is in release 0.3.0.
 
 ```toml
 [team]
