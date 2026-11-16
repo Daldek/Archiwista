@@ -21,10 +21,19 @@ another area has another name, and one of the same name and content is kept.
 in a project's directory (the file, the area files and ``eksport/``) and the
 directory itself when nothing else is left in it.
 
+What Archiwista writes in a project's directory gets the permissions of the
+folder it is written in (A-ADR-058), not the ``umask 077`` of its local data:
+a file the read and write bits of its folder (``0640`` in a ``0750`` folder),
+a directory all of them, so whoever may read the folder (another account of
+its group: Hydrograf's bootstrap) reads the project. ``folder_permissions``
+and ``give_permissions`` do it, ``make_project_directories`` for a new
+project's directories.
+
 ``archiwista.areas`` imports the index, which reads project files, so it is
 imported where an area file is read.
 """
 
+import errno
 import hashlib
 import json
 import logging
@@ -32,6 +41,7 @@ import os
 import re
 import secrets
 import shutil
+import stat
 import sys
 import time
 from collections.abc import Callable, Iterator, Mapping
@@ -78,6 +88,11 @@ LOCK_OWNER = "owner"
 _AREA_FILE = re.compile(r"[0-9a-f]{16}\.geojson")
 # How a ``plan`` group's call names its area's file (``copy_area_geojson``).
 _AREA_FILE_REF = re.compile(rf"{AREAS_DIR}/[0-9a-f]{{16}}\.geojson")
+# What a file system refusing ``chmod`` answers (a CIFS mount, ACLs, an entry
+# of another account): the entry keeps the mode the file system gave.
+_CHMOD_REFUSED = frozenset(
+    {errno.EPERM, errno.EACCES, errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP}
+)
 
 type ProjectChange = Callable[[dict[str, Any]], None]
 type AreaState = Literal["missing", "changed", "invalid"]
@@ -432,6 +447,10 @@ def _write_area(
         raise _write_failed(target, error) from error
     if not inside:
         raise PathOutsideRootError(message("ref.path_outside_root", path=target.parent))
+    try:
+        give_permissions(target.parent, folder_permissions(directory), directory=True)
+    except OSError as error:
+        raise _write_failed(target, error) from error
     with suppress(OSError):
         if keep_any and target.is_file() and not target.is_symlink():
             return
@@ -594,12 +613,90 @@ def _write_atomic(path: Path, content: bytes) -> None:
             file.write(content)
             file.flush()
             os.fsync(file.fileno())
+        give_permissions(temp, folder_permissions(path.parent))
         os.replace(temp, path)
     except OSError as error:
         with suppress(OSError):
             temp.unlink()
         raise _write_failed(path, error) from error
     _fsync_directory(path.parent)
+
+
+def folder_permissions(directory: Path) -> int | None:
+    """Return the permission bits of a folder a project's entries take from it.
+
+    ``None`` on Windows, where the bits are no access rule.
+
+    Raises
+    ------
+    OSError
+        The folder cannot be read.
+    """
+    if sys.platform == "win32":  # pragma: no cover - no POSIX permissions
+        return None
+    return stat.S_IMODE(os.stat(directory).st_mode) & 0o777
+
+
+def give_permissions(
+    path: Path, permissions: int | None, *, directory: bool = False
+) -> None:
+    """Give an entry of a project the permissions of its folder (A-ADR-058).
+
+    A file gets the folder's read and write bits (``0640`` from ``0750``), a
+    directory all of them; its other bits (the set-group-ID of a directory,
+    whose group the system already gave) stay. A file system that refuses
+    ``chmod`` (a CIFS mount, ACLs) keeps the mode it gives.
+
+    Parameters
+    ----------
+    path : Path
+        A file or directory Archiwista has just written or made.
+    permissions : int or None
+        ``folder_permissions`` of its folder; ``None`` changes nothing.
+    directory : bool, optional
+        ``path`` is a directory.
+    """
+    if permissions is None:
+        return
+    wanted = permissions if directory else permissions & 0o666
+    try:
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+        if mode & 0o777 != wanted:
+            os.chmod(path, (mode & ~0o777) | wanted)
+    except OSError as error:
+        if error.errno not in _CHMOD_REFUSED:
+            raise
+        logger.debug("cannot give %s the mode %04o: %s", path, wanted, error)
+
+
+def make_project_directories(base: Path, directory: Path) -> None:
+    """Make the missing directories from a project folder down to a project.
+
+    Each one made gets the permissions of the one it is made in; an existing
+    one is left as it is.
+
+    Parameters
+    ----------
+    base : Path
+        The configured project folder, which exists.
+    directory : Path
+        The project directory, ``base`` or below it.
+
+    Raises
+    ------
+    OSError
+        A directory cannot be made, or a file stands in its place.
+    """
+    current = base
+    for part in directory.relative_to(base).parts:
+        parent, current = current, current / part
+        try:
+            current.mkdir()
+        except FileExistsError:
+            if current.is_dir():
+                continue
+            raise
+        give_permissions(current, folder_permissions(parent), directory=True)
 
 
 def _fsync_directory(directory: Path) -> None:

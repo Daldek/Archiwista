@@ -10,6 +10,8 @@ follows its sharing; a lock another change holds is ``409 project_locked``.
 
 import functools
 import json
+import os
+import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -172,6 +174,51 @@ def test_a_project_is_created_and_changed_over_http(
         "Zlewnia Raby",
     )
     assert written.get("area") is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
+def test_a_project_the_server_writes_is_readable_by_its_folders_group(
+    paths: AppPaths, tmp_path: Path
+) -> None:
+    """Under the server's `umask 077` a project takes its folder's permissions.
+
+    Another account of the folder's group (Hydrograf's bootstrap) reads the
+    project; the local state database and index stay the server's alone.
+    """
+    os.umask(0o077)  # as `archiwista serve` runs
+    projects = _projects(tmp_path)
+    projects.chmod(0o2750)
+    directory = projects / "barycz"
+    with _api(paths) as api:
+        owner = api.session(LOCAL_OWNER)
+
+        # Act
+        created = owner.request(
+            "POST", "/projects", json={"path": str(directory), "area_id": AREA.id}
+        )
+        first = (directory / PROJECT_FILE).stat()
+        edited = owner.request(
+            "PATCH", f"/projects/{created.json()['project']}", json={"name": "Barycz"}
+        )
+
+    # Assert
+    assert (created.status_code, edited.status_code) == (201, 200)
+    modes = {
+        path.relative_to(directory).as_posix(): stat.S_IMODE(path.stat().st_mode)
+        for path in [directory, *directory.rglob("*")]
+    }
+    assert modes == {
+        ".": 0o2750,
+        PROJECT_FILE: 0o640,
+        "obszary": 0o2750,
+        f"obszary/{AREA.id}.geojson": 0o640,
+    }
+    assert (directory / PROJECT_FILE).stat().st_ino != first.st_ino
+    assert directory.stat().st_gid == projects.stat().st_gid
+    assert {
+        path.name: stat.S_IMODE(path.stat().st_mode) & 0o077
+        for path in (paths.data_dir, paths.state_file, paths.index_file)
+    } == {paths.data_dir.name: 0, paths.state_file.name: 0, paths.index_file.name: 0}
 
 
 def test_the_commands_print_what_the_routes_answer(
