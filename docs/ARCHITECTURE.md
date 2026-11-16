@@ -1,7 +1,7 @@
 # Archiwista Architecture
 
-**Version described:** the code of `develop`, `0.3.0.dev0` (`pyproject.toml`); the last
-release is 0.2.0 "Podglądy" (Previews).
+**Version described:** the code of `develop`, release 0.3.0 (`0.3.0.dev0` in `pyproject.toml`
+until its release commit); the release before it is 0.2.0 "Podglądy" (Previews).
 History: [`CHANGELOG.md`](CHANGELOG.md), state:
 [`PROGRESS.md`](PROGRESS.md), instructions:
 [`USAGE.md`](USAGE.md), [`AGENT_API.md`](AGENT_API.md).
@@ -1650,3 +1650,32 @@ Performance tests (skipped by default, markers `perf` and `smb`):
 v0.3: `test_warm_perf.py` ([`reports/v0.3-measurements.md`](reports/v0.3-measurements.md)). The page of the
 Timeline: `tests/integration/test_station_timeline_api.py` (`-m perf`, a synthetic
 index of its own).
+
+---
+
+## 12. Tests
+
+The test tree (DEV §10; how to write a test: [`CLAUDE.md`](../CLAUDE.md), "Project rules"):
+
+- `tests/unit`: the fixture `index` is an empty index over a generated store;
+- `tests/integration`: real worker processes and HTTP: the scanner, the jobs, the CLI equal
+  to the API, the agent flow;
+- `tests/contract`: the public API of the producers, the import boundary, the error
+  registry, the README examples;
+- `tests/e2e`: a real `archiwista serve` driven by Chromium (and by Firefox where the
+  engine matters);
+- `tests/perf`: measurements on explicit stores (section 11);
+- `tests/fixtures`: `make_store.py` generates a Kartograf store, also one of 50,000 slots
+  from the command line.
+
+Markers left out by default: `live` (the network and real services; a real store in
+`ARCHIWISTA_LIVE_STORE`), `perf` (the synthetic store of 50,000 slots on an SSD in
+`ARCHIWISTA_PERF_STORE`) and `smb` (that store on a real SMB 3 share in
+`ARCHIWISTA_SMB_STORE`, the local index directory in `ARCHIWISTA_SMB_WORK`).
+
+Isolation (`tests/fixtures/isolation.py`, applied in `tests/conftest.py`): every test runs
+as on a computer without the producers' settings. `nogat.toml` is an empty file, and
+`NOGAT_*`, `KARTOGRAF_*` and `OBSERWATOR_*` lead every default root and directory into a
+canary tree that must stay empty, so a test after which anything lies there fails (a
+producer call that names no store root wrote into a default root). An `AppPaths` built
+directly keeps the server's logs in its data directory.

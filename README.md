@@ -21,7 +21,7 @@ Archiwista is a local web application for browsing the spatial-data stores that 
 
 ## Run
 
-Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista needs Kartograf 0.8.0 with its public read API of the store (KA-1 to KA-6) and its commands; `pyproject.toml` pins a commit of Kartograf's `develop` that has them until the tag `v0.8.0` exists (the optional Obserwator, the extra `obserwator`, likewise until `v3.0.0`), and `uv.lock` pins every package with its SHA-256 sum.
+Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista needs Kartograf 0.8.0 with its public read API of the store (KA-1 to KA-6) and its commands, and, for the optional extra `obserwator`, Obserwator 3.0.0. `pyproject.toml` pins each by a commit of its `develop` until its tag exists; the release commit of 0.3.0 replaces the commits with the tags `v0.8.0` and `v3.0.0` (REL-5.3). `uv.lock` pins every package with its SHA-256 sum.
 
 ```bash
 uv sync --locked                      # the environment in .venv, from uv.lock
@@ -34,11 +34,11 @@ uv run archiwista serve               # starts the server and opens the browser
 
 The server listens on `127.0.0.1` only (port 8090, the setting `port`; `--port N` changes it for one run, `--port 0` picks a free one). It opens a one-time address `http://127.0.0.1:8090/#token=…` (valid for 10 minutes, works once) in the browser and, on a terminal, prints it; `--no-browser` only prints it. Started without a terminal (by a service manager such as systemd, whose journal keeps standard output) it prints nothing: `archiwista token` issues an address. On the first run a wizard asks for the Kartograf store root (the directory that holds `kartograf-store.json` and the product directories, usually called `data/`) and, with the Obserwator plugin installed, Obserwator's raw root and data root (A-ADR-056), optionally the project directories, the offline mode and the limit of the preview cache; after saving, the server indexes the store in the background and a bar above the views shows the progress. `Ctrl+C` stops the server. A browser session ends after 24 hours without use and with the server; `archiwista token` issues the one-time address of an agent's session (valid for 5 minutes). The views are described in [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md); "Instrukcja" in the top bar opens a short guide in Polish with pictures, `/instrukcja` of the running server, which needs no session.
 
-The first start after an update that changes the schema of the local index (`SCHEMA_VERSION = 18`; 0.2.0 has 6) rebuilds it and runs a full scan: with a disconnected store, wait with the update or connect the store before the scan.
+The first start after an update that changes the schema of the local index (`SCHEMA_VERSION = 1`; 0.2.0 has 6, so the first start of 0.3.0 rebuilds it) runs a full scan: with a disconnected store, wait with the update or connect the store before the scan.
 
 ## Deploy
 
-Archiwista 0.2 is for one person on one computer: the server listens on `127.0.0.1` only and every `/api` request needs the session that the one-time address starts. A server for a team on a local network (sign-in, roles, project sharing; A-ADR-013) is v0.4, built in `develop` and not released: the table `[team]` of `config.toml` ([USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md), "Team server"); Windows comes with v1.0. The server is a foreground process (`archiwista serve`); the previews of files are rendered by isolated processes, not by the server.
+Archiwista runs for one person on one computer by default: the server listens on `127.0.0.1` only and every `/api` request needs the session that the one-time address starts. A server for a team on a local network (sign-in, roles, project sharing; A-ADR-013) is v0.4 "Team", in release 0.3.0: the table `[team]` of `config.toml` ([USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md), "Team server"); Windows comes with v1.0. The server is a foreground process (`archiwista serve`); the previews of files are rendered by isolated processes, not by the server.
 
 Archiwista itself writes nothing in a store: from v0.3 a download goes through the producer's API, which writes it, on the command of a person allowed to (`store.write`). The local index and the preview cache live in the user's account. Its own writes, on the command of a person allowed to change the project (`project.write`), are in a project directory only: the project file `archiwista-project.json` with its area in `obszary/` (`project-init`, `project-edit`, `project-area`, `project-store`; A-ADR-049), its exports in `eksport/<name>/` and `eksport/<name>.zip`: copies of the pinned files with `README.txt` (`project-export`), and a snapshot in the data folder of a project (`<project directory>/dane/.wersje/` by default). The data folder is indexed read-only. `archiwista doctor` prints the local paths below.
 
@@ -141,7 +141,7 @@ Archiwista holds no data of its own besides the project files it writes on a per
 | Document | Content |
 |---|---|
 | [CHANGELOG.md](https://github.com/Daldek/Archiwista/blob/main/docs/CHANGELOG.md) | changes by release |
-| [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md) | the user guide of 0.3: the views, projects and own data, jobs, the action log, IMGW stations, the team server |
+| [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md) | the user guide of 0.3.0: the views, projects and own data, jobs, the action log, IMGW stations, the team server |
 | [AGENT_API.md](https://github.com/Daldek/Archiwista/blob/main/docs/AGENT_API.md) | the HTTP API and the CLI with `--json` for scripts and AI agents |
 | [PRD.md](https://github.com/Daldek/Archiwista/blob/main/docs/PRD.md) | product requirements: problem, users, requirements, success measures, open decisions |
 | [SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md) | scope: the MVP, what is out of it, stages with gates, dependencies on the producers, risks |
@@ -167,7 +167,7 @@ The gate (DEV-7.6) runs from a git working directory and applies `uv sync --lock
 
 ## Status, licence, author
 
-Release **0.2.0 "Previews"** (2026-10-20): the local index, the map and the catalog of a Kartograf store, file previews, the Fan and the Timeline, comparison with the curtain, and own data of a project with snapshots; the store stays read-only. `develop` carries `0.3.0.dev0`: v0.3 "Actions" (availability at the source, downloads through the producer's API), v0.4 "Team", projects in Archiwista's own file (A-ADR-049) and the Obserwator source with the station views of v0.5 "IMGW stations" are built there and wait for one release. Next: that release, the rest of v0.5, v0.6 "PL + CZ"; the MVP is v1.0 ([SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md)). The API may change until v1.0.
+Release **0.3.0** (the first tag, `v0.3.0`; a member of the first joint release of the Nogat ecosystem): v0.3 "Actions" (availability at the source, downloads through the producer's API), v0.4 "Team", projects in Archiwista's own file (A-ADR-049) and the Obserwator source with the station views of v0.5 "IMGW stations", as one release. Before it, 0.2.0 "Previews" (2026-10-20): the local index, the map and the catalog of a Kartograf store, file previews, the Fan and the Timeline, comparison with the curtain, and own data of a project with snapshots. Next: the rest of v0.5, v0.6 "PL + CZ"; the MVP is v1.0 ([SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md)). The API may change until v1.0.
 
 MIT licence: [LICENSE](https://github.com/Daldek/Archiwista/blob/main/LICENSE).
 

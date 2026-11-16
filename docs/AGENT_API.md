@@ -1,8 +1,8 @@
 # Archiwista API for agents and scripts
 
 For AI agents (for example Claude Code) and scripts using Archiwista without
-a browser: version 0.3 "Actions" and v0.4 "Team" are built in `develop`, not
-released. It covers reading the catalog,
+a browser: release 0.3.0, with v0.3 "Actions", v0.4 "Team" and the projects. It covers
+reading the catalog,
 previews, layers, comparison, own data and project snapshots, areas, producer
 commands, plans and downloads, projects and jobs. Team mode adds sign-in, agent
 sessions, per-person permissions and preferences, a shared queue, file downloads

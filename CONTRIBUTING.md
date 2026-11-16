@@ -18,7 +18,7 @@ uv run playwright install chromium firefox
 GATE_CHECK_AUTHOR=0 scripts/gate.sh
 ```
 
-Archiwista 0.2 is released; the next version is planned in
+Archiwista 0.3.0 is the current release; the next versions are planned in
 [`docs/SPEC.md`](docs/SPEC.md) section 13. A feature or a change of a public
 interface starts with a plan in `docs/plans/` that the maintainer approves:
 specification → plan → implementation. Feedback on these documents is especially
@@ -44,8 +44,8 @@ develop it.
   documentation, commit messages and contributor-facing files are in English.
   Every text for a person has an English and a Polish variant in the message
   catalog (`src/archiwista/messages/`) or, for the interface, in
-  `src/archiwista/web/src/labels/`; no other module holds such a text. Some
-  documents under `docs/` are still Polish and are being translated.
+  `src/archiwista/web/src/labels/`; no other module holds such a text.
+  Documents quote Polish interface labels as they appear.
 - **Commits.** Use [Conventional Commits](https://www.conventionalcommits.org/)
   in English, for example `docs(spec): clarify the coverage labels`. Messages
   carry no AI attribution.

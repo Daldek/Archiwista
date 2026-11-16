@@ -260,7 +260,7 @@ each requirement: the SPEC section named.
 | Assumption | Effect | How it is communicated |
 | --- | --- | --- |
 | The producers deliver the required APIs (Kartograf KA to KH, Obserwator IMGW-1 to 21, IMGW-14 withdrawn) | Archiwista releases wait for the producers' releases | requirements in SPEC 12; the "needs" column in SCOPE |
-| Obserwator has its store only in development (3.0.0, pinned by commit; its last release is IMGWTools 2.1.1, Beta) | IMGW data (v0.5), and so the MVP, depends on Obserwator | requirements agreed early; the Obserwator source is an add-on |
+| Obserwator's store comes with its 3.0.0 (tag `v3.0.0`, released with Archiwista 0.3.0 in the first joint release of the ecosystem; before it IMGWTools 2.1.1, Beta) | IMGW data (v0.5), and so the MVP, depends on Obserwator | requirements agreed early; the Obserwator source is an add-on |
 | KF (merged PL + CZ surface) is not yet in the public Kartograf API; ČHMÚ stations are in Obserwator's development version, not yet released | v0.6, and so the MVP, depends on both releases | requirements KF (SPEC 12.5) and IMGW-15 to IMGW-19 (SPEC 12.7) reported early; the risk in SCOPE and SPEC 14 |
 | IMGW publication lag (10 to 19 months), republished archives | an incomplete last year, changed data | published years and publication dates in the interface; new versions instead of overwriting |
 | Some IMGW stations have no location | stations outside the map | the "Catalog" with the group "without location" and a counter on the map; a location is never guessed |

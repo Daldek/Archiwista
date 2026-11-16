@@ -7,6 +7,32 @@ command-line interface may change.
 
 ## [Unreleased]
 
+The first tagged release, a member of the first joint release of the Nogat ecosystem
+(Nogat release set candidate-6). One release holds v0.3 "Actions", v0.4 "Team", the
+projects in Archiwista's own file (A-ADR-049) and the built part of v0.5 "IMGW stations"
+(decision D2 of Nogat's plan `2026-10-31-archiwista-projects.md`); an entry marked "v0.4"
+belongs to "Team". It needs Kartograf 0.8.0 and, for the extra `obserwator`, Obserwator
+3.0.0.
+
+Known limitations, deferred to the next release (`docs/PROGRESS.md`, Next 14):
+
+- Changing the area of a project with a closed set is accepted and leaves the set's digest
+  `ok` (E7-01).
+- An export is one synchronous request (about 3.5 minutes for 2.8 GB) and the interface
+  shows neither its size nor its progress (E2-10).
+- A download that ends `partial` pins nothing, also when the producer's source fails during
+  it or another job of the team takes positions (E7-02, E7-04).
+- An area's `countries` come from its bounding box (E2-05); `archiwista jobs list` during a
+  scan ends with `store_unavailable` (E2-06); `archiwista doctor` checks the port on
+  `127.0.0.1` only (ENV-01).
+- The daily station hand-off to Hydrolog begins at 1950-11-01 instead of the variable's
+  known range (E3-05).
+- A set has no route of its own, `GET /projects/{project}/groups/{group}` (E5a-03).
+- „Projekty” has no strip of the data's sources (G01-1), and an export's `README.txt` and
+  `ATTRIBUTION.txt` cannot be opened from the interface (G08-2).
+- 30 frames per second or more on the map with 5,000 footprints stays unverified without
+  a hardware GPU; the archive badge of the stations is not built.
+
 ### Added
 
 - Nogat's server logs (Nogat DEV-12.4 to DEV-12.9, ECO-066; A-ADR-057): `archiwista serve`
@@ -78,6 +104,10 @@ command-line interface may change.
   user guide a slide „Źródła danych i warunki”. Source plugins may answer the new
   optional capability `DataOriginAdapter.data_origin` (`DataOrigin` in
   `archiwista.sources`); the Obserwator plugin does.
+
+- The source interface's `EntryMeta` carries the core every Nogat sidecar has (DEV-19.16):
+  `provider` (the organisation that publishes the data), `written_by` (the package that
+  wrote the file) and `producer_version`, each `None` when the producer does not know it.
 
 - „Aplikacje” in the top bar (A-ADR-054; Nogat ECO-058, DEV-15.4, plan
   `2026-11-12-gui-links-and-handoff` step 6): Nogat's menu of the ecosystem's GUIs, the
