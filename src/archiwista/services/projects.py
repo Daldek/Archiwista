@@ -70,6 +70,7 @@ from archiwista.projects import (
     area_json,
     change_project_file,
     clean_name,
+    make_project_directories,
     read_project_file,
     remove_project_files,
     rule_text,
@@ -312,7 +313,7 @@ def create_project(
             message("project.exists", path=directory), reason="project_exists"
         )
     try:
-        directory.mkdir(parents=True, exist_ok=True)
+        make_project_directories(base, directory)
     except OSError as error:
         raise ProjectFileWriteError(
             message("project.file_write_failed", path=directory),

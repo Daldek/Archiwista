@@ -4197,7 +4197,11 @@ over TLS.
   copies, job logs) has mode `0700` (an existing one too), `archiwista`
   commands and worker processes run with `umask 077`;
   `archiwista doctor` warns when the data directory is accessible to other
-  accounts.
+  accounts. What Archiwista writes in a project's directory (the project file,
+  `obszary/`, `eksport/` and the directories it makes there) is not local data:
+  each file gets the read and write bits of its folder, each directory all of
+  them (`0640` and `0750` in a `0750` folder; A-ADR-058), so whoever may read
+  the folder reads the project.
 - **CSP:** `default-src 'self'; script-src 'self'; style-src 'self';
   worker-src 'self'; img-src 'self' data: blob: <basemaps>; connect-src
   'self' <basemaps>; font-src 'self'; object-src 'none'; base-uri 'none';

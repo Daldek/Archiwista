@@ -487,7 +487,11 @@ remains unchanged.
 `0700` (`PRIVATE_DIRECTORY_MODE`) — the data directory each time the index
 and the state database are opened, `jobs/` and `areas/`; `cli.main`, the worker process
 and the area reader set `umask 077`. `archiwista doctor` warns when the
-data directory is open to other accounts.
+data directory is open to other accounts. A project's directory is not local
+data: `projects/files.py` gives what it writes there (the project file, the area
+files, `obszary/`, a new project's directories through
+`make_project_directories`) and `projects/exports.py` an export and its ZIP the
+permissions of their folder (`folder_permissions`, `give_permissions`; A-ADR-058).
 
 **Settings.** `ConfigStore.load` reads TOML or returns default
 values; `SettingsService.update` validates the whole (`validate_settings`:

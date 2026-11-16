@@ -22,7 +22,9 @@ extension. With ``zip`` the folder's content is also ``eksport/<name>.zip``.
 An export is written in a hidden sibling directory and then swapped with
 the one of the same name, so a failed export leaves the old one whole; the
 zip of an export written without ``zip`` is removed, it would describe other
-data. ``list_exports`` tells which exports are older than the project file.
+data. ``eksport/``, the export and its zip get the permissions of the project
+directory (A-ADR-058), so whoever reads the project reads its exports.
+``list_exports`` tells which exports are older than the project file.
 """
 
 import hashlib
@@ -43,7 +45,11 @@ from archiwista.errors import PathOutsideRootError
 from archiwista.formats import file_format, raster_member
 from archiwista.messages import message
 from archiwista.projects.document import EXPORTS_DIR
-from archiwista.projects.files import _write_failed
+from archiwista.projects.files import (
+    _write_failed,
+    folder_permissions,
+    give_permissions,
+)
 
 README = "README.txt"
 # The lines the providers' terms require, one a line (Nogat DEV-20.5).
@@ -221,8 +227,11 @@ def write_export(
     try:
         temp.mkdir()
         files = _write_tree(temp, name, project, _place(items))
+        permissions = folder_permissions(base)
+        _give_tree(temp, files, permissions)
         if with_zip:
             _write_zip(temp, files, temp_zip)
+            give_permissions(temp_zip, permissions)
         _swap(temp, target)
         if with_zip:
             os.replace(temp_zip, archive)
@@ -515,6 +524,17 @@ def _write_zip(source: Path, files: Iterable[str], target: Path) -> None:
         os.fsync(written.fileno())
 
 
+def _give_tree(temp: Path, files: Iterable[str], permissions: int | None) -> None:
+    """Give an export's directories and files the permissions of ``eksport/``."""
+    folders = {temp}
+    for file in files:
+        written = temp / file
+        folders.add(written.parent)
+        give_permissions(written, permissions)
+    for folder in folders:
+        give_permissions(folder, permissions, directory=True)
+
+
 def _swap(temp: Path, target: Path) -> None:
     """Put the export written in ``temp`` in place of ``target``.
 
@@ -571,6 +591,10 @@ def _exports_dir(directory: Path) -> Path:
     except OSError as error:
         raise _write_failed(base, error) from error
     _require_inside(base, directory)
+    try:
+        give_permissions(base, folder_permissions(directory), directory=True)
+    except OSError as error:
+        raise _write_failed(base, error) from error
     return base
 
 

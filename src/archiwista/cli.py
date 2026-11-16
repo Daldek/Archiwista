@@ -136,7 +136,8 @@ def main(
         Process exit status.
     """
     if os.name == "posix":
-        # Local data (index, state, logs, area copies) is the user's alone.
+        # Local data (index, state, logs, area copies) is the user's alone; a
+        # project's files take their folder's permissions (projects.files).
         os.umask(0o077)
     shared = SharedSettings.read()
     person = shared.language

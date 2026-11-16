@@ -1797,6 +1797,19 @@ command-line interface may change.
 
 ### Fixed
 
+- A project is readable by the group of its folder (A-ADR-058; scenario finding E2-01).
+  `umask 077`, which keeps the local data private, also made the project file,
+  `obszary/*.geojson`, `eksport/` and its ZIPs `0600` files in `0700` directories whatever
+  the service's `UMask`, so Hydrograf's bootstrap, another account of the folder's group,
+  refused the project (`project_file_unreadable`) until someone ran `chmod -R g+rX` after
+  every change. What Archiwista writes in a project's directory now gets the permissions
+  of its folder: each file its read and write bits, each directory it makes all of them
+  (`0640` and `2750` in a set-group-ID `2750` folder; `0600` and `0700` in a `0700` one),
+  at every write, `os.replace` of the project file included. A desktop project folder made
+  under umask `022` (`0755`) therefore holds `0644` files: keep it `0700` to keep the
+  projects private. Files written before keep their mode until written again. The local
+  data, the state export and the TLS key keep `0700`/`0600`.
+
 - `archiwista serve` stopped by SIGTERM, as a service manager such as systemd stops it,
   stops as at Ctrl+C: it ends the scan scheduler, the jobs and the render processes,
   writes the lifecycle record `stop` and exits with status 0. Before, Uvicorn raised the

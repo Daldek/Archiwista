@@ -8,6 +8,7 @@ read back only with the bytes the project file records.
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import time
@@ -30,6 +31,7 @@ from archiwista.projects import (
     AreaRef,
     ProjectDocument,
     change_project_file,
+    make_project_directories,
     read_project_area,
     read_project_file,
     write_area_file,
@@ -37,6 +39,7 @@ from archiwista.projects import (
 from archiwista.sandbox import process_owner
 from archiwista.sources import GeoJSONGeometry
 
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
 DOCUMENT = ProjectDocument(
     name="Raba",
     description="",
@@ -185,6 +188,78 @@ def test_project_files_change_in_a_read_only_directory_is_a_write_failure(
 
     assert raised.value.details["reason"] == "project_file_write_failed"
     assert (tmp_path / PROJECT_FILE).read_bytes() == before
+
+
+@posix_only
+@pytest.mark.parametrize(
+    ("folder", "file"), [(0o750, 0o640), (0o700, 0o600), (0o775, 0o664)]
+)
+def test_project_files_change_gives_the_file_its_folders_permissions(
+    tmp_path: Path, folder: int, file: int
+) -> None:
+    """Under `umask 077` the file and each atomic rewrite take the folder's bits."""
+    os.umask(0o077)
+    directory = tmp_path / "raba"
+    directory.mkdir()
+    directory.chmod(folder)
+    path = directory / PROJECT_FILE
+
+    change_project_file(directory, create=DOCUMENT)
+    created = path.stat()
+    change_project_file(directory, lambda raw: raw.update(name="Raba 2"))
+    rewritten = path.stat()
+    path.chmod(0o600)  # as a version before A-ADR-058 left it
+    change_project_file(directory, lambda raw: raw.update(name="Raba 3"))
+
+    assert rewritten.st_ino != created.st_ino  # replaced, not written in place
+    assert [
+        stat.S_IMODE(created.st_mode),
+        stat.S_IMODE(rewritten.st_mode),
+        stat.S_IMODE(path.stat().st_mode),
+    ] == [file, file, file]
+
+
+@posix_only
+def test_project_files_write_area_file_gives_obszary_the_projects_permissions(
+    tmp_path: Path,
+) -> None:
+    """``obszary/`` and its file are readable by whom the project's folder lets."""
+    os.umask(0o077)
+    tmp_path.chmod(0o750)
+
+    ref = write_area_file(tmp_path, AREA)
+
+    assert stat.S_IMODE((tmp_path / "obszary").stat().st_mode) == 0o750
+    assert stat.S_IMODE((tmp_path / ref.path).stat().st_mode) == 0o640
+
+
+@posix_only
+def test_project_files_make_project_directories_take_their_parents_permissions(
+    tmp_path: Path,
+) -> None:
+    """A new project's directories keep the folder's group and set-group-ID bit."""
+    os.umask(0o077)
+    base = tmp_path / "projekty"
+    base.mkdir()
+    base.chmod(0o2750)
+    private = base / "prywatne"
+    private.mkdir()
+    private.chmod(0o700)
+
+    make_project_directories(base, base / "barycz" / "czesc-1")
+    make_project_directories(base, private / "raba")
+
+    modes = {
+        path.relative_to(base).as_posix(): stat.S_IMODE(path.stat().st_mode)
+        for path in base.rglob("*")
+    }
+    assert modes == {
+        "barycz": 0o2750,
+        "barycz/czesc-1": 0o2750,
+        "prywatne": 0o700,
+        "prywatne/raba": 0o700,
+    }
+    assert (base / "barycz" / "czesc-1").stat().st_gid == base.stat().st_gid
 
 
 def test_project_files_change_refuses_an_invalid_file_and_leaves_it(

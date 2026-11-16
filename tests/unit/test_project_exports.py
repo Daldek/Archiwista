@@ -11,6 +11,7 @@ providers' lines once each, which ``ATTRIBUTION.txt`` at the root holds too
 
 import hashlib
 import os
+import stat
 import zipfile
 from pathlib import Path
 
@@ -468,6 +469,47 @@ def test_exports_write_export_replaces_the_export_and_its_zip(
     assert sorted(
         path.name for path in (directory / "eksport" / "raba" / "NMT").iterdir()
     ) == ["a.asc"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
+def test_exports_write_export_gives_the_export_the_project_directorys_permissions(
+    tmp_path: Path,
+) -> None:
+    """Under `umask 077` an export is readable by the project directory's group."""
+    os.umask(0o077)
+    directory = _project(tmp_path)
+    directory.chmod(0o750)
+    sheet = _version(tmp_path, "v1", "M-33-44-A-d-2-2.asc")
+    _version(tmp_path, "v1", "M-33-44-A-d-2-2.prj", b"PROJCS")
+    packed = _zip_version(tmp_path, "v2", "sheet.zip", [("sheet.xyz", b"1 2 3\n")])
+    lines = Attribution(("Źródło: GUGiK",))
+
+    # Act
+    write_export(
+        directory,
+        "raba",
+        [_item(sheet, lines=lines), _item(packed, label="2020")],
+        project="Raba",
+        with_zip=True,
+    )
+
+    # Assert
+    exports = directory / "eksport"
+    modes = {
+        path.relative_to(exports).as_posix(): stat.S_IMODE(path.stat().st_mode)
+        for path in [exports, *exports.rglob("*")]
+    }
+    assert modes == {
+        ".": 0o750,
+        "raba": 0o750,
+        "raba/NMT": 0o750,
+        "raba/NMT/M-33-44-A-d-2-2.asc": 0o640,
+        "raba/NMT/M-33-44-A-d-2-2.prj": 0o640,
+        "raba/NMT/sheet.xyz": 0o640,
+        "raba/ATTRIBUTION.txt": 0o640,
+        "raba/README.txt": 0o640,
+        "raba.zip": 0o640,
+    }
 
 
 def test_exports_write_export_failed_copy_leaves_the_old_export(
