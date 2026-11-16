@@ -25,7 +25,7 @@ dependencies = [
     # The release pull request replaces the commit with the tag (REL-2.1) and
     # narrows `SUPPORTED_VERSIONS` to `>=0.8.0` (REL-5.6). The versions the
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`.
-    "kartograf @ git+https://github.com/Daldek/Kartograf@e14bc78c014e9d3e19ad0e8fd8e1764e5191018a",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@7a1eb119e92f788de94711d50695c7d37991f421",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
@@ -65,7 +65,7 @@ dependencies = [
 # `[store]` brings `pyarrow` for the Parquet series. The versions the adapter reads
 # are `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator`.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@f4f6a8deddbc8f2811e623e6c58147d4fb6a2ec8",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@11eedea833d40e64063d30a8fd7df606cb0db746",
 ]
 
 [dependency-groups]
