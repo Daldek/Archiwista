@@ -111,7 +111,9 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
       crash the page with Playwright 1.65.2 and Firefox 159, the set's version; they pass with
       the Playwright 1.64.0 of Archiwista's lock.
     - C6: `tests/integration/test_render_pool.py::test_unreadable_cached_as_code_and_timeout_not_cached` hit its 1 s
-      `PreviewTimeoutError` once under load (timing).
+      `PreviewTimeoutError` once under load: the limit also covered the start of the render
+      process. Fixed on `fix/0.3.1`: only the slow file's requests have the 1 s limit, also in
+      `test_retry_passes_over_cached_verdict_and_remembered_timeout`, which failed the same way.
     - E2-05: an area's `countries` come from its bounding box, so a PL-only and a CZ-only
       area both get `["CZ","PL"]`.
     - E2-06: `archiwista jobs list` during a scan ends with exit 8 `store_unavailable`

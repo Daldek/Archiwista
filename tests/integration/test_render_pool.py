@@ -361,24 +361,29 @@ def test_failure_detail_has_no_paths(
 def test_unreadable_cached_as_code_and_timeout_not_cached(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``unreadable`` is kept as a bare code; a timeout only in memory, 10 min."""
+    """``unreadable`` is kept as a bare code; a timeout only in memory, 10 min.
+
+    Only the slow file's requests have a 1 s limit: the first request also
+    starts the render process, which takes longer than that on a loaded
+    machine, so the broken file keeps the operation's own limit.
+    """
     # Arrange
     data = tmp_path / "data"
     broken = _source(data, "broken.tif", fail=True)
     slow = _source(data, "slow.tif", sleep_s={"probe": 60})
 
-    with _pool(tmp_path, monkeypatch, timeouts={"probe": 1.0}) as pool:
+    with _pool(tmp_path, monkeypatch) as pool:
         # Act
         first = pool.request("probe", broken)
         rendered = pool.stats().rendered
         second = pool.request("probe", broken)
         kept = pool.cache.get(cache_key(broken), INFO_NAME)
         with pytest.raises(PreviewTimeoutError):
-            pool.request("probe", slow)
+            pool.request("probe", slow, timeout_s=1.0)
         timed_out = pool.stats().rendered
         started = time.monotonic()
         with pytest.raises(PreviewTimeoutError):
-            pool.request("probe", slow)
+            pool.request("probe", slow, timeout_s=1.0)
         repeated_s = time.monotonic() - started
         final = pool.stats().rendered
         slow_kept = pool.cache.get(cache_key(slow), INFO_NAME)
@@ -434,10 +439,12 @@ def test_retry_passes_over_cached_verdict_and_remembered_timeout(
     slow = _source(data, "slow.tif", sleep_s={"probe": 60})
     verdict = PreviewProbe(kind="raster", reason="unreadable").to_bytes()
 
-    with _pool(tmp_path, monkeypatch, timeouts={"probe": 1.0}) as pool:
+    # Only the slow file has a 1 s limit: the retry starts a new render
+    # process, which takes longer than that on a loaded machine.
+    with _pool(tmp_path, monkeypatch) as pool:
         pool.cache.put(cache_key(stale), INFO_NAME, verdict)
         with pytest.raises(PreviewTimeoutError):
-            pool.request("probe", slow)
+            pool.request("probe", slow, timeout_s=1.0)
         slow.paths[0].write_text(json.dumps({"name": "slow.tif"}), encoding="utf-8")
 
         # Act
@@ -445,7 +452,7 @@ def test_retry_passes_over_cached_verdict_and_remembered_timeout(
         retried = pool.request("probe", stale, retry=True)
         after = pool.request("probe", stale)
         with pytest.raises(PreviewTimeoutError):
-            pool.request("probe", slow)
+            pool.request("probe", slow, timeout_s=1.0)
         recovered = pool.request("probe", slow, retry=True)
 
     # Assert
