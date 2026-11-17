@@ -451,7 +451,9 @@ cursor is safe in a URL).
   `PATCH /projects/{project}` (`{"name"?, "description"?}`, one at least;
   `project.update`), `archiwista project-area PROJEKT (--area-id OBSZAR |
   --clear)` / `PUT /projects/{project}/area` (`{"area_id": "…" | null}`; the
-  area file of a cleared area stays on the disk; `project.area`) and
+  area file of a cleared area stays on the disk; another area or none is
+  `409 set_closed` while the project holds a closed set, the first one in
+  `details.group`; `project.area`) and
   `archiwista project-store PROJEKT PRODUCENT --store MAGAZYN` / `PUT
   /projects/{project}/stores/{producer}` (`{"store"}`: a configured store, `404`
   else, with a directory of the producer, `400 store_without_producer` else;
@@ -542,9 +544,10 @@ cursor is safe in a URL).
   left in the directory); the project's earlier entries stay in the log.
 - Sets (A-ADR-049 erratum 6). A set (`groups[]` of the card) is `open`, a set
   in the making whose content changes, or `closed`, frozen: a closed set takes
-  no pin, unpin, removed call or re-pin (`409 conflict`, `set_closed`) until it
-  is opened again. A set without `state` in the file (written before) is
-  closed. An open set has one producer, fixed by its first call or pin; another
+  no pin, unpin, removed call or re-pin, and its project no other area (`409
+  conflict`, `set_closed`) until it is opened again. A set without `state` in
+  the file (written before) is closed. An open set has one producer, fixed by
+  its first call or pin; another
   producer's versions or calls are `409 conflict`, `set_producer`. A set
   holding calls has the origin `plan`, any other `local`; a pin of a `plan` set
   names in `calls` the calls whose runs pinned it, `[]` when it was added by

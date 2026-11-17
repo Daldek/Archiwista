@@ -31,6 +31,14 @@ Changes since 0.3.0, to be released as 0.3.1: defect fixes only.
   prunes and recovers, and the stores follow the settings before a job starts), and a reading
   command that cannot open the jobs says „Nie można odczytać zadań” instead of „Nie można
   uruchomić zadania”.
+- **A closed set keeps the project's area (E7-01 of the scenario test of 2026-11-15/16;
+  A-ADR-049 erratum 9).** `PUT /projects/{project}/area` and `archiwista project-area` changed
+  or cleared the area of a project holding a closed set and answered `200`, while the set kept
+  its digest (`digest_state: ok`), so Hydrograf would bootstrap the closed set over the new
+  area. Another area or none is now refused while the project holds a closed set: `409
+  conflict`, reason `set_closed`, the set in `details.group`, and nothing is written; the same
+  area again is accepted. To change the area, open each closed set for editing („Otwórz do
+  edycji”) first.
 
 ## [0.3.0] - 2026-11-16
 

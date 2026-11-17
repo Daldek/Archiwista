@@ -127,8 +127,11 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
     - E3-05 (§6 B6): the daily hand-off starts at 1950-11-01 (7,305 `null` days), not at the
       variable's known range; the annual one has 20 empty years.
     - E5a-03: no `GET /projects/{p}/groups/{g}` (405); a set is only in the project card.
-    - E7-01 (§6 A5): `PUT /projects/{p}/area` with a closed set answers 200: the area changes and
-      the set stays `digest_state: ok`.
+    - E7-01 (§6 A5): `PUT /projects/{p}/area` with a closed set answered 200: the area changed
+      and the set stayed `digest_state: ok`. Fixed on `fix/0.3.1` (A-ADR-049 erratum 9): another
+      area or none is `409 set_closed` while the project holds a closed set. The other option of
+      §6 A5, the area in a set's identity (several parts in one project), is a format change
+      left to the author.
     - E7-03: two downloads at once under `MemoryMax=3G` fill the cgroup with page cache;
       unpacking BDOT10k ends with `Errno 12 ENOMEM`.
     - E7-12: two permission tests fail when TMPDIR lies in a setgid directory; they pass
