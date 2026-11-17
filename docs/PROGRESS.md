@@ -116,8 +116,10 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
       `test_retry_passes_over_cached_verdict_and_remembered_timeout`, which failed the same way.
     - E2-05: an area's `countries` come from its bounding box, so a PL-only and a CZ-only
       area both get `["CZ","PL"]`.
-    - E2-06: `archiwista jobs list` during a scan ends with exit 8 `store_unavailable`
-      ("database is locked"), a wrong message for a read.
+    - E2-06: `archiwista jobs list` during a scan ended with exit 8 `store_unavailable`
+      ("database is locked"), a wrong message for a read. Fixed on `fix/0.3.1`: the command's
+      supervisor leaves its upkeep (pruning, stores, recovery) for later while the index is
+      busy, and a read that cannot open the jobs says „Nie można odczytać zadań”.
     - E2-07 (with Nogat, §6 B7): `archiwista-project/1` has no JSON Schema; only Hydrograf's
       reader validates the file.
     - E2-10 = G08-1: an export (567 pins, 2.8 GB) is one synchronous request of about

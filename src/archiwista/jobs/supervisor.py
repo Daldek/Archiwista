@@ -769,13 +769,18 @@ class JobSupervisor:
         """Claim this process's jobs, follow the settings and recover jobs.
 
         Old jobs and logs are pruned first (``prune``); then a thread looks
-        for the cancel requests of this supervisor's jobs (``cancel``).
+        for the cancel requests of this supervisor's jobs (``cancel``). The
+        pruning, the index's stores and the recovery write the index: while
+        another process (a scan) holds its write lock past the busy timeout,
+        they are left for later (the scheduler prunes and recovers, and the
+        stores follow the settings before a job starts), so a command that
+        only reads the jobs is not refused.
 
         Returns
         -------
         int
             Jobs found without a live supervising process, now
-            ``interrupted``.
+            ``interrupted``; ``0`` when the recovery was left for later.
         """
         with self._lock:
             if self._phase != "new":
@@ -787,14 +792,14 @@ class JobSupervisor:
             self._owner = _hold_owner_lock(jobs_dir)
             self._db = _connect(self._paths.index_file)
             self._phase = "open"
-            self.prune()
-            self._sync(self._settings.get())
+            _unless_busy("prune", self.prune, 0)
+            _unless_busy("sync", lambda: self._sync(self._settings.get()), None)
             self._unsubscribe = self._settings.subscribe(self._settings_changed)
             self._watcher = threading.Thread(
                 target=self._watch_cancels, name="archiwista-job-cancels", daemon=True
             )
             self._watcher.start()
-        return self.recover()
+        return _unless_busy("recover", self.recover, 0)
 
     def prune(self, now: datetime | None = None) -> int:
         """Forget old jobs with their events and logs.
@@ -2600,6 +2605,21 @@ def _shown_result(result: JsonObject, seen: frozenset[str]) -> JsonObject:
         if isinstance(entry, dict) and _ref_seen(entry.get("ref"), seen)
     ]
     return {**result, "failed": shown}
+
+
+def _unless_busy[T](what: str, call: Callable[[], T], later: T) -> T:
+    """Run a write of the index's upkeep, or give ``later`` while it is busy.
+
+    Another process (a scan) may hold the write lock past the busy timeout;
+    the upkeep is then done at its next turn instead of refusing the caller.
+    """
+    try:
+        return call()
+    except sqlite3.OperationalError as error:
+        if error.sqlite_errorcode & 0xFF != sqlite3.SQLITE_BUSY:
+            raise
+        logger.info("The index is busy: %s of the jobs left for later", what)
+        return later
 
 
 @contextmanager

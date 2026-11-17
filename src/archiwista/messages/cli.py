@@ -1753,6 +1753,10 @@ MESSAGES = {
         "Cannot run the job",
         "Nie można uruchomić zadania",
     ),
+    "jobs_unreadable": Text(
+        "Cannot read the jobs",
+        "Nie można odczytać zadań",
+    ),
     "jobs_started": Text(
         "Job {job} started: {kind}.",
         "Zadanie {job} uruchomione: {kind}.",

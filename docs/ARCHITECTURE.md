@@ -1035,7 +1035,11 @@ ends all of them.
    nearest encounter: `recover` at supervisor start and at each tick of the
    scheduler, or `submit` of a job writing the index of the same store; `recover`
    takes the index's write lock only when it finds such a job, so a scan writing
-   the index does not hold up the scheduler's planning.
+   the index does not hold up the scheduler's planning. At supervisor start
+   the upkeep that writes the index (`prune`, the stores of the settings,
+   `recover`) is left for its next turn while another process holds the write
+   lock past the busy timeout, so `archiwista jobs list|show|log|plan` read during
+   a scan (E2-06).
 6. **History** — `prune` at start and from the scheduler: finished jobs
    and logs of 90 days (`LOG_MAX_AGE`; the last job of each store
    and kind stays), logs together at most 1 GB, routine scans

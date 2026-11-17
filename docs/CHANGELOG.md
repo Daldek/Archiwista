@@ -22,6 +22,15 @@ Changes since 0.3.0, to be released as 0.3.1: defect fixes only.
   which also covered the start of a render process, so on a loaded machine a probe that should
   answer timed out (`PreviewTimeoutError`). Only the requests meant to time out have the 1 s
   limit now; the others keep the operation's own. The pool is unchanged.
+- **`archiwista jobs list`, `show`, `log` and `plan` answer while a scan writes the index
+  (E2-06 of the scenario test of 2026-11-15/16).** The command's job supervisor pruned old
+  jobs, wrote the configured stores and recovered jobs at its start, all writes of the index,
+  so while a scan of another process held the index's write lock past the busy timeout (10 s)
+  the read ended with exit 8 `store_unavailable`, „Nie można uruchomić zadania: database is
+  locked”. That upkeep is now left for its next turn while the index is busy (the scheduler
+  prunes and recovers, and the stores follow the settings before a job starts), and a reading
+  command that cannot open the jobs says „Nie można odczytać zadań” instead of „Nie można
+  uruchomić zadania”.
 
 ## [0.3.0] - 2026-11-16
 

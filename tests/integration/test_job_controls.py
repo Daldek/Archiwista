@@ -9,6 +9,7 @@ over the own data of projects (``tests.fixtures.own_data_api``), offline.
 """
 
 import json
+import sqlite3
 import subprocess
 import sys
 import time
@@ -24,6 +25,7 @@ from archiwista.auth import ALL_PROJECTS, LOCAL_OWNER
 from archiwista.auth.authorize import Authorizer
 from archiwista.cli import main
 from archiwista.config import AppPaths, ConfigStore, SettingsService
+from archiwista.index import schema as index_schema
 from archiwista.jobs import FINISHED_STATES, JobRecord, JobSupervisor
 from archiwista.jobs.protocol import STOP_TIMEOUT_S
 from archiwista.messages import message
@@ -512,3 +514,37 @@ def test_commands_print_the_models_of_the_routes(
     ]
     assert shown == route_shown
     assert log == route_log and log["text"]
+
+
+def test_reading_commands_answer_while_another_process_holds_the_index(
+    served: JobsApi, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``jobs list|show|log|plan`` read while a scan holds the write lock (E2-06).
+
+    The upkeep of the command's supervisor (pruning, the stores, recovery)
+    is left for later instead of ending the read with ``store_unavailable``.
+    """
+    # Arrange
+    paths = served.env.paths
+    scanned = served.env.scan("full").id
+    monkeypatch.setattr(index_schema, "BUSY_TIMEOUT_MS", 200)
+    scan = sqlite3.connect(paths.index_file, isolation_level=None)
+    scan.execute("BEGIN IMMEDIATE")
+
+    # Act
+    try:
+        listed = _cli(capsys, paths, "list")
+        shown = _cli(capsys, paths, "show", scanned)
+        log = _cli(capsys, paths, "log", scanned)
+        plan = _cli(capsys, paths, "plan", scanned)
+    finally:
+        scan.execute("ROLLBACK")
+        scan.close()
+
+    # Assert
+    assert "code" not in listed, listed
+    assert [item["id"] for item in listed["items"]] == [scanned]
+    assert (shown["id"], shown["state"]) == (scanned, "succeeded")
+    assert log["text"]
+    # A scan keeps no plan: the read itself answers, not the lock.
+    assert plan["code"] == "not_found"
