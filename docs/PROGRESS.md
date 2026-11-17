@@ -103,8 +103,9 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
     of 2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its report's section 4; "§6 B3"
     names a row of its section 6):
     - C2: `tests/integration/test_projects_api.py::test_a_project_the_server_writes_is_readable_by_its_folders_group`
-      depends on the process umask: only `cli.main` sets `umask 077` (`cli.py:141`), so under
-      umask 022 `index.sqlite` gets `0644` and the test fails (run the gate with `UMask=0077`).
+      depended on the process umask: only `cli.main` sets `umask 077` (`cli.py:141`), and the
+      test's index was made before it set one, so under umask 022 `index.sqlite` got `0644`.
+      Fixed on `fix/0.3.1`: its installation is made under `umask 077`.
     - C3: `tests/e2e/test_station_chart.py::test_an_incomplete_year_is_a_hollow_dot_whose_tooltip_names_the_missing_half[firefox]`
       and `tests/e2e/test_stations_map.py::test_legend_counter_and_chips_stand_beside_the_map[firefox]`
       crash the page with Playwright 1.65.2 and Firefox 159, the set's version; they pass with

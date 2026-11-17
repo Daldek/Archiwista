@@ -9,6 +9,14 @@ command-line interface may change.
 
 Changes since 0.3.0, to be released as 0.3.1: defect fixes only.
 
+### Fixed
+
+- **A test of the project's permissions no longer depends on the umask (C2 of Nogat's
+  integration run of candidate-5).** `test_a_project_the_server_writes_is_readable_by_its_folders_group`
+  set `umask 077` only after its installation was made, so under the umask 022 of a systemd
+  unit the index got `0644` and the test failed; the installation is now made under
+  `umask 077`, as `archiwista serve` makes it. Archiwista itself is unchanged.
+
 ## [0.3.0] - 2026-11-16
 
 The first tagged release, a member of the first joint release of the Nogat ecosystem
