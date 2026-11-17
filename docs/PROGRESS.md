@@ -7,16 +7,18 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 
 ## Status
 
-The working branch is `develop`; every branch named below is merged into it. Nothing after
-0.2.0 is released yet.
+The working branch is `develop`; every branch named below is merged into it. Release 0.3.0
+is tagged `v0.3.0` on `main`.
 
 **Release 0.3.0 is closed** (the author, 2026-11-16): Archiwista's first tag, a member of
 the first joint release of the Nogat ecosystem (Nogat release set candidate-6; ECO-074). It
-holds what `develop` holds: v0.3 "Actions", v0.4 "Team", the projects (A-ADR-049) and the
+holds what `develop` held: v0.3 "Actions", v0.4 "Team", the projects (A-ADR-049) and the
 built part of v0.5 "IMGW stations" (decision D2 of Nogat's plan
-`2026-10-31-archiwista-projects.md`). Until the tag only the coordinator's pin commit and
-the release commit change it (Next 7); every other change, a defect included, waits for the
-next release (0.3.1 or the next minor; the known defects: Next 14).
+`2026-10-31-archiwista-projects.md`).
+
+**Release 0.3.1** (the author's approval of 2026-11-17: defect fixes only) is prepared on
+`fix/0.3.1` from `develop` `a61412c`, at `0.3.1.dev0`; it is not merged until the author
+approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
 
 | Component | State | Note |
 |---|---|---|

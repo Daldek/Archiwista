@@ -1,7 +1,8 @@
 # Archiwista Architecture
 
-**Version described:** the code of `develop`, release 0.3.0 (`0.3.0.dev0` in `pyproject.toml`
-until its release commit); the release before it is 0.2.0 "Podglądy" (Previews).
+**Version described:** the code of `develop` after release 0.3.0 (`0.3.1.dev0` in
+`pyproject.toml` until the release commit of 0.3.1); the release before 0.3.0 is 0.2.0
+"Podglądy" (Previews).
 History: [`CHANGELOG.md`](CHANGELOG.md), state:
 [`PROGRESS.md`](PROGRESS.md), instructions:
 [`USAGE.md`](USAGE.md), [`AGENT_API.md`](AGENT_API.md).
