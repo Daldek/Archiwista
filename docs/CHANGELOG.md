@@ -22,6 +22,16 @@ Changes since 0.3.0, to be released as 0.3.1: defect fixes only.
   which also covered the start of a render process, so on a loaded machine a probe that should
   answer timed out (`PreviewTimeoutError`). Only the requests meant to time out have the 1 s
   limit now; the others keep the operation's own. The pool is unchanged.
+- **Two Firefox interface tests are known failures under Playwright 1.65.2 (C3 of Nogat's
+  integration run of candidate-5).** With Playwright 1.65.2 and its Firefox 159,
+  `test_an_incomplete_year_is_a_hollow_dot_whose_tooltip_names_the_missing_half[firefox]` and
+  `test_legend_counter_and_chips_stand_beside_the_map[firefox]` crashed the page's content
+  process. The cause lies in the browser and its driver, not in the page: Playwright 1.65 names
+  an element by its `aria-labelledby` through `ariaLabelledByElements`, and Firefox 159 crashes
+  when it names such an element in its own world and then in the page's. Under Playwright 1.65.2
+  the two cases are now a strict expected failure with the reason „Firefox 159 / Playwright
+  1.65.2 content-process crash, Nogat C3”; with the Playwright 1.64.0 of the lock they run and
+  pass, and in Chromium they run as before. The interface is unchanged.
 - **`archiwista jobs list`, `show`, `log` and `plan` answer while a scan writes the index
   (E2-06 of the scenario test of 2026-11-15/16).** The command's job supervisor pruned old
   jobs, wrote the configured stores and recovered jobs at its start, all writes of the index,

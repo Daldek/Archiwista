@@ -7,6 +7,8 @@ requests and workers, so interface tests can assert the page stayed within
 its policy and made no request outside the server; ``Tab.settle`` waits for
 the page's requests to end before a test navigates away from it, and
 ``Tab.most_in_flight`` is the most of them in flight at once.
+``FIREFOX_KNOWN_CRASH`` is the Firefox of ``engine_tab`` for a test that
+Firefox 159 with Playwright 1.65.2 crashes in (Nogat C3).
 
 For frame rates (plan v0.2, decision 1) ``gpu_browser`` gives a Chromium
 drawing WebGL on the GPU when it can: Chrome of a graphical session over CDP
@@ -20,12 +22,14 @@ import math
 import os
 import time
 from dataclasses import dataclass, field
+from importlib.metadata import version
 from urllib.parse import urlsplit
 
 import pytest
 from playwright.sync_api import (
     Browser,
     ConsoleMessage,
+    Error,
     Page,
     Playwright,
     Request,
@@ -51,6 +55,20 @@ REQUIRE_GPU_VARIABLE = "ARCHIWISTA_REQUIRE_GPU"
 GPU_ARGS = ("--ignore-gpu-blocklist", "--use-gl=angle", "--use-angle=gl-egl")
 # WebGL drawn by the processor: frame rates say nothing of a computer's GPU.
 SOFTWARE_GL = ("SwiftShader", "llvmpipe", "softpipe")
+# Playwright 1.65 names an element by its `aria-labelledby` through
+# `ariaLabelledByElements`; its Firefox 159 (firefox-1572) crashes the page's content
+# process when an element named so in Playwright's own world is named again in the
+# page's world (`evaluate_all` or `all_inner_texts` under a `get_by_role(name=...)`).
+# The engine of `engine_tab` for a test that does so (Nogat C3).
+FIREFOX_KNOWN_CRASH = pytest.param(
+    "firefox",
+    marks=pytest.mark.xfail(
+        version("playwright") == "1.65.2",
+        reason="Firefox 159 / Playwright 1.65.2 content-process crash, Nogat C3",
+        raises=Error,
+        strict=True,
+    ),
+)
 _RENDERER = """
 () => {
   const gl = document.createElement("canvas").getContext("webgl2");
