@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Piotr de Bever", email = "git@debever.pl" }]
 dependencies = [
-    # Kartograf 0.8.0, the Git tag of Nogat's first joint release set (REL-2.1,
+    # Kartograf 0.8.1, the commit of Nogat's release set candidate-7 (REL-2.1,
     # REL-5.1): the store root `root`, the marker `kartograf-store.json`, the
     # default root (`store_root()`), `kartograf.testing` (ADR-054),
     # `find_sheet_outlines` (PL-2000 zones of powiats, Kartograf ADR-055), the
@@ -20,8 +20,8 @@ dependencies = [
     # (Kartograf ADR-058; A-ADR-035 erratum 2) and the marker
     # `obserwator-store.json` of another tool's store (Nogat ECO-057). The versions
     # the adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`
-    # (REL-5.6).
-    "kartograf @ git+https://github.com/Daldek/Kartograf@v0.8.0",
+    # (REL-5.6). The release commit replaces the commit with the tag v0.8.1.
+    "kartograf @ git+https://github.com/Daldek/Kartograf@723d430f29a649a6cf8850ff1d7b3bedd9743097",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
@@ -53,7 +53,7 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057).
-# Obserwator 3.0.0, the Git tag of Nogat's first joint release set (REL-2.1,
+# Obserwator 3.0.1, the commit of Nogat's release set candidate-7 (REL-2.1,
 # REL-5.1), keeps a store in two roots, the raw root `store sync` downloads into and
 # the data root of the series, catalogs and analyses it builds offline (its ADR-015,
 # ADR-017; A-ADR-056), with the default root of each (`store_root(kind=…)`) and
@@ -61,7 +61,7 @@ dependencies = [
 # Parquet series. The versions the adapter reads are `SUPPORTED_VERSIONS` in
 # `archiwista.adapter.obserwator` (REL-5.6).
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@v3.0.0",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@f3b42e051dc52e35bf5c82f2a0e310ac279306d5",
 ]
 
 [dependency-groups]
