@@ -857,7 +857,8 @@ export function deleteProject(project) {
  * @param {string} project - Project id.
  * @param {string|null} areaId - The area; `null` clears the project's area.
  * @returns {Promise<ProjectCard>} The changed card.
- * @throws {ApiError} As `updateProject`, and `404` for an unknown area.
+ * @throws {ApiError} As `updateProject`, `404` for an unknown area and `409
+ *   set_closed` for another area or none while the project holds a closed set.
  */
 export function setProjectArea(project, areaId) {
   return request("PUT", `/projects/${one(project)}/area`, { json: { area_id: areaId } });

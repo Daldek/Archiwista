@@ -356,7 +356,10 @@ def set_project_area(
     """Set a project's area from `/areas`, or clear it with `null` (`project.area`).
 
     The area is written into the project's `obszary/` as `<area id>.geojson`;
-    a file of another area is never overwritten or removed. Needs the
+    a file of another area is never overwritten or removed. A closed set keeps
+    the area it was closed for: while the project holds one, another area or
+    none is refused (`409`, `set_closed`, the set in `details.group`: open it
+    for editing first); the same area again is not a change. Needs the
     project's owner or an administrator. Refused as `PATCH` is, and an
     unknown area (`404`).
     """

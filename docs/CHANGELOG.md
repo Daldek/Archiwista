@@ -5,6 +5,51 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
+## [Unreleased]
+
+Changes since 0.3.0, to be released as 0.3.1: defect fixes only.
+
+### Fixed
+
+- **A test of the project's permissions no longer depends on the umask (C2 of Nogat's
+  integration run of candidate-5).** `test_a_project_the_server_writes_is_readable_by_its_folders_group`
+  set `umask 077` only after its installation was made, so under the umask 022 of a systemd
+  unit the index got `0644` and the test failed; the installation is now made under
+  `umask 077`, as `archiwista serve` makes it. Archiwista itself is unchanged.
+- **Two tests of the render pool no longer fail under load (C6 of Nogat's integration run of
+  candidate-5).** `test_unreadable_cached_as_code_and_timeout_not_cached` and
+  `test_retry_passes_over_cached_verdict_and_remembered_timeout` gave every probe a 1 s limit,
+  which also covered the start of a render process, so on a loaded machine a probe that should
+  answer timed out (`PreviewTimeoutError`). Only the requests meant to time out have the 1 s
+  limit now; the others keep the operation's own. The pool is unchanged.
+- **Two Firefox interface tests are known failures under Playwright 1.65.2 (C3 of Nogat's
+  integration run of candidate-5).** With Playwright 1.65.2 and its Firefox 159,
+  `test_an_incomplete_year_is_a_hollow_dot_whose_tooltip_names_the_missing_half[firefox]` and
+  `test_legend_counter_and_chips_stand_beside_the_map[firefox]` crashed the page's content
+  process. The cause lies in the browser and its driver, not in the page: Playwright 1.65 names
+  an element by its `aria-labelledby` through `ariaLabelledByElements`, and Firefox 159 crashes
+  when it names such an element in its own world and then in the page's. Under Playwright 1.65.2
+  the two cases are now a strict expected failure with the reason „Firefox 159 / Playwright
+  1.65.2 content-process crash, Nogat C3”; with the Playwright 1.64.0 of the lock they run and
+  pass, and in Chromium they run as before. The interface is unchanged.
+- **`archiwista jobs list`, `show`, `log` and `plan` answer while a scan writes the index
+  (E2-06 of the scenario test of 2026-11-15/16).** The command's job supervisor pruned old
+  jobs, wrote the configured stores and recovered jobs at its start, all writes of the index,
+  so while a scan of another process held the index's write lock past the busy timeout (10 s)
+  the read ended with exit 8 `store_unavailable`, „Nie można uruchomić zadania: database is
+  locked”. That upkeep is now left for its next turn while the index is busy (the scheduler
+  prunes and recovers, and the stores follow the settings before a job starts), and a reading
+  command that cannot open the jobs says „Nie można odczytać zadań” instead of „Nie można
+  uruchomić zadania”.
+- **A closed set keeps the project's area (E7-01 of the scenario test of 2026-11-15/16;
+  A-ADR-049 erratum 9).** `PUT /projects/{project}/area` and `archiwista project-area` changed
+  or cleared the area of a project holding a closed set and answered `200`, while the set kept
+  its digest (`digest_state: ok`), so Hydrograf would bootstrap the closed set over the new
+  area. Another area or none is now refused while the project holds a closed set: `409
+  conflict`, reason `set_closed`, the set in `details.group`, and nothing is written; the same
+  area again is accepted. To change the area, open each closed set for editing („Otwórz do
+  edycji”) first.
+
 ## [0.3.0] - 2026-11-16
 
 The first tagged release, a member of the first joint release of the Nogat ecosystem
