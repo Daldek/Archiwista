@@ -50,6 +50,13 @@ Changes since 0.3.0, to be released as 0.3.1: defect fixes only.
   area again is accepted. To change the area, open each closed set for editing („Otwórz do
   edycji”) first.
 
+### Changed
+
+- Kartograf is re-pinned from `v0.8.0` to `723d430f` and Obserwator (extra `obserwator`)
+  from `v3.0.0` to `f3b42e0`, their commits of 0.8.1 and 3.0.1 in Nogat's release set
+  candidate-7 (`pyproject.toml`, `uv.lock`); the release commit replaces them with the tags.
+  The supported ranges are unchanged.
+
 ## [0.3.0] - 2026-11-16
 
 The first tagged release, a member of the first joint release of the Nogat ecosystem

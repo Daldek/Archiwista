@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -46,7 +47,7 @@ def test_doctor_cli_reports_installed_kartograf_plugin(tmp_path: Path) -> None:
     result = _doctor(tmp_path)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "[OK] Wtyczka kartograf: wersja 0.8.0" in result.stdout
+    assert f"[OK] Wtyczka kartograf: wersja {version('kartograf')}" in result.stdout
     assert "] Wtyczka obserwator: " in result.stdout
     assert not (tmp_path / "config").exists()
 
