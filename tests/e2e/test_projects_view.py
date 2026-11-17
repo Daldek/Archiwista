@@ -59,9 +59,19 @@ INDEXED = """async () => {
 }"""
 
 
-def served_store(serve: Serve, tmp_path: Path) -> tuple[StoreManifest, Served]:
-    """Generate a store with its projects and serve it offline (``Z:`` an alias)."""
+def served_store(
+    serve: Serve,
+    tmp_path: Path,
+    prepare: Callable[[StoreManifest], None] | None = None,
+) -> tuple[StoreManifest, Served]:
+    """Generate a store with its projects and serve it offline (``Z:`` an alias).
+
+    ``prepare`` changes the generated store or its projects before the server
+    reads them.
+    """
     store = make_store(tmp_path / "store", slots=24, seed=7)
+    if prepare is not None:
+        prepare(store)
     config = StoreConfig(
         id=STORE,
         name=STORE_NAME,
