@@ -49,10 +49,20 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
 1. Hydrograf's admin panel cannot re-process from a store; the author moved that fix to the
    release after the first joint release (2026-11-15). Kaczawa's re-processing runs from the
    command line with project `kaczawa`, set `2026-1` (Hydrograf PROGRESS).
-2. Flaky e2e tests: `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens`
-   (gate of 2026-11-10, „Logowanie” never showed in 30 s) and
-   `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (gate of
-   2026-11-15); both pass alone; cause not found.
+2. Flaky e2e tests, causes found (`fix/flaky-e2e`, for 0.3.2):
+   - `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (gate of
+     2026-11-15) read the outline count before the map framed the area (the home view's 16,
+     not the area's 11) when the area's answer came late. Fixed in the test (`54f9ba5`): it
+     waits until the address's centre lies in the area.
+   - `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens[chromium]`
+     (gate of 2026-11-10): a network change on the computer (a Docker veth, Tailscale) makes
+     Chromium cancel the queued module requests of the boot (`net::ERR_NETWORK_CHANGED`), and
+     the interface stayed on its spinner. Fixed in the page (`4704325`): `src/boot.js` loads
+     `main.js`, reloads once after a failed import, then shows „Nie udało się wczytać
+     Archiwisty.” with „Wczytaj ponownie”. Reproduced in a private network namespace.
+     Still open: with the event at 7 s of the reproduction the import neither resolved nor
+     failed in 45 s (no reload, no message); [INFERENCE] Chromium left a request pending. A
+     time bound in `boot.js` would cover it, but its mechanism is not confirmed.
 3. The author decides: „Pobierz CSV” on the station card, through Obserwator's
    `export_series` (CSV with the provider's attribution); today a series leaves as the
    hand-off JSON, the parquet path, or a Python call of `obserwator.export_series`.
