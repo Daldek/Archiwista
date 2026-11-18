@@ -4,8 +4,10 @@ A session from the one-time token of the address, the instruction without a
 session, the menu „Aplikacje” of the GUIs ``nogat.toml`` names (Nogat's kit,
 A-ADR-054), the first-run wizard, offline mode with MapLibre's worker and the
 packaged glyphs under the CSP, every ES module loading without errors (the
-syntax check without Node.js), and in Chromium and Firefox an interface
-upgraded on the same address reaching the next visit, view modules included.
+syntax check without Node.js), in Chromium and Firefox an interface
+upgraded on the same address reaching the next visit, view modules included,
+and a module the browser could not fetch: the page loads once more, and when
+that load fails too it says so with a button loading it again.
 """
 
 import os
@@ -17,7 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
 import pytest
-from playwright.sync_api import Browser, Page, expect
+from playwright.sync_api import Browser, Page, Route, expect
 
 import archiwista.web
 from archiwista.config import AppSettings, ConfigStore, StoreConfig
@@ -95,6 +97,10 @@ async (paths) => {
     result.status === "rejected" ? [`${paths[index]}: ${result.reason}`] : []);
 }
 """
+# A module of the interface's start (``labels/index.js`` imports it), which the
+# browser fails to fetch as Chromium does when the computer's network changes.
+START_MODULE = "**/static/src/labels/common.js"
+START_FAILED = "Nie udało się wczytać Archiwisty."
 
 Serve = Callable[..., Served]
 
@@ -114,6 +120,11 @@ def open_map_view(page: Page, served: Served) -> None:
 def zespol(root: Path) -> StoreConfig:
     """Return the generated store as the ``zespol`` store."""
     return StoreConfig(id="zespol", name="Zespół", kartograf=root, kind="local")
+
+
+def page_loads(tab: Tab, served: Served) -> int:
+    """Return how many times the tab loaded the page at ``/``."""
+    return tab.requests.count(f"{served.base}/")
 
 
 def interface_copy(directory: Path, build: str, modified: float) -> Path:
@@ -481,3 +492,54 @@ def test_an_upgraded_interface_reaches_the_next_visit(
 
         expect(again.page.locator("html")).to_have_attribute("data-build", "upgraded")
         again.assert_clean()
+
+
+def test_a_module_that_failed_once_is_fetched_again_with_the_page(
+    serve: Serve, tab: Tab
+) -> None:
+    """A module the browser could not fetch: the page loads once more and starts.
+
+    Chromium cancels the requests still waiting for a connection when the
+    computer's network changes (``net::ERR_NETWORK_CHANGED``); one module
+    missing failed the whole interface, which stayed on its spinner. The
+    session's one-time address is still whole when the page loads again.
+    """
+    served = serve()
+    refused: list[str] = []
+
+    def refuse_once(route: Route) -> None:
+        if refused:
+            route.continue_()
+        else:
+            refused.append(route.request.url)
+            route.abort()
+
+    tab.page.route(START_MODULE, refuse_once)
+
+    open_shell(tab.page, served.token_url())
+
+    assert len(refused) == 1
+    assert page_loads(tab, served) == 2
+    tab.assert_clean()
+
+
+def test_a_module_that_never_loads_leaves_a_message_not_a_reload_loop(
+    serve: Serve, tab: Tab
+) -> None:
+    """The page loads once more, then says it did not start; its button loads it."""
+    served = serve()
+    tab.page.route(START_MODULE, lambda route: route.abort())
+    message = tab.page.get_by_role("alert")
+    again = message.get_by_role("button", name="Wczytaj ponownie")
+
+    tab.page.goto(f"{served.base}/")
+    expect(message).to_contain_text(START_FAILED)
+    loads = page_loads(tab, served)
+    with tab.page.expect_navigation():
+        again.click()
+    expect(again).to_be_visible()
+
+    assert loads == 2
+    assert page_loads(tab, served) == 3
+    expect(tab.page.locator(".boot .spinner")).to_have_count(0)
+    tab.assert_clean()

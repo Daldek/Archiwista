@@ -190,6 +190,30 @@ def wait_still(page: Page) -> None:
     expect(counter(page)).to_have_text(LOADED)
 
 
+def wait_framed(page: Page, bbox: list[float]) -> None:
+    """Wait until the map has framed ``bbox``: the address's centre lies in it.
+
+    Without a position in the address the map opens on its home view and
+    frames the area of the address once both the map and the area's answer
+    are there; when that answer comes late, the home view stands still with
+    the count of its own outlines first. The address takes the map's
+    position when a move ends.
+    """
+    west, south, east, north = bbox
+
+    def framed() -> bool:
+        center = query_of(page).get("center")
+        if center is None:
+            return False
+        lon, lat = (float(value) for value in center.split(","))
+        return west <= lon <= east and south <= lat <= north
+
+    deadline = time.monotonic() + 30
+    while not framed():
+        assert time.monotonic() < deadline, "the map did not frame the area"
+        page.wait_for_timeout(100)
+
+
 def nmt_area(page: Page) -> str:
     """Keep an area around the store's NMT sheets (ASC); return its id."""
     view = api(page, f"/map/footprints?product=nmt&versions=all&bbox={WORLD}")
@@ -414,6 +438,7 @@ def test_year_buttons_select_layer_and_tiles(map_store: MapStore, tab: Tab) -> N
     page = open_session(tab, served)
     token = session_headers(page)[CSRF_HEADER]
     area_id = nmt_area(page)
+    bbox = api(page, f"/areas/{area_id}")["bbox"]
     layers = layers_of(page, area_id)
     first, second = sheet_layers(layers)[:2]
     seen = watch(page)
@@ -425,6 +450,8 @@ def test_year_buttons_select_layer_and_tiles(map_store: MapStore, tab: Tab) -> N
     titles = [text.split("\n")[0] for text in buttons.all_inner_texts()]
     assert titles == [layer["title"] for layer in layers]
     expect(strip(page).locator("[aria-pressed=true]")).to_have_count(0)
+    # Every outline of the framed area, not of the home view the map opens on.
+    wait_framed(page, bbox)
     wait_still(page)
     every = counter(page).inner_text()
 

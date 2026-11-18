@@ -64,6 +64,24 @@ Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
   with an area in the form and changes it under `umask 077` in a `2750` folder of a group,
   and finds `0640` files and `2750` directories of that group, which another account of the
   group (Hydrograf's bootstrap) reads. Archiwista itself is unchanged.
+- **An interface test of the year buttons no longer fails under load (Next 2 of
+  `docs/PROGRESS.md`, the gate of 2026-11-15).** `test_year_buttons_select_layer_and_tiles`
+  opened the map with an area and no position and took the count of every outline once the
+  address had stood still for 0.6 s. The map frames the area only when both the map and the
+  area's answer are there, so when that answer came late the count taken was the home view's
+  („16 obrysów w widoku”) and the one after the year was cleared the framed area's („11
+  obrysów w widoku”). The test now waits until the address's centre lies in the area before
+  it takes the count. The interface is unchanged.
+- **The interface starts when one of its files could not be fetched (Next 2 of
+  `docs/PROGRESS.md`, the gate of 2026-11-10; `web/src/boot.js`).** The interface is about
+  forty ES modules that the browser fetches at once over six connections, and Chromium
+  cancels the requests still waiting when the computer's network changes
+  (`net::ERR_NETWORK_CHANGED`: a VPN, another Wi-Fi network, a container started on the
+  computer). One module missing left the page on its spinner for good; in that gate the
+  sign-in page of `test_a_temporary_password_is_changed_before_the_shell_opens[chromium]`
+  never appeared. The page now loads once more by itself; when that load fails too it says
+  „Nie udało się wczytać Archiwisty.” with the button „Wczytaj ponownie”, and it never
+  reloads in a loop.
 
 ## [0.3.1] - 2026-11-18
 

@@ -64,7 +64,7 @@ def test_files_the_page_loads_are_shipped_and_readable() -> None:
     loaded = re.findall(r'(?:src|href)="/static/([^"]+)"', page)
 
     # Assert
-    assert "src/main.js" in loaded
+    assert "src/boot.js" in loaded
     assert set(loaded) <= shipped("archiwista.web")
     for name in loaded:
         assert web.joinpath(name).read_bytes(), name
