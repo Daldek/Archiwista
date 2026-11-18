@@ -707,12 +707,14 @@ links to the IMGW-PIB terms that apply, each naming whose terms it links), both 
 such data. They come with `GET /slots` (merged over the page's versions), a
 version's card, `GET /compare` (both sides merged) and every station answer
 (`/stations`, `/stations/datasets`, `/stations/timeline`, `/stations/compare`,
-`/stations/{code}`, its `/coverage` and `/series`, `/map/stations`). Archiwista
+`/stations/{code}`, its `/coverage` and `/series`, `/map/stations`), a project's card
+(`GET /projects/{project}`: the versions its pins name) and `GET /projects` (the listed
+projects' merged). Archiwista
 chooses them by the provider and the form of the data, not from the sidecar (but
 for those border lines); a version of a producer that names no origin of its data
 (Kartograf) gives its
-sidecar's attribution on its card and in `/compare` (for example „Główny Urząd
-Geodezji i Kartografii”). The lines are Polish whatever `Accept-Language` says. An
+sidecar's attribution on its card, in `/compare` and with a project (for example
+„Główny Urząd Geodezji i Kartografii”). The lines are Polish whatever `Accept-Language` says. An
 agent shows them verbatim with the data, neither shortened nor translated, and
 carries them into everything it makes of the data (a table, a report, a file). The
 `attribution` of `StationChart` and `VersionCard`, once the sidecar's formula as a

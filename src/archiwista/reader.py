@@ -297,6 +297,7 @@ def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
     projects = read_projects(
         reader.queries,
         reader.settings,
+        reader.registry,
         args.store,
         visible=reader.visible,
         writable=reader.writable,
@@ -312,16 +313,16 @@ def _projects(args: argparse.Namespace, reader: _Reader) -> _Output:
             missing=item.missing_pins,
         )
         for item in projects.items
-    ]
-    return _Output(
-        projects, _with_stale(projects, lines or [message("cli.no_projects")])
-    )
+    ] or [message("cli.no_projects")]
+    lines += attribution.text(projects.attribution, projects.terms_notice)
+    return _Output(projects, _with_stale(projects, lines))
 
 
 def _project(args: argparse.Namespace, reader: _Reader) -> _Output:
     card = project_card(
         reader.queries,
         reader.settings,
+        reader.registry,
         reader.preferences,
         args.project,
         visible=reader.visible,
@@ -533,6 +534,7 @@ def project_text(card: ProjectCard) -> str:
             for pin in group.pins
         )
     lines.extend(_problem_lines(card.problems))
+    lines += attribution.text(card.attribution, card.terms_notice)
     return _with_stale(card, lines)
 
 

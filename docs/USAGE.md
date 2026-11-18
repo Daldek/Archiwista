@@ -460,6 +460,12 @@ and a directory holding only one of them is no project.
   source again, so it fetches what the source has then. "Anuluj" closes the window and
   leaves the check running as the card's job.
   Below come the exports, the own data and the activity.
+- **The strip of sources** at the foot of the list: the lines the terms of the providers
+  of the data the listed projects and the chosen one pin require (A-ADR-055; for
+  Kartograf's data the attribution of its sidecar, which only the window that „Źródła i
+  warunki” opens shows), each once, as the project's `ATTRIBUTION.txt` gives them; „Kopiuj
+  atrybucję” in that window copies them all, one a line. Nothing when no project pins such
+  data.
 - **Sets in the making** (A-ADR-049 erratum 6; the owner or an administrator): a set is
   built from several plan windows and hand-picked versions while it is open ("w
   budowie"), and closed when it is complete; a closed set is frozen, so a program that
@@ -974,9 +980,9 @@ each station with the variable's label and full years and its chart as `stations
 series` writes it, or "brak danych" for a station without it;
 `--json` gives the points. Without Obserwator each refuses with the repair command
 `pip install "archiwista[obserwator]"`. The text of `stations list`, `timeline`,
-`show`, `series`, `compare` and `datasets`, and of `archiwista search`, `version` and
-`compare`, ends with „Źródła danych i warunki korzystania:” and the lines the terms
-of the data's providers require; `--json` gives them as `attribution` and
+`show`, `series`, `compare` and `datasets`, and of `archiwista search`, `version`,
+`compare`, `projects` and `project`, ends with „Źródła danych i warunki korzystania:”
+and the lines the terms of the data's providers require; `--json` gives them as `attribution` and
 `terms_notice`, and the hand-off carries them too.
 
 ## Session

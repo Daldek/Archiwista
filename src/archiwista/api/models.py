@@ -2845,9 +2845,19 @@ class Health(BaseModel):
 class ProjectList(IndexAnswer):
     """Projects the session's principal sees, ordered by name."""
 
-    model_config = _examples({"items": [_PROJECT_EXAMPLE], **_FRESH})
+    model_config = _examples(
+        {"items": [_PROJECT_EXAMPLE], "attribution": [], "terms_notice": [], **_FRESH}
+    )
 
     items: list[ProjectItem]
+    attribution: AttributionLines = Field(
+        description=(
+            "The lines the terms of the providers of the listed projects' pinned"
+            " versions require (Nogat DEV §20), merged in the standard's order"
+            " as `GET /projects/{project}` gives each project's."
+        )
+    )
+    terms_notice: TermsNotice
 
 
 class ProjectPin(BaseModel):
@@ -3049,6 +3059,8 @@ class ProjectCard(IndexAnswer):
             "created_by": "kasia",
             "groups": [_PIN_GROUP_EXAMPLE],
             "problems": [],
+            "attribution": [],
+            "terms_notice": [],
             **_FRESH,
         }
     )
@@ -3083,6 +3095,17 @@ class ProjectCard(IndexAnswer):
             " area file not used, missing or other pinned versions."
         )
     )
+    attribution: AttributionLines = Field(
+        description=(
+            "The lines the terms of the providers of the project's pinned versions"
+            " require (Nogat DEV §20), merged in the standard's order: of each"
+            " version the index knows, the lines of its data's origin, for a"
+            " producer that names none the attribution its sidecar gives"
+            " (`license.attribution`), as its export's `ATTRIBUTION.txt`; empty"
+            " without such data."
+        )
+    )
+    terms_notice: TermsNotice
 
     @classmethod
     def of(
@@ -3090,10 +3113,15 @@ class ProjectCard(IndexAnswer):
         detail: ProjectDetail,
         path: CopyPath,
         freshness: dict[str, Any],
+        lines: Attribution,
         *,
         writable: WritableProjects,
     ) -> Self:
-        """Return the model of a project's detail (``writable``: ``project.write``)."""
+        """Return the model of a project's detail with the lines of its pinned data.
+
+        ``writable`` says whether the principal may change the project
+        (``project.write``).
+        """
         project = detail.project
         return cls(
             **_project_fields(project, writable=writable),
@@ -3102,6 +3130,7 @@ class ProjectCard(IndexAnswer):
             created_by=project.created_by,
             groups=[ProjectGroup.of(group) for group in detail.groups],
             problems=[Issue.of(problem) for problem in detail.problems],
+            **lines.fields(),
             **freshness,
         )
 
