@@ -18,6 +18,18 @@ Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
   at once was refused with „Nie wiadomo, czyje to polecenie: zacznij je od nazwy
   producenta ().”. The button now waits, disabled, until the list is loaded; when the
   list cannot be loaded the step's producer still decides, as before.
+- **The guide says how to mount an encrypted SMB share that holds a store (E7-03 of the
+  scenario test of 2026-11-15/16).** A download into the test store on an SMB 3 share,
+  while another one ran, failed one BDOT10k call with „Failed to extract or save the
+  BDOT10k package (0203.gpkg): [Errno 12] Cannot allocate memory”. The page cache that kept
+  the server's unit at its `MemoryMax=3G` was not the cause; the kernel reclaims it. The
+  share is mounted with `seal` and the CIFS client's default `rsize` and `wsize` of 4 MiB,
+  so the kernel encrypts each request in one contiguous buffer of 64 KiB, and on the busy
+  test computer, its memory fragmented, it refused one (`page allocation failure: order:4`
+  in `crypt_message`): `close()` of the file Kartograf copied into the store failed. USAGE
+  ("Team server", "When something does not work") and the LAN runbook now mount such a
+  share with `rsize=1048576,wsize=1048576`, whose buffer of 16 KiB the kernel does not
+  refuse. Archiwista itself is unchanged.
 
 ## [0.3.1] - 2026-11-18
 

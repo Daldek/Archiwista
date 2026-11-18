@@ -1066,6 +1066,23 @@ server {
 }
 ```
 
+**A share for stores and projects.** Mount the SMB 3 share on the server with the Linux
+CIFS client; when the share is encrypted (the option `seal`, or a share that requires
+encryption), also give `rsize=1048576,wsize=1048576`, for example the options
+`vers=3.1.1,seal,rsize=1048576,wsize=1048576` beside your others. At the client's default
+of 4 MiB the kernel encrypts each request in one contiguous buffer of 64 KiB, which it
+cannot always find when the server is busy and its memory fragmented: it then refuses the
+write, `close()` of the file fails with `[Errno 12] Cannot allocate memory`, and so does
+the producer's call (the kernel log shows `page allocation failure: order:4` in
+`crypt_message`; seen on Linux 6.12, and later kernels allocate the same way). At 1 MiB
+the buffer is 16 KiB, for which the kernel reclaims memory instead of refusing. The error
+does not come from a memory limit of the server's unit: under systemd's `MemoryMax` the
+page cache of the files the server and its jobs write and read keeps the unit at the
+limit, and the kernel reclaims it as they need memory. Keep the unit's `TMPDIR` on a
+local disk, not a tmpfs: Kartograf unpacks a BDOT10k package there before it copies the
+result into the store, and a tmpfs keeps its files in the unit's memory, which the kernel
+cannot reclaim, only swap out.
+
 **The first administrator and passwords.** The first administrator is created at the
 server's terminal, never on a page of the network: `archiwista users add anna.nowak --name
 "Anna Nowak" --role admin`, then `archiwista users password anna.nowak` (typed twice
@@ -1302,6 +1319,12 @@ Restoring is putting the copy back in place while the server is stopped.
 - **Store unavailable** (for example a disconnected share): the views show the
   state of the index, the status bar gives its time; after reconnecting, the
   next scan completes the changes without rebuilding the index.
+- **A download's call fails with `[Errno 12] Cannot allocate memory`** in a store on an
+  encrypted SMB share, for example `Failed to extract or save the BDOT10k package
+  (0203.gpkg): [Errno 12] Cannot allocate memory`: the kernel had no buffer to encrypt
+  the write. Mount the share as "A share for stores and projects" under "Team server"
+  says. Kartograf removed its unfinished file, so the store keeps no broken one, and
+  "Ponów" on the job runs it again.
 - **Data source unavailable** (Kartograf missing or an unsupported version):
   the status bar gives the repair command, and `archiwista doctor` prints the
   same.
