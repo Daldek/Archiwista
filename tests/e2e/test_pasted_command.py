@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 
 import pytest
 from kartograf.testing import build_fixture_store
-from playwright.sync_api import Locator, Page, expect
+from playwright.sync_api import Locator, Page, Route, expect
 
 from archiwista.config import AppSettings, StoreConfig
 from archiwista.jobs import JobSupervisor
@@ -233,6 +233,45 @@ def test_a_line_the_producer_refuses_shows_its_text_at_the_field(
 
     # Assert
     expect(field).not_to_have_attribute("aria-invalid", "true")
+    tab.assert_clean()
+
+
+def test_a_line_pasted_before_the_producers_are_known_waits_for_them(
+    serve: Serve, tab: Tab, tmp_path: Path, standin: ModuleType
+) -> None:
+    """„Zaplanuj…” waits for the list of producers instead of naming none of them."""
+    # Arrange: the list of producers is held back.
+    held: list[Route] = []
+    page = tab.page
+
+    def hold(route: Route) -> None:
+        held.append(route)
+
+    page.route("**/api/v1/sources", hold)
+    served = serve_standin(serve, tmp_path)
+    step = open_step(page, served, served.token_url())
+    field = step.get_by_label("Wklej polecenie producenta")
+    button = step.get_by_role("button", name="Zaplanuj…")
+
+    # Act
+    field.fill(f"{STATION_LINE.removesuffix(' hydro')} river")
+
+    # Assert: the line cannot be told whose it is yet.
+    expect(button).to_be_disabled()
+    expect(field).not_to_have_attribute("aria-invalid", "true")
+
+    # Act: the list arrives.
+    assert held, "the page asked for its producers"
+    for route in held:
+        route.continue_()
+    page.unroute("**/api/v1/sources")
+    button.click()
+
+    # Assert: the stand-in read the line and refused its value.
+    expect(field).to_have_attribute("aria-invalid", "true")
+    expect(described(page, field)).to_contain_text(
+        "kind is one of hydro, meteo, not 'river'"
+    )
     tab.assert_clean()
 
 
