@@ -20,7 +20,10 @@ occurrence and two summer ones), 2023 the summer missing and the winter
 maximum published without a day (``2023-03``), 2024 the winter absent. Its H
 has both halves every year, its T no value. Stacja Bez Q (``WITHOUT_Q``) has
 monthly H and T but no monthly Q; Stacja Bez Miejsca (``HALF_YEARS_ONLY``)
-has the half-year characteristics of Q only, 2023 without the summer.
+has the half-year characteristics of Q only, 2023 without the summer; Poza
+krajem (``LATE``) has them of Q from 2022 on, the archives of 2020 and 2021
+listing it without a value, as IMGW-PIB lists a gauge before its first
+discharge.
 """
 
 import io
@@ -39,6 +42,7 @@ MONTHLY = "pl.imgw.hydro_monthly"
 RABA = "149190310"
 WITHOUT_Q = "149190311"
 HALF_YEARS_ONLY = "149190312"
+LATE = "149190313"
 HALF_YEARS = range(2020, 2025)
 MONTH_YEARS = range(2023, 2025)
 
@@ -53,6 +57,7 @@ _NAMES = {
     RABA: ("Raba Górna", "Raba"),
     WITHOUT_Q: ("Stacja Bez Q", "Raba"),
     HALF_YEARS_ONLY: ("Stacja Bez Miejsca", "Raba"),
+    LATE: ("Poza krajem", "Raba"),
 }
 # IMGW-PIB's codes of a missing value, by quantity.
 _MISSING = {"H": "9999", "Q": "99999.999", "T": "99.9"}
@@ -105,6 +110,12 @@ def half_year_rows() -> list[HalfYearRow]:
             (HALF_YEARS_ONLY, year, 13, "Q", 1, str(5 + year % 10), winter, winter),
             (HALF_YEARS_ONLY, year, 14, "Q", 1, str(4 + year % 10), summer, summer),
         ]
+        for period, when, value in ((13, winter, 30), (14, summer, 35)):
+            if year < 2022:
+                rows.append((LATE, year, period, "Q", 3, _MISSING["Q"], None, None))
+            else:
+                found = str(value + year % 10)
+                rows.append((LATE, year, period, "Q", 3, found, when, when))
     return rows
 
 

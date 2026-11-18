@@ -18,6 +18,16 @@ Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
   at once was refused with „Nie wiadomo, czyje to polecenie: zacznij je od nazwy
   producenta ().”. The button now waits, disabled, until the list is loaded; when the
   list cannot be loaded the step's producer still decides, as before.
+- **A hand-off to Hydrolog spans the variable's values, not decades of `null` before
+  them (E3-05 of the scenario test of 2026-11-15; `services/station_handoff.py`).** Without
+  `from` and `to`, `GET /api/v1/stations/{code}/handoff` (`archiwista stations handoff`,
+  „Do Hydrologa”) took the chart's default range, the known span of the variable's label,
+  which covers every year the store's archives know for the station: Q of a gauge
+  measured since 1970-11-01 began on 1950-11-01 with 7,305 `null` days, and its
+  annual maxima had 20 empty years 1951–1970 not named in `left_out`. A daily hand-off now
+  runs from the variable's first value to its last, and an annual one from the first to the
+  last year with a maximum; the gaps between stay `null`, and a range asked is kept as
+  before (a bound asked beyond the values ends the default one there).
 
 ## [0.3.1] - 2026-11-18
 

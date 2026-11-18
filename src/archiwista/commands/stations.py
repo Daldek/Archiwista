@@ -118,6 +118,11 @@ _COMPARE_HELP = {
     "start": "cli.stations_compare_start_help",
     "end": "cli.stations_compare_end_help",
 }
+# The range of ``stations handoff``, by default the variable's values (A-ADR-052).
+_HANDOFF_HELP = {
+    "start": "cli.stations_handoff_start_help",
+    "end": "cli.stations_handoff_end_help",
+}
 
 
 class _InvalidOptions(Exception):
@@ -159,7 +164,7 @@ def add_commands(commands: Commands) -> None:
     handoff.add_argument(
         "code", metavar=message("metavar.code"), help=message("cli.stations_code_help")
     )
-    _options(handoff, StationHandoffQuery)
+    _options(handoff, StationHandoffQuery, _HANDOFF_HELP)
     compare = add_parser(actions, "compare", "cli.stations_compare_help")
     _options(compare, StationCompareQuery, _COMPARE_HELP)
     datasets = add_parser(actions, "datasets", "cli.stations_datasets_help")

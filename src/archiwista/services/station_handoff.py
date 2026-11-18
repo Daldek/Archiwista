@@ -6,8 +6,12 @@ series: every day of a variable's daily values in a range, a day without a
 value (no row, or a missing or accumulated one) as ``null``; or the annual
 maxima of an annual chart (A-ADR-051), only of complete hydrological years,
 since a flood frequency analysis must not take one half-year's maximum for its
-year's; the years left out are named in the provenance. The document carries
-the lines the provider's terms require with the series (A-ADR-055).
+year's; the years left out are named in the provenance. By default a hand-off
+spans the variable's values, from its first to its last (A-ADR-052 erratum 4):
+the known span of its label, a chart's default range, may begin decades before
+them when the provider's archive lists the station without the variable. The
+document carries the lines the provider's terms require with the series
+(A-ADR-055).
 """
 
 from collections.abc import Iterable, Sequence
@@ -23,12 +27,53 @@ from archiwista.api.models_handoff import (
     StationHandoff,
 )
 from archiwista.api.models_stations import AnnualPoint
-from archiwista.index import StationCoverage, StationRow
+from archiwista.index import CoverageVariable, StationCoverage, StationRow
 from archiwista.messages import message
-from archiwista.sources import SeriesValues
+from archiwista.services.series_chart import known_span
+from archiwista.sources import DateRange, SeriesValues
 
 # The rule by which an annual maximum is found (A-ADR-051), named in the provenance.
 ANNUAL_RULE = "greater of the winter and summer maxima of the half-year characteristics"
+
+
+def daily_range(
+    line: CoverageVariable, start: date | None, end: date | None
+) -> DateRange | None:
+    """Return the first and last day of a variable's daily hand-off.
+
+    ``start`` and ``end`` are the range asked. A bound left out is the
+    variable's first or last value, yet not past the other bound when that
+    lies beyond its values; a variable without a value takes its label's
+    known span, every day ``null``. ``None`` when a bound is neither asked
+    nor known.
+    """
+    span = (
+        (line.first, line.last)
+        if line.first is not None and line.last is not None
+        else known_span([line])
+    )
+    if span is None:
+        return None if start is None or end is None else (start, end)
+    first = start or (span[0] if end is None else min(span[0], end))
+    last = end or (span[1] if start is None else max(span[1], start))
+    return first, last
+
+
+def valued_years(
+    points: Sequence[AnnualPoint], *, start: bool, end: bool
+) -> list[AnnualPoint]:
+    """Return an annual chart's points from its first to its last year with a maximum.
+
+    Only the ends ``start`` and ``end`` name are cut (those of a range left to
+    its default, the chart's known span); the years between keep their gaps.
+    Points without a maximum at all are returned whole.
+    """
+    valued = [index for index, point in enumerate(points) if point["max"] is not None]
+    if not valued:
+        return list(points)
+    low = valued[0] if start else 0
+    high = valued[-1] if end else len(points) - 1
+    return list(points[low : high + 1])
 
 
 def daily_payload(

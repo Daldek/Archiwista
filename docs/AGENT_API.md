@@ -823,7 +823,10 @@ characteristics `400 no_annual_source`. `GET /stations/{code}/handoff`
 around Hydrolog's `hydrolog-series/1`: every day of a daily series (`null` without a
 value; a series not of days is `400 no_daily_series`), or the annual maxima of
 complete hydrological years, a year missing a half `null` and named in
-`provenance.series.left_out`; Hydrolog's „Statystyka przepływów” opens it. The
+`provenance.series.left_out`. Without `from` and `to` it spans the variable's values,
+not the chart's known span: from its first value to its last, or from the first to
+the last year with a maximum (A-ADR-052 erratum 4); Hydrolog's „Statystyka
+przepływów” opens it. The
 document carries the series' lines as `attribution` and `terms_notice` (IMGW-PIB:
 its source, the mark of processing and its terms; ČHMÚ: its credit with the licence
 and what was done, no `terms_notice`), each left out when empty; Hydrolog shows them

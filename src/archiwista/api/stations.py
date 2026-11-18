@@ -396,10 +396,11 @@ def station_handoff(
     """Return a variable of a station's series as a hand-off to Hydrolog (A-ADR-052).
 
     ``resolution=annual``: the annual maxima of the station's annual chart
-    (A-ADR-051), a year missing one of its halves left out. Otherwise every
-    day of the variable's series of days over the range (by default its known
-    span), read through the producer as the chart reads it, without the
-    chart's simplification.
+    (A-ADR-051), a year missing one of its halves left out, by default from
+    the first to the last year with a maximum. Otherwise every day of the
+    variable's series of days over the range (by default from its first to
+    its last value, A-ADR-052 erratum 4), read through the producer as the
+    chart reads it, without the chart's simplification.
 
     Raises
     ------
@@ -418,8 +419,13 @@ def station_handoff(
         )
         row = find_station(queries, code, store=query.store, provider=query.provider)
         (variable,) = chart.variables
+        points = station_handoff_service.valued_years(
+            cast(list[AnnualPoint], variable.points),
+            start=query.start is None,
+            end=query.end is None,
+        )
         payload, left_out = station_handoff_service.annual_payload(
-            row, query.variable, variable.unit, cast(list[AnnualPoint], variable.points)
+            row, query.variable, variable.unit, points
         )
         halves = queries.station_coverage(
             row.store, row.provider, row.code, dataset=chart.dataset
@@ -447,13 +453,12 @@ def station_handoff(
             reason="no_daily_series",
             details={"option": "resolution", "allowed": ["unit", "annual"]},
         )
-    known = series_chart.known_span([source.line])
-    start = query.start or (known[0] if known else None)
-    end = query.end or (known[1] if known else None)
-    if start is None or end is None:
+    span = station_handoff_service.daily_range(source.line, query.start, query.end)
+    if span is None:
         raise NotFoundError(
             message("api.station_series_none", code=row.code, dataset=series.dataset)
         )
+    start, end = span
     values = adapter.read_values(
         _producer_root(settings, series),
         FilePath(series.series_version),
@@ -1280,7 +1285,9 @@ def get_station_handoff(
     day of the variable's series of days over the range (`null` for a day
     without a value), or with `resolution=annual` the annual maxima Archiwista
     finds in the half-year characteristics, the years missing a half left out
-    and named in `provenance.series.left_out`.
+    and named in `provenance.series.left_out`. By default the range spans the
+    variable's values: from its first value to its last, or from its first to
+    its last year with a maximum (A-ADR-052 erratum 4).
     """
     return station_handoff(queries, settings.get(), preferences, registry, code, query)
 
