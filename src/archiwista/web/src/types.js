@@ -1473,6 +1473,9 @@
  * @property {boolean} stale
  * @property {StaleStore[]} stale_stores
  * @property {ProjectItem[]} items
+ * @property {string[]} attribution - The lines of the data the listed projects pin,
+ *   merged (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 /**
@@ -1565,6 +1568,9 @@
  * @property {boolean} project_write - As in `ProjectItem`.
  * @property {Issue[]} problems - An invalid or newer file, a store that matches no
  *   configured one, an area file not used, missing or other pinned versions.
+ * @property {string[]} attribution - The lines of the data the project pins, merged
+ *   (`ProviderLines`).
+ * @property {string[]} terms_notice
  */
 
 /**

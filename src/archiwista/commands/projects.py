@@ -143,6 +143,7 @@ class _Place:
         return project_card(
             self.queries,
             self.settings,
+            self.registry,
             self.preferences(),
             key,
             visible=self.decisions.visible_projects(LOCAL_OWNER),

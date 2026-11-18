@@ -97,6 +97,7 @@ from archiwista.index.types import (
     OwnSnapshotRef,
     PinCommand,
     PinGroupRef,
+    PinnedVersion,
     PinRef,
     PinState,
     ProductSummary,
@@ -1876,6 +1877,36 @@ class IndexQueries:
                 for group in groups
             ),
         )
+
+    def pinned_versions(self, keys: Collection[str]) -> tuple[PinnedVersion, ...]:
+        """Return the indexed versions the pins of these projects name, each once.
+
+        In the order of the projects' names, then of their groups and pins; a
+        pin of a store that is not configured, or of a version the index does
+        not know, names none. ``keys`` are projects' keys (``ProjectRef.key``)
+        the caller found among those the principal sees.
+        """
+        with self._read() as connection:
+            rows = connection.execute(
+                "SELECT p.producer, v.path, g.segment, v.attribution FROM pins p"
+                " JOIN projects pr ON pr.id = p.project_id"
+                " JOIN versions v ON v.store_id = p.store_id"
+                " AND v.path = p.version_path"
+                " JOIN segments g ON g.id = v.segment_id"
+                f" WHERE pr.key IN ({_IDS})"
+                " ORDER BY pr.name, pr.key, p.group_position, p.id",
+                (json.dumps(sorted(set(keys))),),
+            ).fetchall()
+        found = (
+            PinnedVersion(
+                producer=row["producer"],
+                path=row["path"],
+                segment=row["segment"] or None,
+                attribution=row["attribution"],
+            )
+            for row in rows
+        )
+        return tuple(dict.fromkeys(found))
 
     def pin_problems(
         self, store: str, *, visible: ProjectVisibility

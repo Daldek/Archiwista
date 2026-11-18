@@ -18,6 +18,17 @@ Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
   at once was refused with „Nie wiadomo, czyje to polecenie: zacznij je od nazwy
   producenta ().”. The button now waits, disabled, until the list is loaded; when the
   list cannot be loaded the step's producer still decides, as before.
+- **„Projekty” shows the providers' lines of the data its projects pin (G01-1 of the scenario
+  test of 2026-11-15/16; A-ADR-055, Nogat DEV-20.5).** The list and the card of „Projekty”
+  showed the sets and their pinned versions without the strip of sources and „Źródła i
+  warunki” that every other view with data has, and neither `GET /projects` nor
+  `GET /projects/{project}` carried the lines. Both answers now have `attribution` and
+  `terms_notice`: the card those of every version its pins name that the index knows (the
+  lines of the data's origin; for Kartograf the sidecar's attribution, as in the project's
+  `ATTRIBUTION.txt`), the list those of the listed projects merged, each line once; both
+  empty without such data. The view shows them in its one strip at the foot of the list,
+  nothing without lines, and `archiwista projects` and `archiwista project` end their text
+  with them.
 
 ## [0.3.1] - 2026-11-18
 

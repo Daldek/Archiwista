@@ -139,6 +139,7 @@ _CHANGE_RESPONSES = problem_responses(400, 403, 404, 409, 500)
 def read_projects(
     queries: IndexQueries,
     settings: AppSettings,
+    registry: PluginRegistry,
     store: str | None,
     *,
     visible: ProjectVisibility,
@@ -146,13 +147,18 @@ def read_projects(
 ) -> ProjectList:
     """Return the projects the principal sees, of all stores or one.
 
-    ``writable`` says of each project whether the principal may change it.
+    ``writable`` says of each project whether the principal may change it;
+    the lines are those of the data the listed projects pin (A-ADR-055).
     """
     freshness = queries.freshness()
     stores = checked_store(store, settings, freshness)
     projects = queries.projects(visible=visible, store=store)
+    lines = project_service.project_lines(
+        queries, registry, [project.key for project in projects]
+    )
     return ProjectList(
         items=[ProjectItem.of(project, writable=writable) for project in projects],
+        **lines.fields(),
         **staleness(freshness, stores),
     )
 
@@ -160,6 +166,7 @@ def read_projects(
 def project_card(
     queries: IndexQueries,
     settings: AppSettings,
+    registry: PluginRegistry,
     preferences: Preferences,
     key: str,
     *,
@@ -168,7 +175,8 @@ def project_card(
 ) -> ProjectCard:
     """Return a project's groups, pins and problems from the index.
 
-    ``writable`` says whether the principal may change the project.
+    ``writable`` says whether the principal may change the project; the
+    lines are those of the data it pins (A-ADR-055).
 
     Raises
     ------
@@ -181,7 +189,8 @@ def project_card(
     stores = {item.store for item in detail.project.stores if item.store is not None}
     freshness = staleness(queries.freshness(), stores)
     path = copy_path(settings, preferences, FilePath(detail.project.path))
-    return ProjectCard.of(detail, path, freshness, writable=writable)
+    lines = project_service.project_lines(queries, registry, [detail.project.key])
+    return ProjectCard.of(detail, path, freshness, lines, writable=writable)
 
 
 def _changed_card(
@@ -189,6 +198,7 @@ def _changed_card(
     principal: Principal,
     queries: IndexQueries,
     settings: AppSettings,
+    registry: PluginRegistry,
     preferences: Preferences,
     key: str,
 ) -> ProjectCard:
@@ -196,6 +206,7 @@ def _changed_card(
     return project_card(
         queries,
         settings,
+        registry,
         preferences,
         key,
         visible=decisions.visible_projects(principal),
@@ -207,6 +218,7 @@ def _changed_card(
 def list_projects(
     visible: _Visible,
     writable: _Writable,
+    registry: _Registry,
     settings: _Settings,
     queries: _Queries,
     store: Annotated[
@@ -216,10 +228,12 @@ def list_projects(
 ) -> ProjectList:
     """List projects the session's principal sees, with their counts.
 
-    `project_write` says of each project whether the principal may change it.
+    `project_write` says of each project whether the principal may change it;
+    `attribution` and `terms_notice` are the lines the providers' terms
+    require with the data the listed projects pin.
     """
     return read_projects(
-        queries, settings.get(), store, visible=visible, writable=writable
+        queries, settings.get(), registry, store, visible=visible, writable=writable
     )
 
 
@@ -273,7 +287,9 @@ def create_project(
     )
     response.headers["Location"] = f"{API_PREFIX}/projects/{key}"
     # Read after the creation: a new project is the creator's now.
-    return _changed_card(decisions, principal, queries, config, preferences, key)
+    return _changed_card(
+        decisions, principal, queries, config, registry, preferences, key
+    )
 
 
 @router.get("/{project}", response_model=ProjectCard, responses=problem_responses(404))
@@ -281,6 +297,7 @@ def get_project(
     project: _Project,
     visible: _Visible,
     writable: _Writable,
+    registry: _Registry,
     settings: _Settings,
     preferences: _Preferences,
     queries: _Queries,
@@ -290,11 +307,14 @@ def get_project(
     Pins carry their state in the index (`ok`, `missing`, `sha256_mismatch`,
     `unknown`); problems carry fix instructions. An invalid project file or
     one of a newer format is listed with its problem and nothing else of it.
-    `project_write` says whether the principal may change the project.
+    `project_write` says whether the principal may change the project;
+    `attribution` and `terms_notice` are the lines the providers' terms
+    require with the data it pins.
     """
     return project_card(
         queries,
         settings.get(),
+        registry,
         preferences,
         project,
         visible=visible,
@@ -337,7 +357,9 @@ def update_project(
         actor=principal,
         visible=visible,
     )
-    return _changed_card(decisions, principal, queries, config, preferences, key)
+    return _changed_card(
+        decisions, principal, queries, config, registry, preferences, key
+    )
 
 
 @router.put("/{project}/area", response_model=ProjectCard, responses=_CHANGE_RESPONSES)
@@ -375,7 +397,9 @@ def set_project_area(
         actor=principal,
         visible=visible,
     )
-    return _changed_card(decisions, principal, queries, config, preferences, key)
+    return _changed_card(
+        decisions, principal, queries, config, registry, preferences, key
+    )
 
 
 @router.put(
@@ -418,7 +442,9 @@ def set_project_store(
         actor=principal,
         visible=visible,
     )
-    return _changed_card(decisions, principal, queries, config, preferences, key)
+    return _changed_card(
+        decisions, principal, queries, config, registry, preferences, key
+    )
 
 
 def export_answer(
@@ -757,7 +783,9 @@ def unpin_group_pins(
         actor=principal,
         visible=visible,
     )
-    return _changed_card(decisions, principal, queries, config, preferences, key)
+    return _changed_card(
+        decisions, principal, queries, config, registry, preferences, key
+    )
 
 
 @router.delete(
@@ -796,7 +824,9 @@ def remove_project_group(
         actor=principal,
         visible=visible,
     )
-    return _changed_card(decisions, principal, queries, config, preferences, key)
+    return _changed_card(
+        decisions, principal, queries, config, registry, preferences, key
+    )
 
 
 @router.delete(
@@ -844,7 +874,9 @@ def remove_group_call(
         actor=principal,
         visible=visible,
     )
-    return _changed_card(decisions, principal, queries, config, preferences, key)
+    return _changed_card(
+        decisions, principal, queries, config, registry, preferences, key
+    )
 
 
 @router.post(
@@ -885,7 +917,9 @@ def reopen_project_group(
         actor=principal,
         visible=visible,
     )
-    return _changed_card(decisions, principal, queries, config, preferences, key)
+    return _changed_card(
+        decisions, principal, queries, config, registry, preferences, key
+    )
 
 
 def pin_outcome(
@@ -921,7 +955,7 @@ def pin_outcome(
         open_set=isinstance(body, GroupRequest) and body.open,
     )
     card = _changed_card(
-        decisions, principal, queries, settings, preferences, result.project
+        decisions, principal, queries, settings, registry, preferences, result.project
     )
     return PinOutcome.of(result, card)
 
@@ -1062,7 +1096,9 @@ def close_project_group(
         actor=principal,
         visible=visible,
     )
-    return _changed_card(decisions, principal, queries, config, preferences, key)
+    return _changed_card(
+        decisions, principal, queries, config, registry, preferences, key
+    )
 
 
 @job_router.delete(
