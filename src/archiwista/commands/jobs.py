@@ -353,7 +353,7 @@ def _list(
         service = SettingsService(ConfigStore(paths.config_file), registry)
         jobs = stack.enter_context(JobSupervisor(paths, service))
     except _UNUSABLE as error:
-        return _unusable(error, err)
+        return _unusable(error, err, "cli.jobs_unreadable")
     try:
         checked_project(queries, filters.project, ALL_PROJECTS)
     except ArchiwistaError as error:
@@ -387,7 +387,10 @@ def _control(
         queries = stack.enter_context(IndexQueries(paths.index_file))
         jobs = stack.enter_context(JobSupervisor(paths, service))
     except _UNUSABLE as error:
-        return _unusable(error, err)
+        unusable = (
+            "cli.jobs_failed" if args.action == "retry" else "cli.jobs_unreadable"
+        )
+        return _unusable(error, err, unusable)
     if args.action == "retry":
 
         def submit() -> JobRecord:
@@ -456,7 +459,7 @@ def _plan(
         service = SettingsService(ConfigStore(paths.config_file), registry)
         jobs = stack.enter_context(JobSupervisor(paths, service))
     except _UNUSABLE as error:
-        return _unusable(error, err)
+        return _unusable(error, err, "cli.jobs_unreadable")
     try:
         kept = kept_plans(queries, jobs, args.job, visible=ALL_PROJECTS)
     except ArchiwistaError as error:
@@ -476,9 +479,13 @@ _UNUSABLE = (
 )
 
 
-def _unusable(error: Exception, err: TextIO) -> int:
-    """Refuse a command whose settings, index or jobs cannot be opened."""
-    detail = with_detail(message("cli.jobs_failed"), str(error))
+def _unusable(error: Exception, err: TextIO, key: str = "cli.jobs_failed") -> int:
+    """Refuse a command whose settings, index or jobs cannot be opened.
+
+    ``key`` names what could not be done: run a job (``cli.jobs_failed``) or
+    read the jobs (``cli.jobs_unreadable``).
+    """
+    detail = with_detail(message(key), str(error))
     return refuse(exception_problem(error, detail), err)
 
 

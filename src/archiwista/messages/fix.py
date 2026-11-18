@@ -128,6 +128,16 @@ MESSAGES = {
             " ponownie („Zamknij zestaw”)."
         ),
     ),
+    "area_set_closed": Text(
+        (
+            "To change the area, open each closed group for editing („Otwórz do"
+            " edycji”), or make a new project for the other area."
+        ),
+        (
+            "Aby zmienić obszar, otwórz każdy zamknięty zestaw do edycji („Otwórz"
+            " do edycji”) albo załóż nowy projekt dla innego obszaru."
+        ),
+    ),
     "set_pins_not_ok": Text(
         (
             "Verify the group („Weryfikuj”), restore the missing pins („Przywróć"

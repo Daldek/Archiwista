@@ -14,6 +14,7 @@ same.
 import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +30,7 @@ from archiwista.config import (
     StoreConfig,
 )
 from archiwista.index import IndexWriter, initialize
+from archiwista.index.types import AreaRecord
 from archiwista.jobs import JobSupervisor
 from archiwista.projects import PROJECT_FILE, change_project_file
 from archiwista.projects.document import pins_digest
@@ -408,6 +410,70 @@ def test_a_closed_set_refuses_changes_until_it_is_reopened(place: Place) -> None
 
 def _group_of(data: dict[str, Any], name: str) -> dict[str, Any]:
     return next(item for item in data["groups"] if item["name"] == name)
+
+
+def _square(area_id: str, west: float) -> AreaRecord:
+    """Return an area of the index: a square of 0.1° from ``west``, 50° N."""
+    east = west + 0.1
+    return AreaRecord(
+        id=area_id,
+        source="drawn",
+        geometry={
+            "type": "Polygon",
+            "coordinates": [
+                [[west, 50.0], [east, 50.0], [east, 50.1], [west, 50.1], [west, 50.0]]
+            ],
+        },
+        created_at=datetime(2026, 11, 1, tzinfo=UTC),
+        area_km2=79.5,
+        countries=("PL",),
+        name=area_id,
+    )
+
+
+def test_a_closed_set_keeps_the_projects_area_until_it_is_reopened(
+    place: Place, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Another area or none is ``set_closed`` (E7-01); the same area again is not.
+
+    Hydrograf takes a closed set with the project's area, so the area the set
+    was closed for stays until the set is opened for editing.
+    """
+    # Arrange
+    first, other = _square("0123456789abcdef", 19.0), _square("fedcba9876543210", 20.0)
+    with IndexWriter(place.paths.index_file) as writer:
+        writer.write_area(first)
+        writer.write_area(other)
+    area = f"/projects/{place.project}/area"
+    chosen = place.owner.request("PUT", area, json={"area_id": first.id})
+    assert chosen.status_code == 200, chosen.text
+    _draft(place, "Zestaw", A_CURRENT)
+    closed = place.owner.request("POST", f"{place.groups}/Zestaw/close")
+    assert closed.status_code == 200, closed.text
+    before = (place.directory / PROJECT_FILE).read_bytes()
+
+    # Act
+    moved = place.owner.request("PUT", area, json={"area_id": other.id})
+    cleared = place.owner.request("PUT", area, json={"area_id": None})
+    command = _cli(capsys, place, "project-area", place.project, "--clear")
+    refused = (place.directory / PROJECT_FILE).read_bytes()
+    written = (place.directory / "obszary" / f"{other.id}.geojson").exists()
+    same = place.owner.request("PUT", area, json={"area_id": first.id})
+    reopened = place.owner.request("POST", f"{place.groups}/Zestaw/reopen")
+    moved_open = place.owner.request("PUT", area, json={"area_id": other.id})
+
+    # Assert
+    for answer in (moved, cleared):
+        assert_problem(answer, 409, "conflict", "set_closed")
+        assert answer.json()["details"]["group"] == "Zestaw"
+    assert_same_error(command, cleared.json())
+    assert refused == before
+    assert not written
+    assert same.status_code == 200, same.text
+    assert _card_group(same.json(), "Zestaw")["digest_state"] == "ok"
+    assert reopened.status_code == 200, reopened.text
+    assert moved_open.status_code == 200, moved_open.text
+    assert moved_open.json()["area"]["path"] == f"obszary/{other.id}.geojson"
 
 
 def test_an_open_set_holds_the_data_of_one_producer(place: Place) -> None:

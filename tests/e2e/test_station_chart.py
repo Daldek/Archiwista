@@ -45,7 +45,7 @@ from urllib.parse import urlencode
 import pytest
 from playwright.sync_api import Locator, Route, expect
 
-from tests.fixtures.browser import Served, Tab
+from tests.fixtures.browser import FIREFOX_KNOWN_CRASH, Served, Tab
 from tests.fixtures.obserwator_statistics import HALF_YEARS_ONLY, MONTHLY
 from tests.fixtures.provider_lines import (
     CHMI_PROCESSED,
@@ -555,6 +555,7 @@ def test_the_hand_off_takes_the_kind_and_variable_chosen_beside_any_chart(
     engine_tab.assert_clean()
 
 
+@pytest.mark.parametrize("engine_tab", ["chromium", FIREFOX_KNOWN_CRASH], indirect=True)
 def test_an_incomplete_year_is_a_hollow_dot_whose_tooltip_names_the_missing_half(
     serve: Serve, engine_tab: Tab, statistics_store: Path, tmp_path: Path
 ) -> None:

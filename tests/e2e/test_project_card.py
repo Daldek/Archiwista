@@ -33,6 +33,7 @@ import os
 import re
 import zipfile
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -40,8 +41,10 @@ from typing import Any
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from archiwista.areas import area_id
 from archiwista.auth import access_key
-from archiwista.projects import change_project_file
+from archiwista.index import AreaRecord
+from archiwista.projects import area_json, change_project_file, write_area_file
 from archiwista.security import fragment_url, issue_one_time_token
 from archiwista.state import StateStore
 from tests.e2e.test_acceptance_v03 import (
@@ -60,6 +63,7 @@ from tests.e2e.test_acceptance_v03 import (
 from tests.e2e.test_map import create_project_area
 from tests.e2e.test_projects_view import AREA, card, group, open_projects, served_store
 from tests.fixtures.browser import Served, Tab
+from tests.fixtures.make_store import StoreManifest
 from tests.fixtures.permissions import add_people, principal, share
 
 Serve = Callable[..., Served]
@@ -89,6 +93,21 @@ def activity(page: Page) -> Locator:
     """Return the section „Aktywność” of the chosen project's card."""
     panel = page.get_by_role("complementary", name="Projekt")
     return panel.get_by_role("region", name="Aktywność")
+
+
+def with_area(store: StoreManifest) -> None:
+    """Give the fixture project the area ``AREA`` in its project file."""
+    directory = store.base / store.project(PROJECT).path
+    geometry: dict[str, object] = {**AREA}
+    area = AreaRecord(
+        id=area_id(geometry),
+        source="drawn",
+        geometry=geometry,
+        created_at=datetime.now(UTC).replace(microsecond=0),
+        name="Raba",
+    )
+    ref = write_area_file(directory, area)
+    change_project_file(directory, lambda data: data.update(area=area_json(ref)))
 
 
 def test_an_export_is_written_and_written_again_after_a_change(
@@ -382,25 +401,20 @@ def test_verify_runs_offline_and_marks_each_pin_while_network_jobs_say_why(
 
     In Chromium and Firefox: the card's layout of actions, reasons and marks.
     """
-    # Arrange: a pinned file of the plan group changed on the disk; an area.
+    # Arrange: a pinned file of the plan group changed on the disk; the area is
+    # in the project file before the server reads it, as its closed sets keep
+    # the area they were closed for (A-ADR-049 erratum 9).
     tab = engine_tab
-    store, served = served_store(serve, tmp_path)
+    store, served = served_store(serve, tmp_path, with_area)
     project = store.project(PROJECT)
     (changed,) = [g for g in project.groups if g.name == "teren"][0].pins[:1]
     total = sum(len(g.pins) for g in project.groups)
     page = tab.page
     open_projects(page, served, served.token_url(), PROJECT)
     (store.root / changed.version).write_bytes(b"inna tre\xc5\x9b\xc4\x87\n")
-    area = call(page, "POST", "/areas", {"geometry": AREA, "name": "Raba"})
-    assert area["status"] == 201, area
-    page.goto(f"{served.base}/?view=map&area_id={area['body']['id']}")
-    page.get_by_role("button", name="Ustaw jako obszar projektu…").click()
-    form = page.get_by_role("form", name="Obszar projektu")
-    form.get_by_label("Projekt").select_option(PROJECT)
-    form.get_by_role("button", name="Ustaw").click()
-    expect(
-        page.get_by_role("status").filter(has_text="Ustawiono obszar")
-    ).to_be_visible()
+    chosen = call(page, "GET", f"/projects/{PROJECT}")
+    assert chosen["body"]["area"]["state"] == "ok", chosen
+    area = chosen["body"]["area"]["area_id"]
     page.goto(f"{served.base}/?view=projects&project={PROJECT}")
     panel = page.get_by_role("complementary", name="Projekt")
     actions = panel.get_by_role("group", name="Działania projektu")
@@ -431,7 +445,7 @@ def test_verify_runs_offline_and_marks_each_pin_while_network_jobs_say_why(
     panel.locator(".pc-area").get_by_role("link", name="Pokaż na mapie").click()
 
     # Assert
-    expect(page).to_have_url(re.compile(f"view=map.*area_id={area['body']['id']}"))
+    expect(page).to_have_url(re.compile(f"view=map.*area_id={area}"))
     tab.assert_clean()
 
 

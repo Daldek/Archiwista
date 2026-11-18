@@ -236,6 +236,10 @@ MESSAGES = {
         'The group "{group}" is closed: open it for editing to change it.',
         "Zestaw „{group}” jest zamknięty: aby go zmienić, otwórz go do edycji.",
     ),
+    "area_set_closed": Text(
+        'The area cannot change while the group "{group}" is closed for it.',
+        "Obszaru nie można zmienić, gdy zestaw „{group}” jest dla niego zamknięty.",
+    ),
     "set_open": Text(
         'The group "{group}" is open for editing already.',
         "Zestaw „{group}” jest już otwarty do edycji.",

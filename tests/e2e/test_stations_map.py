@@ -24,9 +24,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
 from playwright.sync_api import Locator, Page, Request, Response, Route, expect
 
-from tests.fixtures.browser import Served, Tab
+from tests.fixtures.browser import FIREFOX_KNOWN_CRASH, Served, Tab
 from tests.fixtures.provider_lines import (
     GUGIK_PRG,
     IMGW_PROCESSED,
@@ -263,6 +264,7 @@ def test_above_the_limit_the_cells_are_drawn_and_fit_on_click(
     tab.assert_clean()
 
 
+@pytest.mark.parametrize("engine_tab", ["chromium", FIREFOX_KNOWN_CRASH], indirect=True)
 def test_legend_counter_and_chips_stand_beside_the_map(
     serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:

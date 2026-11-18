@@ -44,6 +44,7 @@ from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings
 from archiwista.errors import (
     CommandRequestError,
+    ConflictError,
     JobConflictError,
     NotFoundError,
     PathOutsideRootError,
@@ -65,11 +66,13 @@ from archiwista.jobs import JobSupervisor
 from archiwista.messages import label, message
 from archiwista.paths import resolve_indexed_path
 from archiwista.projects import (
+    AREAS_DIR,
     PROJECT_FILE,
     ProjectDocument,
     area_json,
     change_project_file,
     clean_name,
+    group_state,
     make_project_directories,
     read_project_file,
     remove_project_files,
@@ -406,7 +409,9 @@ def set_area(
     """Set a project's area (written into its ``obszary/``) or clear it.
 
     An area file the project held stays on the disk (A-ADR-049 decision 4).
-    Logged as ``project.area``.
+    A closed set keeps the area it was closed for (A-ADR-049 erratum 9): while
+    the project holds one, another area or none is refused; the same area
+    again is not a change. Logged as ``project.area``.
 
     Raises
     ------
@@ -414,6 +419,9 @@ def set_area(
         No project ``key`` ``actor`` sees, or no area ``area_id``.
     PermissionDeniedError
         ``actor`` may not change the project.
+    ConflictError
+        The project holds a closed set (``set_closed``, the first one in
+        ``details.group``); nothing is written.
     PathOutsideRootError
         The project's directory, file or ``obszary/`` leaves the project
         directories.
@@ -423,9 +431,13 @@ def set_area(
     project = changed_project(queries, authorizer, key, actor=actor, visible=visible)
     directory = project_directory(project, settings)
     area = None if area_id is None else _area(queries, area_id)
-    ref = None if area is None else write_area_file(directory, area)
+    path = None if area is None else f"{AREAS_DIR}/{area.id}.geojson"
 
     def change(data: dict[str, Any]) -> None:
+        held = data.get("area")
+        if (held.get("path") if isinstance(held, dict) else None) != path:
+            _require_no_closed_set(data)
+        ref = None if area is None else write_area_file(directory, area)
         data["area"] = None if ref is None else area_json(ref)
 
     change_project_file(directory, change)
@@ -434,10 +446,23 @@ def set_area(
         "project.area",
         project.access_key,
         before={"area": None if project.area is None else project.area.path},
-        after={"area": None if ref is None else ref.path},
+        after={"area": path},
         details={"area_id": area_id},
     )
     return record_changed(registry, settings, index_path, directory)
+
+
+def _require_no_closed_set(data: dict[str, Any]) -> None:
+    """Refuse a change of the area of a project file holding a closed set."""
+    for group in data.get("groups", []):
+        if group_state(group) == "closed":
+            name = str(group["name"])
+            raise ConflictError(
+                message("project.area_set_closed", group=name),
+                reason="set_closed",
+                details={"group": name},
+                hint=message("fix.area_set_closed"),
+            )
 
 
 def set_store(

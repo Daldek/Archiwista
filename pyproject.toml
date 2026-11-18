@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "archiwista"
-version = "0.3.0"
+version = "0.3.1"
 description = "Local web application for browsing the spatial-data stores that Kartograf writes: catalog, map, file previews, projects with snapshots. Web interface, HTTP API and CLI; never writes to a store."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Piotr de Bever", email = "git@debever.pl" }]
 dependencies = [
-    # Kartograf 0.8.0, the Git tag of Nogat's first joint release set (REL-2.1,
+    # Kartograf 0.8.1, the Git tag of Nogat's release set of the patch releases (REL-2.1,
     # REL-5.1): the store root `root`, the marker `kartograf-store.json`, the
     # default root (`store_root()`), `kartograf.testing` (ADR-054),
     # `find_sheet_outlines` (PL-2000 zones of powiats, Kartograf ADR-055), the
@@ -21,7 +21,7 @@ dependencies = [
     # `obserwator-store.json` of another tool's store (Nogat ECO-057). The versions
     # the adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`
     # (REL-5.6).
-    "kartograf @ git+https://github.com/Daldek/Kartograf@v0.8.0",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@v0.8.1",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
@@ -53,7 +53,7 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057).
-# Obserwator 3.0.0, the Git tag of Nogat's first joint release set (REL-2.1,
+# Obserwator 3.0.1, the Git tag of Nogat's release set of the patch releases (REL-2.1,
 # REL-5.1), keeps a store in two roots, the raw root `store sync` downloads into and
 # the data root of the series, catalogs and analyses it builds offline (its ADR-015,
 # ADR-017; A-ADR-056), with the default root of each (`store_root(kind=…)`) and
@@ -61,7 +61,7 @@ dependencies = [
 # Parquet series. The versions the adapter reads are `SUPPORTED_VERSIONS` in
 # `archiwista.adapter.obserwator` (REL-5.6).
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@v3.0.0",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@v3.0.1",
 ]
 
 [dependency-groups]

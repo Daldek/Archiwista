@@ -62,8 +62,7 @@ def _projects(tmp_path: Path) -> Path:
     return tmp_path / "nas" / "projekty"
 
 
-@pytest.fixture
-def paths(tmp_path: Path) -> AppPaths:
+def _installation(tmp_path: Path) -> AppPaths:
     """Return an installation with a marked Kartograf store and a project directory.
 
     The settings also name a project directory that does not exist
@@ -87,6 +86,24 @@ def paths(tmp_path: Path) -> AppPaths:
         writer.sync_stores({STORE: store.directory_paths()})
         writer.write_area(AREA)
     return created
+
+
+@pytest.fixture
+def paths(tmp_path: Path) -> AppPaths:
+    """Return the installation of ``_installation``."""
+    return _installation(tmp_path)
+
+
+@pytest.fixture
+def server_paths(tmp_path: Path) -> AppPaths:
+    """Return the installation made under `umask 077`, as `archiwista serve` makes it.
+
+    `cli.main` sets the umask before anything is written, so the index, the
+    state database and the data directory are made under it whatever umask
+    the tests run with (`tests/conftest.py` gives the next test its own back).
+    """
+    os.umask(0o077)
+    return _installation(tmp_path)
 
 
 @pytest.fixture(autouse=True)
@@ -178,14 +195,14 @@ def test_a_project_is_created_and_changed_over_http(
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
 def test_a_project_the_server_writes_is_readable_by_its_folders_group(
-    paths: AppPaths, tmp_path: Path
+    server_paths: AppPaths, tmp_path: Path
 ) -> None:
     """Under the server's `umask 077` a project takes its folder's permissions.
 
     Another account of the folder's group (Hydrograf's bootstrap) reads the
     project; the local state database and index stay the server's alone.
     """
-    os.umask(0o077)  # as `archiwista serve` runs
+    paths = server_paths
     projects = _projects(tmp_path)
     projects.chmod(0o2750)
     directory = projects / "barycz"

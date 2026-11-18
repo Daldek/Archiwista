@@ -7,16 +7,18 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 
 ## Status
 
-The working branch is `develop`; every branch named below is merged into it. Nothing after
-0.2.0 is released yet.
+The working branch is `develop`; every branch named below is merged into it. Release 0.3.0
+is tagged `v0.3.0` on `main`.
 
 **Release 0.3.0 is closed** (the author, 2026-11-16): Archiwista's first tag, a member of
 the first joint release of the Nogat ecosystem (Nogat release set candidate-6; ECO-074). It
-holds what `develop` holds: v0.3 "Actions", v0.4 "Team", the projects (A-ADR-049) and the
+holds what `develop` held: v0.3 "Actions", v0.4 "Team", the projects (A-ADR-049) and the
 built part of v0.5 "IMGW stations" (decision D2 of Nogat's plan
-`2026-10-31-archiwista-projects.md`). Until the tag only the coordinator's pin commit and
-the release commit change it (Next 7); every other change, a defect included, waits for the
-next release (0.3.1 or the next minor; the known defects: Next 14).
+`2026-10-31-archiwista-projects.md`).
+
+**Release 0.3.1** (the author's approval of 2026-11-17: defect fixes only) is prepared on
+`fix/0.3.1` from `develop` `a61412c`, at `0.3.1.dev0`; it is not merged until the author
+approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
 
 | Component | State | Note |
 |---|---|---|
@@ -101,18 +103,35 @@ next release (0.3.1 or the next minor; the known defects: Next 14).
     of 2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its report's section 4; "§6 B3"
     names a row of its section 6):
     - C2: `tests/integration/test_projects_api.py::test_a_project_the_server_writes_is_readable_by_its_folders_group`
-      depends on the process umask: only `cli.main` sets `umask 077` (`cli.py:141`), so under
-      umask 022 `index.sqlite` gets `0644` and the test fails (run the gate with `UMask=0077`).
+      depended on the process umask: only `cli.main` sets `umask 077` (`cli.py:141`), and the
+      test's index was made before it set one, so under umask 022 `index.sqlite` got `0644`.
+      Fixed on `fix/0.3.1`: its installation is made under `umask 077`.
     - C3: `tests/e2e/test_station_chart.py::test_an_incomplete_year_is_a_hollow_dot_whose_tooltip_names_the_missing_half[firefox]`
       and `tests/e2e/test_stations_map.py::test_legend_counter_and_chips_stand_beside_the_map[firefox]`
       crash the page with Playwright 1.65.2 and Firefox 159, the set's version; they pass with
-      the Playwright 1.64.0 of Archiwista's lock.
+      the Playwright 1.64.0 of Archiwista's lock. The cause is no feature of the page (not the
+      tooltip, a CSS rule or the map's canvas, which headless Firefox does not draw): Playwright
+      1.65 names an element by its `aria-labelledby` through `ariaLabelledByElements`, and
+      Firefox 159 crashes when an element named so in Playwright's own world is named again in
+      the page's world (`evaluate_all` or `all_inner_texts` under a `get_by_role(name=...)`; a
+      page of one `<section role="dialog" aria-labelledby>` crashes too). The pages pass once
+      each `aria-labelledby` is an `aria-label`, but that is no small change: 50 in the
+      interface, two of them in Nogat's kit, whose files are checked by their SHA-256. Marked
+      known on `fix/0.3.1`: the two `[firefox]` cases are a strict `xfail` under Playwright
+      1.65.2 (`FIREFOX_KNOWN_CRASH`, `tests/fixtures/browser.py`).
     - C6: `tests/integration/test_render_pool.py::test_unreadable_cached_as_code_and_timeout_not_cached` hit its 1 s
-      `PreviewTimeoutError` once under load (timing).
+      `PreviewTimeoutError` once under load: the limit also covered the start of the render
+      process. Fixed on `fix/0.3.1`: only the slow file's requests have the 1 s limit, also in
+      `test_retry_passes_over_cached_verdict_and_remembered_timeout`, which failed the same way.
     - E2-05: an area's `countries` come from its bounding box, so a PL-only and a CZ-only
-      area both get `["CZ","PL"]`.
-    - E2-06: `archiwista jobs list` during a scan ends with exit 8 `store_unavailable`
-      ("database is locked"), a wrong message for a read.
+      area both get `["CZ","PL"]`. Not a defect of Archiwista to fix in 0.3.1: Kartograf's
+      `countries_for_bbox` compares rectangular envelopes, which overlap along the whole PL–CZ
+      border, so Archiwista waits for a Kartograf function giving the countries of a geometry by
+      their real borders.
+    - E2-06: `archiwista jobs list` during a scan ended with exit 8 `store_unavailable`
+      ("database is locked"), a wrong message for a read. Fixed on `fix/0.3.1`: the command's
+      supervisor leaves its upkeep (pruning, stores, recovery) for later while the index is
+      busy, and a read that cannot open the jobs says „Nie można odczytać zadań”.
     - E2-07 (with Nogat, §6 B7): `archiwista-project/1` has no JSON Schema; only Hydrograf's
       reader validates the file.
     - E2-10 = G08-1: an export (567 pins, 2.8 GB) is one synchronous request of about
@@ -120,8 +139,11 @@ next release (0.3.1 or the next minor; the known defects: Next 14).
     - E3-05 (§6 B6): the daily hand-off starts at 1950-11-01 (7,305 `null` days), not at the
       variable's known range; the annual one has 20 empty years.
     - E5a-03: no `GET /projects/{p}/groups/{g}` (405); a set is only in the project card.
-    - E7-01 (§6 A5): `PUT /projects/{p}/area` with a closed set answers 200: the area changes and
-      the set stays `digest_state: ok`.
+    - E7-01 (§6 A5): `PUT /projects/{p}/area` with a closed set answered 200: the area changed
+      and the set stayed `digest_state: ok`. Fixed on `fix/0.3.1` (A-ADR-049 erratum 9): another
+      area or none is `409 set_closed` while the project holds a closed set. The other option of
+      §6 A5, the area in a set's identity (several parts in one project), is a format change
+      left to the author.
     - E7-03: two downloads at once under `MemoryMax=3G` fill the cgroup with page cache;
       unpacking BDOT10k ends with `Errno 12 ENOMEM`.
     - E7-12: two permission tests fail when TMPDIR lies in a setgid directory; they pass

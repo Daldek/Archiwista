@@ -496,7 +496,8 @@ and a directory holding only one of them is no project.
   directory of a project directory of the settings (at most four levels down, made when
   missing; the area into `obszary/`); `project-edit PROJEKT --name … --description …`
   renames or describes it, `project-area PROJEKT --area-id OBSZAR` (or `--clear`) sets
-  its area, and `project-store PROJEKT PRODUCENT --store MAGAZYN` names the configured
+  its area (refused while a set of the project is closed: a closed set keeps the area it
+  was closed for), and `project-store PROJEKT PRODUCENT --store MAGAZYN` names the configured
   store of a producer's pins, written relative to the project directory when the store
   has path aliases, so the project works on every computer that mounts both. Each prints
   the project's card; the HTTP routes are in [AGENT_API.md](AGENT_API.md). A change waits
