@@ -68,8 +68,8 @@ network services and stores), `perf` (the synthetic store of 50,000 slots) and `
 (a real SMB share); each needs its own setup (`.env.example`). `db` and `slow` are
 registered (DEV-10.1) and not used yet. Coverage floor 80% (`fail_under` of
 `[tool.coverage.report]`; the gate passes `--cov`). Run tests with `TMPDIR` on a local disk
-(not a share, which breaks SQLite and hard links; not setgid: PROGRESS Next 14, E7-12). The
-full gate takes about 75 to 90 minutes (Chromium; Firefox too).
+(not a share, which breaks SQLite and hard links). The full gate takes about 75 to 90
+minutes (Chromium; Firefox too).
 
 ## Code map
 

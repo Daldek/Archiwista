@@ -7,29 +7,35 @@ pinning a version no longer in the store and one naming a store that is not
 configured. The computer's owner creates a project in the form (a directory
 outside the project directories refused at its field first) with a name, a
 description and an area file, and finds the file on the disk; „Zmień…”
-names the store of Kartograf's pins. A fixture project shows its groups with
-their origin and pins with their state. A person the project is shared with
-may change nothing of it: „Zmień…” and „Udostępnij…” are disabled with the
-reason, „Nowy projekt…” is not. Over Obserwator's fixture store of IMGW-PIB and
-ČHMÚ data, the view's one strip of the providers' lines holds the lines of the
-data its projects pin (Nogat DEV-20.5, A-ADR-055), none without data.
+names the store of Kartograf's pins. In a project folder of a group, what
+the form and „Zmień…” write is readable by the group (A-ADR-058). A fixture
+project shows its groups with their origin and pins with their state. A
+person the project is shared with may change nothing of it: „Zmień…” and
+„Udostępnij…” are disabled with the reason, „Nowy projekt…” is not. Over
+Obserwator's fixture store of IMGW-PIB and ČHMÚ data, the view's one strip of
+the providers' lines holds the lines of the data its projects pin (Nogat
+DEV-20.5, A-ADR-055), none without data.
 """
 
 import json
+import os
 import re
+import stat
 import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from archiwista.auth import access_key
 from archiwista.config import AppSettings, StoreConfig
-from archiwista.projects import AREAS_DIR, read_project_file
+from archiwista.projects import AREAS_DIR, PROJECT_FILE, read_project_file
 from archiwista.security import fragment_url, issue_one_time_token
 from archiwista.state import StateStore
 from tests.fixtures.browser import Served, Tab
+from tests.fixtures.group_folder import group_folder
 from tests.fixtures.make_store import StoreManifest, make_store
 from tests.fixtures.permissions import add_people, principal, share
 from tests.fixtures.provider_lines import (
@@ -224,6 +230,63 @@ def test_a_project_created_in_the_form_appears_with_its_file_on_the_disk(
     (named,) = read_project_file(directory).stores
     assert named.producer == "kartograf"
     assert (directory / named.root).resolve() == store.root.resolve()
+    tab.assert_clean()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX modes")
+def test_a_project_written_in_the_form_is_readable_by_its_folders_group(
+    serve: Serve, tab: Tab, tmp_path: Path
+) -> None:
+    """Under the server's `umask 077` a project takes its folder's permissions.
+
+    The project the form makes with its area and the file „Zmień…” writes
+    again are ``0640`` files in ``2750`` directories of the folder's group,
+    which another account of the group (Hydrograf's bootstrap) reads (§6 B1
+    of the scenario test of 2026-11-15/16).
+    """
+    # Arrange: `archiwista serve` sets `umask 077`; a project folder of a group.
+    os.umask(0o077)
+    store, served = served_store(serve, tmp_path)
+    group = group_folder(store.projects_dir)
+    page = tab.page
+    open_projects(page, served, served.token_url(), None)
+    area = tmp_path / "krakow.geojson"
+    area.write_text(json.dumps(AREA), encoding="utf-8")
+    directory = store.projects_dir / "dunajec"
+
+    # Act: a new project with an area.
+    page.get_by_role("button", name="Nowy projekt…").click()
+    form = page.get_by_role("form", name="Nowy projekt")
+    form.get_by_label("Katalog projektu").fill(str(directory))
+    form.get_by_label("Nazwa", exact=True).fill("Dunajec")
+    form.get_by_label("Obszar (opcjonalnie)").set_input_files(area)
+    form.get_by_role("button", name="Załóż projekt").click()
+    expect(card(page).get_by_role("heading", name="Dunajec")).to_be_visible()
+    first = (directory / PROJECT_FILE).stat()
+
+    # Act: „Zmień…” writes the project file again.
+    card(page).get_by_role("button", name="Zmień…").click()
+    editing = card(page).get_by_role("form", name="Zmień projekt")
+    editing.get_by_label("Magazyn: kartograf").select_option(label=STORE_NAME)
+    editing.get_by_role("button", name="Zapisz").click()
+    expect(card(page).locator(".pc-done")).to_have_text("Zapisano zmiany projektu.")
+
+    # Assert: every entry is the group's to read, the rewritten file too.
+    written = read_project_file(directory)
+    assert written.area is not None
+    entries = [directory, *directory.rglob("*")]
+    modes = {
+        path.relative_to(directory).as_posix(): stat.S_IMODE(path.stat().st_mode)
+        for path in entries
+    }
+    assert modes == {
+        ".": 0o2750,
+        PROJECT_FILE: 0o640,
+        AREAS_DIR: 0o2750,
+        written.area.path: 0o640,
+    }
+    assert (directory / PROJECT_FILE).stat().st_ino != first.st_ino
+    assert {path.stat().st_gid for path in entries} == {group}
     tab.assert_clean()
 
 
