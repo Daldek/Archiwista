@@ -8,10 +8,16 @@
   <link rel="stylesheet" href="/static/styles.css">
   <link rel="stylesheet" href="/static/nogat/nogat-app-menu.css">
   <link rel="stylesheet" href="/static/nogat/nogat-sources.css">
-  <script type="module" src="/static/src/main.js"></script>
+  <script type="module" src="/static/src/boot.js"></script>
 </head>
 <body>
   <div id="app"><div class="boot"><span class="spinner" aria-hidden="true"></span></div></div>
   <noscript><p class="boot">Archiwista działa w przeglądarce z włączonym JavaScriptem.</p></noscript>
+  <template id="boot-failed">
+    <div class="boot boot-failed" role="alert">
+      <p>Nie udało się wczytać Archiwisty.</p>
+      <button type="button" class="btn primary">Wczytaj ponownie</button>
+    </div>
+  </template>
 </body>
 </html>

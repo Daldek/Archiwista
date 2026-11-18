@@ -48,6 +48,9 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .nw { white-space: nowrap; }
 .path { overflow-wrap: anywhere; }
 .boot { display: grid; place-items: center; height: 100%; margin: 0; color: var(--text-2); }
+/* The message of src/boot.js when the interface did not load: its two lines together. */
+.boot-failed { align-content: center; gap: 12px; }
+.boot-failed p { margin: 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 

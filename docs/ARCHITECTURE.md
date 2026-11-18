@@ -1415,7 +1415,8 @@ no-cache` with its `ETag`: the browser asks again before every reuse (`304` when
 unchanged), so after an upgrade it never keeps the modules of the previous version.
 
 **Files.** `index.html` (no inline scripts: `<link>`s to `/static/styles.css`,
-`/static/nogat/nogat-app-menu.css` and `/static/nogat/nogat-sources.css` and `<script type="module" src="/static/src/main.js">`),
+`/static/nogat/nogat-app-menu.css` and `/static/nogat/nogat-sources.css`, `<script type="module" src="/static/src/boot.js">`
+and the template `#boot-failed`, the message when the interface did not load),
 `styles.css` (tokens, shell, shared components), `favicon.svg`, `guide/` (the user
 guide in Polish: `index.html`, a page of slides without a script, `guide.css` over the
 tokens of `styles.css`, and its WebP pictures; "Instrukcja" in the top bar opens it),
@@ -1446,6 +1447,7 @@ The only change in the files from npm: in `vendor/preact/hooks.mjs` the import
 
 | Module | Role |
 |---|---|
+| `boot.js` | the page's entry module: imports `main.js`; when a module could not be fetched (Chromium cancels the requests waiting for a connection when the computer's network changes, `net::ERR_NETWORK_CHANGED`) it loads the page once more (`sessionStorage` key `archiwista_reloaded`, removed after a start), and when that load fails too it puts `#boot-failed` of `index.html` in place of the spinner, „Wczytaj ponownie” loading the page again; it imports nothing itself |
 | `main.js` | starts the session from `#token=…` or from the cookie, then `Shell`; without a session (or when it ends) `SessionScreen` in local mode, the sign-in of `views/login.js` in team mode (`GET /session/methods`); a session with a temporary password gets `TemporaryPassword` before the shell |
 | `api.js` | `/api/v1` client: one function per route named after the `operationId` in camelCase (`listSlots`, `getSlot`, `startScan`…), `request`, `requestEach` (a request per item, at most four in flight), `startSession`, `signIn`, `proxySignIn`, `changePassword`, `ApiError`, `onSessionLost`, `watchJob` (SSE via `fetch`), `uploadArea`, `fileAddress` (the address of a file download for a link, `<a href download>`, which passes without the CSRF header by `Sec-Fetch-Site`); CSRF token in `sessionStorage` (`TOKEN_KEY`), passed to other tabs through `BroadcastChannel` |
 | `types.js` | JSDoc types of the API models (no code) |
