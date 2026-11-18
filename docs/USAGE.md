@@ -957,7 +957,9 @@ maxima, the lesser of their minima), their days, half and occurrences, and
 „niepełny rok: brak półrocza …” when one half has no value. `stations handoff KOD
 --variable Q` writes the variable's daily values, and with `--resolution annual` its
 annual maxima of complete hydrological years, as a hand-off to Hydrolog
-(`nogat-handoff/1`, A-ADR-052); the same document comes from „Do Hydrologa” under the
+(`nogat-handoff/1`, A-ADR-052); without `--from` and `--to` it runs from the first
+value to the last (the first and last year with a maximum), not over the years of the
+archive before them. The same document comes from „Do Hydrologa” under the
 chart of the station card (choose „Dane” and „Zmienna”, then „Kopiuj do Hydrologa” or
 „Plik przekazania”, which saves `<subject>.handoff.json`), and Hydrolog's
 „Statystyka przepływów” opens it with „Wczytaj z Archiwisty”. Where the browser

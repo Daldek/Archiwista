@@ -12,7 +12,8 @@ their minima, an incomplete year marked, a year without either half a gap.
 the charts its series give. ``GET /stations/{code}/handoff`` (A-ADR-052) hands
 a series to Hydrolog as ``nogat-handoff/1`` around ``hydrolog-series/1``, both
 checked against their owners' schemas: the annual maxima of complete years, or
-every day of a daily series as the chart reads it.
+every day of a daily series as the chart reads it, by default from the
+variable's first value to its last.
 """
 
 import json
@@ -40,6 +41,7 @@ from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.obserwator_statistics import (
     HALF_YEAR,
     HALF_YEARS_ONLY,
+    LATE,
     MONTHLY,
     RABA,
     WITHOUT_Q,
@@ -651,6 +653,73 @@ def test_station_handoff_daily_gives_every_day_of_the_range_as_the_chart_reads_i
     ]
     assert any(value is not None for value in payload["values"])
     assert doc["provenance"]["series"]["dataset"] == DAILY
+
+
+def test_station_handoff_daily_spans_the_variables_values_by_default(
+    served: Served,
+) -> None:
+    """From its first value to its last, not its label's known span (E3-05).
+
+    H of Raba Górna is known from 1 XI 2023 to 31 X 2024, with values from
+    1 XII 2023 to 29 II 2024 and gaps between them.
+    """
+    # Arrange
+    valued = {"from": "2023-12-01", "to": "2024-02-29"}
+    chart = served.json(
+        f"/stations/{RABA}/series",
+        {"variable": "H", "dataset": DAILY, "max_points": "2000", **valued},
+    )
+
+    # Act
+    doc = served.json(f"/stations/{RABA}/handoff", {"variable": "H"})
+
+    # Assert
+    _valid(doc)
+    days = doc["payload"]["dates"]
+    assert (days[0], days[-1], len(days)) == ("2023-12-01", "2024-02-29", 91)
+    assert doc["payload"]["values"] == [
+        point["mean"] for point in chart["variables"][0]["points"]
+    ]
+    assert None in doc["payload"]["values"]
+
+
+def test_station_handoff_annual_spans_the_years_with_a_maximum_by_default(
+    served: Served,
+) -> None:
+    """Q of Poza krajem: archives from 2020, maxima from 2022 on (E3-05)."""
+    # Act
+    doc = served.json(
+        f"/stations/{LATE}/handoff", {"resolution": "annual", "variable": "Q"}
+    )
+
+    # Assert
+    _valid(doc)
+    payload = doc["payload"]
+    assert dict(zip(payload["years"], payload["values"], strict=True)) == {
+        2022: 37.0,
+        2023: 38.0,
+        2024: 39.0,
+    }
+    assert doc["provenance"]["series"]["left_out"] == []
+
+
+@pytest.mark.parametrize(
+    ("span", "days"),
+    [
+        pytest.param({"to": "2023-11-15"}, ["2023-11-15"], id="before-the-first"),
+        pytest.param({"from": "2024-03-02"}, ["2024-03-02"], id="after-the-last"),
+    ],
+)
+def test_station_handoff_keeps_a_bound_asked_beyond_the_values(
+    served: Served, span: Params, days: list[str]
+) -> None:
+    """The bound left out stops at the one asked: a valid document of ``null``."""
+    # Act
+    doc = served.json(f"/stations/{RABA}/handoff", {"variable": "H", **span})
+
+    # Assert
+    _valid(doc)
+    assert (doc["payload"]["dates"], doc["payload"]["values"]) == (days, [None])
 
 
 def test_station_handoff_refuses_a_monthly_series(served: Served) -> None:

@@ -62,13 +62,20 @@ class StationHandoffQuery(BaseModel):
     start: date | None = Field(
         default=None,
         alias="from",
-        description="First day of the range; by default the first known day.",
-        examples=["1950-11-01"],
+        description=(
+            "First day of the range; by default the variable's first value, with"
+            " `resolution=annual` its first year with a maximum (A-ADR-052"
+            " erratum 4), not the chart's known span."
+        ),
+        examples=["1970-11-01"],
     )
     end: date | None = Field(
         default=None,
         alias="to",
-        description="Last day of the range; by default the last known day.",
+        description=(
+            "Last day of the range; by default the variable's last value, with"
+            " `resolution=annual` its last year with a maximum."
+        ),
         examples=["2025-10-31"],
     )
 
