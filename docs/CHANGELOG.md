@@ -5,6 +5,20 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
+## [Unreleased]
+
+Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
+
+### Fixed
+
+- **A line pasted before the list of producers loads is no longer refused** (found by
+  Nogat's `verify-candidate` of candidate-7 on Linux; `web/src/map/source.js`): „Zaplanuj…”
+  of „Wklej polecenie producenta” decided whose the line was from the producers of
+  `GET /api/v1/sources`, and before that answer came the list was empty, so a line pasted
+  at once was refused with „Nie wiadomo, czyje to polecenie: zacznij je od nazwy
+  producenta ().”. The button now waits, disabled, until the list is loaded; when the
+  list cannot be loaded the step's producer still decides, as before.
+
 ## [0.3.1] - 2026-11-18
 
 Changes since 0.3.0, to be released as 0.3.1: defect fixes only.
