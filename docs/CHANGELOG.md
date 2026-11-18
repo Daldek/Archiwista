@@ -18,6 +18,14 @@ Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
   at once was refused with „Nie wiadomo, czyje to polecenie: zacznij je od nazwy
   producenta ().”. The button now waits, disabled, until the list is loaded; when the
   list cannot be loaded the step's producer still decides, as before.
+- **An interface test of the year buttons no longer fails under load (Next 2 of
+  `docs/PROGRESS.md`, the gate of 2026-11-15).** `test_year_buttons_select_layer_and_tiles`
+  opened the map with an area and no position and took the count of every outline once the
+  address had stood still for 0.6 s. The map frames the area only when both the map and the
+  area's answer are there, so when that answer came late the count taken was the home view's
+  („16 obrysów w widoku”) and the one after the year was cleared the framed area's („11
+  obrysów w widoku”). The test now waits until the address's centre lies in the area before
+  it takes the count. The interface is unchanged.
 
 ## [0.3.1] - 2026-11-18
 
