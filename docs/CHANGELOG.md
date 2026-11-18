@@ -18,6 +18,19 @@ Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
   at once was refused with „Nie wiadomo, czyje to polecenie: zacznij je od nazwy
   producenta ().”. The button now waits, disabled, until the list is loaded; when the
   list cannot be loaded the step's producer still decides, as before.
+- **A snapshot test no longer depends on where `TMPDIR` lies, and an interface test shows
+  a project readable by its folder's group (E7-12 and §6 B1 of the scenario test of
+  2026-11-15/16).** `test_published_files_read_only` expected the snapshot's working
+  directory `0700`, but its data folder took its mode from the tests' temporary directory,
+  and below a set-group-ID directory the system made that directory `2700`; the data folder
+  is now made `0750`. The other test the finding named,
+  `test_a_project_the_server_writes_is_readable_by_its_folders_group`, had failed through
+  the umask (C2, fixed in 0.3.1), not the set-group-ID bit; its project folder now has
+  another group of the account than its own when there is one, so the test checks that the
+  entries keep the folder's group, not the account's. A new interface test creates a project
+  with an area in the form and changes it under `umask 077` in a `2750` folder of a group,
+  and finds `0640` files and `2750` directories of that group, which another account of the
+  group (Hydrograf's bootstrap) reads. Archiwista itself is unchanged.
 
 ## [0.3.1] - 2026-11-18
 

@@ -37,6 +37,7 @@ from archiwista.services import projects as project_service
 from archiwista.sources.registry import load_registry
 from tests.fixtures.api_session import Api, assert_problem, running_api
 from tests.fixtures.cli_errors import assert_same_error, refusal
+from tests.fixtures.group_folder import group_folder
 from tests.fixtures.permissions import Who, add_people, principal, share
 
 STORE = "zespol"
@@ -204,7 +205,7 @@ def test_a_project_the_server_writes_is_readable_by_its_folders_group(
     """
     paths = server_paths
     projects = _projects(tmp_path)
-    projects.chmod(0o2750)
+    group = group_folder(projects)
     directory = projects / "barycz"
     with _api(paths) as api:
         owner = api.session(LOCAL_OWNER)
@@ -220,9 +221,10 @@ def test_a_project_the_server_writes_is_readable_by_its_folders_group(
 
     # Assert
     assert (created.status_code, edited.status_code) == (201, 200)
+    entries = [directory, *directory.rglob("*")]
     modes = {
         path.relative_to(directory).as_posix(): stat.S_IMODE(path.stat().st_mode)
-        for path in [directory, *directory.rglob("*")]
+        for path in entries
     }
     assert modes == {
         ".": 0o2750,
@@ -231,7 +233,7 @@ def test_a_project_the_server_writes_is_readable_by_its_folders_group(
         f"obszary/{AREA.id}.geojson": 0o640,
     }
     assert (directory / PROJECT_FILE).stat().st_ino != first.st_ino
-    assert directory.stat().st_gid == projects.stat().st_gid
+    assert {path.stat().st_gid for path in entries} == {group}
     assert {
         path.name: stat.S_IMODE(path.stat().st_mode) & 0o077
         for path in (paths.data_dir, paths.state_file, paths.index_file)
