@@ -83,6 +83,15 @@ Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
   „Nie udało się wczytać Archiwisty.” with the button „Wczytaj ponownie”, and it never
   reloads in a loop.
 
+### Changed
+
+- Kartograf is re-pinned from `v0.8.1` to `v0.8.2`, its patch in Nogat's release set
+  candidate-10 (`pyproject.toml`, `uv.lock`): the USDA texture classes on the lines clay =
+  20 % and clay = 27 % follow the Soil Survey Manual, so an HSG raster that a job computes
+  now gives C instead of B on those cells (Kartograf CHANGELOG `[0.8.2]`). HSG versions a
+  store already holds are reused for the same inputs; Kartograf's CHANGELOG says how to
+  compute them again. The supported range is unchanged.
+
 ## [0.3.1] - 2026-11-18
 
 Changes since 0.3.0, to be released as 0.3.1: defect fixes only.
