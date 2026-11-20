@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Piotr de Bever", email = "git@debever.pl" }]
 dependencies = [
-    # Kartograf 0.8.1, the Git tag of Nogat's release set of the patch releases (REL-2.1,
+    # Kartograf 0.8.2, the Git tag of Nogat's release set candidate-10 (REL-2.1,
     # REL-5.1): the store root `root`, the marker `kartograf-store.json`, the
     # default root (`store_root()`), `kartograf.testing` (ADR-054),
     # `find_sheet_outlines` (PL-2000 zones of powiats, Kartograf ADR-055), the
@@ -21,7 +21,7 @@ dependencies = [
     # `obserwator-store.json` of another tool's store (Nogat ECO-057). The versions
     # the adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`
     # (REL-5.6).
-    "kartograf @ git+https://github.com/Daldek/Kartograf@v0.8.1",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@v0.8.2",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
