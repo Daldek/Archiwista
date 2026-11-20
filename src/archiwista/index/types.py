@@ -1406,6 +1406,24 @@ class ProjectPinRef:
 
 
 @dataclass(frozen=True, slots=True)
+class PinnedVersion:
+    """An indexed version that pins of projects name, with what gives its lines.
+
+    ``path`` is relative to the producer's directory of the store;
+    ``segment`` is the version's segment (``None`` for a producer that does
+    not split its store) and ``attribution`` its sidecar's
+    ``license.attribution``: with the producer they give the lines the
+    providers' terms require with the data (``archiwista.attribution``,
+    A-ADR-055).
+    """
+
+    producer: str
+    path: str
+    segment: str | None
+    attribution: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class VersionCall:
     """The producer's answer for the call of one stored version (A-ADR-049 D-10).
 

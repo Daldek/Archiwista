@@ -460,6 +460,12 @@ and a directory holding only one of them is no project.
   source again, so it fetches what the source has then. "Anuluj" closes the window and
   leaves the check running as the card's job.
   Below come the exports, the own data and the activity.
+- **The strip of sources** at the foot of the list: the lines the terms of the providers
+  of the data the listed projects and the chosen one pin require (A-ADR-055; for
+  Kartograf's data the attribution of its sidecar, which only the window that „Źródła i
+  warunki” opens shows), each once, as the project's `ATTRIBUTION.txt` gives them; „Kopiuj
+  atrybucję” in that window copies them all, one a line. Nothing when no project pins such
+  data.
 - **Sets in the making** (A-ADR-049 erratum 6; the owner or an administrator): a set is
   built from several plan windows and hand-picked versions while it is open ("w
   budowie"), and closed when it is complete; a closed set is frozen, so a program that
@@ -957,7 +963,9 @@ maxima, the lesser of their minima), their days, half and occurrences, and
 „niepełny rok: brak półrocza …” when one half has no value. `stations handoff KOD
 --variable Q` writes the variable's daily values, and with `--resolution annual` its
 annual maxima of complete hydrological years, as a hand-off to Hydrolog
-(`nogat-handoff/1`, A-ADR-052); the same document comes from „Do Hydrologa” under the
+(`nogat-handoff/1`, A-ADR-052); without `--from` and `--to` it runs from the first
+value to the last (the first and last year with a maximum), not over the years of the
+archive before them. The same document comes from „Do Hydrologa” under the
 chart of the station card (choose „Dane” and „Zmienna”, then „Kopiuj do Hydrologa” or
 „Plik przekazania”, which saves `<subject>.handoff.json`), and Hydrolog's
 „Statystyka przepływów” opens it with „Wczytaj z Archiwisty”. Where the browser
@@ -972,9 +980,9 @@ each station with the variable's label and full years and its chart as `stations
 series` writes it, or "brak danych" for a station without it;
 `--json` gives the points. Without Obserwator each refuses with the repair command
 `pip install "archiwista[obserwator]"`. The text of `stations list`, `timeline`,
-`show`, `series`, `compare` and `datasets`, and of `archiwista search`, `version` and
-`compare`, ends with „Źródła danych i warunki korzystania:” and the lines the terms
-of the data's providers require; `--json` gives them as `attribution` and
+`show`, `series`, `compare` and `datasets`, and of `archiwista search`, `version`,
+`compare`, `projects` and `project`, ends with „Źródła danych i warunki korzystania:”
+and the lines the terms of the data's providers require; `--json` gives them as `attribution` and
 `terms_notice`, and the hand-off carries them too.
 
 ## Session
@@ -1065,6 +1073,23 @@ server {
     }
 }
 ```
+
+**A share for stores and projects.** Mount the SMB 3 share on the server with the Linux
+CIFS client; when the share is encrypted (the option `seal`, or a share that requires
+encryption), also give `rsize=1048576,wsize=1048576`, for example the options
+`vers=3.1.1,seal,rsize=1048576,wsize=1048576` beside your others. At the client's default
+of 4 MiB the kernel encrypts each request in one contiguous buffer of 64 KiB, which it
+cannot always find when the server is busy and its memory fragmented: it then refuses the
+write, `close()` of the file fails with `[Errno 12] Cannot allocate memory`, and so does
+the producer's call (the kernel log shows `page allocation failure: order:4` in
+`crypt_message`; seen on Linux 6.12, and later kernels allocate the same way). At 1 MiB
+the buffer is 16 KiB, for which the kernel reclaims memory instead of refusing. The error
+does not come from a memory limit of the server's unit: under systemd's `MemoryMax` the
+page cache of the files the server and its jobs write and read keeps the unit at the
+limit, and the kernel reclaims it as they need memory. Keep the unit's `TMPDIR` on a
+local disk, not a tmpfs: Kartograf unpacks a BDOT10k package there before it copies the
+result into the store, and a tmpfs keeps its files in the unit's memory, which the kernel
+cannot reclaim, only swap out.
 
 **The first administrator and passwords.** The first administrator is created at the
 server's terminal, never on a page of the network: `archiwista users add anna.nowak --name
@@ -1302,6 +1327,12 @@ Restoring is putting the copy back in place while the server is stopped.
 - **Store unavailable** (for example a disconnected share): the views show the
   state of the index, the status bar gives its time; after reconnecting, the
   next scan completes the changes without rebuilding the index.
+- **A download's call fails with `[Errno 12] Cannot allocate memory`** in a store on an
+  encrypted SMB share, for example `Failed to extract or save the BDOT10k package
+  (0203.gpkg): [Errno 12] Cannot allocate memory`: the kernel had no buffer to encrypt
+  the write. Mount the share as "A share for stores and projects" under "Team server"
+  says. Kartograf removed its unfinished file, so the store keeps no broken one, and
+  "Ponów" on the job runs it again.
 - **Data source unavailable** (Kartograf missing or an unsupported version):
   the status bar gives the repair command, and `archiwista doctor` prints the
   same.

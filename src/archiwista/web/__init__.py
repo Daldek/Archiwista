@@ -1,7 +1,8 @@
 """Build-free browser interface served at ``/`` and ``/static/`` (A-ADR-028).
 
-``index.html`` loads ``src/main.js`` (ES modules: Preact and htm, no build
-step and no CDN); ``vendor/`` holds the pinned third-party files listed with
+``index.html`` loads ``src/boot.js``, which loads ``src/main.js`` and loads the
+page once more when a module could not be fetched (ES modules: Preact and htm,
+no build step and no CDN); ``vendor/`` holds the pinned third-party files listed with
 their licenses in ``vendor/vendor.json``; ``nogat/`` holds Nogat's GUI kit
 (the menu „Aplikacje”, the hand-off, the strip of the data providers' lines
 ``<nogat-sources>``, the regulamin files, the marks of the GUIs), copied whole

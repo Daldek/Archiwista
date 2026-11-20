@@ -49,6 +49,10 @@
  * project's exports with „Eksportuj…” (views/project-exports.js). Last
  * „Aktywność”: what was done to the project and its jobs, from the action log
  * (views/project-activity.js).
+ *
+ * At the foot of the list, the view's one strip of the providers' lines
+ * (provider-lines.js, A-ADR-055): those of the data the listed projects and
+ * the chosen one pin, as their answers give them; none without such data.
  */
 
 import {
@@ -83,6 +87,7 @@ import { projectJobs as JL } from "../labels/project-jobs.js";
 import { projects as L } from "../labels/projects.js";
 import { ChangeBadge, OwnCardLink, ownName, PROJECT_PARAM, StateBadge } from "../map/own.js";
 import { ViewLayout } from "../panels.js";
+import { SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { Link, setParams } from "../router.js";
 import {
   CopyButton,
@@ -188,6 +193,7 @@ function ProjectList({ list, chosen, store, route, notice }) {
   const [creating, setCreating] = useState(false);
   const stores = health?.stores ?? [];
   const items = list.data?.items ?? [];
+  useProviderLines(list.data);
   const pick = (project) => setParams({ project });
   const createWhy = settings && !settings.project_dirs?.length ? L.create.no_dirs : null;
   return html`<div class="center-bar">
@@ -285,7 +291,8 @@ function ProjectList({ list, chosen, store, route, notice }) {
             </table>
           </div>`
         : null}
-    </div>`;
+    </div>
+    <${SourcesStrip} />`;
 }
 
 /** The text of a project file that is not used: invalid, or of a newer format. */
@@ -595,6 +602,7 @@ function ProjectCard({ id, onChanged, onDeleted }) {
   const jobs = useProjectJobs(id, changed);
   // A download may have pinned into the project, or no longer writes into a set.
   useDownloadEnd(changed);
+  useProviderLines(resource.data);
   const { data: card, error } = resource;
   if (!card) {
     if (!error) return html`<${Spinner} />`;

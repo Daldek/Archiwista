@@ -5,6 +5,93 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
+## [0.3.2] - 2026-11-20
+
+Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
+
+### Fixed
+
+- **A line pasted before the list of producers loads is no longer refused** (found by
+  Nogat's `verify-candidate` of candidate-7 on Linux; `web/src/map/source.js`): „Zaplanuj…”
+  of „Wklej polecenie producenta” decided whose the line was from the producers of
+  `GET /api/v1/sources`, and before that answer came the list was empty, so a line pasted
+  at once was refused with „Nie wiadomo, czyje to polecenie: zacznij je od nazwy
+  producenta ().”. The button now waits, disabled, until the list is loaded; when the
+  list cannot be loaded the step's producer still decides, as before.
+- **A hand-off to Hydrolog spans the variable's values, not decades of `null` before
+  them (E3-05 of the scenario test of 2026-11-15; `services/station_handoff.py`).** Without
+  `from` and `to`, `GET /api/v1/stations/{code}/handoff` (`archiwista stations handoff`,
+  „Do Hydrologa”) took the chart's default range, the known span of the variable's label,
+  which covers every year the store's archives know for the station: Q of a gauge
+  measured since 1970-11-01 began on 1950-11-01 with 7,305 `null` days, and its
+  annual maxima had 20 empty years 1951–1970 not named in `left_out`. A daily hand-off now
+  runs from the variable's first value to its last, and an annual one from the first to the
+  last year with a maximum; the gaps between stay `null`, and a range asked is kept as
+  before (a bound asked beyond the values ends the default one there).
+- **„Projekty” shows the providers' lines of the data its projects pin (G01-1 of the scenario
+  test of 2026-11-15/16; A-ADR-055, Nogat DEV-20.5).** The list and the card of „Projekty”
+  showed the sets and their pinned versions without the strip of sources and „Źródła i
+  warunki” that every other view with data has, and neither `GET /projects` nor
+  `GET /projects/{project}` carried the lines. Both answers now have `attribution` and
+  `terms_notice`: the card those of every version its pins name that the index knows (the
+  lines of the data's origin; for Kartograf the sidecar's attribution, as in the project's
+  `ATTRIBUTION.txt`), the list those of the listed projects merged, each line once; both
+  empty without such data. The view shows them in its one strip at the foot of the list,
+  nothing without lines, and `archiwista projects` and `archiwista project` end their text
+  with them.
+- **The guide says how to mount an encrypted SMB share that holds a store (E7-03 of the
+  scenario test of 2026-11-15/16).** A download into the test store on an SMB 3 share,
+  while another one ran, failed one BDOT10k call with „Failed to extract or save the
+  BDOT10k package (0203.gpkg): [Errno 12] Cannot allocate memory”. The page cache that kept
+  the server's unit at its `MemoryMax=3G` was not the cause; the kernel reclaims it. The
+  share is mounted with `seal` and the CIFS client's default `rsize` and `wsize` of 4 MiB,
+  so the kernel encrypts each request in one contiguous buffer of 64 KiB, and on the busy
+  test computer, its memory fragmented, it refused one (`page allocation failure: order:4`
+  in `crypt_message`): `close()` of the file Kartograf copied into the store failed. USAGE
+  ("Team server", "When something does not work") and the LAN runbook now mount such a
+  share with `rsize=1048576,wsize=1048576`, whose buffer of 16 KiB the kernel does not
+  refuse. Archiwista itself is unchanged.
+- **A snapshot test no longer depends on where `TMPDIR` lies, and an interface test shows
+  a project readable by its folder's group (E7-12 and §6 B1 of the scenario test of
+  2026-11-15/16).** `test_published_files_read_only` expected the snapshot's working
+  directory `0700`, but its data folder took its mode from the tests' temporary directory,
+  and below a set-group-ID directory the system made that directory `2700`; the data folder
+  is now made `0750`. The other test the finding named,
+  `test_a_project_the_server_writes_is_readable_by_its_folders_group`, had failed through
+  the umask (C2, fixed in 0.3.1), not the set-group-ID bit; its project folder now has
+  another group of the account than its own when there is one, so the test checks that the
+  entries keep the folder's group, not the account's. A new interface test creates a project
+  with an area in the form and changes it under `umask 077` in a `2750` folder of a group,
+  and finds `0640` files and `2750` directories of that group, which another account of the
+  group (Hydrograf's bootstrap) reads. Archiwista itself is unchanged.
+- **An interface test of the year buttons no longer fails under load (Next 2 of
+  `docs/PROGRESS.md`, the gate of 2026-11-15).** `test_year_buttons_select_layer_and_tiles`
+  opened the map with an area and no position and took the count of every outline once the
+  address had stood still for 0.6 s. The map frames the area only when both the map and the
+  area's answer are there, so when that answer came late the count taken was the home view's
+  („16 obrysów w widoku”) and the one after the year was cleared the framed area's („11
+  obrysów w widoku”). The test now waits until the address's centre lies in the area before
+  it takes the count. The interface is unchanged.
+- **The interface starts when one of its files could not be fetched (Next 2 of
+  `docs/PROGRESS.md`, the gate of 2026-11-10; `web/src/boot.js`).** The interface is about
+  forty ES modules that the browser fetches at once over six connections, and Chromium
+  cancels the requests still waiting when the computer's network changes
+  (`net::ERR_NETWORK_CHANGED`: a VPN, another Wi-Fi network, a container started on the
+  computer). One module missing left the page on its spinner for good; in that gate the
+  sign-in page of `test_a_temporary_password_is_changed_before_the_shell_opens[chromium]`
+  never appeared. The page now loads once more by itself; when that load fails too it says
+  „Nie udało się wczytać Archiwisty.” with the button „Wczytaj ponownie”, and it never
+  reloads in a loop.
+
+### Changed
+
+- Kartograf is re-pinned from `v0.8.1` to `v0.8.2`, its patch in Nogat's release set
+  candidate-10 (`pyproject.toml`, `uv.lock`): the USDA texture classes on the lines clay =
+  20 % and clay = 27 % follow the Soil Survey Manual, so an HSG raster that a job computes
+  now gives C instead of B on those cells (Kartograf CHANGELOG `[0.8.2]`). HSG versions a
+  store already holds are reused for the same inputs; Kartograf's CHANGELOG says how to
+  compute them again. The supported range is unchanged.
+
 ## [0.3.1] - 2026-11-18
 
 Changes since 0.3.0, to be released as 0.3.1: defect fixes only.

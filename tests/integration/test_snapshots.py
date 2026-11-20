@@ -811,6 +811,9 @@ def test_published_files_read_only(env: SnapshotEnv) -> None:
     # Arrange
     key, project = env.project()
     root = make_own_folder(project / "dane", families=("shp_full",)).root
+    # A data folder of a known mode: made below a set-group-ID directory it
+    # would pass that bit on to the snapshot's directories (E7-12).
+    root.chmod(0o750)
     env.scan()
     seen: dict[str, dict[str, int]] = {}
 

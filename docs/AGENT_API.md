@@ -707,12 +707,14 @@ links to the IMGW-PIB terms that apply, each naming whose terms it links), both 
 such data. They come with `GET /slots` (merged over the page's versions), a
 version's card, `GET /compare` (both sides merged) and every station answer
 (`/stations`, `/stations/datasets`, `/stations/timeline`, `/stations/compare`,
-`/stations/{code}`, its `/coverage` and `/series`, `/map/stations`). Archiwista
+`/stations/{code}`, its `/coverage` and `/series`, `/map/stations`), a project's card
+(`GET /projects/{project}`: the versions its pins name) and `GET /projects` (the listed
+projects' merged). Archiwista
 chooses them by the provider and the form of the data, not from the sidecar (but
 for those border lines); a version of a producer that names no origin of its data
 (Kartograf) gives its
-sidecar's attribution on its card and in `/compare` (for example „Główny Urząd
-Geodezji i Kartografii”). The lines are Polish whatever `Accept-Language` says. An
+sidecar's attribution on its card, in `/compare` and with a project (for example
+„Główny Urząd Geodezji i Kartografii”). The lines are Polish whatever `Accept-Language` says. An
 agent shows them verbatim with the data, neither shortened nor translated, and
 carries them into everything it makes of the data (a table, a report, a file). The
 `attribution` of `StationChart` and `VersionCard`, once the sidecar's formula as a
@@ -823,7 +825,10 @@ characteristics `400 no_annual_source`. `GET /stations/{code}/handoff`
 around Hydrolog's `hydrolog-series/1`: every day of a daily series (`null` without a
 value; a series not of days is `400 no_daily_series`), or the annual maxima of
 complete hydrological years, a year missing a half `null` and named in
-`provenance.series.left_out`; Hydrolog's „Statystyka przepływów” opens it. The
+`provenance.series.left_out`. Without `from` and `to` it spans the variable's values,
+not the chart's known span: from its first value to its last, or from the first to
+the last year with a maximum (A-ADR-052 erratum 4); Hydrolog's „Statystyka
+przepływów” opens it. The
 document carries the series' lines as `attribution` and `terms_notice` (IMGW-PIB:
 its source, the mark of processing and its terms; ČHMÚ: its credit with the licence
 and what was done, no `terms_notice`), each left out when empty; Hydrolog shows them

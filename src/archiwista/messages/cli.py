@@ -2486,6 +2486,26 @@ MESSAGES = {
             " /api/v1/stations/KOD/handoff); zapisz je jako NAZWA.handoff.json."
         ),
     ),
+    "stations_handoff_start_help": Text(
+        (
+            "first day of the range, e.g. 1970-11-01; by default the variable's"
+            " first value (with --resolution annual its first year with a maximum)"
+        ),
+        (
+            "pierwszy dzień zakresu, np. 1970-11-01; domyślnie pierwsza wartość"
+            " zmiennej (z --resolution annual pierwszy rok z maksimum)"
+        ),
+    ),
+    "stations_handoff_end_help": Text(
+        (
+            "last day of the range, e.g. 2025-10-31; by default the variable's last"
+            " value (with --resolution annual its last year with a maximum)"
+        ),
+        (
+            "ostatni dzień zakresu, np. 2025-10-31; domyślnie ostatnia wartość"
+            " zmiennej (z --resolution annual ostatni rok z maksimum)"
+        ),
+    ),
     "stations_compare_help": Text(
         (
             "Compares one variable of 2 to 5 stations over one range: each"

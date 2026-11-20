@@ -4,6 +4,8 @@ A project is its directory holding ``archiwista-project.json``, Archiwista's
 own file (A-ADR-049). ``project_detail`` answers from the index (``GET
 /projects/{id}``) with the principal's ``ProjectVisibility`` (A-ADR-029): a
 project they do not see is unknown to them (``None``, ``404``).
+``project_lines`` gives the lines the providers' terms require with the
+data that projects pin (A-ADR-055), for the list and the card.
 
 ``create_project``, ``update_project``, ``set_area`` and ``set_store`` write
 the file under its lock (``archiwista.projects.change_project_file``), then
@@ -216,6 +218,35 @@ def project_problems(record: ProjectRecord) -> tuple[Problem, ...]:
                 )
             )
     return tuple(problems)
+
+
+def project_lines(
+    queries: IndexQueries, registry: PluginRegistry, keys: Sequence[str]
+) -> attribution.Attribution:
+    """Return the lines of the data the pins of these projects name, each once.
+
+    Each pinned version the index knows gives the lines of a stored version
+    (``attribution.version``: its origin by its producer's adapter, else its
+    sidecar's attribution), as its export's ``ATTRIBUTION.txt`` carries them;
+    they are merged in the standard's order. Projects without such data give
+    none.
+
+    Parameters
+    ----------
+    queries : IndexQueries
+        Reader of the local index.
+    registry : PluginRegistry
+        The source plugins, whose adapters name their data's origin.
+    keys : Sequence[str]
+        Keys of projects the principal sees (``ProjectRef.key``).
+    """
+    origins = attribution.Origins(registry)
+    return attribution.merge(
+        attribution.version(
+            origins.of(item.producer, item.path, item.segment), item.attribution
+        )
+        for item in queries.pinned_versions(keys)
+    )
 
 
 def _problem(code: str, project: ProjectRef, **values: object) -> Problem:

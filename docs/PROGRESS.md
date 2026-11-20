@@ -49,10 +49,20 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
 1. Hydrograf's admin panel cannot re-process from a store; the author moved that fix to the
    release after the first joint release (2026-11-15). Kaczawa's re-processing runs from the
    command line with project `kaczawa`, set `2026-1` (Hydrograf PROGRESS).
-2. Flaky e2e tests: `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens`
-   (gate of 2026-11-10, „Logowanie” never showed in 30 s) and
-   `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (gate of
-   2026-11-15); both pass alone; cause not found.
+2. Flaky e2e tests, causes found (`fix/flaky-e2e`, for 0.3.2):
+   - `tests/e2e/test_map_previews.py::test_year_buttons_select_layer_and_tiles` (gate of
+     2026-11-15) read the outline count before the map framed the area (the home view's 16,
+     not the area's 11) when the area's answer came late. Fixed in the test (`54f9ba5`): it
+     waits until the address's centre lies in the area.
+   - `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens[chromium]`
+     (gate of 2026-11-10): a network change on the computer (a Docker veth, Tailscale) makes
+     Chromium cancel the queued module requests of the boot (`net::ERR_NETWORK_CHANGED`), and
+     the interface stayed on its spinner. Fixed in the page (`4704325`): `src/boot.js` loads
+     `main.js`, reloads once after a failed import, then shows „Nie udało się wczytać
+     Archiwisty.” with „Wczytaj ponownie”. Reproduced in a private network namespace.
+     Still open: with the event at 7 s of the reproduction the import neither resolved nor
+     failed in 45 s (no reload, no message); [INFERENCE] Chromium left a request pending. A
+     time bound in `boot.js` would cover it, but its mechanism is not confirmed.
 3. The author decides: „Pobierz CSV” on the station card, through Obserwator's
    `export_series` (CSV with the provider's attribution); today a series leaves as the
    hand-off JSON, the parquet path, or a Python call of `obserwator.export_series`.
@@ -136,24 +146,37 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
       reader validates the file.
     - E2-10 = G08-1: an export (567 pins, 2.8 GB) is one synchronous request of about
       3.5 min; the interface shows neither its size nor its progress.
-    - E3-05 (§6 B6): the daily hand-off starts at 1950-11-01 (7,305 `null` days), not at the
-      variable's known range; the annual one has 20 empty years.
+    - E3-05 (§6 B6): the daily hand-off started at 1950-11-01 (7,305 `null` days), not at the
+      variable's values; the annual one had 20 empty years. Fixed on `fix/handoff-range`
+      (`86ea01a`, ADR-052 erratum 4): without `from`/`to` a daily hand-off runs from the
+      variable's first value to its last, an annual one from the first to the last year with
+      a maximum (Łąki Q: 1970-11-01 to 2025-10-31, as Obserwator's GUI hands it off).
     - E5a-03: no `GET /projects/{p}/groups/{g}` (405); a set is only in the project card.
     - E7-01 (§6 A5): `PUT /projects/{p}/area` with a closed set answered 200: the area changed
       and the set stayed `digest_state: ok`. Fixed on `fix/0.3.1` (A-ADR-049 erratum 9): another
       area or none is `409 set_closed` while the project holds a closed set. The other option of
       §6 A5, the area in a set's identity (several parts in one project), is a format change
       left to the author.
-    - E7-03: two downloads at once under `MemoryMax=3G` fill the cgroup with page cache;
-      unpacking BDOT10k ends with `Errno 12 ENOMEM`.
-    - E7-12: two permission tests fail when TMPDIR lies in a setgid directory; they pass
-      with `TMPDIR=/tmp`.
+    - E7-03: two downloads at once ended one BDOT10k call with `Errno 12 ENOMEM`. Not the
+      cgroup's page cache: `close()` of the file Kartograf copied into the store on the SMB
+      share failed, because the kernel's CIFS client could not get an order-4 buffer to
+      encrypt a 4 MiB write (`seal`, default `rsize`/`wsize`; kernel log of
+      2026-11-15T22:12:07Z, `crypt_message`). Documented on `fix/download-memory` (`b8abe75`):
+      USAGE and the LAN runbook mount such a share with `rsize=wsize=1048576`. This
+      computer's `/etc/fstab` still mounts `agent-tmp` with the default (the author's change).
+    - E7-12: two permission tests failed when TMPDIR lay in a setgid directory. Fixed on
+      `fix/permission-tests` (`fc43879`): `test_published_files_read_only` sets its data
+      folder's mode; the other test had failed through the umask (C2, fixed in 0.3.1) and now
+      checks the folder's group with a group other than the account's own.
     - ENV-01: `archiwista doctor` checks the port on `127.0.0.1` only and has no `--host`.
-    - G01-1 (§6 C3): „Projekty” has no sources strip and no „Źródła i warunki”.
+    - G01-1 (§6 C3): „Projekty” had no sources strip and no „Źródła i warunki”. Fixed on
+      `fix/projects-sources-strip` (`f0b53b7`): `GET /projects` and `GET /projects/{project}`
+      carry `attribution` and `terms_notice` of the pinned data, the view shows them in its
+      strip and the CLI ends its text with them.
     - G08-2 (§6 C3): an export's `README.txt` and `ATTRIBUTION.txt` cannot be opened from the
       interface.
-    - §6 B1: an e2e test that a project file is readable by another account of the folder's
-      group.
+    - §6 B1: an e2e test that a project file is readable by the folder's group. Added on
+      `fix/permission-tests` (`fc43879`): `test_a_project_written_in_the_form_is_readable_by_its_folders_group`.
     - With Kartograf: E7-02 (§6 B3; a download from a good plan fails whole when PRG's WFS is
       down, and a `partial` run pins nothing), E7-04 (§6 B3; one team's jobs on overlapping
       positions end `partial` with nothing pinned), E2-03 (§6 B2, with Hydrograf; a plan over a

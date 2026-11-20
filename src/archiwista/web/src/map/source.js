@@ -181,7 +181,9 @@ export function SourceStep({ area, areaLabel, projectAreas, filters, stores, nam
       : null}
     ${store
       ? html`<${PasteCommand} store=${store} fallback=${choice?.producer ?? null}
-          producers=${(sources.data?.items ?? []).map((item) => item.producer)}
+          producers=${sources.data
+            ? sources.data.items.map((item) => item.producer)
+            : sources.error ? [] : null}
           area=${area} areaLabel=${areaLabel} projectAreas=${projectAreas}
           onPlan=${(found) =>
             openPlan({
@@ -201,7 +203,8 @@ export function SourceStep({ area, areaLabel, projectAreas, filters, stores, nam
  *
  * @param {object} props
  * @param {import("../types.js").StoreSettings} props.store - The target store.
- * @param {string[]} props.producers - Ids of the installed producers.
+ * @param {string[]|null} props.producers - Ids of the installed producers; null
+ *   while their list loads, when a line cannot be told whose it is yet.
  * @param {string|null} props.fallback - The step's producer, for a line that
  *   does not start with a producer's id.
  * @param {(found: {producer: string, line: string, title: string,
@@ -232,7 +235,7 @@ function PasteCommand({ store, producers, fallback, area, areaLabel, projectArea
   const submit = async (event) => {
     event.preventDefault();
     const line = text.trim();
-    if (!line || reading) return;
+    if (!line || reading || producers === null) return;
     const first = line.split(/\s+/, 1)[0];
     const producer = producers.includes(first) ? first : fallback;
     if (producer === null) {
@@ -332,7 +335,8 @@ function PasteCommand({ store, producers, fallback, area, areaLabel, projectArea
             : html`<span class="field-hint" id=${`${id}-area-hint`}>${L.paste_area_hint}</span>`}
         </div>`
       : null}
-    <button type="submit" class="btn sm src-paste-plan" disabled=${reading || !text.trim()}>
+    <button type="submit" class="btn sm src-paste-plan"
+      disabled=${reading || producers === null || !text.trim()}>
       ${reading ? html`<span class="spinner" aria-hidden="true"></span>` : html`<${Icon} name="search" size=${14} />`}
       ${L.paste_submit}</button>
   </form>`;
