@@ -5,7 +5,7 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
-## [Unreleased]
+## [0.3.2] - 2026-11-20
 
 Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
 
