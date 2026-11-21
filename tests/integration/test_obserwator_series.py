@@ -323,7 +323,7 @@ def test_the_accumulated_sums_and_the_station_periods_are_kept(
         PL_HYDRO,
     ) == [
         (
-            "IMGW-PIB",
+            "IMGW",
             "hydro",
             "day",
             "hydrological",

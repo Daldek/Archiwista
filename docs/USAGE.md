@@ -921,7 +921,7 @@ archiwista stations list --q raba --sort name
 archiwista stations show 149190310 --years 1951-2025
 archiwista stations timeline --dataset pl.imgw.hydro_daily --river-code 2138 --river-scope tributaries
 archiwista stations series 149190310 --variable Q --from 1981-01-01 --to 1983-12-31
-archiwista stations compare --station zespol/IMGW-PIB/149190310 --station zespol/IMGW-PIB/149200090 --dataset pl.imgw.hydro_daily --variable Q
+archiwista stations compare --station zespol/IMGW/149190310 --station zespol/IMGW/149200090 --dataset pl.imgw.hydro_daily --variable Q
 archiwista stations datasets
 archiwista stations handoff 149190310 --variable Q --resolution annual > raba.handoff.json
 ```

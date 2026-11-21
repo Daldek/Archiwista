@@ -71,8 +71,8 @@ def test_each_provider_of_the_registry_has_its_catalog_slot(
         for provider in providers()
     }
 
-    assert named == {"IMGW-PIB": "IMGW-PIB", "CHMU": "CHMU"}
-    assert adapter.station_catalog(PL_CATALOG) == "IMGW-PIB"
+    assert named == {"IMGW": "IMGW", "CHMU": "CHMU"}
+    assert adapter.station_catalog(PL_CATALOG) == "IMGW"
     assert adapter.station_catalog(CZ_CATALOG) == "CHMU"
 
 
@@ -142,7 +142,7 @@ def test_a_station_keeps_the_fields_of_the_catalog(
     }
 
     assert imgw["149190310"] == Station(
-        provider="IMGW-PIB",
+        provider="IMGW",
         code="149190310",
         kind="hydro",
         name="Raba Górna",

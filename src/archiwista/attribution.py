@@ -86,7 +86,7 @@ _LINES: dict[DataOrigin, tuple[str, ...]] = {
     "chmu_processed": ("legal.chmu_source", "legal.chmu_processed"),
 }
 # The station providers of Obserwator's catalogs, as the index names them.
-_IMGW = "IMGW-PIB"
+_IMGW = "IMGW"
 _CHMU = "CHMU"
 # A value of G and Z while their patterns are built; no line holds it.
 _HOLE = "\x00"
@@ -191,7 +191,7 @@ def station(provider: str, catalog: str | None, *, positions: bool) -> Attributi
     Parameters
     ----------
     provider : str
-        The station's provider: ``IMGW-PIB`` or ``CHMU``.
+        The station's provider: ``IMGW`` or ``CHMU``.
     catalog : str or None
         The attribution of the sidecar of the catalog version the station
         was read from; ``None`` without one.
@@ -207,7 +207,7 @@ def station_origin(provider: str, *, positions: bool) -> DataOrigin | None:
     Parameters
     ----------
     provider : str
-        The station's provider: ``IMGW-PIB`` or ``CHMU``.
+        The station's provider: ``IMGW`` or ``CHMU``.
     positions : bool
         Whether the product shows or returns station positions, which the
         IMGW-PIB catalog takes from the hydrological service (H).

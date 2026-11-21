@@ -26,7 +26,7 @@ import { compareStations, getStation, listStations, listStationDatasets } from "
 import { count, day, int } from "../format.js";
 import { useResource, useSize } from "../hooks.js";
 import { catalog as CL } from "../labels/catalog.js";
-import { t } from "../labels/index.js";
+import { providerName, t } from "../labels/index.js";
 import { station as L } from "../labels/station.js";
 import { COMPARE_PARAM, MAX_COMPARED, stationAddress } from "../map/stations.js";
 import { SourcesStrip, useProviderLines } from "../provider-lines.js";
@@ -200,7 +200,7 @@ function AddStation({ dataset, stations, onAdd }) {
                   onAdd(stationAddress(item));
                 }}>
                 <b>${item.name ?? item.code}</b>
-                <span class="faint">${item.code} · ${item.provider}${item.river ? ` · ${item.river}` : ""}</span>
+                <span class="faint">${item.code} · ${providerName(item.provider)}${item.river ? ` · ${item.river}` : ""}</span>
               </button>
             </li>`,
           )}
@@ -376,7 +376,7 @@ function Facts({ answer }) {
             const longest = gap ? `${spanText(gap.from, gap.to, day)} (${count(gap.units, forms)})` : "–";
             return html`<tr key=${stationAddress(item)} data-station=${stationAddress(item)}>
               <th scope="row"><span class="scmp-name">${item.name ?? item.code}</span>
-                <span class="faint mono"> ${item.code} · ${item.provider}</span></th>
+                <span class="faint mono"> ${item.code} · ${providerName(item.provider)}</span></th>
               ${coverage
                 ? html`<td class="tabular" data-fact="years">${years}</td>
                     <td data-fact="label">${coverage.label}</td>

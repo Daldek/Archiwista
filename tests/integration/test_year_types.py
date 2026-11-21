@@ -89,7 +89,7 @@ def _half_years(writer: IndexWriter) -> None:
         version=f"{folder}/2026-10-26_00000000/series.json",
         listing=SeriesListing(
             dataset=HALF_YEAR,
-            provider="IMGW-PIB",
+            provider="IMGW",
             kind="hydro",
             time_unit="half_year",
             year_type="hydrological",

@@ -849,18 +849,18 @@ keeps its place with `null` for both. No station with the variable is `400`
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"
 curl -sf -b "$JAR" -H "$H" \
   "$BASE/stations?area_id=$AREA&dataset=pl.imgw.hydro_daily&coverage=Q:continuous&min_complete_years=Q:30"
-curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW-PIB"
+curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW"
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310/coverage?variable=Q&years=1981-1983"
 curl -sf -b "$JAR" -H "$H" \
   "$BASE/stations/timeline?dataset=pl.imgw.hydro_daily&river_code=2138&river_scope=tributaries"
 archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
   --coverage=Q:continuous --min-complete-years=Q:30 --json
-archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
+archiwista stations show 149190310 --store=zespol --provider=IMGW --json
 archiwista stations datasets --json
 archiwista stations timeline --dataset=pl.imgw.hydro_daily --variable=Q --json
 archiwista stations series 149190310 --variable=Q --from=1981-01-01 --to=1983-12-31 --json
-archiwista stations compare --station=zespol/IMGW-PIB/149190310 \
-  --station=zespol/IMGW-PIB/149200090 --dataset=pl.imgw.hydro_daily --variable=Q --json
+archiwista stations compare --station=zespol/IMGW/149190310 \
+  --station=zespol/IMGW/149200090 --dataset=pl.imgw.hydro_daily --variable=Q --json
 ```
 
 ## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3), file download (v0.4)

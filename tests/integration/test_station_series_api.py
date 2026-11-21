@@ -629,7 +629,7 @@ def test_a_chart_of_27393_days_within_500_ms() -> None:
         accumulated=0, years=(), label=label, known=((first, last),),
     )  # fmt: skip
     series = StationCoverage(
-        store=STORE, provider="IMGW-PIB", code=RABA, dataset=DAILY, kind="hydro",
+        store=STORE, provider="IMGW", code=RABA, dataset=DAILY, kind="hydro",
         time_unit="day", year_type="hydrological", span=None, file="f.parquet",
         series="2026-08-31", series_version="series.json", variables=(variable,),
     )  # fmt: skip

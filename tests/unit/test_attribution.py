@@ -231,7 +231,7 @@ def test_attribution_filled_finds_g_and_z_whatever_their_values() -> None:
     ("provider", "catalog", "positions", "lines"),
     [
         pytest.param(
-            "IMGW-PIB",
+            "IMGW",
             f"{IMGW_SOURCE}. {GUGIK_PRG}",
             True,
             Attribution(
@@ -241,7 +241,7 @@ def test_attribution_filled_finds_g_and_z_whatever_their_values() -> None:
             id="imgw-located",
         ),
         pytest.param(
-            "IMGW-PIB",
+            "IMGW",
             f"{IMGW_SOURCE}. {GUGIK_PRG}",
             False,
             Attribution((IMGW_SOURCE, IMGW_PROCESSED, GUGIK_PRG), PUBLIC_DATA_TERMS),
@@ -255,7 +255,7 @@ def test_attribution_filled_finds_g_and_z_whatever_their_values() -> None:
             id="chmu",
         ),
         pytest.param(
-            "IMGW-PIB",
+            "IMGW",
             IMGW_SOURCE,
             True,
             Attribution(

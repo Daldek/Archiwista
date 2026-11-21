@@ -91,7 +91,7 @@ def _text(found: StationCoverage, key: str) -> str:
     ("provider", "code", "dataset", "key", "year_type", "years", "expected"),
     [
         pytest.param(
-            "IMGW-PIB",
+            "IMGW",
             "149190310",
             PL_HYDRO,
             "H",
@@ -101,7 +101,7 @@ def _text(found: StationCoverage, key: str) -> str:
             id="hydro-gaps-hydrological",
         ),
         pytest.param(
-            "IMGW-PIB",
+            "IMGW",
             "149190310",
             PL_HYDRO,
             "H",
@@ -111,7 +111,7 @@ def _text(found: StationCoverage, key: str) -> str:
             id="hydro-calendar-years-unknown-without-xi-xii",
         ),
         pytest.param(
-            "IMGW-PIB",
+            "IMGW",
             "149190311",
             PL_HYDRO,
             "Q",
@@ -121,7 +121,7 @@ def _text(found: StationCoverage, key: str) -> str:
             id="hydro-no-q-with-h",
         ),
         pytest.param(
-            "IMGW-PIB",
+            "IMGW",
             "123750000",
             PL_PRECIP,
             "P",
@@ -131,7 +131,7 @@ def _text(found: StationCoverage, key: str) -> str:
             id="meteo-calendar-month-only",
         ),
         pytest.param(
-            "IMGW-PIB",
+            "IMGW",
             "123750000",
             PL_PRECIP,
             "P",
@@ -252,8 +252,8 @@ def test_the_range_and_the_year_type_follow_the_dataset_by_default(
     coverage: Coverage,
 ) -> None:
     """Hydro by hydrological years from 1951, meteo by calendar ones from 1950."""
-    hydro = coverage("IMGW-PIB", "149190310", PL_HYDRO)
-    meteo = coverage("IMGW-PIB", "123750000", PL_PRECIP)
+    hydro = coverage("IMGW", "149190310", PL_HYDRO)
+    meteo = coverage("IMGW", "123750000", PL_PRECIP)
     czech = coverage("CHMU", "0-203-0-90001", CZ_METEO)
 
     assert (hydro.year_type, hydro.span) == ("hydrological", (1951, 2024))
@@ -269,7 +269,7 @@ def test_the_row_details_come_with_the_label(coverage: Coverage) -> None:
     czech = coverage(
         "CHMU", "0-203-1-900002", CZ_HYDRO, year_type="calendar", years=(2004, 2006)
     )
-    precip = coverage("IMGW-PIB", "123750000", PL_PRECIP)
+    precip = coverage("IMGW", "123750000", PL_PRECIP)
 
     variables = {item.key: item for item in czech.variables}
     water = variables["H"].label
@@ -299,7 +299,7 @@ def test_a_station_without_a_series_has_no_coverage_and_a_reversed_range_is_refu
 ) -> None:
     """Nothing comes out for an unknown station; 2025-2020 is no range."""
     with IndexQueries(index) as queries:
-        assert queries.station_coverage(STORE, "IMGW-PIB", "999999999") == ()
+        assert queries.station_coverage(STORE, "IMGW", "999999999") == ()
         with pytest.raises(IndexQueryError):
             queries.station_coverage(
                 STORE, "CHMU", "0-203-1-900002", years=(2025, 2020)

@@ -56,7 +56,7 @@ Serve = Callable[..., Served]
 Stores = Callable[[str], Path]
 
 DAILY = "pl.imgw.hydro_daily"
-PROVIDER = "IMGW-PIB"
+PROVIDER = "IMGW"
 RABA = "149190310"  # Raba Górna: located, H, Q and T
 UNLOCATED = "149190311"  # Stacja Bez Q: the source says 0,0
 STATION = re.compile(rf"[?&]station={STORE}%2F{PROVIDER}%2F{RABA}(&|$)")

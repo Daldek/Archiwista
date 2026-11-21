@@ -74,9 +74,9 @@ from tests.fixtures.station_browser import (
 Serve = Callable[..., Served]
 Stores = Callable[[str], Path]
 
-RABA = "IMGW-PIB/149190310"
+RABA = "IMGW/149190310"
 SPINDLER = "CHMU/0-203-1-900001"
-HALF_YEARS = f"IMGW-PIB/{HALF_YEARS_ONLY}"
+HALF_YEARS = f"IMGW/{HALF_YEARS_ONLY}"
 VERTEX = re.compile(r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)")
 MAX_POINTS = re.compile(r"[?&]max_points=(\d+)")
 # The page as on a plain-HTTP address of the network, where browsers give no
@@ -122,7 +122,7 @@ def test_the_gaps_are_grey_bands_the_line_never_crosses(
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
-    query = urlencode({"store": STORE, "provider": "IMGW-PIB", "variable": "H"})
+    query = urlencode({"store": STORE, "provider": "IMGW", "variable": "H"})
     (variable,) = api(page, f"/stations/149190310/series?{query}")["variables"]
     valued = [point["t"] for point in variable["points"] if point["mean"] is not None]
 

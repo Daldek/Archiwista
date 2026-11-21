@@ -316,8 +316,8 @@ def test_stations_cli_without_obserwator_is_a_missing_dependency(
     compared = doors.refused(
         "stations",
         "compare",
-        f"--station={STORE}/IMGW-PIB/{RABA}",
-        f"--station={STORE}/IMGW-PIB/149190311",
+        f"--station={STORE}/IMGW/{RABA}",
+        f"--station={STORE}/IMGW/149190311",
         f"--dataset={DAILY}",
         "--variable=H",
         registry=NoSources(),

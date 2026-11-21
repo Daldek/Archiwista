@@ -2559,8 +2559,8 @@ MESSAGES = {
         "identyfikator magazynu",
     ),
     "stations_provider_help": Text(
-        "provider of the stations: IMGW-PIB or CHMU",
-        "dostawca stacji: IMGW-PIB albo CHMU",
+        "provider of the stations: IMGW or CHMU",
+        "dostawca stacji: IMGW albo CHMU",
     ),
     "stations_dataset_help": Text(
         (

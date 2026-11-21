@@ -47,7 +47,7 @@ import { getStationHandoff, getStationSeries } from "../api.js";
 import { useApp } from "../context.js";
 import { count, day } from "../format.js";
 import { useResource, useSize } from "../hooks.js";
-import { t } from "../labels/index.js";
+import { providerName, t } from "../labels/index.js";
 import { station as L } from "../labels/station.js";
 import { useProviderLines } from "../provider-lines.js";
 import { setParams } from "../router.js";
@@ -515,7 +515,7 @@ function ChartFigure({ chart, width, extent, onRange, loading, whole }) {
  * @returns {string}
  */
 export function chartNote(chart, whole) {
-  if (chart.resolution === "annual") return t(C.annual_note, { provider: chart.provider });
+  if (chart.resolution === "annual") return t(C.annual_note, { provider: providerName(chart.provider) });
   const unit = chart.time_unit === "month" ? "month" : "day";
   if (chart.interval <= 1) return C.values[unit];
   const interval = count(chart.interval, C.interval_units[unit]);

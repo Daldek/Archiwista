@@ -185,10 +185,10 @@ _COUNTRY_TREES = frozenset({"archives", "series"})
 # whatever its provider, is PMAXTP's.
 _ORIGINS: Mapping[tuple[str, str], DataOrigin] = MappingProxyType(
     {
-        ("archives", "IMGW-PIB"): "imgw_file",
-        ("series", "IMGW-PIB"): "imgw_processed",
-        ("stations", "IMGW-PIB"): "imgw_stations",
-        ("analyses", "IMGW-PIB"): "imgw_processed",
+        ("archives", "IMGW"): "imgw_file",
+        ("series", "IMGW"): "imgw_processed",
+        ("stations", "IMGW"): "imgw_stations",
+        ("analyses", "IMGW"): "imgw_processed",
         ("archives", "CHMU"): "chmu_file",
         ("series", "CHMU"): "chmu_processed",
         ("stations", "CHMU"): "chmu_processed",
@@ -478,7 +478,7 @@ class ObserwatorAdapter:
         Returns
         -------
         str or None
-            The provider's id (``IMGW-PIB``, ``CHMU``); ``None`` for any other
+            The provider's id (``IMGW``, ``CHMU``); ``None`` for any other
             slot.
         """
         kind, _, dataset = slot_key.partition(":")

@@ -30,7 +30,7 @@
  */
 
 import { count, int } from "../format.js";
-import { t } from "../labels/index.js";
+import { providerName, t } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
 import { GLYPH_FONT } from "../maplibre.js";
 import { html } from "../ui.js";
@@ -494,7 +494,7 @@ export function StationTip({ tip }) {
   return html`<b>${item.name ?? item.code}</b>
     <div>${[stationType(item), item.river].filter(Boolean).join(" · ")}</div>
     ${item.on_boundary ? html`<div class="station-tip-boundary">${L.stations.on_boundary}</div>` : null}
-    <div class="faint mono">${item.code} · ${item.provider}</div>
+    <div class="faint mono">${item.code} · ${providerName(item.provider)}</div>
     <div class="muted">${L.stations.open}</div>`;
 }
 

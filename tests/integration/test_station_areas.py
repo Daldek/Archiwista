@@ -38,7 +38,7 @@ from archiwista.sources import (
 )
 
 STORE = "dane"
-PL = "IMGW-PIB"
+PL = "IMGW"
 DAILY = "pl.imgw.hydro_daily"
 HALF_YEAR = "pl.imgw.hydro_semiannual"
 # The hydrological years 2001 to 2004 (1 XI 2000 to 31 X 2004).

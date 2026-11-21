@@ -362,3 +362,17 @@ and `user` as before. No decision changes and nothing is translated: Archiwista 
 only the new names, and its index is rebuilt (`archiwista reindex`) from a data root
 that Obserwator 3.1.0 built; the raw root stays, as Obserwator reads its archives' older
 sidecars under the new key and provider. The old names in decisions 1 to 14 read through this map.
+
+**Erratum 4 (2026-11-21, Nogat ECO-082 as extended the same day, DEV-2.5; Obserwator
+3.1.0):** IMGW-PIB's identifiers lose the legal suffix too. The provider this record and
+erratum 2 call `IMGW-PIB` is `IMGW`: the `provider` of the API, of its filters
+`?provider=` and `--provider`, of a station's reference `<store>/IMGW/<code>` and of the
+index, and the hand-off's `provenance.series.source` `imgw` (Nogat's registry id). The
+dataset keys `pl.imgw.*`, the store's directories and the licence id `IMGW-PIB` (which
+names IMGW-PIB's terms in Obserwator's sidecars) are unchanged. Text for a person keeps
+the institute's acronym: the interface and the command line's text name a provider by
+its id through one table (`common.provider_imgw`, `common.provider_chmu` of the
+messages, `provider` of `web/src/labels/common.js`), „IMGW-PIB” and „ČHMÚ” (SPEC 6.7);
+the attribution lines are unchanged. No decision changes and nothing is translated:
+the index is rebuilt (`archiwista reindex`) from a data root Obserwator 3.1.0 built,
+which reads stored sidecars with the provider `IMGW-PIB` as `IMGW`.

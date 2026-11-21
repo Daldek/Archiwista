@@ -194,7 +194,7 @@ def test_the_index_holds_every_station_of_each_current_catalog(
     """Row count and locations equal the catalog's; a point for each located one."""
     # Arrange
     env = open_env(variant)
-    keys = {"IMGW-PIB": PL_KEY}
+    keys = {"IMGW": PL_KEY}
     if variant == "complete_pl_cz":
         keys["CHMU"] = CZ_KEY
 
@@ -264,8 +264,8 @@ def test_a_new_catalog_version_replaces_the_providers_rows(
     env.scan()
 
     # Assert
-    assert env.catalogs()["IMGW-PIB"] == published
-    polish = env.stations("IMGW-PIB")
+    assert env.catalogs()["IMGW"] == published
+    polish = env.stations("IMGW")
     assert polish == _catalog(env.root, PL_KEY)
     assert "149190313" not in polish
     assert polish["123760000"] == ("point", None, 21.5, 52.5)
@@ -311,14 +311,14 @@ def test_a_catalog_without_a_current_version_leaves_its_provider_no_stations(
     env = open_env("complete_pl_cz")
     env.scan("full")
     czech = env.stations("CHMU")
-    gone = env.catalogs()["IMGW-PIB"]
+    gone = env.catalogs()["IMGW"]
     shutil.rmtree((root_of(env.root, gone) / gone).parent)
 
     # Act
     env.scan("full")
 
     # Assert
-    assert env.stations("IMGW-PIB") == {}
+    assert env.stations("IMGW") == {}
     assert set(env.catalogs()) == {"CHMU"}
     assert env.stations("CHMU") == czech
     assert env.point_count() == env.located_count()
@@ -332,7 +332,7 @@ def test_a_catalog_the_producer_refuses_is_said_and_holds_no_stations(
     env = open_env("complete_pl_cz")
     env.scan("full")
     czech = env.stations("CHMU")
-    refused = env.catalogs()["IMGW-PIB"]
+    refused = env.catalogs()["IMGW"]
     catalogs = env.catalogs_adapter()
     original = catalogs.read_stations
 
@@ -351,7 +351,7 @@ def test_a_catalog_the_producer_refuses_is_said_and_holds_no_stations(
     assert (notice.level, notice.code) == ("warning", "stations_unreadable")
     assert "IMGW-PIB" in notice.message and "catalog broken" in notice.message
     assert refused in notice.message
-    assert env.stations("IMGW-PIB") == {}
+    assert env.stations("IMGW") == {}
     assert set(env.catalogs()) == {"CHMU"}
     assert env.stations("CHMU") == czech
 
@@ -363,7 +363,7 @@ def test_a_catalog_the_system_cannot_read_makes_the_store_unavailable(
     # Arrange
     env = open_env("complete")
     env.scan("full")
-    before = env.stations("IMGW-PIB")
+    before = env.stations("IMGW")
 
     def unreadable(root: Path, version: Path) -> tuple[Station, ...]:
         raise SourceUnavailableError("share gone")
@@ -378,7 +378,7 @@ def test_a_catalog_the_system_cannot_read_makes_the_store_unavailable(
     with IndexQueries(env.index) as queries:
         (state,) = queries.status().stores
     assert state.status == "unavailable"
-    assert env.stations("IMGW-PIB") == before
+    assert env.stations("IMGW") == before
 
 
 def test_two_providers_never_collide_on_a_code(open_env: Callable[[str], _Env]) -> None:
@@ -408,11 +408,9 @@ def test_two_providers_never_collide_on_a_code(open_env: Callable[[str], _Env]) 
         "SELECT provider, lon, lat FROM stations WHERE code = ? ORDER BY provider",
         same,
     )
-    assert rows == [("CHMU", 15.0, 50.0), ("IMGW-PIB", 20.1, 49.7)]
+    assert rows == [("CHMU", 15.0, 50.0), ("IMGW", 20.1, 49.7)]
     assert env.stations("CHMU")["0-203-1-1"] == ("none", "none", None, None)
     assert env.point_count() == env.located_count()
     assert env.writer.drop_stations(STORE, "CHMU") == 2
-    assert env.sql("SELECT provider FROM stations WHERE code = ?", same) == [
-        ("IMGW-PIB",)
-    ]
+    assert env.sql("SELECT provider FROM stations WHERE code = ?", same) == [("IMGW",)]
     assert env.point_count() == env.located_count()

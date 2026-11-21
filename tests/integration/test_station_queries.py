@@ -31,7 +31,7 @@ from archiwista.sources import Station
 
 STORE = "dane"
 OTHER = "drugi"
-PL = "IMGW-PIB"
+PL = "IMGW"
 CZ = "CHMU"
 
 

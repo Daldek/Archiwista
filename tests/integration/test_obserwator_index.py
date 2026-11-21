@@ -311,7 +311,7 @@ def test_a_slot_keeps_its_key_a_name_for_people_and_its_versions_a_provider(
         if entry.version and entry.kind not in ("problem", "observation")
     }
     assert providers == by_producer
-    assert set(providers.values()) == {"IMGW-PIB", "CHMU"}
+    assert set(providers.values()) == {"IMGW", "CHMU"}
 
 
 def _register(root: Path) -> tuple[StoreEntry, StoreEntry]:

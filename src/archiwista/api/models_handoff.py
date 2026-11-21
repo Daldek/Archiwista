@@ -35,8 +35,8 @@ class StationHandoffQuery(BaseModel):
     )
     provider: str | None = Field(
         default=None,
-        description="Provider of the stations: `IMGW-PIB` or `CHMU` (ČHMÚ).",
-        examples=["IMGW-PIB"],
+        description="Provider of the stations: `IMGW` or `CHMU` (ČHMÚ).",
+        examples=["IMGW"],
     )
     dataset: str | None = Field(
         default=None,
@@ -124,7 +124,7 @@ class StationHandoff(BaseModel):
     )
     provenance: dict[str, dict[str, Any]] = Field(
         description=(
-            "Where the series came from: `series` with `source` (`imgw-pib`), the"
+            "Where the series came from: `series` with `source` (`imgw`), the"
             " provider, store, dataset, station code and series version; for"
             " annual maxima the rule and `left_out`, the years without one of"
             " their halves."

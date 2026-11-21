@@ -276,7 +276,7 @@ def test_series_and_catalogs_are_versions_and_nothing_is_a_problem(
     assert {e.kind for e in entries} == {"version"}
     (catalog,) = [e for e in entries if e.segment == "pl.imgw.stations"]
     assert catalog.slot_path == PL_CATALOG
-    assert catalog.meta is not None and catalog.meta.provider == "IMGW-PIB"
+    assert catalog.meta is not None and catalog.meta.provider == "IMGW"
 
 
 @pytest.mark.parametrize(
@@ -505,7 +505,7 @@ def test_the_two_providers_keep_their_datasets_catalogs_and_countries_apart(
     catalogs = {e.segment: e for e in entries if e.relative_path.parts[0] == "stations"}
 
     assert {(m.provider, m.country) for m in metas} == {
-        ("IMGW-PIB", "PL"),
+        ("IMGW", "PL"),
         ("CHMU", "CZ"),
     }
     assert {e.segment[:3] for e in entries if e.segment and e.meta} == {"pl.", "cz."}
@@ -514,7 +514,7 @@ def test_the_two_providers_keep_their_datasets_catalogs_and_countries_apart(
         "cz.chmu.stations": CZ_CATALOG,
     }
     assert [e.meta.provider for e in catalogs.values() if e.meta] == [
-        "IMGW-PIB",
+        "IMGW",
         "CHMU",
     ]
     slots = Counter(e.slot_path for e in entries if e.kind == "version")
@@ -556,9 +556,9 @@ def test_the_origin_of_a_version_is_its_trees_form_of_its_providers_data(
 
     assert isinstance(adapter, DataOriginAdapter)
     assert origins == {
-        ("archives", "IMGW-PIB", "imgw_file"),
-        ("series", "IMGW-PIB", "imgw_processed"),
-        ("stations", "IMGW-PIB", "imgw_stations"),
+        ("archives", "IMGW", "imgw_file"),
+        ("series", "IMGW", "imgw_processed"),
+        ("stations", "IMGW", "imgw_stations"),
         ("archives", "CHMU", "chmu_file"),
         ("series", "CHMU", "chmu_processed"),
         ("stations", "CHMU", "chmu_processed"),

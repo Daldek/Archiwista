@@ -76,7 +76,7 @@ type Params = dict[str, str | list[str]]
 
 def imgw(code: str) -> str:
     """Return the address of an IMGW-PIB station of the store."""
-    return f"{STORE}/IMGW-PIB/{code}"
+    return f"{STORE}/IMGW/{code}"
 
 
 def chmu(code: str) -> str:

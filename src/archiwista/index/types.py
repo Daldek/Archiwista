@@ -958,7 +958,7 @@ class StationQuery:
     Parameters
     ----------
     store, provider : str or None
-        Exact store id and provider (``IMGW-PIB``, ``CHMU``).
+        Exact store id and provider (``IMGW``, ``CHMU``).
     code : str or None
         Exact station code.
     kind : str or None

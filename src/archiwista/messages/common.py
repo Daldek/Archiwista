@@ -15,4 +15,9 @@ MESSAGES = {
         "{message:sentence}: {detail}{end}",
         "{message:sentence}: {detail}{end}",
     ),
+    # A provider's name for a person, looked up by its id in lower case
+    # (Nogat ECO-082: the id is `IMGW` or `CHMU`, the text keeps the institute's
+    # acronym); an id without an entry is shown as it is.
+    "provider_imgw": Text("IMGW-PIB", "IMGW-PIB"),
+    "provider_chmu": Text("ČHMÚ", "ČHMÚ"),
 }

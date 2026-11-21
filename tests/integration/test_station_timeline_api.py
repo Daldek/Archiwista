@@ -317,12 +317,12 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
         writer.replace_stations(
             STORE,
             "obserwator",
-            "IMGW-PIB",
+            "IMGW",
             slot="stations/versions",
             version="stations/versions/2026-10-26_00000000/stations.geojson",
             stations=[
                 Station(
-                    "IMGW-PIB",
+                    "IMGW",
                     code,
                     kind="hydro",
                     name=f"Stacja {index}",
@@ -342,7 +342,7 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
             version=f"{folder}/series.json",
             listing=SeriesListing(
                 dataset=DAILY,
-                provider="IMGW-PIB",
+                provider="IMGW",
                 kind="hydro",
                 time_unit="day",
                 year_type="hydrological",

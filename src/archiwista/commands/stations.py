@@ -85,7 +85,14 @@ from archiwista.error_document import (
 )
 from archiwista.errors import ArchiwistaError, StateError
 from archiwista.index import IndexQueries, IndexUnsupportedError
-from archiwista.messages import label, language, message, plural_form, with_detail
+from archiwista.messages import (
+    label,
+    language,
+    lookup,
+    message,
+    plural_form,
+    with_detail,
+)
 from archiwista.services.preferences import read_preferences
 from archiwista.sources.registry import PluginRegistry
 from archiwista.state import StateStore
@@ -430,7 +437,7 @@ def _station_line(item: StationItem | StationTimelineItem | ComparedStation) -> 
         code=item.code,
         name=_value(item.name),
         kind=_value(item.kind),
-        provider=item.provider,
+        provider=_provider(item.provider),
         store=item.store,
         river=river,
         place=place,
@@ -502,7 +509,7 @@ def _card_text(card: StationCard) -> str:
             "cli.station_title",
             code=item.code,
             name=_value(item.name),
-            provider=item.provider,
+            provider=_provider(item.provider),
             store=item.store,
         ),
         message(
@@ -593,7 +600,7 @@ def _annual_lines(chart: StationChart) -> list[str]:
     lines: list[str] = [
         message(
             "cli.station_chart_annual",
-            provider=chart.provider,
+            provider=_provider(chart.provider),
             first=chart.first.year + 1,
             last=chart.last.year,
             years=_years_count(chart.units),
@@ -787,7 +794,7 @@ def _dataset_line(item: StationDatasetItem) -> str:
         "cli.station_dataset_line",
         dataset=item.dataset,
         name=_value(item.name),
-        provider=item.provider,
+        provider=_provider(item.provider),
         kind=_value(item.kind),
         store=item.store,
         series=_value(item.series),
@@ -826,6 +833,11 @@ def _with_stale(answer: IndexAnswer, lines: list[str]) -> str:
 
 def _value(value: object) -> str:
     return message("cli.none") if value is None else str(value)
+
+
+def _provider(provider: str) -> str:
+    # A person reads the institute's name (IMGW-PIB, ČHMÚ), the API the id.
+    return lookup(f"common.provider_{provider.lower()}", provider)
 
 
 def _time(value: datetime | None) -> str:

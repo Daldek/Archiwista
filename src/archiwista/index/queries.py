@@ -1457,7 +1457,7 @@ class IndexQueries:
         store : str
             Configured store id.
         provider : str
-            The station's provider (``IMGW-PIB``, ``CHMU``).
+            The station's provider (``IMGW``, ``CHMU``).
         code : str
             The station's code, as text.
         """

@@ -11,9 +11,9 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
 
 ### Changed
 
-- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `facf5ef`, the commit of
+- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `ddd7a22`, the commit of
   its branch `feat/national-provider-names` at `3.1.0.dev0` for Nogat's release round of
-  2026-11-21 (`pyproject.toml`, `uv.lock`; `1a11df5` of its `develop` before); the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
+  2026-11-21 (`pyproject.toml`, `uv.lock`; `1a11df5` of its `develop`, then `facf5ef`, before); the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
 - With Obserwator 3.1.0 a series version may hold chosen stations and years only
   (`subset` of `series.json`, Obserwator ADR-026). Archiwista reads it as any version:
   on the coverage labels, the timeline and the card the years not chosen are „nieznany”,
@@ -53,6 +53,19 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
   new Obserwator data root with Obserwator 3.1.0 from the raw root, set it as the store's `obserwator_data` („Katalog danych Obserwatora”), then
   rebuild the index with `archiwista reindex --store <store>`; pin a project's ČHMÚ
   versions of the old data root again from the new one (A-ADR-032 erratum 3).
+- **IMGW-PIB's provider id is `IMGW` (Nogat ECO-082 as extended on 2026-11-21, DEV-2.5;
+  Obserwator 3.1.0), a fix of 0.3.3.** The provider `IMGW-PIB` is `IMGW` in the API's
+  `provider`, the filters `?provider=`/`--provider`, a station's reference
+  `<store>/IMGW/<code>` and the index; a hand-off's `provenance.series.source` is `imgw`.
+  The keys `pl.imgw.*`, the store's directories and the licence id `IMGW-PIB` stay. Text
+  for a person keeps the institute's acronym: the interface (a station's badge, its card,
+  the lists, the comparison, the timeline, the chart's annual note, a dataset's chip) and
+  the command line's text name the providers „IMGW-PIB” and „ČHMÚ” by their ids, where
+  they showed the id before; the attribution lines are unchanged (A-ADR-032 erratum 4).
+  **Migration:** as for ČHMÚ above: `IMGW-PIB` is not read or translated, the index is
+  rebuilt from a data root Obserwator 3.1.0 built (it reads the raw root's stored sidecars
+  with the provider `IMGW-PIB` as `IMGW`), and a script that passes `--provider IMGW-PIB`
+  passes `IMGW`.
 
 ## [0.3.2] - 2026-11-20
 
