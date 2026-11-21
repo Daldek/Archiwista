@@ -14,6 +14,9 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
 - Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `1a11df5`, the commit of
   its `develop` at `3.1.0.dev0` for Nogat's release round of 2026-11-21 (`pyproject.toml`,
   `uv.lock`); the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
+- The copy of Nogat's `handoff-1.schema.json` is Nogat's of `develop` `263e83c` (last
+  changed in `c47c42e`), whose first example records Hydrolog 0.9.0's result (Nogat plan
+  `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6); the schema itself is unchanged.
 
 ## [0.3.2] - 2026-11-20
 
