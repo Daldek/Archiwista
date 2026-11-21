@@ -34,6 +34,8 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
   `5f8cce0` into `src/archiwista/web/nogat/`: `nogat-sources.js` and `.css`,
   `nogat-kit.json`, and the kit's draft regulamin for operators `nogat-terms-operator.md`
   (Nogat ECO-079), which no page links.
+- Nogat's kit is 1.1.0 (Nogat ECO-081): its manifest `nogat-kit.json` is copied from Nogat
+  `0e128be`, the kit's files and their hashes unchanged since `5f8cce0`.
 
 ## [0.3.2] - 2026-11-20
 
