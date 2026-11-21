@@ -11,6 +11,18 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
 
 ### Changed
 
+- **Files Archiwista names for a person follow Nogat's one pattern
+  `<tool>_<content>_<qualifiers>.<extension>` (DEV-19.21, ECO-083, plan
+  `2026-11-21-download-file-names` step 5).** The comparison's „Eksportuj CSV” saves
+  `archiwista_comparison_<a>_<b>.csv`, the sides' titles by the kit's `nameSlug`
+  (`archiwista_comparison_nmt-2020_nmt-2024.csv`, was `porownanie-NMT_2020-NMT_2024.csv`);
+  the action log's export (`GET /log/export`, „Eksportuj CSV”/„Eksportuj JSON Lines”) is
+  `archiwista_log_2026-11-21_143022Z.jsonl` (was `archiwista-log-20261121T143022Z.jsonl`);
+  an export's ZIP (`GET /projects/{project}/exports/{name}/zip`, „Pobierz ZIP”) is sent as
+  `archiwista_export_<project>_<name>.zip` (`archiwista_export_raba_raba-2024.zip`), while
+  the file in `eksport/` keeps the name the person gave; the hand-off is that of the kit
+  above. `project-export`'s folders and ZIP, a stored file sent as it is and a CLI
+  `--output` keep their names.
 - Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `ddd7a22`, the commit of
   its branch `feat/national-provider-names` at `3.1.0.dev0` for Nogat's release round of
   2026-11-21 (`pyproject.toml`, `uv.lock`; `1a11df5` of its `develop`, then `facf5ef`, before); the release commit replaces it with the tag. Kartograf stays `v0.8.2`.

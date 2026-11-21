@@ -217,7 +217,10 @@ def test_an_export_copies_two_sets_into_flat_folders(tmp_path: Path) -> None:
     assert zipfile.ZipFile(zip_path).namelist() == files
     assert archive.status_code == 200, archive.text
     assert archive.headers["content-type"] == "application/zip"
-    assert archive.headers["content-disposition"].startswith("attachment")
+    # Nogat DEV-19.21: the tool, the content, the project and the export.
+    assert archive.headers["content-disposition"] == (
+        f'attachment; filename="archiwista_export_{YEARS}_raba.zip"'
+    )
     assert archive.headers["cache-control"] == "private, no-store"
     assert archive.content == zip_path.read_bytes()
     assert (

@@ -1040,7 +1040,7 @@ def test_pages_and_both_formats_of_the_export_hold_the_same_entries(
     assert table.headers["content-type"] == "text/csv; charset=utf-8"
     assert table.headers["cache-control"] == "private, no-store"
     assert re.fullmatch(
-        r'attachment; filename="archiwista-log-\d{8}T\d{6}Z\.csv"',
+        r'attachment; filename="archiwista_log_\d{4}-\d\d-\d\d_\d{6}Z\.csv"',
         table.headers["content-disposition"],
     )
     rows = csv_rows(table.content)

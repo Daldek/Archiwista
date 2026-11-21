@@ -501,8 +501,10 @@ cursor is safe in a URL).
   `path`, `files`, `zip`, `written_at` (of its `README.txt`) and `changed_since` (the
   project file changed after it: write it again). `GET
   /projects/{project}/exports/{name}/zip` (whoever sees the project) sends
-  `eksport/<name>.zip` as an attachment (`application/zip`, `Cache-Control:
-  private, no-store`), `404 not_found` when
+  `eksport/<name>.zip` as an attachment named `archiwista_export_<project>_<name>.zip`
+  (Nogat DEV-19.21: the name in lower-case ASCII with `-` for anything else, so
+  `raba-2024` of `raba` is `archiwista_export_raba_raba-2024.zip`; the file on disk keeps
+  its name; `application/zip`, `Cache-Control: private, no-store`), `404 not_found` when
   the export has none; like a file download, a link of the interface
   (`Sec-Fetch-Site: same-origin`, or `none` for an address typed in) passes
   with the session cookie alone, without `X-Archiwista-CSRF`.

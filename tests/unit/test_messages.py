@@ -99,6 +99,8 @@ _DATA = frozenset(
         ("api/models_layers.py", "Kraków"),
         ("api/models_layers.py", "po odbiorze przyłączy"),
         ("config.py", "OSM GUGiK szary (tylko Polska)"),
+        ("file_names.py", "ł"),
+        ("file_names.py", "Ł"),
         ("index/queries.py", "ł"),
         ("index/queries.py", "Ł"),
         ("index/writer.py", "ł"),

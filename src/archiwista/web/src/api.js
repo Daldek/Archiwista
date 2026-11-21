@@ -1147,7 +1147,7 @@ export function getLog(filters = {}, { signal } = {}) {
  * @param {"jsonl"|"csv"} format
  * @param {RequestOptions} [options]
  * @returns {Promise<{blob: Blob, name: string}>} The file and the name the
- *   server gave it (`archiwista-log-<UTC time>.<format>`).
+ *   server gave it (`archiwista_log_<UTC date>_<time>Z.<format>`).
  * @throws {ApiError} As `getLog`.
  */
 export async function exportLog(filters, format, { signal } = {}) {
@@ -1155,7 +1155,7 @@ export async function exportLog(filters, format, { signal } = {}) {
   const address = `${API_PREFIX}/log/export${search({ ...filters, format })}`;
   const response = await send("GET", address, { headers, signal });
   const disposition = response.headers.get("Content-Disposition") ?? "";
-  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `archiwista-log.${format}`;
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `archiwista_log.${format}`;
   return { blob: await response.blob(), name };
 }
 

@@ -27,6 +27,7 @@ import pytest
 from playwright.sync_api import Locator, Page, Request, Route, expect
 
 from archiwista.config import AppSettings, BasemapConfig, ConfigStore, StoreConfig
+from archiwista.file_names import name_slug
 from archiwista.security import CSRF_HEADER
 from archiwista.sources.registry import load_registry
 from tests.fixtures.browser import Served, Tab, session_headers
@@ -659,12 +660,14 @@ def test_csv_export_matches_table(
     expected = comparison(page, versions)
     titles = [expected["a"]["title"], expected["b"]["title"]]
     groups = {"metadata": "Metadane z indeksu", "sidecar": "Pola surowego sidecara"}
+    # Nogat DEV-19.21: the kit's nameSlug of each side's title, as name_slug.
+    name = "_".join(["archiwista_comparison", *map(name_slug, titles)]) + ".csv"
 
     def export() -> list[list[str]]:
         with page.expect_download() as started:
             panel(page).get_by_role("button", name="Eksportuj CSV").click()
         download = started.value
-        assert re.fullmatch(r"porownanie-[\w.-]+\.csv", download.suggested_filename)
+        assert download.suggested_filename == name
         saved = tmp_path / download.suggested_filename
         download.save_as(saved)
         data = saved.read_bytes()
