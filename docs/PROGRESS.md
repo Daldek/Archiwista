@@ -55,6 +55,14 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
      2026-11-15) read the outline count before the map framed the area (the home view's 16,
      not the area's 11) when the area's answer came late. Fixed in the test (`54f9ba5`): it
      waits until the address's centre lies in the area.
+   - `tests/e2e/test_pinning.py::test_an_older_version_pinned_from_the_file_card_is_unpinned_on_the_card[chromium]`
+     (CI of `develop` `58f4c5c`, 2026-11-21; older than the Obserwator 3.1.0 pin, which
+     changes no interface code): „the page did not settle” on a `/map/footprints` request of
+     the start view, still in flight when the test opened the Katalog. Chromium drops such a
+     request and Playwright never reports its end, so `Tab.settle` waited for it in vain
+     (locally 3 of 30 runs failed, 4 of 30 under CPU load). Fixed in the fixture
+     (`fix/ci-2026-11-21`): `Tab` forgets the requests of a document when the next one
+     commits (30 of 30 runs, idle and under load).
    - `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens[chromium]`
      (gate of 2026-11-10): a network change on the computer (a Docker veth, Tailscale) makes
      Chromium cancel the queued module requests of the boot (`net::ERR_NETWORK_CHANGED`), and

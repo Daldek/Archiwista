@@ -30,6 +30,7 @@ from playwright.sync_api import (
     Browser,
     ConsoleMessage,
     Error,
+    Frame,
     Page,
     Playwright,
     Request,
@@ -147,6 +148,7 @@ class Tab:
     workers: list[str] = field(default_factory=list)
     in_flight: set[Request] = field(default_factory=set)
     most_in_flight: int = 0
+    document_request: Request | None = field(default=None, repr=False)
 
     def watch(self) -> None:
         """Start recording; call once, before the first navigation."""
@@ -156,6 +158,7 @@ class Tab:
         self.page.on("request", self._request)
         self.page.on("requestfinished", self._ended)
         self.page.on("requestfailed", self._ended)
+        self.page.on("framenavigated", self._navigated)
         self.page.on("worker", self._worker)
 
     def settle(self) -> None:
@@ -165,9 +168,9 @@ class Tab:
         Firefox fails the loads of the page it leaves (module scripts,
         stylesheets, ``fetch``) and runs the page's handlers of those
         failures, which then report errors of a page nobody sees any more;
-        Chromium drops the page without running them, and Playwright never
-        reports the end of a request the page left: it stays in flight, so
-        a later ``settle`` would wait for it in vain.
+        Chromium drops the page without running them. Playwright never
+        reports the end of a request the page left, so the tab forgets those
+        requests when the next document commits (``_navigated``).
         """
         deadline = time.monotonic() + SETTLE_TIMEOUT_S
         quiet_since = time.monotonic()
@@ -211,9 +214,22 @@ class Tab:
         self.requests.append(request.url)
         self.in_flight.add(request)
         self.most_in_flight = max(self.most_in_flight, len(self.in_flight))
+        if request.is_navigation_request() and request.frame == self.page.main_frame:
+            self.document_request = request
 
     def _ended(self, request: Request) -> None:
         self.in_flight.discard(request)
+
+    def _navigated(self, frame: Frame) -> None:
+        """Forget the requests of the document a new one replaced.
+
+        A navigation within the document (``history.pushState``) has no
+        document request and keeps them.
+        """
+        if frame != self.page.main_frame or self.document_request is None:
+            return
+        self.in_flight &= {self.document_request}
+        self.document_request = None
 
     def _worker(self, worker: Worker) -> None:
         self.workers.append(worker.url)
