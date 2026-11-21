@@ -203,8 +203,8 @@ class Tab:
     def assert_clean(self) -> None:
         """Check no CSP violation, page error or console error happened."""
         assert self.csp_violations() == []
-        assert self.page_errors == []
-        assert self.console_errors == []
+        assert self.page_errors == [], self.page_errors
+        assert self.console_errors == [], self.console_errors
 
     def _console(self, message: ConsoleMessage) -> None:
         if message.type == "error" and not message.text.startswith(FAILED_RESOURCE):
