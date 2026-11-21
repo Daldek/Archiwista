@@ -104,8 +104,9 @@ class HandoffProducer(BaseModel):
 class StationHandoff(BaseModel):
     """A ``nogat-handoff/1`` document carrying a ``hydrolog-series/1`` payload.
 
-    Saved as ``<subject>.handoff.json`` or copied to the clipboard, it opens in
-    Hydrolog's „Statystyka przepływów” with „Wczytaj z Archiwisty”.
+    Saved as ``archiwista_handoff_<subject>.json`` (Nogat DEV-19.21) or copied
+    to the clipboard, it opens in Hydrolog's „Statystyka przepływów” with
+    „Wczytaj z Archiwisty”.
     """
 
     model_config = ConfigDict(

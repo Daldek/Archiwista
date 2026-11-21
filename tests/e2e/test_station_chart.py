@@ -442,7 +442,10 @@ def test_the_annual_chart_saves_its_complete_years_maxima_as_a_hand_off_to_hydro
     doc = json.loads(text)
 
     # Assert
-    assert saved.suggested_filename.endswith("— Q, maksima roczne.handoff.json")
+    assert re.fullmatch(
+        r"archiwista_handoff_[a-z0-9-]+-q-maksima-roczne\.json",
+        saved.suggested_filename,
+    )
     assert text == json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
     assert (doc["schema"], doc["payload"]["schema"]) == (
         "nogat-handoff/1",

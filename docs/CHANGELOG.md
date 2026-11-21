@@ -33,6 +33,14 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
   `nogat-terms-operator.md` name ČHMÚ's block `chmu` instead of `chmi`, and
   `nogat-kit.json` has their hashes. Archiwista fills no regulamin, so nothing else
   changes; the strip's „więcej” on a phone is that of the kit 1.1.0 (ECO-080).
+- Nogat's kit 1.1.0 is copied again, whole and byte for byte, from Nogat `4d755ee` (A-ADR-054
+  erratum 7; Nogat ECO-083, DEV-19.21): „Plik przekazania” of the station card saves the
+  hand-off as `archiwista_handoff_<subject>.json`, the subject in lower-case ASCII with
+  `-` between its words (`archiwista_handoff_nowy-sacz-q-maksima-roczne.json`), no longer
+  `<subject>.handoff.json`; Hydrolog opens it as before. The texts that named the file
+  follow (the button's title, `stations handoff --help`). The copy of Nogat's
+  `error_registry.json` is that of the standard numbered 1.1 (`_errors.py` generated
+  again; the codes are unchanged).
 - **ČHMÚ's identifiers are its national acronym without diacritics (Nogat ECO-082, plan
   `2026-11-21-national-provider-names` step 4; Obserwator 3.1.0), a fix of 0.3.3.** The
   provider `CHMI` is `CHMU` (in the API's `provider`, the filters

@@ -923,7 +923,7 @@ archiwista stations timeline --dataset pl.imgw.hydro_daily --river-code 2138 --r
 archiwista stations series 149190310 --variable Q --from 1981-01-01 --to 1983-12-31
 archiwista stations compare --station zespol/IMGW/149190310 --station zespol/IMGW/149200090 --dataset pl.imgw.hydro_daily --variable Q
 archiwista stations datasets
-archiwista stations handoff 149190310 --variable Q --resolution annual > raba.handoff.json
+archiwista stations handoff 149190310 --variable Q --resolution annual > archiwista_handoff_raba.json
 ```
 
 `stations list` prints each station with the label of every variable of its series
@@ -967,7 +967,8 @@ annual maxima of complete hydrological years, as a hand-off to Hydrolog
 value to the last (the first and last year with a maximum), not over the years of the
 archive before them. The same document comes from „Do Hydrologa” under the
 chart of the station card (choose „Dane” and „Zmienna”, then „Kopiuj do Hydrologa” or
-„Plik przekazania”, which saves `<subject>.handoff.json`), and Hydrolog's
+„Plik przekazania”, which saves `archiwista_handoff_<subject>.json`, the subject in
+lower-case ASCII with `-` between its words, Nogat DEV-19.21), and Hydrolog's
 „Statystyka przepływów” opens it with „Wczytaj z Archiwisty”. Where the browser
 cannot copy (an address `http://` on the network, not `127.0.0.1`, or a refusal) the
 text appears selected in a field under the buttons: press Ctrl+C, then „Wklej ze

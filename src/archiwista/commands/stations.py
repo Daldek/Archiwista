@@ -363,7 +363,8 @@ def _handoff(
     registry: PluginRegistry,
     queries: IndexQueries,
 ) -> _Output:
-    # The document itself is the text: a person saves it as NAME.handoff.json.
+    # The document itself is the text: a person saves it as
+    # archiwista_handoff_NAME.json (Nogat DEV-19.21).
     found = station_handoff(
         queries,
         settings,
