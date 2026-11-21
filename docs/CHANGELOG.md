@@ -5,6 +5,16 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
+## [Unreleased]
+
+Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
+
+### Changed
+
+- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `1a11df5`, the commit of
+  its `develop` at `3.1.0.dev0` for Nogat's release round of 2026-11-21 (`pyproject.toml`,
+  `uv.lock`); the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
+
 ## [0.3.2] - 2026-11-20
 
 Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
