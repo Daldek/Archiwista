@@ -30,8 +30,8 @@ from tests.fixtures.obserwator_roots import store_fields
 STORE = "dane"
 PL_HYDRO = "pl.imgw.hydro_daily"
 PL_PRECIP = "pl.imgw.meteo_precip_daily"
-CZ_HYDRO = "cz.chmi.hydro_daily"
-CZ_METEO = "cz.chmi.meteo_daily"
+CZ_HYDRO = "cz.chmu.hydro_daily"
+CZ_METEO = "cz.chmu.meteo_daily"
 
 type Stores = Callable[[str], Path]
 type Coverage = Callable[..., StationCoverage]
@@ -141,94 +141,94 @@ def _text(found: StationCoverage, key: str) -> str:
             id="meteo-hydrological-month-only",
         ),
         pytest.param(
-            "CHMI",
+            "CHMU",
             "0-203-1-900001",
             CZ_HYDRO,
             "H",
             "calendar",
             (2023, 2023),
             "ciągły · 2023",
-            id="chmi-continuous",
+            id="chmu-continuous",
         ),
         pytest.param(
-            "CHMI",
+            "CHMU",
             "0-203-1-900001",
             CZ_HYDRO,
             "H",
             "calendar",
             (2023, 2024),
             "luki <1% · najdł. 2024.06.15",
-            id="chmi-one-day",
+            id="chmu-one-day",
         ),
         pytest.param(
-            "CHMI",
+            "CHMU",
             "0-203-1-900001",
             CZ_HYDRO,
             "T",
             "calendar",
             (2023, 2024),
             "częściowy · do 2023 · luki 84%",
-            id="chmi-ends-within",
+            id="chmu-ends-within",
         ),
         pytest.param(
-            "CHMI",
+            "CHMU",
             "0-203-1-900001",
             CZ_HYDRO,
             "H",
             None,
             None,
             "luki <1% · najdł. 2024.06.15 · nieznane: 1887–2023, 2025",
-            id="chmi-hydrological-two-unknown-ranges",
+            id="chmu-hydrological-two-unknown-ranges",
         ),
         pytest.param(
-            "CHMI",
+            "CHMU",
             "0-203-1-900002",
             CZ_HYDRO,
             "H",
             "calendar",
             (2004, 2006),
             "luki 42% · najdł. 2004.01.01–2004.10.31 · nieznane: 2005",
-            id="chmi-no-file-is-unknown-not-a-gap",
+            id="chmu-no-file-is-unknown-not-a-gap",
         ),
         pytest.param(
-            "CHMI",
+            "CHMU",
             "0-203-1-900002",
             CZ_HYDRO,
             "Q",
             "calendar",
             (2004, 2006),
             "ciągły · 2004–2006 · nieznane: 2005",
-            id="chmi-continuous-around-an-unknown-year",
+            id="chmu-continuous-around-an-unknown-year",
         ),
         pytest.param(
-            "CHMI",
+            "CHMU",
             "0-203-1-900002",
             CZ_HYDRO,
             "T",
             "calendar",
             (2004, 2006),
             "brak danych (tylko H, Q) · nieznane: 2005",
-            id="chmi-no-t",
+            id="chmu-no-t",
         ),
         pytest.param(
-            "CHMI",
+            "CHMU",
             "0-203-1-900002",
             CZ_HYDRO,
             "H",
             "calendar",
             None,
             "luki 42% · najdł. 2004.01.01–2004.10.31 · nieznane: 136 lat",
-            id="chmi-unknown-years-counted",
+            id="chmu-unknown-years-counted",
         ),
         pytest.param(
-            "CHMI",
+            "CHMU",
             "0-203-0-90001",
             CZ_METEO,
             "P",
             None,
             None,
             "nieznane",
-            id="chmi-meteo-a-month-only",
+            id="chmu-meteo-a-month-only",
         ),
     ],
 )
@@ -254,7 +254,7 @@ def test_the_range_and_the_year_type_follow_the_dataset_by_default(
     """Hydro by hydrological years from 1951, meteo by calendar ones from 1950."""
     hydro = coverage("IMGW-PIB", "149190310", PL_HYDRO)
     meteo = coverage("IMGW-PIB", "123750000", PL_PRECIP)
-    czech = coverage("CHMI", "0-203-0-90001", CZ_METEO)
+    czech = coverage("CHMU", "0-203-0-90001", CZ_METEO)
 
     assert (hydro.year_type, hydro.span) == ("hydrological", (1951, 2024))
     assert (meteo.year_type, meteo.span) == ("calendar", (1950, 2001))
@@ -267,7 +267,7 @@ def test_the_range_and_the_year_type_follow_the_dataset_by_default(
 def test_the_row_details_come_with_the_label(coverage: Coverage) -> None:
     """Full years, the longest gap, unknown years and accumulated sums."""
     czech = coverage(
-        "CHMI", "0-203-1-900002", CZ_HYDRO, year_type="calendar", years=(2004, 2006)
+        "CHMU", "0-203-1-900002", CZ_HYDRO, year_type="calendar", years=(2004, 2006)
     )
     precip = coverage("IMGW-PIB", "123750000", PL_PRECIP)
 
@@ -302,5 +302,5 @@ def test_a_station_without_a_series_has_no_coverage_and_a_reversed_range_is_refu
         assert queries.station_coverage(STORE, "IMGW-PIB", "999999999") == ()
         with pytest.raises(IndexQueryError):
             queries.station_coverage(
-                STORE, "CHMI", "0-203-1-900002", years=(2025, 2020)
+                STORE, "CHMU", "0-203-1-900002", years=(2025, 2020)
             )

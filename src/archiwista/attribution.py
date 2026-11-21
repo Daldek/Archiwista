@@ -51,8 +51,8 @@ _ATTRIBUTION = (
     "legal.pmaxtp_source",
     "legal.pmaxtp_processed",
     "legal.pmaxtp_monograph",
-    "legal.chmi_source",
-    "legal.chmi_processed",
+    "legal.chmu_source",
+    "legal.chmu_processed",
 )
 _TERMS = (
     "legal.imgw_terms_public_data",
@@ -82,12 +82,12 @@ _LINES: dict[DataOrigin, tuple[str, ...]] = {
         "legal.pmaxtp_monograph",
         "legal.imgw_terms_pmaxtp",
     ),
-    "chmi_file": ("legal.chmi_source",),
-    "chmi_processed": ("legal.chmi_source", "legal.chmi_processed"),
+    "chmu_file": ("legal.chmu_source",),
+    "chmu_processed": ("legal.chmu_source", "legal.chmu_processed"),
 }
 # The station providers of Obserwator's catalogs, as the index names them.
 _IMGW = "IMGW-PIB"
-_CHMI = "CHMI"
+_CHMU = "CHMU"
 # A value of G and Z while their patterns are built; no line holds it.
 _HOLE = "\x00"
 # What a value of G and Z may hold: products, a year or two, a day or two.
@@ -191,7 +191,7 @@ def station(provider: str, catalog: str | None, *, positions: bool) -> Attributi
     Parameters
     ----------
     provider : str
-        The station's provider: ``IMGW-PIB`` or ``CHMI``.
+        The station's provider: ``IMGW-PIB`` or ``CHMU``.
     catalog : str or None
         The attribution of the sidecar of the catalog version the station
         was read from; ``None`` without one.
@@ -207,15 +207,15 @@ def station_origin(provider: str, *, positions: bool) -> DataOrigin | None:
     Parameters
     ----------
     provider : str
-        The station's provider: ``IMGW-PIB`` or ``CHMI``.
+        The station's provider: ``IMGW-PIB`` or ``CHMU``.
     positions : bool
         Whether the product shows or returns station positions, which the
         IMGW-PIB catalog takes from the hydrological service (H).
     """
     if provider == _IMGW:
         return "imgw_stations" if positions else "imgw_processed"
-    if provider == _CHMI:
-        return "chmi_processed"
+    if provider == _CHMU:
+        return "chmu_processed"
     return None
 
 
@@ -227,8 +227,8 @@ def series_origin(provider: str) -> DataOrigin | None:
     """
     if provider == _IMGW:
         return "imgw_processed"
-    if provider == _CHMI:
-        return "chmi_processed"
+    if provider == _CHMU:
+        return "chmu_processed"
     return None
 
 
@@ -288,7 +288,7 @@ def _canonical(line: str) -> str:
     The older line is CP with words in parentheses after it, which named what
     was done (before Nogat ECO-071).
     """
-    canonical = str(message("legal.chmi_processed"))
+    canonical = str(message("legal.chmu_processed"))
     if line.startswith(f"{canonical} (") and line.endswith(")") and "\n" not in line:
         return canonical
     return line

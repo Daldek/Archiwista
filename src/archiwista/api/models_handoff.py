@@ -35,7 +35,7 @@ class StationHandoffQuery(BaseModel):
     )
     provider: str | None = Field(
         default=None,
-        description="Provider of the stations: `IMGW-PIB` or `CHMI` (ČHMÚ).",
+        description="Provider of the stations: `IMGW-PIB` or `CHMU` (ČHMÚ).",
         examples=["IMGW-PIB"],
     )
     dataset: str | None = Field(

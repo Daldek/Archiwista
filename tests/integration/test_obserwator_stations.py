@@ -31,7 +31,7 @@ from tests.fixtures.obserwator_roots import data_root, root_of, store_fields
 
 STORE = "dane"
 PL_KEY = "catalog:pl.imgw.stations"
-CZ_KEY = "catalog:cz.chmi.stations"
+CZ_KEY = "catalog:cz.chmu.stations"
 PL_SLOT = "stations/versions"
 CATALOG = "stations.geojson"
 META = ".meta.json"
@@ -196,7 +196,7 @@ def test_the_index_holds_every_station_of_each_current_catalog(
     env = open_env(variant)
     keys = {"IMGW-PIB": PL_KEY}
     if variant == "complete_pl_cz":
-        keys["CHMI"] = CZ_KEY
+        keys["CHMU"] = CZ_KEY
 
     # Act
     env.scan("full")
@@ -248,7 +248,7 @@ def test_a_new_catalog_version_replaces_the_providers_rows(
     # Arrange
     env = open_env("complete_pl_cz")
     env.scan("full")
-    czech = env.stations("CHMI")
+    czech = env.stations("CHMU")
 
     def edit(features: list[dict[str, object]]) -> None:
         features[:] = [f for f in features if f["id"] != "149190313"]
@@ -270,7 +270,7 @@ def test_a_new_catalog_version_replaces_the_providers_rows(
     assert "149190313" not in polish
     assert polish["123760000"] == ("point", None, 21.5, 52.5)
     assert env.point_count() == env.located_count()
-    assert env.stations("CHMI") == czech
+    assert env.stations("CHMU") == czech
 
 
 def test_an_unchanged_catalog_is_read_again_only_by_a_full_scan(
@@ -310,7 +310,7 @@ def test_a_catalog_without_a_current_version_leaves_its_provider_no_stations(
     # Arrange
     env = open_env("complete_pl_cz")
     env.scan("full")
-    czech = env.stations("CHMI")
+    czech = env.stations("CHMU")
     gone = env.catalogs()["IMGW-PIB"]
     shutil.rmtree((root_of(env.root, gone) / gone).parent)
 
@@ -319,8 +319,8 @@ def test_a_catalog_without_a_current_version_leaves_its_provider_no_stations(
 
     # Assert
     assert env.stations("IMGW-PIB") == {}
-    assert set(env.catalogs()) == {"CHMI"}
-    assert env.stations("CHMI") == czech
+    assert set(env.catalogs()) == {"CHMU"}
+    assert env.stations("CHMU") == czech
     assert env.point_count() == env.located_count()
 
 
@@ -331,7 +331,7 @@ def test_a_catalog_the_producer_refuses_is_said_and_holds_no_stations(
     # Arrange
     env = open_env("complete_pl_cz")
     env.scan("full")
-    czech = env.stations("CHMI")
+    czech = env.stations("CHMU")
     refused = env.catalogs()["IMGW-PIB"]
     catalogs = env.catalogs_adapter()
     original = catalogs.read_stations
@@ -352,8 +352,8 @@ def test_a_catalog_the_producer_refuses_is_said_and_holds_no_stations(
     assert "IMGW-PIB" in notice.message and "catalog broken" in notice.message
     assert refused in notice.message
     assert env.stations("IMGW-PIB") == {}
-    assert set(env.catalogs()) == {"CHMI"}
-    assert env.stations("CHMI") == czech
+    assert set(env.catalogs()) == {"CHMU"}
+    assert env.stations("CHMU") == czech
 
 
 def test_a_catalog_the_system_cannot_read_makes_the_store_unavailable(
@@ -392,13 +392,13 @@ def test_two_providers_never_collide_on_a_code(open_env: Callable[[str], _Env]) 
     written = env.writer.replace_stations(
         STORE,
         "obserwator",
-        "CHMI",
-        slot="stations/versions/chmi_stations",
-        version="stations/versions/chmi_stations/x_00000000/stations.geojson",
+        "CHMU",
+        slot="stations/versions/chmu_stations",
+        version="stations/versions/chmu_stations/x_00000000/stations.geojson",
         stations=[
-            Station(provider="CHMI", code=same, kind="hydro", point=(15.0, 50.0)),
-            Station(provider="CHMI", code="0-203-1-1", location_reason="none"),
-            Station(provider="CHMI", code="0-203-1-1", point=(16.0, 49.0)),
+            Station(provider="CHMU", code=same, kind="hydro", point=(15.0, 50.0)),
+            Station(provider="CHMU", code="0-203-1-1", location_reason="none"),
+            Station(provider="CHMU", code="0-203-1-1", point=(16.0, 49.0)),
         ],
     )
 
@@ -408,10 +408,10 @@ def test_two_providers_never_collide_on_a_code(open_env: Callable[[str], _Env]) 
         "SELECT provider, lon, lat FROM stations WHERE code = ? ORDER BY provider",
         same,
     )
-    assert rows == [("CHMI", 15.0, 50.0), ("IMGW-PIB", 20.1, 49.7)]
-    assert env.stations("CHMI")["0-203-1-1"] == ("none", "none", None, None)
+    assert rows == [("CHMU", 15.0, 50.0), ("IMGW-PIB", 20.1, 49.7)]
+    assert env.stations("CHMU")["0-203-1-1"] == ("none", "none", None, None)
     assert env.point_count() == env.located_count()
-    assert env.writer.drop_stations(STORE, "CHMI") == 2
+    assert env.writer.drop_stations(STORE, "CHMU") == 2
     assert env.sql("SELECT provider FROM stations WHERE code = ?", same) == [
         ("IMGW-PIB",)
     ]

@@ -48,9 +48,9 @@ from playwright.sync_api import Locator, Route, expect
 from tests.fixtures.browser import FIREFOX_KNOWN_CRASH, Served, Tab
 from tests.fixtures.obserwator_statistics import HALF_YEARS_ONLY, MONTHLY
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_SHORT,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_SHORT,
+    CHMU_SOURCE,
     CUZK_RUIAN,
     GUGIK_PRG,
     IMGW_PROCESSED,
@@ -75,7 +75,7 @@ Serve = Callable[..., Served]
 Stores = Callable[[str], Path]
 
 RABA = "IMGW-PIB/149190310"
-SPINDLER = "CHMI/0-203-1-900001"
+SPINDLER = "CHMU/0-203-1-900001"
 HALF_YEARS = f"IMGW-PIB/{HALF_YEARS_ONLY}"
 VERTEX = re.compile(r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)")
 MAX_POINTS = re.compile(r"[?&]max_points=(\d+)")
@@ -650,7 +650,7 @@ def test_station_chart_series_chart_imgw_lines_join_the_cards_one_strip(
     engine_tab.assert_clean()
 
 
-def test_station_chart_series_chart_chmi_lines_join_the_cards_one_strip(
+def test_station_chart_series_chart_chmu_lines_join_the_cards_one_strip(
     serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Špindlerův Mlýn: the short ČHMÚ and ČÚZK lines on screen, the rest behind."""
@@ -671,9 +671,9 @@ def test_station_chart_series_chart_chmi_lines_join_the_cards_one_strip(
 
     # Assert
     lines = [*chart["attribution"], *chart["terms_notice"]]
-    assert lines == [CHMI_SOURCE, CHMI_PROCESSED]
+    assert lines == [CHMU_SOURCE, CHMU_PROCESSED]
     assert [line for line in full if line in lines] == lines
-    assert shown == [CHMI_SHORT, "Źródło: ČÚZK, CC BY 4.0"]
+    assert shown == [CHMU_SHORT, "Źródło: ČÚZK, CC BY 4.0"]
     assert CUZK_RUIAN in full
     expect(credit).to_have_attribute("href", "https://opendata.chmi.cz")
     engine_tab.assert_clean()

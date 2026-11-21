@@ -349,3 +349,16 @@ requirement ids IMGW-1 to IMGW-21 keep their names. Nothing is migrated (ECO-056
 index is rebuilt (`SCHEMA_VERSION` 18), and a settings file, a store or a project file
 that names `imgw` is renamed by hand or written again. The names above in decisions 1
 to 14 read through this map.
+
+**Erratum 3 (2026-11-21, Nogat ECO-082, its plan `2026-11-21-national-provider-names`
+step 4; Obserwator 3.1.0):** ČHMÚ's identifiers are its national acronym without
+diacritics. The provider this record calls `CHMI` is `CHMU`, the dataset keys `cz.chmi.*`
+are `cz.chmu.*` (the station catalog `cz.chmu.stations`), and the store directories
+named by them `series/versions/chmu_*`, `stations/versions/chmu_stations` and
+`analyses/versions/cz.chmu`. A station's `location_source` names the dataset its
+position came from (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`, `cz.chmu.hydro_now`,
+`cz.chmu.hydro_stations`, `cz.chmu.meteo_now`, `cz.chmu.meteo_stations`), or `static`
+and `user` as before. No decision changes and nothing is translated: Archiwista reads
+only the new names, and its index is rebuilt (`archiwista reindex`) from a data root
+that Obserwator 3.1.0 built; the raw root stays, as Obserwator reads its archives' older
+sidecars under the new key and provider. The old names in decisions 1 to 14 read through this map.

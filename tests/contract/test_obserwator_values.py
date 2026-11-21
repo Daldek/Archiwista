@@ -198,7 +198,7 @@ def test_the_characteristics_dataset_comes_from_the_registry(
     assert adapter.characteristics_dataset("pl.imgw.hydro_semiannual") is None
     assert adapter.characteristics_dataset("pl.imgw.meteo_precip_daily") is None
     assert adapter.characteristics_dataset("pl.imgw.meteo_climate_daily") is None
-    assert adapter.characteristics_dataset("cz.chmi.hydro_daily") is None
+    assert adapter.characteristics_dataset("cz.chmu.hydro_daily") is None
     assert adapter.characteristics_dataset("pl.imgw.pmaxtp") is None
     assert adapter.characteristics_dataset("pl.imgw.no_such_dataset") is None
 
@@ -224,7 +224,7 @@ def test_the_extremes_of_a_variable_are_its_characteristics_in_its_unit(
     )
     assert adapter.extremes_of(DAILY, "P") == {}
     assert adapter.extremes_of("pl.imgw.meteo_precip_daily", "P") == {}
-    assert adapter.extremes_of("cz.chmi.hydro_daily", "Q") == {}
+    assert adapter.extremes_of("cz.chmu.hydro_daily", "Q") == {}
 
 
 def test_the_statistics_of_monthly_and_half_year_data_come_from_the_registry(

@@ -11,15 +11,15 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
 
 ### Changed
 
-- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `1a11df5`, the commit of
-  its `develop` at `3.1.0.dev0` for Nogat's release round of 2026-11-21 (`pyproject.toml`,
-  `uv.lock`); the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
+- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `facf5ef`, the commit of
+  its branch `feat/national-provider-names` at `3.1.0.dev0` for Nogat's release round of
+  2026-11-21 (`pyproject.toml`, `uv.lock`; `1a11df5` of its `develop` before); the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
 - With Obserwator 3.1.0 a series version may hold chosen stations and years only
   (`subset` of `series.json`, Obserwator ADR-026). Archiwista reads it as any version:
   on the coverage labels, the timeline and the card the years not chosen are „nieznany”,
   not gaps; a station not chosen has no series of the dataset, as a station without
   series (on the map a point without coverage colour); a hand-off spans the version's
-  values. ČHMÚ's `cz.chmi.meteo_daily` has six files per station (`snow/…-SCE.csv`,
+  values. ČHMÚ's `cz.chmu.meteo_daily` has six files per station (`snow/…-SCE.csv`,
   `snow/…-SNO.csv` beside the four before) and the variables `snow_cover` and
   `fresh_snow` [cm], which the coverage and the card list as they list IMGW-PIB's. The
   `formula_versions` and `derived` of Obserwator's analyses exports are not read by
@@ -33,6 +33,26 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
   `nogat-terms-operator.md` name ČHMÚ's block `chmu` instead of `chmi`, and
   `nogat-kit.json` has their hashes. Archiwista fills no regulamin, so nothing else
   changes; the strip's „więcej” on a phone is that of the kit 1.1.0 (ECO-080).
+- **ČHMÚ's identifiers are its national acronym without diacritics (Nogat ECO-082, plan
+  `2026-11-21-national-provider-names` step 4; Obserwator 3.1.0), a fix of 0.3.3.** The
+  provider `CHMI` is `CHMU` (in the API's `provider`, the filters
+  `?provider=`/`--provider`, a station's reference `<store>/CHMU/<code>`), its dataset
+  keys `cz.chmi.*` are `cz.chmu.*` (catalog slot `catalog:cz.chmu.stations`) and the store
+  directories follow (`series/versions/chmu_*`, `stations/versions/chmu_stations`,
+  `analyses/versions/cz.chmu`). A station's `location.source` (`location_source`) is the
+  key of the dataset its position came from: `api_hydro` is `pl.imgw.hydro_now`,
+  `api_meteo` `pl.imgw.meteo_now`, `chmi_hydro_now` and `chmi_hydro_meta3`
+  `cz.chmu.hydro_now`, `chmi_hydro_stations` `cz.chmu.hydro_stations`, `chmi_meteo_now`
+  `cz.chmu.meteo_now` and `chmi_meteo_stations` `cz.chmu.meteo_stations`; `static` and
+  `user` stay, and the „Katalog” labels them as before. The plugin interface's
+  `DataOrigin` values `chmi_file` and `chmi_processed` are `chmu_file` and
+  `chmu_processed` (A-ADR-055 erratum 5). Obserwator's CSVs end with `attribution` and
+  `terms_notice` alone, which Archiwista did not read. **Migration:** the old names are
+  not read or translated. The raw root stays: Obserwator 3.1.0 reads its archives' older
+  sidecars under the new key and provider (their raw `dataset` stays as written). Build a
+  new Obserwator data root with Obserwator 3.1.0 from the raw root, set it as the store's `obserwator_data` („Katalog danych Obserwatora”), then
+  rebuild the index with `archiwista reindex --store <store>`; pin a project's ČHMÚ
+  versions of the old data root again from the new one (A-ADR-032 erratum 3).
 
 ## [0.3.2] - 2026-11-20
 

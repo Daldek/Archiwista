@@ -147,7 +147,7 @@ _LOCATION_EXAMPLE = {
     "lon": 19.9247,
     "lat": 49.7963,
     "reason": None,
-    "source": "api_hydro",
+    "source": "pl.imgw.hydro_now",
     "uncertainty_m": 150.0,
     "on_boundary": False,
 }
@@ -364,7 +364,7 @@ class StationLookup(BaseModel):
     )
     provider: str | None = Field(
         default=None,
-        description="Provider of the stations: `IMGW-PIB` or `CHMI` (ČHMÚ).",
+        description="Provider of the stations: `IMGW-PIB` or `CHMU` (ČHMÚ).",
         examples=["IMGW-PIB"],
     )
     dataset: str | None = Field(
@@ -752,7 +752,7 @@ class StationChartQuery(BaseModel):
     )
     provider: str | None = Field(
         default=None,
-        description="Provider of the stations: `IMGW-PIB` or `CHMI` (ČHMÚ).",
+        description="Provider of the stations: `IMGW-PIB` or `CHMU` (ČHMÚ).",
         examples=["IMGW-PIB"],
     )
     dataset: str | None = Field(
@@ -1172,7 +1172,7 @@ class StationItem(BaseModel):
     model_config = _examples(_STATION_EXAMPLE)
 
     store: str = Field(description="Store id.")
-    provider: str = Field(description="`IMGW-PIB` or `CHMI`; a code is its provider's.")
+    provider: str = Field(description="`IMGW-PIB` or `CHMU`; a code is its provider's.")
     code: str = Field(description="Station code, as text.")
     name: str | None
     kind: str | None = Field(description="`hydro` or `meteo`.")
@@ -1539,7 +1539,7 @@ class StationTimelineItem(BaseModel):
     model_config = _examples(_TIMELINE_ITEM_EXAMPLE)
 
     store: str = Field(description="Store id.")
-    provider: str = Field(description="`IMGW-PIB` or `CHMI`; a code is its provider's.")
+    provider: str = Field(description="`IMGW-PIB` or `CHMU`; a code is its provider's.")
     code: str = Field(description="Station code, as text.")
     name: str | None
     kind: str | None = Field(description="`hydro` or `meteo`.")
@@ -1766,7 +1766,7 @@ class StationDatasetItem(BaseModel):
         description="Dataset key, the `dataset` of the station routes."
     )
     name: str | None = Field(description="The producer's name of its segment.")
-    provider: str = Field(description="`IMGW-PIB` or `CHMI`.")
+    provider: str = Field(description="`IMGW-PIB` or `CHMU`.")
     kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
     time_unit: TimeUnit = Field(description="Unit of its series: `day`, `month`, …")
     year_type: YearType = Field(

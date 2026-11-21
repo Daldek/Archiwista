@@ -27,8 +27,8 @@ from tests.fixtures.api_session import Caller, running_api
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_SOURCE,
     CUZK_RUIAN,
     GUGIK_PRG,
     IMGW_PROCESSED,
@@ -44,8 +44,8 @@ IMGW_CATALOG = "stations/versions"
 CZ_ARCHIVE = (
     "archives/versions/hydrology/historical/data/daily/H_0-203-1-900001_DQ_2023"
 )
-CZ_SERIES = "series/versions/chmi_hydro_daily"
-CZ_CATALOG = "stations/versions/chmi_stations"
+CZ_SERIES = "series/versions/chmu_hydro_daily"
+CZ_CATALOG = "stations/versions/chmu_stations"
 PUBLIC_DATA_TERMS = [IMGW_TERMS_PUBLIC_DATA]
 
 type Stores = Callable[[str], Path]
@@ -103,13 +103,13 @@ def _current(owner: Caller, slot: str) -> str:
             [*PUBLIC_DATA_TERMS, IMGW_TERMS_HYDRO],
             id="imgw-catalog",
         ),
-        pytest.param(CZ_ARCHIVE, [CHMI_SOURCE], [], id="chmi-archive"),
-        pytest.param(CZ_SERIES, [CHMI_SOURCE, CHMI_PROCESSED], [], id="chmi-series"),
+        pytest.param(CZ_ARCHIVE, [CHMU_SOURCE], [], id="chmu-archive"),
+        pytest.param(CZ_SERIES, [CHMU_SOURCE, CHMU_PROCESSED], [], id="chmu-series"),
         pytest.param(
             CZ_CATALOG,
-            [CHMI_SOURCE, CHMI_PROCESSED, CUZK_RUIAN],
+            [CHMU_SOURCE, CHMU_PROCESSED, CUZK_RUIAN],
             [],
-            id="chmi-catalog",
+            id="chmu-catalog",
         ),
     ],
 )
@@ -137,8 +137,8 @@ def test_the_catalog_page_carries_the_lines_of_its_rows_once_each(
         [
             IMGW_SOURCE,
             IMGW_PROCESSED,
-            CHMI_SOURCE,
-            CHMI_PROCESSED,
+            CHMU_SOURCE,
+            CHMU_PROCESSED,
             GUGIK_PRG,
             CUZK_RUIAN,
         ],
@@ -157,7 +157,7 @@ def test_a_comparison_carries_the_lines_of_both_sides(owner: Caller) -> None:
 
     # Assert
     assert (comparison["attribution"], comparison["terms_notice"]) == (
-        [IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE],
+        [IMGW_SOURCE, IMGW_PROCESSED, CHMU_SOURCE],
         PUBLIC_DATA_TERMS,
     )
 
@@ -187,5 +187,5 @@ def test_an_export_of_a_catalog_writes_its_border_line(owner: Caller) -> None:
     assert written.status_code == 201, written.text
     target = Path(written.json()["path"]["local"])
     assert (target / "ATTRIBUTION.txt").read_text(encoding="utf-8") == (
-        f"{CHMI_SOURCE}\n{CHMI_PROCESSED}\n{CUZK_RUIAN}\n"
+        f"{CHMU_SOURCE}\n{CHMU_PROCESSED}\n{CUZK_RUIAN}\n"
     )

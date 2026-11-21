@@ -154,7 +154,7 @@ def _options(params: Params) -> list[str]:
         ({"dataset": DAILY, "coverage": ["Q:gaps", "Q:no_data"]}, 2),
         ({"dataset": DAILY, "min_complete_years": ["H:1"], "years": "2024"}, 0),
         ({"variable": ["Q", "T"], "year_type": "calendar"}, 2),
-        ({"provider": "CHMI", "river_code": "1-05", "river_scope": "tributaries"}, 1),
+        ({"provider": "CHMU", "river_code": "1-05", "river_scope": "tributaries"}, 1),
         ({"kind": "meteo", "active": "true", "location": "with"}, 3),
         ({"q": "RABA", "sort": "name", "limit": "2"}, 3),
     ],
@@ -191,7 +191,7 @@ def test_stations_list_json_equals_the_route_page_after_page(
     [
         (RABA, {}),
         (RABA, {"dataset": DAILY, "years": "2020-2024", "year_type": "calendar"}),
-        ("0-203-1-900001", {"provider": "CHMI", "store": STORE}),
+        ("0-203-1-900001", {"provider": "CHMU", "store": STORE}),
         ("0-20000-0-99903", {}),
     ],
 )
@@ -354,7 +354,9 @@ def test_stations_cli_writes_polish_lines_for_a_person(doors: Doors) -> None:
         *(f"  {line}" for line in LOCATED),
     ]
     assert "czynna: tak" in card
-    assert "Położenie: 20.1, 49.7 (źródło api_hydro, niepewność 5566.0 m" in card
+    assert (
+        "Położenie: 20.1, 49.7 (źródło pl.imgw.hydro_now, niepewność 5566.0 m" in card
+    )
     assert card.splitlines()[-6:] == [LINES_TITLE, *(f"  {line}" for line in LOCATED)]
     assert "Bez położenia: źródło podało 0,0" in unlocated
     assert unlocated.splitlines()[-5:] == [

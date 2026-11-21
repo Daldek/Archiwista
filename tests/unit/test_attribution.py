@@ -19,9 +19,9 @@ from archiwista import attribution
 from archiwista.attribution import Attribution
 from archiwista.sources import DataOrigin
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_PROCESSED_OLD,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_PROCESSED_OLD,
+    CHMU_SOURCE,
     CUZK_RUIAN,
     GUGIK_PRG,
     IMGW_PROCESSED,
@@ -67,8 +67,8 @@ KIT_SOURCES = Path(attribution.__file__).parent / "web" / "nogat" / "nogat-sourc
                 (IMGW_TERMS_PMAXTP,),
             ),
         ),
-        ("chmi_file", Attribution((CHMI_SOURCE,))),
-        ("chmi_processed", Attribution((CHMI_SOURCE, CHMI_PROCESSED))),
+        ("chmu_file", Attribution((CHMU_SOURCE,))),
+        ("chmu_processed", Attribution((CHMU_SOURCE, CHMU_PROCESSED))),
     ],
 )
 def test_attribution_of_one_origin_gives_the_lines_its_terms_require(
@@ -83,12 +83,12 @@ def test_attribution_of_many_origins_gives_each_line_once_in_order() -> None:
     # Act
     lines = attribution.of(
         [
-            "chmi_processed",
+            "chmu_processed",
             "pmaxtp",
             None,
             "imgw_stations",
             "imgw_file",
-            "chmi_file",
+            "chmu_file",
             "imgw_processed",
             "pmaxtp",
         ]
@@ -101,8 +101,8 @@ def test_attribution_of_many_origins_gives_each_line_once_in_order() -> None:
         PMAXTP_SOURCE,
         PMAXTP_PROCESSED,
         PMAXTP_MONOGRAPH,
-        CHMI_SOURCE,
-        CHMI_PROCESSED,
+        CHMU_SOURCE,
+        CHMU_PROCESSED,
     )
     assert lines.terms_notice == (
         IMGW_TERMS_PUBLIC_DATA,
@@ -117,7 +117,7 @@ def test_attribution_merge_puts_a_sidecars_line_after_the_standards() -> None:
     merged = attribution.merge(
         [
             Attribution((GUGIK,)),
-            Attribution((CHMI_SOURCE, CHMI_PROCESSED)),
+            Attribution((CHMU_SOURCE, CHMU_PROCESSED)),
             Attribution((IMGW_SOURCE,), PUBLIC_DATA_TERMS),
             Attribution((IMGW_SOURCE, IMGW_PROCESSED), PUBLIC_DATA_TERMS),
             Attribution((GUGIK,)),
@@ -126,7 +126,7 @@ def test_attribution_merge_puts_a_sidecars_line_after_the_standards() -> None:
 
     # Assert
     assert merged == Attribution(
-        (IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE, CHMI_PROCESSED, GUGIK),
+        (IMGW_SOURCE, IMGW_PROCESSED, CHMU_SOURCE, CHMU_PROCESSED, GUGIK),
         PUBLIC_DATA_TERMS,
     )
 
@@ -136,22 +136,22 @@ def test_attribution_merge_reads_an_older_cp_as_the_canonical_one() -> None:
     # Act
     merged = attribution.merge(
         [
-            Attribution((CHMI_SOURCE, CHMI_PROCESSED_OLD)),
+            Attribution((CHMU_SOURCE, CHMU_PROCESSED_OLD)),
             Attribution(
                 (
-                    CHMI_SOURCE,
+                    CHMU_SOURCE,
                     "Dane ČHMÚ zostały przetworzone (obliczenia hydrologiczne"
                     " programem Hydrolog)",
-                    CHMI_PROCESSED,
+                    CHMU_PROCESSED,
                 )
             ),
-            Attribution((f"{CHMI_PROCESSED} i opisane",)),
+            Attribution((f"{CHMU_PROCESSED} i opisane",)),
         ]
     )
 
     # Assert
     assert merged == Attribution(
-        (CHMI_SOURCE, CHMI_PROCESSED, f"{CHMI_PROCESSED} i opisane")
+        (CHMU_SOURCE, CHMU_PROCESSED, f"{CHMU_PROCESSED} i opisane")
     )
 
 
@@ -164,13 +164,13 @@ def test_attribution_merge_reads_an_older_cp_as_the_canonical_one() -> None:
             Attribution((IMGW_SOURCE, IMGW_PROCESSED), PUBLIC_DATA_TERMS),
         ),
         (
-            "chmi_processed",
-            f"{CHMI_SOURCE}. {CHMI_PROCESSED}. {CUZK_RUIAN}",
-            Attribution((CHMI_SOURCE, CHMI_PROCESSED, CUZK_RUIAN)),
+            "chmu_processed",
+            f"{CHMU_SOURCE}. {CHMU_PROCESSED}. {CUZK_RUIAN}",
+            Attribution((CHMU_SOURCE, CHMU_PROCESSED, CUZK_RUIAN)),
         ),
         (None, f"  {GUGIK} ", Attribution((GUGIK,))),
         (None, " ", Attribution()),
-        (None, CHMI_PROCESSED_OLD, Attribution((CHMI_PROCESSED,))),
+        (None, CHMU_PROCESSED_OLD, Attribution((CHMU_PROCESSED,))),
         (None, None, Attribution()),
     ],
 )
@@ -200,7 +200,7 @@ def test_the_fixtures_g_z_and_cp_are_the_kits_lines_with_their_values() -> None:
     cuzk = lines["Z"].replace("`<products>`", "RÚIAN").replace("`<date>`", "2026-11-13")
 
     # Assert
-    assert (gugik, cuzk, lines["CP"]) == (GUGIK_PRG, CUZK_RUIAN, CHMI_PROCESSED)
+    assert (gugik, cuzk, lines["CP"]) == (GUGIK_PRG, CUZK_RUIAN, CHMU_PROCESSED)
 
 
 def test_attribution_filled_finds_g_and_z_whatever_their_values() -> None:
@@ -208,7 +208,7 @@ def test_attribution_filled_finds_g_and_z_whatever_their_values() -> None:
     # Arrange
     text = ". ".join(
         [
-            CHMI_SOURCE,
+            CHMU_SOURCE,
             CUZK_RUIAN,
             IMGW_SOURCE,
             GUGIK_RANGES,
@@ -248,11 +248,11 @@ def test_attribution_filled_finds_g_and_z_whatever_their_values() -> None:
             id="imgw-reason",
         ),
         pytest.param(
-            "CHMI",
-            f"{CHMI_SOURCE}. {CHMI_PROCESSED_OLD}. {CUZK_RUIAN}",
+            "CHMU",
+            f"{CHMU_SOURCE}. {CHMU_PROCESSED_OLD}. {CUZK_RUIAN}",
             True,
-            Attribution((CHMI_SOURCE, CHMI_PROCESSED, CUZK_RUIAN)),
-            id="chmi",
+            Attribution((CHMU_SOURCE, CHMU_PROCESSED, CUZK_RUIAN)),
+            id="chmu",
         ),
         pytest.param(
             "IMGW-PIB",
@@ -279,7 +279,7 @@ def test_attribution_merge_puts_g_and_z_after_the_fixed_lines() -> None:
         [
             Attribution((CUZK_RUIAN,)),
             Attribution((GUGIK,)),
-            Attribution((CHMI_SOURCE, CHMI_PROCESSED, CUZK_RUIAN)),
+            Attribution((CHMU_SOURCE, CHMU_PROCESSED, CUZK_RUIAN)),
             Attribution((GUGIK_PRG,)),
             Attribution((IMGW_SOURCE, IMGW_PROCESSED, GUGIK_PRG), PUBLIC_DATA_TERMS),
         ]
@@ -290,8 +290,8 @@ def test_attribution_merge_puts_g_and_z_after_the_fixed_lines() -> None:
         (
             IMGW_SOURCE,
             IMGW_PROCESSED,
-            CHMI_SOURCE,
-            CHMI_PROCESSED,
+            CHMU_SOURCE,
+            CHMU_PROCESSED,
             GUGIK_PRG,
             CUZK_RUIAN,
             GUGIK,

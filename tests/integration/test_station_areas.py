@@ -92,7 +92,7 @@ def index(tmp_path: Path) -> Iterator[IndexQueries]:
                 name=f"Stacja {code[-1]}",
                 kind="hydro",
                 point=point,
-                location_source="api_hydro",
+                location_source="pl.imgw.hydro_now",
                 location_uncertainty_m=uncertainty,
             )
             for code, (point, uncertainty) in PLACES.items()

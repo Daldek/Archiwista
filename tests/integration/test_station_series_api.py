@@ -49,8 +49,8 @@ from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.obserwator_roots import data_root, store_fields
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_PUBLIC_DATA,
@@ -372,7 +372,7 @@ def test_the_bands_are_the_gaps_the_label_counts(
             [IMGW_TERMS_PUBLIC_DATA],
             id="imgw",
         ),
-        pytest.param(SPINDLER, "T", [CHMI_SOURCE, CHMI_PROCESSED], [], id="chmi"),
+        pytest.param(SPINDLER, "T", [CHMU_SOURCE, CHMU_PROCESSED], [], id="chmu"),
     ],
 )
 def test_the_chart_carries_the_lines_its_providers_terms_require(
@@ -400,7 +400,7 @@ def test_the_chart_carries_the_lines_its_providers_terms_require(
             [IMGW_TERMS_PUBLIC_DATA],
             id="imgw",
         ),
-        pytest.param(SPINDLER, "T", [CHMI_SOURCE, CHMI_PROCESSED], None, id="chmi"),
+        pytest.param(SPINDLER, "T", [CHMU_SOURCE, CHMU_PROCESSED], None, id="chmu"),
     ],
 )
 def test_a_handoff_carries_the_lines_its_providers_terms_require(

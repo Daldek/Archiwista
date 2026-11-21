@@ -189,10 +189,10 @@ _ORIGINS: Mapping[tuple[str, str], DataOrigin] = MappingProxyType(
         ("series", "IMGW-PIB"): "imgw_processed",
         ("stations", "IMGW-PIB"): "imgw_stations",
         ("analyses", "IMGW-PIB"): "imgw_processed",
-        ("archives", "CHMI"): "chmi_file",
-        ("series", "CHMI"): "chmi_processed",
-        ("stations", "CHMI"): "chmi_processed",
-        ("analyses", "CHMI"): "chmi_processed",
+        ("archives", "CHMU"): "chmu_file",
+        ("series", "CHMU"): "chmu_processed",
+        ("stations", "CHMU"): "chmu_processed",
+        ("analyses", "CHMU"): "chmu_processed",
     }
 )
 _PMAXTP_TREE = "pmaxtp"
@@ -374,8 +374,8 @@ class ObserwatorAdapter:
         No disk access. A dataset of the registry has its Polish title for a
         name, its provider's country and the family the registry declares for
         it as a product; a station catalog (``pl.imgw.stations``,
-        ``cz.chmi.stations``) and a provider's stored analyses
-        (``pl.imgw.analyses``, ``cz.chmi.analyses``), slots of the data root
+        ``cz.chmu.stations``) and a provider's stored analyses
+        (``pl.imgw.analyses``, ``cz.chmu.analyses``), slots of the data root
         that are no datasets of the registry, are named after their provider
         and are of the family ``stations`` or ``analyses``; any other key is
         not recognised and is its own name.
@@ -468,7 +468,7 @@ class ObserwatorAdapter:
 
         A provider's catalog is the slot ``catalog:<key prefix>.stations`` of
         the producer's registry (``catalog:pl.imgw.stations`` is IMGW-PIB's,
-        ``catalog:cz.chmi.stations`` ČHMÚ's); no disk access.
+        ``catalog:cz.chmu.stations`` ČHMÚ's); no disk access.
 
         Parameters
         ----------
@@ -478,7 +478,7 @@ class ObserwatorAdapter:
         Returns
         -------
         str or None
-            The provider's id (``IMGW-PIB``, ``CHMI``); ``None`` for any other
+            The provider's id (``IMGW-PIB``, ``CHMU``); ``None`` for any other
             slot.
         """
         kind, _, dataset = slot_key.partition(":")

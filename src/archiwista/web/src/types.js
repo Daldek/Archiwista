@@ -909,7 +909,7 @@
  * @property {string} store
  * @property {string} dataset - Dataset key, the `dataset` of the station routes.
  * @property {string|null} name - The producer's name of its segment.
- * @property {string} provider - `IMGW-PIB` or `CHMI`.
+ * @property {string} provider - `IMGW-PIB` or `CHMU`.
  * @property {string|null} kind - Its family (`hydro`, `meteo`): the product.
  * @property {string} time_unit - `day`, `month`, `half_year`.
  * @property {YearType} year_type - Default numbering of the years of its labels.
@@ -945,7 +945,7 @@
  *
  * @typedef {object} StationPoint
  * @property {string} store
- * @property {string} provider - `IMGW-PIB` or `CHMI`.
+ * @property {string} provider - `IMGW-PIB` or `CHMU`.
  * @property {string} code
  * @property {string|null} name
  * @property {string|null} kind - `hydro` or `meteo`.
@@ -1064,7 +1064,7 @@
  *
  * @typedef {object} StationItem
  * @property {string} store
- * @property {string} provider - `IMGW-PIB` or `CHMI`; a code is its provider's.
+ * @property {string} provider - `IMGW-PIB` or `CHMU`; a code is its provider's.
  * @property {string} code
  * @property {string|null} name
  * @property {string|null} kind - `hydro` or `meteo`.

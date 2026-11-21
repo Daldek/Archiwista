@@ -32,8 +32,8 @@ from tests.fixtures.local_server import NoSources, local_paths
 from tests.fixtures.missing_package import hide_packages
 from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_SOURCE,
     CUZK_RUIAN,
     GUGIK_PRG,
     IMGW_PROCESSED,
@@ -78,7 +78,7 @@ ROUTES = (
 IMGW = [IMGW_SOURCE, IMGW_PROCESSED]
 LOCATED_TERMS = [IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO]
 UNLOCATED_TERMS = [IMGW_TERMS_PUBLIC_DATA]
-CZECH = [CHMI_SOURCE, CHMI_PROCESSED]
+CZECH = [CHMU_SOURCE, CHMU_PROCESSED]
 
 
 @dataclass(frozen=True)
@@ -154,7 +154,7 @@ def test_stations_lists_both_providers_page_by_page_with_the_location_groups(
     codes = [code for page in pages for code in _codes(page)]
     assert codes == _codes(whole)
     assert len(codes) == len(set(codes)) == 13
-    assert {item["provider"] for item in whole["items"]} == {"IMGW-PIB", "CHMI"}
+    assert {item["provider"] for item in whole["items"]} == {"IMGW-PIB", "CHMU"}
     assert whole["counts"] == {"located": 8, "boundary": 0, "unlocated": 5, "hidden": 0}
     assert {item["location"]["reason"] for item in unlocated["items"]} == {
         "none",
@@ -190,7 +190,7 @@ def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
         "lon": 20.1,
         "lat": 49.7,
         "reason": None,
-        "source": "api_hydro",
+        "source": "pl.imgw.hydro_now",
         "uncertainty_m": 5566.0,
         "on_boundary": False,
     }
@@ -217,7 +217,7 @@ def test_a_station_card_labels_each_series_with_its_file_licence_and_formula(
             "personal": None,
         }
     }
-    assert czech["provider"] == "CHMI"
+    assert czech["provider"] == "CHMU"
     assert {item["license"] for item in czech["series"]} == {"CC-BY-4.0"}
     label = polish["station"]["series"][0]["coverage"]["H"]["label"]
     assert label == "luki 91% · najdł. 2024.03.01–2024.10.31 · nieznane: 1951–2023"
@@ -390,7 +390,7 @@ def test_the_map_draws_located_stations_or_their_grid(served: Served) -> None:
             id="card-unlocated",
         ),
         pytest.param(
-            "/stations/0-203-1-900001", [*CZECH, CUZK_RUIAN], [], id="card-chmi"
+            "/stations/0-203-1-900001", [*CZECH, CUZK_RUIAN], [], id="card-chmu"
         ),
         pytest.param(
             "/stations?limit=50",
