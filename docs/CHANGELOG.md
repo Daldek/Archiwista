@@ -27,6 +27,12 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
 - The copy of Nogat's `handoff-1.schema.json` is Nogat's of `develop` `263e83c` (last
   changed in `c47c42e`), whose first example records Hydrolog 0.9.0's result (Nogat plan
   `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6); the schema itself is unchanged.
+- Nogat's kit 1.1.0 is copied again, whole and byte for byte, from Nogat `c2507fa` into
+  `src/archiwista/web/nogat/` (A-ADR-054 erratum 6; Nogat ECO-081, ECO-082): its
+  regulamin templates `nogat-terms.md`, `.html` and the operators' draft
+  `nogat-terms-operator.md` name ČHMÚ's block `chmu` instead of `chmi`, and
+  `nogat-kit.json` has their hashes. Archiwista fills no regulamin, so nothing else
+  changes; the strip's „więcej” on a phone is that of the kit 1.1.0 (ECO-080).
 
 ## [0.3.2] - 2026-11-20
 
