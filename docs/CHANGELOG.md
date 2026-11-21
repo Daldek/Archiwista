@@ -28,6 +28,19 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
   changed in `c47c42e`), whose first example records Hydrolog 0.9.0's result (Nogat plan
   `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6); the schema itself is unchanged.
 
+### Fixed
+
+- **Leaving a page in Firefox while it loads raises no error of the page** (CI of `develop`
+  `9e9e365`, 2026-11-21; `web/src/api.js`, `downloads.js`, `search.js`, `feedback.js`,
+  `shell.js`): Firefox stops the loads of a page being left before `pagehide` and still
+  runs the page's handlers. An answer whose body it stopped rejected with `AbortError`,
+  which the readers of the shell (the downloads, the count of running jobs) took for a
+  fault of the page; now a body that does not come whole is the network's problem, as a
+  request without an answer is, in Chromium too (whose readers got a `TypeError`). The
+  stylesheets of the downloads, the search and „Zgłoś uwagę”, which the shell adds after
+  it is shown, and the modules of a card leave the part unstyled or the card unshown when
+  they do not load, instead of an uncaught „Stylesheet not loaded”.
+
 ## [0.3.2] - 2026-11-20
 
 Changes since 0.3.1, to be released as 0.3.2: defect fixes only.
