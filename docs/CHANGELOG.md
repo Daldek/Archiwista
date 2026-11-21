@@ -5,6 +5,29 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
+## [Unreleased]
+
+Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
+
+### Changed
+
+- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `1a11df5`, the commit of
+  its `develop` at `3.1.0.dev0` for Nogat's release round of 2026-11-21 (`pyproject.toml`,
+  `uv.lock`); the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
+- With Obserwator 3.1.0 a series version may hold chosen stations and years only
+  (`subset` of `series.json`, Obserwator ADR-026). Archiwista reads it as any version:
+  on the coverage labels, the timeline and the card the years not chosen are „nieznany”,
+  not gaps; a station not chosen has no series of the dataset, as a station without
+  series (on the map a point without coverage colour); a hand-off spans the version's
+  values. ČHMÚ's `cz.chmi.meteo_daily` has six files per station (`snow/…-SCE.csv`,
+  `snow/…-SNO.csv` beside the four before) and the variables `snow_cover` and
+  `fresh_snow` [cm], which the coverage and the card list as they list IMGW-PIB's. The
+  `formula_versions` and `derived` of Obserwator's analyses exports are not read by
+  Archiwista, which lists stored analyses as versions only.
+- The copy of Nogat's `handoff-1.schema.json` is Nogat's of `develop` `263e83c` (last
+  changed in `c47c42e`), whose first example records Hydrolog 0.9.0's result (Nogat plan
+  `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6); the schema itself is unchanged.
+
 ## [0.3.2] - 2026-11-20
 
 Changes since 0.3.1, to be released as 0.3.2: defect fixes only.

@@ -1240,7 +1240,13 @@ and a variable:
   (`stations[<code>].periods` — datasets with station files, ČHMÚ), the units
   known for a station are the units of R in its periods (A-ADR-021 errata 3).
   The rest are **unknown** (archive or station file not downloaded, year
-  not published by ČHMÚ, series not prepared) and are not gaps.
+  not published by ČHMÚ, series not prepared, year not chosen for a series version of
+  chosen stations and years) and are not gaps.
+  Since Obserwator 3.1.0 a series version may hold a subset of its dataset's stations
+  and years (`subset` of `series.json`, Obserwator ADR-026), whose periods are cut to
+  the chosen years: Archiwista reads it as any version, so the years not chosen are
+  unknown, not gaps, and a station not chosen has no series of the dataset, as a station
+  without series (on the map a point without coverage colour).
   A year is known when all its units are known.
 - **Value** — a unit with a value after normalization (4.8.3); a cumulative
   precipitation sum is the value of the day on which it was reported, and the days before it
@@ -1353,7 +1359,7 @@ From v0.6 Obserwator also writes ČHMÚ data to the same Obserwator directory (�
 | Dataset | ČHMÚ archives | Variables | Interval, years |
 |---|---|---|---|
 | Daily hydro (`cz.chmi.hydro_daily`) | `hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON file per station and year | H [cm], Q [m³/s], T [°C] | day; archives numbered by calendar years (`year_type` `calendar`), the view — both kinds of years |
-| Daily meteo (`cz.chmi.meteo_daily`) | `meteorology/climate/historical_csv/data/daily/{precipitation,temperature}/dly-<WIGOS>-{SRA,T,TMA,TMI}.csv` — one CSV file per station and element, whole history | precipitation `P` [mm], air temperature `Tmean`, `Tmax`, `Tmin` [°C] | day; `year_type` `calendar`, the view — both kinds of years |
+| Daily meteo (`cz.chmi.meteo_daily`) | `meteorology/climate/historical_csv/data/daily/{precipitation,temperature,snow}/dly-<WIGOS>-{SRA,T,TMA,TMI,SCE,SNO}.csv` — one CSV file per station and element (six per station since Obserwator 3.1.0, its ADR-003 erratum of 2026-11-21), whole history | precipitation `P` [mm], air temperature `Tmean`, `Tmax`, `Tmin` [°C], snow cover `snow_cover` and fresh snow `fresh_snow` [cm] (Obserwator 3.1.0) | day; `year_type` `calendar`, the view — both kinds of years |
 
 Differences from IMGW, which Obserwator handles and Archiwista only displays:
 
