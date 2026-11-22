@@ -1,17 +1,17 @@
 # Archiwista — specification
 
 **Date:** 2026-10-17
-**Status:** living specification: v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0; the later versions in development or planned (section 13); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
+**Status:** living specification of release 0.3.3: v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0, with the defect fixes of 0.3.1 to 0.3.3 and Obserwator 3.1.0 in 0.3.3; the later versions in development or planned (section 13); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
 [`docs/DECISIONS.md`](DECISIONS.md); interface mockup: the `mockup/` directory
 (section 16)
-**Dependency:** Kartograf 0.8.0 (tag `v0.8.0` from release 0.3.0) — public API
+**Dependency:** Kartograf 0.8 (tag `v0.8.2` in release 0.3.3) — public API
 (`kartograf/__init__.py`, `__all__`) and on-disk formats: sidecar
 `kartograf-meta/1`, the `data/` layout with a version store (`versions/`),
 update plan `kartograf-plan/1`, availability report
 `kartograf-availability/1`, the command of a stored file (KB-6); from v0.6 also KF (merged
 PL + CZ surface, 12.5); from v0.5 Obserwator (IMGW data) —
-a release with requirements IMGW-1..IMGW-13 and IMGW-21 (section 12.7; today 2.1.1, Beta,
-no store): a raw root `obserwator-store/1` and a data root `obserwator-data/1` (Obserwator's
+a release with requirements IMGW-1..IMGW-13 and IMGW-21 (section 12.7; met since 3.0.0, and
+release 0.3.3 reads 3.1.0, tag `v3.1.0`): a raw root `obserwator-store/1` and a data root `obserwator-data/1` (Obserwator's
 ADR-017, A-ADR-056), sidecar `obserwator-meta/1`, series `obserwator-series/1` (12.8), and from
 v0.6 a release with ČHMÚ stations (IMGW-15..IMGW-19). Projects are Archiwista's own
 file `archiwista-project/1` (4.7, A-ADR-049); the producers' project manifests
@@ -1858,10 +1858,11 @@ libraries required (Obserwator Beta would block releases, version conflicts),
 reading formats and calling the CLI without dependencies (breaks A-ADR-014),
 producers as HTTP services (cost).
 
-**Installation.** Kartograf is a required dependency (pinned by a commit of its `develop`
-until its tag, REL-5.3: from release 0.3.0 the tag `v0.8.0`, and Obserwator's `v3.0.0`;
-while a commit is pinned the adapter reads `>=0.8.0.dev0,<0.9`, `SUPPORTED_VERSIONS`, narrowed
-at the release, REL-5.6 — the public store reading KA-1..KA-6 arrives in Kartograf 0.8.0;
+**Installation.** Kartograf is a required dependency (pinned by its tag, in release 0.3.3
+`v0.8.2`, and Obserwator's `v3.1.0`; while a producer's release is pending, by its commit,
+REL-5.3; the adapters read Kartograf `>=0.8.0,<0.9` and Obserwator `>=3.1.0,<4`,
+`SUPPORTED_VERSIONS`, which start at the development version while a commit is pinned,
+REL-5.6 — the public store reading KA-1..KA-6 arrives in Kartograf 0.8.0;
 A-ADR-024 erratum 1), Obserwator is an extra:
 
 ```bash
@@ -3841,7 +3842,7 @@ answer the same):
   "details": {
     "reason": "source_unavailable",
     "source": {"id": "obserwator", "state": "not_installed", "package_version": null,
-               "supported_versions": ">=3.0.0.dev0,<4", "requirement": "archiwista[obserwator]"}
+               "supported_versions": ">=3.1.0,<4", "requirement": "archiwista[obserwator]"}
   }
 }
 ```
@@ -4285,7 +4286,7 @@ over TLS.
   test checks each kit file against the kit's own manifest `nogat-kit.json`
   (A-ADR-054). The Python
   environment is pinned by `uv.lock` (`uv sync --locked`, DEV-6.3); Kartograf and Obserwator
-  are pinned by commit in `pyproject.toml` until their tags (REL-5.3; from release 0.3.0 `v0.8.0` and `v3.0.0`). Updating an external library: download
+  are pinned by tag in `pyproject.toml` (release 0.3.3: `v0.8.2` and `v3.1.0`; by commit while a producer's release is pending, REL-5.3). Updating an external library: download
   the package from the source, check `integrity`, replace the files and sums
   in the manifest in the same commit.
 
@@ -5331,7 +5332,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | Load on public services | slowdowns, blocks on the source side | low | Kartograf's cache, assistant limits, 2 network jobs at a time |
 | UI without type checking (A-ADR-028: Preact + htm with no build step) | errors detected only at runtime | medium | browser tests (Playwright), JSDoc annotations, contract tests with OpenAPI; adding Vite and TypeScript later without rewriting components |
 | Data license terms on handover | attribution violation | low | the lines of the providers' terms (A-ADR-055) in every answer and view of the data, the CLI text, the hand-off and the export (`README.txt`, `ATTRIBUTION.txt`); on screen one strip a view with every line in its dialog, and there "Kopiuj atrybucję" |
-| Dependence on Obserwator (3.0.0 with the store, IMGW-1..IMGW-13 and IMGW-21, released with Archiwista 0.3.0, which pins its tag `v3.0.0`); optional from A-ADR-024 (extra `[obserwator]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for Obserwator; releases v0.1–v0.4 and an installation without Obserwator do not need it | medium | Obserwator is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by Obserwator; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
+| Dependence on Obserwator (3.0.0 with the store, IMGW-1..IMGW-13 and IMGW-21, released with Archiwista 0.3.0; release 0.3.3 pins its tag `v3.1.0`, whose provider ids `IMGW` and `CHMU` it alone reads); optional from A-ADR-024 (extra `[obserwator]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for Obserwator; releases v0.1–v0.4 and an installation without Obserwator do not need it | medium | Obserwator is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by Obserwator; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
 | ČHMÚ stations in Obserwator (IMGW-15..IMGW-19; the tool was renamed from IMGWTools in ECO-057) | v0.6, and with it the MVP, waits for Obserwator; a separate package changes the adapter and the extra | medium | requirements reported before v0.5 (section 12.7), the same contracts with the supplier as an additive change, one Obserwator adapter; adapter decision at the Obserwator release (4.8.6, A-ADR-024) |
 | ČHMÚ archives per station (no country-wide archive) | hundreds of requests during synchronization, slow plans | medium | synchronization of selected stations only (area, project), plan with the number of requests, 2 network jobs at a time |
 | Version conflicts of scientific libraries between Kartograf and Obserwator (numpy, pandas, GDAL/rasterio, pyarrow) | installation impossible or environment divergence with `[obserwator]` | medium | one lock file for a consistent set, CI in two configurations (without and with `[obserwator]`), contract tests against the producers' `develop` (5.8, 11, A-ADR-024) |
