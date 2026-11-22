@@ -60,10 +60,11 @@ dependencies = [
 # (`store_root(kind=…)`) and `command_for_version` (IMGW-21, A-ADR-049); a series
 # version may hold a subset of stations and years (`SeriesIndex.subset`, its ADR-026).
 # `[store]` brings `pyarrow` for the Parquet series. The versions the adapter reads are
-# `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator` (REL-5.6). The release commit
-# replaces the commit with the tag v3.1.0.
+# `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator` (REL-5.6), `>=3.1.0.dev0,<4`
+# while the extra pins the commit. The release commit replaces the commit with the tag
+# v3.1.0 and narrows the range to `>=3.1.0,<4`.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@4bf0ce33f19aa4a57cf8e7bfd0971fcc0cefe3e3",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@e66d4737aae2c5eff87198efe8864284402a8d4f",
 ]
 
 [dependency-groups]
