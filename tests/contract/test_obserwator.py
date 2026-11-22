@@ -110,8 +110,8 @@ HYDRO = "pl.imgw.hydro_daily"
 ARCHIVE_SLOT = Path("archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024")
 ARCHIVE_KEY = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
 SERIES_KEY = "series:pl.imgw.hydro_daily"
-HYDRO_SERIES = Path("series/versions/hydro_daily")
-PL_CATALOG = Path("stations/versions")
+HYDRO_SERIES = Path("series/versions/imgw_hydro_daily")
+PL_CATALOG = Path("stations/versions/imgw_stations")
 CZ_CATALOG = Path("stations/versions/chmu_stations")
 CZ_REGISTER_SLOT = Path(
     "archives/versions/hydrology/historical/data/daily/H_0-203-1-900001_DQ_2023"
@@ -433,7 +433,7 @@ def test_a_dataset_of_the_registry_is_described_by_its_polish_title_country_and_
         "pl.imgw.meteo_precip_daily": "meteo",
         "cz.chmu.meteo_daily": "meteo",
         "cz.chmu.hydro_stations": "hydro",
-        "pl.imgw.pmaxtp": "pmaxtp",
+        "pl.imgw.pmaxtp": "imgw_pmaxtp",
     }
 
 
@@ -452,8 +452,9 @@ def test_every_dataset_of_the_registry_is_a_known_segment_of_its_providers_count
         provider.country,
         key,
     )
-    # The family the producer declares; PMAXTP, the one dataset without it, is its own.
-    assert described.product == (dataset.kind or "pmaxtp")
+    # The family the producer declares; PMAXTP, the one dataset without it, is its
+    # own, named by its slug.
+    assert described.product == (dataset.kind or "imgw_pmaxtp")
     assert described.name not in ("", key)
 
 
@@ -513,10 +514,10 @@ def test_the_two_providers_keep_their_datasets_catalogs_and_countries_apart(
         "pl.imgw.stations": PL_CATALOG,
         "cz.chmu.stations": CZ_CATALOG,
     }
-    assert [e.meta.provider for e in catalogs.values() if e.meta] == [
-        "IMGW",
-        "CHMU",
-    ]
+    assert {name: e.meta.provider for name, e in catalogs.items() if e.meta} == {
+        "pl.imgw.stations": "IMGW",
+        "cz.chmu.stations": "CHMU",
+    }
     slots = Counter(e.slot_path for e in entries if e.kind == "version")
     assert slots[PL_CATALOG] == slots[CZ_CATALOG] == 1
 

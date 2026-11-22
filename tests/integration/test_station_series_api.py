@@ -466,7 +466,10 @@ def test_an_accumulated_sum_is_a_marker_and_no_value_of_its_day(
         ({"variable": "H", "max_points": "2001"}, 400, "validation_error", None),
         ({"variable": "H", "dataset": PRECIPITATION}, 404, "not_found", None),
         (
-            {"variable": "H", "version": "series/versions/hydro_daily/x/series.json"},
+            {
+                "variable": "H",
+                "version": "series/versions/imgw_hydro_daily/x/series.json",
+            },
             409,
             "conflict",
             "series_version_not_current",

@@ -81,7 +81,7 @@ def _half_years(writer: IndexWriter) -> None:
         accumulated=0,
         gaps=(),
     )
-    folder = "series/versions/hydro_semiannual"
+    folder = "series/versions/imgw_hydro_semiannual"
     writer.replace_series(
         STORE,
         "obserwator",

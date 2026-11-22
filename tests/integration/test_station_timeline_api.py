@@ -308,7 +308,7 @@ def _perf_variable(key: str, unit: str, shift: int) -> VariableCoverage:
 def _perf_index(paths: AppPaths, root: Path) -> None:
     """Write 200 water gauges with H, Q and T of 75 years, as a scan writes them."""
     codes = [f"1492{index:05d}" for index in range(PERF_STATIONS)]
-    folder = "series/versions/hydro_daily/2026-10-26_00000000"
+    folder = "series/versions/imgw_hydro_daily/2026-10-26_00000000"
     initialize(paths.index_file)
     with IndexWriter(paths.index_file) as writer:
         writer.sync_stores(
@@ -318,8 +318,8 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
             STORE,
             "obserwator",
             "IMGW",
-            slot="stations/versions",
-            version="stations/versions/2026-10-26_00000000/stations.geojson",
+            slot="stations/versions/imgw_stations",
+            version="stations/versions/imgw_stations/2026-10-26_00000000/stations.geojson",
             stations=[
                 Station(
                     "IMGW",
@@ -338,7 +338,7 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
         writer.replace_series(
             STORE,
             "obserwator",
-            slot="series/versions/hydro_daily",
+            slot="series/versions/imgw_hydro_daily",
             version=f"{folder}/series.json",
             listing=SeriesListing(
                 dataset=DAILY,

@@ -427,12 +427,12 @@ class SourceEntry:
     ``version_path`` the version a link points to (a version's own path).
     ``slot_key`` is the producer's own name of the slot (the index keeps it with
     the slot), opaque to Archiwista; ``slot_name`` is what people call the
-    slot when the last part of ``slot_path`` is not a name (e.g. a directory
-    called ``versions``). ``skipped`` marks a version listed in
-    ``ScanScope.known_versions`` whose metadata was not read; ``meta`` carries
-    metadata read in the same pass. ``handle`` is the producer's own record of
-    the entry: opaque to Archiwista and passed back to the same adapter
-    unchanged.
+    slot when the last part of ``slot_path`` is not a name (e.g. an archive's
+    directory, which lacks its file's extension). ``skipped`` marks a version
+    listed in ``ScanScope.known_versions`` whose metadata was not read;
+    ``meta`` carries metadata read in the same pass. ``handle`` is the
+    producer's own record of the entry: opaque to Archiwista and passed back
+    to the same adapter unchanged.
 
     An ``observation`` is a record of the producer's publication history:
     the source published other bytes with the content of a version it

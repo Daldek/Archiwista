@@ -32,7 +32,7 @@ from tests.fixtures.obserwator_roots import data_root, root_of, store_fields
 STORE = "dane"
 PL_KEY = "catalog:pl.imgw.stations"
 CZ_KEY = "catalog:cz.chmu.stations"
-PL_SLOT = "stations/versions"
+PL_SLOT = "stations/versions/imgw_stations"
 CATALOG = "stations.geojson"
 META = ".meta.json"
 _ROWS = (

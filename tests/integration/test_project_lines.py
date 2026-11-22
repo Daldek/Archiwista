@@ -37,7 +37,7 @@ from tests.fixtures.provider_lines import (
 
 STORE = "dane"
 IMGW_ARCHIVE = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
-IMGW_SERIES = "series/versions/hydro_daily"
+IMGW_SERIES = "series/versions/imgw_hydro_daily"
 CZ_ARCHIVE = (
     "archives/versions/hydrology/historical/data/daily/H_0-203-1-900001_DQ_2023"
 )

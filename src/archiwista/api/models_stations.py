@@ -96,7 +96,7 @@ MIN_COMPARED = 2
 MAX_COMPARED = 5
 
 _SHA256 = "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623"
-_SERIES_DIR = "series/versions/hydro_daily/2026-08-31_ab12cd34"
+_SERIES_DIR = "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34"
 # The lines of an answer about IMGW-PIB stations with their positions, and of
 # one about their series alone (A-ADR-055), and the formula the sidecar of an
 # IMGW-PIB series version gives (Obserwator's).
@@ -167,7 +167,9 @@ _STATION_EXAMPLE = {
     "river_km": 74.3,
     "elevation_m": None,
     "catalog": "2026-10-17",
-    "catalog_version": "stations/versions/2026-10-17_5c1d9a20/stations.geojson",
+    "catalog_version": (
+        "stations/versions/imgw_stations/2026-10-17_5c1d9a20/stations.geojson"
+    ),
     "location": _LOCATION_EXAMPLE,
     "series": [_SERIES_EXAMPLE],
 }
@@ -277,7 +279,7 @@ _CHART_VARIABLE_EXAMPLE = {
         }
     ],
 }
-_HALF_YEAR_DIR = "series/versions/hydro_semiannual/2026-08-31_cd34ef56"
+_HALF_YEAR_DIR = "series/versions/imgw_hydro_semiannual/2026-08-31_cd34ef56"
 _ANNUAL_EXTREME_EXAMPLE = {
     "value": 223.0,
     "start": "2024-03-02",
@@ -1350,7 +1352,7 @@ class StationCard(IndexAnswer):
                         f"/mnt/nas/obserwator/{_SERIES_DIR}/stations/149190310.parquet"
                     ),
                     "aliases": [
-                        "Z:\\obserwator\\series\\versions\\hydro_daily\\2026-08-31_ab12cd34"
+                        "Z:\\obserwator\\series\\versions\\imgw_hydro_daily\\2026-08-31_ab12cd34"
                         "\\stations\\149190310.parquet"
                     ],
                     "personal": None,

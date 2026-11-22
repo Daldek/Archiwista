@@ -390,7 +390,7 @@ class ObserwatorAdapter:
         SourceSegment
             ``dataset_key`` is the current key of the dataset. ``product`` is
             its family: the ``kind`` of the registry (``hydro``, ``meteo``),
-            for the dataset that has none (PMAXTP) its short name, ``pmaxtp``,
+            for the dataset that has none (PMAXTP) its slug, ``imgw_pmaxtp``,
             ``stations`` for a catalog and ``analyses`` for stored analyses;
             ``None`` for a key that is not recognised. Obserwator has no
             products, so it only groups the datasets, and the key itself is
@@ -1150,10 +1150,10 @@ def _slot_name(slot: str | None) -> str | None:
     """Name a slot for people where the name of its directory is none.
 
     An archive is named by its file (its directory has no extension), a
-    station catalog and a provider's stored analyses by their key (the first
-    catalog lies in a directory called ``versions``, the analyses in one named
-    after the provider); a series and a PMAXTP cell keep the name of their
-    directory (``None``).
+    station catalog and a provider's stored analyses by their key (their
+    directories are named after the provider: ``imgw_stations``,
+    ``chmu_stations``, ``pl.imgw``, ``cz.chmu``); a series and a PMAXTP cell
+    keep the name of their directory (``None``).
     """
     kind, _, rest = (slot or "").partition(":")
     if kind == "archive":

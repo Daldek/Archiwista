@@ -52,7 +52,7 @@ def index(tmp_path: Path) -> Iterator[tuple[IndexWriter, IndexQueries]]:
 def _write(
     writer: IndexWriter, provider: str, stations: list[Station], store: str = STORE
 ) -> None:
-    slot = "stations/versions" + ("/chmu_stations" if provider == CZ else "")
+    slot = f"stations/versions/{'chmu' if provider == CZ else 'imgw'}_stations"
     writer.replace_stations(
         store,
         "obserwator",

@@ -652,7 +652,7 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | Table | What it holds |
 |---|---|
 | `stores` | stores: identifier (a short name given by the user, e.g. `zespol`), producer directories (Kartograf, Obserwator) and path aliases, availability, scan times and statistics |
-| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for Obserwator the name of the dataset from the Obserwator registry in Polish, for a station catalog or stored analyses the name after its provider, the country of the provider and the family of the dataset as the product: `hydro`, `meteo`, `pmaxtp`, `stations` or `analyses`, because Obserwator has no products and the "Magazyn" (Store) view and the Map panel group by product — ADR 0032, decision 10; a producer without a list of segments, like Obserwator, describes the segments that its entries named, after the pass), recognized / unrecognized |
+| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for Obserwator the name of the dataset from the Obserwator registry in Polish, for a station catalog or stored analyses the name after its provider, the country of the provider and the family of the dataset as the product: `hydro`, `meteo`, `imgw_pmaxtp` (the slug of PMAXTP, which has no family), `stations` or `analyses`, because Obserwator has no products and the "Magazyn" (Store) view and the Map panel group by product — ADR 0032, decision 10; a producer without a list of segments, like Obserwator, describes the segments that its entries named, after the pass), recognized / unrecognized |
 | `slots` | slots: segment, hierarchy, name, unit kind and code, the producer's slot key (`slot_key`, opaque to the index), current version, `full_sheet/` version, number of versions; in the Obserwator catalog a slot is an archive file (path on the server), a station directory or the dataset series — the name of an archive slot is its file, that of a station directory its key (`catalog:pl.imgw.stations`), and the slot key is the Obserwator key (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) |
 | `versions` | versions: label and its source, `sha256`, size, coordinate systems, resolution, `nodata`, data year and date, campaign and request number, release, download date, provider (`provider`: `IMGW`, `CHMU`), full sheet, coverage (`extra.coverage`), license, `parent_request` group key, native extent and its source, kind of location (`footprint`, `country`, `none` with a reason; A-ADR-022), state, full sidecar (JSON) |
 | `observations` | the publication history of a slot (Obserwator only): a source served other bytes with the content of a version the producer already has — time, address, `ETag`, `Last-Modified`, size, `sha256` and the version with that content; it is neither a version nor a current version and enters no count; a record the pass did not see disappears |
@@ -3874,7 +3874,7 @@ numbers)
       "river_km": 74.3,
       "elevation_m": null,
       "catalog": "2026-10-17",
-      "catalog_version": "stations/versions/2026-10-17_5c1d9a20/stations.geojson",
+      "catalog_version": "stations/versions/imgw_stations/2026-10-17_5c1d9a20/stations.geojson",
       "location": {"kind": "point", "lon": 19.9247, "lat": 49.7963, "reason": null,
                    "source": "pl.imgw.hydro_now", "uncertainty_m": 150.0, "on_boundary": false},
       "series": [
@@ -3885,8 +3885,8 @@ numbers)
           "year_type": "hydrological",
           "years": {"from": 1951, "to": 2025},
           "series": "2026-08-31",
-          "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
-          "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+          "series_version": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/series.json",
+          "file": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
           "sha256": "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623",
           "license": "IMGW-PIB",
           "attribution": "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone",
@@ -3940,7 +3940,7 @@ the default "Kolor punktów"; `name` is the producer's name of the segment)
       "year_type": "hydrological",
       "years": {"from": 1951, "to": 2025},
       "series": "2026-08-31",
-      "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
+      "series_version": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/series.json",
       "variables": [
         {"key": "H", "variable": "H", "unit": "cm", "period": null},
         {"key": "Q", "variable": "Q", "unit": "m3/s", "period": null},
@@ -4043,8 +4043,8 @@ station; one of its variables and three of its 75 years shown)
   "kind": "hydro",
   "time_unit": "day",
   "series": "2026-08-31",
-  "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
-  "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+  "series_version": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/series.json",
+  "file": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
   "sha256": "…",
   "from": "1950-11-01",
   "to": "2025-10-31",
@@ -4100,8 +4100,8 @@ illustrative values)
                    "source": "pl.imgw.hydro_now", "uncertainty_m": 150.0, "on_boundary": false},
       "years": {"from": 1951, "to": 2025},
       "series": "2026-08-31",
-      "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
-      "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+      "series_version": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/series.json",
+      "file": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
       "sha256": "…",
       "license": "IMGW-PIB",
       "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone.",
@@ -4816,11 +4816,11 @@ so the index and project pins keep them (A-ADR-056). A root of the other kind is
 
 <data root>/                       settings field `obserwator_data`; built offline by Obserwator, read by Archiwista
   obserwator-data.json             {"schema": "obserwator-data/1", …}
-  stations/versions/<label>_<sha8>/stations.geojson        + stations.geojson.meta.json
+  stations/versions/imgw_stations/<label>_<sha8>/stations.geojson        + stations.geojson.meta.json
   stations/versions/chmu_stations/<label>_<sha8>/stations.geojson   ČHMÚ station catalog
   series/versions/<dataset slug>/<label>_<sha8>/series.json + series.json.meta.json
                                             stations/<code>.parquet
-    e.g. series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet
+    e.g. series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet
   analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json + analyses.json.meta.json
                                    Hydrolog's analyses of the stations (Obserwator's ADR-016)
   .incoming/<host>_<pid>_<token>/  working directories (cleaned up after 24 h)

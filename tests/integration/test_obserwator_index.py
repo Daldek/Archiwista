@@ -295,11 +295,14 @@ def test_a_slot_keeps_its_key_a_name_for_people_and_its_versions_a_provider(
         "codz_2024.zip",
         "archive:pl.imgw.hydro_daily:2024/codz_2024.zip",
     )
-    assert keys["series/versions/hydro_daily"] == (
-        "hydro_daily",
+    assert keys["series/versions/imgw_hydro_daily"] == (
+        "imgw_hydro_daily",
         "series:pl.imgw.hydro_daily",
     )
-    assert keys["stations/versions"] == ("pl.imgw.stations", "catalog:pl.imgw.stations")
+    assert keys["stations/versions/imgw_stations"] == (
+        "pl.imgw.stations",
+        "catalog:pl.imgw.stations",
+    )
     assert keys["stations/versions/chmu_stations"] == (
         "cz.chmu.stations",
         "catalog:cz.chmu.stations",
@@ -371,7 +374,7 @@ def test_an_observation_is_the_history_of_its_slot_and_changes_no_count(
     assert env.versions() == produced
     assert sum(p.versions for p in env.queries.products()) == len(produced)
     assert env.queries.issues(STORE) == ()
-    assert env.queries.observations(STORE, "series/versions/hydro_daily") == ()
+    assert env.queries.observations(STORE, "series/versions/imgw_hydro_daily") == ()
     assert env.queries.observations(STORE, "no/such/slot") == ()
     assert env.queries.observations(STORE, slot) == history
     assert again.versions_written == 0

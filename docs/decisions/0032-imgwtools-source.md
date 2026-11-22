@@ -367,12 +367,17 @@ sidecars under the new key and provider. The old names in decisions 1 to 14 read
 3.1.0):** IMGW-PIB's identifiers lose the legal suffix too. The provider this record and
 erratum 2 call `IMGW-PIB` is `IMGW`: the `provider` of the API, of its filters
 `?provider=` and `--provider`, of a station's reference `<store>/IMGW/<code>` and of the
-index, and the hand-off's `provenance.series.source` `imgw` (Nogat's registry id). The
-dataset keys `pl.imgw.*`, the store's directories and the licence id `IMGW-PIB` (which
-names IMGW-PIB's terms in Obserwator's sidecars) are unchanged. Text for a person keeps
-the institute's acronym: the interface and the command line's text name a provider by
-its id through one table (`common.provider_imgw`, `common.provider_chmu` of the
-messages, `provider` of `web/src/labels/common.js`), „IMGW-PIB” and „ČHMÚ” (SPEC 6.7);
-the attribution lines are unchanged. No decision changes and nothing is translated:
-the index is rebuilt (`archiwista reindex`) from a data root Obserwator 3.1.0 built,
-which reads stored sidecars with the provider `IMGW-PIB` as `IMGW`.
+index, and the hand-off's `provenance.series.source` `imgw` (Nogat's registry id). Its
+slugs and store directories start with its acronym as ČHMÚ's do (Nogat's plan,
+decision 1a): `series/versions/imgw_*` (`imgw_hydro_daily`…) and the station catalog
+`stations/versions/imgw_stations` beside `chmu_stations`, no longer `stations/versions`
+itself; PMAXTP, the one dataset without a family, keeps its slug for a product
+(decision 10), now `imgw_pmaxtp`. The dataset keys `pl.imgw.*` and the licence id
+`IMGW-PIB` (which names IMGW-PIB's terms in Obserwator's sidecars) are unchanged. Text
+for a person keeps the institute's acronym: the interface and the command line's text
+name a provider by its id through one table (`common.provider_imgw`,
+`common.provider_chmu` of the messages, `provider` of `web/src/labels/common.js`),
+„IMGW-PIB” and „ČHMÚ” (SPEC 6.7); the attribution lines are unchanged. No decision
+changes and nothing is translated: the index is rebuilt (`archiwista reindex`) from a
+data root Obserwator 3.1.0 built, which reads stored sidecars with the provider
+`IMGW-PIB` as `IMGW`.

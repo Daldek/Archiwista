@@ -105,8 +105,8 @@ def index(tmp_path: Path) -> Iterator[IndexQueries]:
             STORE,
             "obserwator",
             PL,
-            slot="stations/versions",
-            version="stations/versions/2026-10-26_00000000/stations.geojson",
+            slot="stations/versions/imgw_stations",
+            version="stations/versions/imgw_stations/2026-10-26_00000000/stations.geojson",
             stations=stations,
         )
         _write_daily(writer)
