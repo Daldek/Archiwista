@@ -1,17 +1,17 @@
 # Archiwista — specification
 
 **Date:** 2026-10-17
-**Status:** living specification: v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0; the later versions in development or planned (section 13); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
+**Status:** living specification of release 0.3.3: v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0, with the defect fixes of 0.3.1 to 0.3.3 and Obserwator 3.1.0 in 0.3.3; the later versions in development or planned (section 13); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
 [`docs/DECISIONS.md`](DECISIONS.md); interface mockup: the `mockup/` directory
 (section 16)
-**Dependency:** Kartograf 0.8.0 (tag `v0.8.0` from release 0.3.0) — public API
+**Dependency:** Kartograf 0.8 (tag `v0.8.2` in release 0.3.3) — public API
 (`kartograf/__init__.py`, `__all__`) and on-disk formats: sidecar
 `kartograf-meta/1`, the `data/` layout with a version store (`versions/`),
 update plan `kartograf-plan/1`, availability report
 `kartograf-availability/1`, the command of a stored file (KB-6); from v0.6 also KF (merged
 PL + CZ surface, 12.5); from v0.5 Obserwator (IMGW data) —
-a release with requirements IMGW-1..IMGW-13 and IMGW-21 (section 12.7; today 2.1.1, Beta,
-no store): a raw root `obserwator-store/1` and a data root `obserwator-data/1` (Obserwator's
+a release with requirements IMGW-1..IMGW-13 and IMGW-21 (section 12.7; met since 3.0.0, and
+release 0.3.3 reads 3.1.0, tag `v3.1.0`): a raw root `obserwator-store/1` and a data root `obserwator-data/1` (Obserwator's
 ADR-017, A-ADR-056), sidecar `obserwator-meta/1`, series `obserwator-series/1` (12.8), and from
 v0.6 a release with ČHMÚ stations (IMGW-15..IMGW-19). Projects are Archiwista's own
 file `archiwista-project/1` (4.7, A-ADR-049); the producers' project manifests
@@ -209,7 +209,7 @@ keep their meaning.
 | **Derived product** | (proposal for Kartograf) the result of merging, saved in the store as a version with a sidecar and a list of inputs (`extra.source_files[]`, the HSG pattern); in Obserwator's data root, the series of a dataset (Obserwator) | sections 8.1, 4.8 |
 | **IMGW dataset** | A kind of IMGW-PIB archives with a common format, e.g. daily hydro, daily precipitation; the publication unit is a period (year or month) for the whole country | section 4.8 |
 | **IMGW archive** | A file published by IMGW-PIB (e.g. `codz_2024.zip`), saved in Obserwator's raw root 1:1 as an immutable version with a sidecar (`sha256`, `ETag`, `Last-Modified`); slot = the file path on the IMGW server | section 4.8.1, IMGW-4 |
-| **Station** | An IMGW-PIB measuring point: a water gauge (hydro) or a meteorological station (climatological, precipitation); identifier: a 9-digit code, e.g. `149190310`. From v0.6 also a ČHMÚ station (CZ; provider identifier `CHMI`, display name "ČHMÚ") with a WIGOS identifier; station identity = provider + identifier | sections 4.8.1, 4.8.6 |
+| **Station** | An IMGW-PIB measuring point (provider identifier `IMGW`, display name "IMGW-PIB"): a water gauge (hydro) or a meteorological station (climatological, precipitation); identifier: a 9-digit code, e.g. `149190310`. From v0.6 also a ČHMÚ station (CZ; provider identifier `CHMU`, display name "ČHMÚ") with a WIGOS identifier; station identity = provider + identifier | sections 4.8.1, 4.8.6 |
 | **Unpublished** | (ČHMÚ stations) a station file for a given year or an element that the source does not publish; in the Obserwator plan `unverifiable` with `error` `"nieopublikowany"`, in flat download `not_published`. Information, not a problem: unlike `missing` (file published, absent locally) | section 4.8.6, IMGW-16 |
 | **Station catalog** | A versioned list of stations with location, its source and uncertainty (Obserwator, GeoJSON) | section 4.8.1, IMGW-9 |
 | **Series** | The values of the variables of one station from one IMGW dataset over consecutive days (months, half-years): a station Parquet file in a version of the **dataset series**, a snapshot of all stations of the dataset built by Obserwator from specific archive versions | section 4.8.1, IMGW-7 |
@@ -578,7 +578,7 @@ and the key of the Kartograf source descriptor or of an Obserwator dataset — h
 - `<country>` — an ISO 3166-1 alpha-2 code in lowercase, and for supranational
   datasets the scope (`eu.clms.corine`, `global.isric.soilgrids`);
 - `<provider>` — the key prefix assigned by the producer (`gugik`,
-  `cuzk`, `imgw`, `chmi`), not the provider identifier;
+  `cuzk`, `imgw`, `chmu`), not the provider identifier;
 - `<dataset>[_<variant>]` — the dataset name and an optional variant.
 
 Producer commitments (KA-8, IMGW-20):
@@ -595,9 +595,9 @@ Producer commitments (KA-8, IMGW-20):
 3. **Provider from the `provider` field.** The provider's identity is in the
    `provider` field of the sidecar and the descriptor (Kartograf: the descriptor's `provider_name`,
    e.g. `GUGiK`, `CUZK`, `Copernicus CLMS`, `ISRIC` —
-   `Kartograf/src/kartograf/sources/sidecar.py:259`; Obserwator: `IMGW-PIB`,
-   `CHMI` — IMGW-15), and the country in the `country` field; the middle part of the key
-   (`imgw`, `chmi`) is not a provider identifier.
+   `Kartograf/src/kartograf/sources/sidecar.py:259`; Obserwator: `IMGW`,
+   `CHMU` — IMGW-15), and the country in the `country` field; the middle part of the key
+   (`imgw`, `chmu`) is not a provider identifier.
 
 Archiwista treats the key as an opaque identifier: it compares it
 as a whole (index, filters, linking a version to a segment), but never
@@ -652,9 +652,9 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | Table | What it holds |
 |---|---|
 | `stores` | stores: identifier (a short name given by the user, e.g. `zespol`), producer directories (Kartograf, Obserwator) and path aliases, availability, scan times and statistics |
-| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for Obserwator the name of the dataset from the Obserwator registry in Polish, for a station catalog or stored analyses the name after its provider, the country of the provider and the family of the dataset as the product: `hydro`, `meteo`, `pmaxtp`, `stations` or `analyses`, because Obserwator has no products and the "Magazyn" (Store) view and the Map panel group by product — ADR 0032, decision 10; a producer without a list of segments, like Obserwator, describes the segments that its entries named, after the pass), recognized / unrecognized |
+| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for Obserwator the name of the dataset from the Obserwator registry in Polish, for a station catalog or stored analyses the name after its provider, the country of the provider and the family of the dataset as the product: `hydro`, `meteo`, `imgw_pmaxtp` (the slug of PMAXTP, which has no family), `stations` or `analyses`, because Obserwator has no products and the "Magazyn" (Store) view and the Map panel group by product — ADR 0032, decision 10; a producer without a list of segments, like Obserwator, describes the segments that its entries named, after the pass), recognized / unrecognized |
 | `slots` | slots: segment, hierarchy, name, unit kind and code, the producer's slot key (`slot_key`, opaque to the index), current version, `full_sheet/` version, number of versions; in the Obserwator catalog a slot is an archive file (path on the server), a station directory or the dataset series — the name of an archive slot is its file, that of a station directory its key (`catalog:pl.imgw.stations`), and the slot key is the Obserwator key (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) |
-| `versions` | versions: label and its source, `sha256`, size, coordinate systems, resolution, `nodata`, data year and date, campaign and request number, release, download date, provider (`provider`: `IMGW-PIB`, `CHMI`), full sheet, coverage (`extra.coverage`), license, `parent_request` group key, native extent and its source, kind of location (`footprint`, `country`, `none` with a reason; A-ADR-022), state, full sidecar (JSON) |
+| `versions` | versions: label and its source, `sha256`, size, coordinate systems, resolution, `nodata`, data year and date, campaign and request number, release, download date, provider (`provider`: `IMGW`, `CHMU`), full sheet, coverage (`extra.coverage`), license, `parent_request` group key, native extent and its source, kind of location (`footprint`, `country`, `none` with a reason; A-ADR-022), state, full sidecar (JSON) |
 | `observations` | the publication history of a slot (Obserwator only): a source served other bytes with the content of a version the producer already has — time, address, `ETag`, `Last-Modified`, size, `sha256` and the version with that content; it is neither a version nor a current version and enters no count; a record the pass did not see disappears |
 | `footprints` | R*Tree: version extent in WGS84 (area filter and map) — only versions with a footprint |
 | `stations` | stations from the current version of the station catalog: code, kind, name, river, hydrographic code (with a prefix index, P19) and order, location (WGS84) with source and uncertainty, or no location with the reason from the catalog (IMGW-9), 1° square from the code, active or historical, year established, gauge zero elevation, river kilometre |
@@ -775,7 +775,7 @@ Rules common to all producers and products:
   version and does not change the current version.
 - **The stations of a station catalog** (v0.5, plan 2026-10-25 I4) come from the
   current version of each provider's catalog (slots `catalog:pl.imgw.stations`,
-  `catalog:cz.chmi.stations`; the capability `StationCatalogAdapter`): after a
+  `catalog:cz.chmu.stations`; the capability `StationCatalogAdapter`): after a
   pass over the whole store the index reads a catalog with `read_catalog` only
   when its current version is not the one the stations were read from (a full
   scan reads every catalog again), and replaces the provider's rows and points in
@@ -1118,7 +1118,7 @@ data (`pl.imgw.actinometric`) (Obserwator ADR-023); Archiwista does not index th
 | **Series** | station × dataset: variables with units, interval (day, month, half-year, year), kind of years, for each variable the first and last date with a value and a list of gaps | the station's Parquet file in the dataset's series version and the `series.json` listing (IMGW-7, IMGW-8) |
 | **Dataset series** | version = snapshot of the series of all stations in the dataset built from specified versions of archives (`source_files[]`); the periods of the inputs (`periods`, and for ČHMÚ stations — the station periods `stations[<code>].periods`) determine the known years (4.8.4) | `obserwator-meta/1` sidecar and the listing (12.8) |
 | **IMGW archive** | path on the server (slot `archive:<key>:<path relative to the dataset directory>`, e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`), period (year or month), versions with `sha256`, size, `ETag`, `Last-Modified` and download date; for ČHMÚ also signal observations (`observations/`, `obserwator-observation/1`) — the publication history of a file without new content, not versions (4.8.6) | `obserwator-meta/1` sidecar (IMGW-3, IMGW-5, IMGW-16) |
-| **Station catalog** | a version of the station list with locations, separate for each provider (slots `catalog:pl.imgw.stations`, `catalog:cz.chmi.stations`); sources (URL, time, number of stations) in the sidecar | IMGW-9, IMGW-17 |
+| **Station catalog** | a version of the station list with locations, separate for each provider (slots `catalog:pl.imgw.stations`, `catalog:cz.chmu.stations`); sources (URL, time, number of stations) in the sidecar | IMGW-9, IMGW-17 |
 
 **Versions.** The identity of a version is the SHA-256 of the bytes (as in Kartograf),
 and the label is only a name — a UTC date, and when on the same day
@@ -1171,6 +1171,13 @@ is only a rough hint there. The location uncertainty is the
 greater of: 150 m (p90 of differences between sources, rounded up)
 and half the coordinate rounding step (two decimal places — up to
 about 550 m).
+
+A located station's `location_source` names where its position came from (Obserwator
+3.1.0, Nogat ECO-082): the key of the dataset, `pl.imgw.hydro_now` and
+`pl.imgw.meteo_now` (the two public APIs above), `cz.chmu.hydro_now`,
+`cz.chmu.hydro_stations`, `cz.chmu.meteo_now` and `cz.chmu.meteo_stations` (ČHMÚ's,
+4.8.6), or `static` (Obserwator's location file) and `user` (the user's coordinates
+file). Archiwista shows it as the dataset's label of the "Katalog" (Catalog).
 
 #### 4.8.2 Time
 
@@ -1240,7 +1247,13 @@ and a variable:
   (`stations[<code>].periods` — datasets with station files, ČHMÚ), the units
   known for a station are the units of R in its periods (A-ADR-021 errata 3).
   The rest are **unknown** (archive or station file not downloaded, year
-  not published by ČHMÚ, series not prepared) and are not gaps.
+  not published by ČHMÚ, series not prepared, year not chosen for a series version of
+  chosen stations and years) and are not gaps.
+  Since Obserwator 3.1.0 a series version may hold a subset of its dataset's stations
+  and years (`subset` of `series.json`, Obserwator ADR-026), whose periods are cut to
+  the chosen years: Archiwista reads it as any version, so the years not chosen are
+  unknown, not gaps, and a station not chosen has no series of the dataset, as a station
+  without series (on the map a point without coverage colour).
   A year is known when all its units are known.
 - **Value** — a unit with a value after normalization (4.8.3); a cumulative
   precipitation sum is the value of the day on which it was reported, and the days before it
@@ -1352,15 +1365,15 @@ From v0.6 Obserwator also writes ČHMÚ data to the same Obserwator directory (�
 
 | Dataset | ČHMÚ archives | Variables | Interval, years |
 |---|---|---|---|
-| Daily hydro (`cz.chmi.hydro_daily`) | `hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON file per station and year | H [cm], Q [m³/s], T [°C] | day; archives numbered by calendar years (`year_type` `calendar`), the view — both kinds of years |
-| Daily meteo (`cz.chmi.meteo_daily`) | `meteorology/climate/historical_csv/data/daily/{precipitation,temperature}/dly-<WIGOS>-{SRA,T,TMA,TMI}.csv` — one CSV file per station and element, whole history | precipitation `P` [mm], air temperature `Tmean`, `Tmax`, `Tmin` [°C] | day; `year_type` `calendar`, the view — both kinds of years |
+| Daily hydro (`cz.chmu.hydro_daily`) | `hydrology/historical/data/daily/H_<WIGOS>_DQ_<year>.json` — one JSON file per station and year | H [cm], Q [m³/s], T [°C] | day; archives numbered by calendar years (`year_type` `calendar`), the view — both kinds of years |
+| Daily meteo (`cz.chmu.meteo_daily`) | `meteorology/climate/historical_csv/data/daily/{precipitation,temperature,snow}/dly-<WIGOS>-{SRA,T,TMA,TMI,SCE,SNO}.csv` — one CSV file per station and element (six per station since Obserwator 3.1.0, its ADR-003 erratum of 2026-11-21), whole history | precipitation `P` [mm], air temperature `Tmean`, `Tmax`, `Tmin` [°C], snow cover `snow_cover` and fresh snow `fresh_snow` [cm] (Obserwator 3.1.0) | day; `year_type` `calendar`, the view — both kinds of years |
 
 Differences from IMGW, which Obserwator handles and Archiwista only displays:
 
-- **Provider**: the identifier `CHMI` (machine value in `provider` of sidecars, entries and filters), display name "ČHMÚ" from the Obserwator provider descriptor; the dataset key prefix `cz.chmi.` is not the provider identifier (IMGW-15).
+- **Provider**: the identifier `CHMU` (machine value in `provider` of sidecars, entries and filters), display name "ČHMÚ" from the Obserwator provider descriptor; the dataset key prefix `cz.chmu.` is not the provider identifier (IMGW-15).
 - **The publication unit is the station**, not the country: there is no archive of the whole country, so the freshness check and synchronization cover selected stations (area, list of codes, project job), not "the whole dataset". A station file for a year that ČHMÚ does not publish has the state "nieopublikowany" (unpublished) (Obserwator: `unverifiable` with `error` `"nieopublikowany"`): neutral information, not an error or a problem, and not the same as `missing` ("nowy plik u źródła" (new file at the source) — published, not downloaded). In coverage such a year is unknown, not a gap (IMGW-16). Station selection is mandatory (`stations`), years are chosen only for hydro (a meteo file covers the station's whole history); IMGW-PIB and ČHMÚ are not combined in one check.
-- **Versions and pins** (ADR-003 D6, D14, D17, D18 Obserwator): the same bytes under a new signal = `relabeled`, as with IMGW; different bytes of the same canonical content (`content_sha256`, form `chmi-json/1`: JSON in canonical form without the envelope fields `zaznamID` and `datumVytvoreni`; `cz.chmi.hydro_daily` and the station lists have it) = `unchanged` without a new version, and the new signal goes once to the `observations/` registry of the slot. Archiwista shows observations as the publication history of a file — they are not versions or problems. A ČHMÚ pin is restored with identical bytes or explicitly by content (`restored_by_content`, job state `content_match` — "zgodne treścią" (matching by content), not "bieżące" (current)); a project job concerns one dataset, so one provider.
-- **Identifier** of a station is WIGOS (e.g. `0-203-0-…`); identity in the index and in project jobs = provider + identifier, so PL and CZ codes do not collide. The ČHMÚ station catalog is a separate version (`stations/versions/chmi_stations/…`, slot `catalog:cz.chmi.stations`; hydro from the metadata `meta1.json` and `meta3.json`, meteo from `meta1-<YYYYMMDD>.json`, both families also from station list archives) with the same fields and rules for missing location as 4.8.1 (`meteo_kind`, `river_order`, `gauge_zero_m`, `river_km` empty), with SPA thresholds in the `thresholds` object; the hydro catchment hierarchy code is `HLGP4` (text, e.g. `1-05-03-0110`; meteo does not have it), and the prefix filter by full segments (e.g. `1-05`) works like P19.
+- **Versions and pins** (ADR-003 D6, D14, D17, D18 Obserwator): the same bytes under a new signal = `relabeled`, as with IMGW; different bytes of the same canonical content (`content_sha256`, form `chmu-json/1`: JSON in canonical form without the envelope fields `zaznamID` and `datumVytvoreni`; `cz.chmu.hydro_daily` and the station lists have it) = `unchanged` without a new version, and the new signal goes once to the `observations/` registry of the slot. Archiwista shows observations as the publication history of a file — they are not versions or problems. A ČHMÚ pin is restored with identical bytes or explicitly by content (`restored_by_content`, job state `content_match` — "zgodne treścią" (matching by content), not "bieżące" (current)); a project job concerns one dataset, so one provider.
+- **Identifier** of a station is WIGOS (e.g. `0-203-0-…`); identity in the index and in project jobs = provider + identifier, so PL and CZ codes do not collide. The ČHMÚ station catalog is a separate version (`stations/versions/chmu_stations/…`, slot `catalog:cz.chmu.stations`; hydro from the metadata `meta1.json` and `meta3.json`, meteo from `meta1-<YYYYMMDD>.json`, both families also from station list archives) with the same fields and rules for missing location as 4.8.1 (`meteo_kind`, `river_order`, `gauge_zero_m`, `river_km` empty), with SPA thresholds in the `thresholds` object; the hydro catchment hierarchy code is `HLGP4` (text, e.g. `1-05-03-0110`; meteo does not have it), and the prefix filter by full segments (e.g. `1-05`) works like P19.
 - **Format**: hydro — JSON in UTF-8 (missing = no row or `null`), meteo — CSV (missing = empty `VALUE`); normalization to records with a flag (4.8.3; meteo also the source `QUALITY` and `FLAG` in the columns `<V>_quality`, `<V>_source_flag`) and the `hydro_year` column (XI–X) are on the Obserwator side; the inventory has `year_type` `calendar` and station periods (`stations[<code>].periods`), so the labels of 4.8.4 (units known per station) and the year-kind switch work unchanged.
 - **License** CC BY 4.0 (`license.id` `CC-BY-4.0`, additive `terms_url`): ČHMÚ attribution in `license.attribution` of sidecars (IMGW-19; in series, catalog and export with a note about processing). Archiwista's products carry the line C "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)" and, for processed data, the line CP "Dane ČHMÚ zostały przetworzone", once and never saying how (Nogat ECO-071): Obserwator's series and station catalog, as stored and in a hand-off, and Archiwista's station views (map, lists, card, chart, comparison); an older product's "Dane ČHMÚ zostały przetworzone (…)", whatever its words in parentheses, is read as CP; an archive as published C alone; never a terms notice (4.8.5, A-ADR-055). The lines come from Archiwista's catalog, not from the sidecar; the IMGW regulations (4.8.5) do not apply to ČHMÚ stations.
 
@@ -1520,7 +1533,7 @@ which producer wrote the file:
 | `command_for_version(version, *, root)` | optional (`VersionCommandAdapter`): the call that selects a stored version, from its metadata, offline; the producer's coded refusal is `unsupported` / `command_not_rebuildable` (4.7, A-ADR-049) | `command_for_file(sidecar)` (KB-6) | `command_for_version(version, root=…)` (IMGW-21) for a version of the raw root; a version of the data root (a series, a station catalog, analyses) is refused as `unsupported` / `command_not_rebuildable` with the text `source.obserwator_data_version`, which names the Obserwator command that builds it (A-ADR-056) |
 | `export_folder(product, dataset_key)` | optional (`ExportFolderAdapter`): the category folder of a version in a project's export (`NMT`, `BDOT`, `ORTO`…), a table in the adapter; without it the upper-cased product id (8.4, A-ADR-049 erratum 1) | a table of Kartograf's products in the adapter | `IMGW` |
 | `product_name(product)` | optional (`ProductNameAdapter`): the Polish name of a product for people, offline; without it, or `None`, the product is named after its biggest segment (6.3) | — | „Stacje hydrologiczne” (`hydro`), „Stacje meteorologiczne” (`meteo`) |
-| `data_origin(path, segment)` | optional (`DataOriginAdapter`): whose data a version holds and in what form (`DataOrigin`: `imgw_file`, `imgw_processed`, `imgw_stations`, `pmaxtp`, `chmi_file`, `chmi_processed`), offline, no disk access; Archiwista chooses the lines of the providers' terms by it (4.8.5); without it, or `None`, a version carries its sidecar's attribution alone (A-ADR-055) | — | by tree and the dataset's provider: `archives/` → `imgw_file`, `chmi_file`; `series/` and `analyses/` → `imgw_processed`, `chmi_processed`; `stations/` → `imgw_stations`, `chmi_processed`; `pmaxtp/` → `pmaxtp` |
+| `data_origin(path, segment)` | optional (`DataOriginAdapter`): whose data a version holds and in what form (`DataOrigin`: `imgw_file`, `imgw_processed`, `imgw_stations`, `pmaxtp`, `chmu_file`, `chmu_processed`), offline, no disk access; Archiwista chooses the lines of the providers' terms by it (4.8.5); without it, or `None`, a version carries its sidecar's attribution alone (A-ADR-055) | — | by tree and the dataset's provider: `archives/` → `imgw_file`, `chmu_file`; `series/` and `analyses/` → `imgw_processed`, `chmu_processed`; `stations/` → `imgw_stations`, `chmu_processed`; `pmaxtp/` → `pmaxtp` |
 | `default_root()` | optional: the directory the producer uses when a call names no store, with the layer of the settings that gave it, whether it exists and whether it holds the marker; the wizard offers it and `archiwista doctor` prints it, no call ever uses it (A-ADR-033) | `store_root()` | `store_root(kind="raw")` of `obserwator` (`OBSERWATOR_RAW_ROOT`, `[obserwator] raw_root` of `nogat.toml`, else `<data_dir>/obserwator-raw`) |
 | `default_data_root()` | optional (`DataRootAdapter`): as `default_root()`, the producer's default data root and whether it holds the data marker; offered under the empty data-root field, never used (A-ADR-056) | — | `store_root(kind="data")` (`OBSERWATOR_ROOT`, `[obserwator] root` of `nogat.toml`, else `<data_dir>/obserwator`) |
 
@@ -1845,10 +1858,11 @@ libraries required (Obserwator Beta would block releases, version conflicts),
 reading formats and calling the CLI without dependencies (breaks A-ADR-014),
 producers as HTTP services (cost).
 
-**Installation.** Kartograf is a required dependency (pinned by a commit of its `develop`
-until its tag, REL-5.3: from release 0.3.0 the tag `v0.8.0`, and Obserwator's `v3.0.0`;
-while a commit is pinned the adapter reads `>=0.8.0.dev0,<0.9`, `SUPPORTED_VERSIONS`, narrowed
-at the release, REL-5.6 — the public store reading KA-1..KA-6 arrives in Kartograf 0.8.0;
+**Installation.** Kartograf is a required dependency (pinned by its tag, in release 0.3.3
+`v0.8.2`, and Obserwator's `v3.1.0`; while a producer's release is pending, by its commit,
+REL-5.3; the adapters read Kartograf `>=0.8.0,<0.9` and Obserwator `>=3.1.0,<4`,
+`SUPPORTED_VERSIONS`, which start at the development version while a commit is pinned,
+REL-5.6 — the public store reading KA-1..KA-6 arrives in Kartograf 0.8.0;
 A-ADR-024 erratum 1), Obserwator is an extra:
 
 ```bash
@@ -2779,8 +2793,8 @@ confirmed by the user on 2026-10-26, M11):
   beside, merged) and under the list of "Projekty" (Projects: the lines of the data the listed
   projects and the chosen one pin, merged); an answer without lines shows none.
 - **ČHMÚ stations (from v0.6, 4.8.6).** The same views and rules; the point, row
-  and card have a supplier badge ("IMGW-PIB", "ČHMÚ" — the display name
-  for the identifier `CHMI`), the "Dostawca" (Supplier) filter works in the map
+  and card have a supplier badge ("IMGW-PIB", "ČHMÚ" — the display names
+  for the identifiers `IMGW` and `CHMU`), the "Dostawca" (Supplier) filter works in the map
   and the "Katalog" (Catalog), and the comparison combines stations of both suppliers on a
   common timeline. "Sprawdź aktualność" (Check freshness) and "Pobierz archiwa…" (Download archives…) for ČHMÚ
   stations cover only the selected stations (archives per station). The result of the
@@ -3363,7 +3377,8 @@ the missing location), not as points of the station layer (6.8; v1.1).
 **ZIP.** With `zip` the folder's content (the category folders, `README.txt` and `ATTRIBUTION.txt`, no top
 directory) is also `<project directory>/eksport/<name>.zip`, written under a temporary name
 and renamed; `GET /projects/{project}/exports/{name}/zip` sends it as an attachment
-(`Cache-Control: private, no-store`), to a link of the interface without the CSRF header as
+`archiwista_export_<project>_<name>.zip` (Nogat DEV-19.21, the name in lower-case ASCII with
+`-` for anything else; `Cache-Control: private, no-store`), to a link of the interface without the CSRF header as
 a file download (A-ADR-047 decision 5).
 
 **Where it is saved.** `<project directory>/eksport/<name>/`, not in the store, without
@@ -3673,7 +3688,7 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /groups`, `POST /groups`, `PUT /groups/{id}/members`, `DELETE /groups/{id}` | groups (e.g. departments) and memberships — administrator only |
 | `GET /directory` | any session, from v0.4: the enabled accounts (`id`, `name`) and the groups (`id`, `name`) to share a project with |
 | `GET /projects/{id}/access`, `PUT /projects/{id}/access` | owner and visibility of a project (`public`, `users`, `group`, `private`) with a list of people and groups — owner or administrator; every change goes to the action log |
-| `GET /log`, `GET /log/export` | administrator, from v0.4: the action log newest first (filters `actor`, `action`, `outcome`, `target`, `since`, `until`; a cursor); the export streams the same entries as `format=jsonl` or `csv` (cells that could start a formula are escaped) and is itself an entry (10.2) |
+| `GET /log`, `GET /log/export` | administrator, from v0.4: the action log newest first (filters `actor`, `action`, `outcome`, `target`, `since`, `until`; a cursor); the export streams the same entries as `format=jsonl` or `csv` (cells that could start a formula are escaped), an attachment `archiwista_log_<UTC date>_<time>Z.<format>` (Nogat DEV-19.21), and is itself an entry (10.2) |
 | `GET /preferences`, `PUT /preferences` | any session, its own preferences (the owner's in local mode; an agent's are its account's; the defaults before the first change): `year_types` (`hydro`, `meteo`: `hydrological` or `calendar`, by default hydrological and calendar; the numbering of the station routes without `year_type`, 6.7), `basemap` (a configured basemap's name, `""` for none, `null` for the first configured one; another name is `400 unknown_basemap`) and `path_aliases` (at most 20 pairs `server` (an absolute prefix on the server) and `personal` (the same place on the person's computer), each at most 400 characters) applied only to paths shown and copied (`CopyPath.personal`: through the first alias whose server prefix holds the path, `null` without one), never to the server's access to files (10.2); `PUT` replaces them all (an omitted field takes its default) and is not logged (A-ADR-047) |
 | `POST /feedback` | any session: a report of "Zgłoś uwagę" (Hydrograf's mechanism and limits): `message` (1 to 5,000 characters, blank refused), `contact` (at most 200), `page_url` (at most 500), `diagnostics` (any JSON object of at most 100,000 characters as compact JSON: the interface's last 50 events, the view and its parameters, the environment; never a request body, a token or a file's content) → `201 {id, status: "ok"}`; kept with the account that sent it (none for the local owner) and the `User-Agent` (cut to 500); over a limit `400 validation_error`; not logged |
 | `GET /admin/feedback`, `PATCH /admin/feedback/{id}`, `DELETE /admin/feedback/{id}` | administrator (`feedback.manage`), the core feedback API of Nogat DEV-15.13 behind Archiwista's own role check, every answer `Cache-Control: no-store` (as every answer under `/admin/`): the reports newest first (`limit` 1–200, default 50; `offset`) as `{items, total, unread_count}`, each report `{id, created_at, message, context, is_read}` with `context` `{user_id, contact, page_url, user_agent, diagnostics}`; marking one read or unread (`{is_read}`, a strict boolean; answers the report); deleting one (`{"status": "deleted"}`); an unknown report `404 not_found`, reason `feedback_not_found`; the view "Zgłoszenia" (6.5), the kit's `<nogat-admin-feedback>` |
@@ -3827,7 +3842,7 @@ answer the same):
   "details": {
     "reason": "source_unavailable",
     "source": {"id": "obserwator", "state": "not_installed", "package_version": null,
-               "supported_versions": ">=3.0.0.dev0,<4", "requirement": "archiwista[obserwator]"}
+               "supported_versions": ">=3.1.0,<4", "requirement": "archiwista[obserwator]"}
   }
 }
 ```
@@ -3846,7 +3861,7 @@ numbers)
   "items": [
     {
       "store": "zespol",
-      "provider": "IMGW-PIB",
+      "provider": "IMGW",
       "code": "149190310",
       "name": "STRÓŻA",
       "kind": "hydro",
@@ -3860,9 +3875,9 @@ numbers)
       "river_km": 74.3,
       "elevation_m": null,
       "catalog": "2026-10-17",
-      "catalog_version": "stations/versions/2026-10-17_5c1d9a20/stations.geojson",
+      "catalog_version": "stations/versions/imgw_stations/2026-10-17_5c1d9a20/stations.geojson",
       "location": {"kind": "point", "lon": 19.9247, "lat": 49.7963, "reason": null,
-                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+                   "source": "pl.imgw.hydro_now", "uncertainty_m": 150.0, "on_boundary": false},
       "series": [
         {
           "dataset": "pl.imgw.hydro_daily",
@@ -3871,8 +3886,8 @@ numbers)
           "year_type": "hydrological",
           "years": {"from": 1951, "to": 2025},
           "series": "2026-08-31",
-          "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
-          "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+          "series_version": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/series.json",
+          "file": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
           "sha256": "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623",
           "license": "IMGW-PIB",
           "attribution": "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone",
@@ -3920,13 +3935,13 @@ the default "Kolor punktów"; `name` is the producer's name of the segment)
       "store": "zespol",
       "dataset": "pl.imgw.hydro_daily",
       "name": "Dane hydrologiczne dobowe",
-      "provider": "IMGW-PIB",
+      "provider": "IMGW",
       "kind": "hydro",
       "time_unit": "day",
       "year_type": "hydrological",
       "years": {"from": 1951, "to": 2025},
       "series": "2026-08-31",
-      "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
+      "series_version": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/series.json",
       "variables": [
         {"key": "H", "variable": "H", "unit": "cm", "period": null},
         {"key": "Q", "variable": "Q", "unit": "m3/s", "period": null},
@@ -3968,7 +3983,7 @@ station; one of its variables and three of its 75 years shown)
   "items": [
     {
       "store": "zespol",
-      "provider": "IMGW-PIB",
+      "provider": "IMGW",
       "code": "149190310",
       "name": "STRÓŻA",
       "kind": "hydro",
@@ -3977,7 +3992,7 @@ station; one of its variables and three of its 75 years shown)
       "hydrographic_code": "2138",
       "active": true,
       "location": {"kind": "point", "lon": 19.9247, "lat": 49.7963, "reason": null,
-                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+                   "source": "pl.imgw.hydro_now", "uncertainty_m": 150.0, "on_boundary": false},
       "series": [
         {
           "dataset": "pl.imgw.hydro_daily",
@@ -4023,14 +4038,14 @@ station; one of its variables and three of its 75 years shown)
 ```json
 {
   "store": "zespol",
-  "provider": "IMGW-PIB",
+  "provider": "IMGW",
   "code": "149190310",
   "dataset": "pl.imgw.hydro_daily",
   "kind": "hydro",
   "time_unit": "day",
   "series": "2026-08-31",
-  "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
-  "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+  "series_version": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/series.json",
+  "file": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
   "sha256": "…",
   "from": "1950-11-01",
   "to": "2025-10-31",
@@ -4062,7 +4077,7 @@ station; one of its variables and three of its 75 years shown)
 }
 ```
 
-**Comparison** — `GET /api/v1/stations/compare?station=zespol/IMGW-PIB/149190310&station=zespol/IMGW-PIB/149200090&dataset=pl.imgw.hydro_daily&variable=Q&max_points=2000`
+**Comparison** — `GET /api/v1/stations/compare?station=zespol/IMGW/149190310&station=zespol/IMGW/149200090&dataset=pl.imgw.hydro_daily&variable=Q&max_points=2000`
 (one range and interval for both stations; the second has no series of the dataset;
 `coverage` and `chart` as on the card and in the chart data above, shortened;
 illustrative values)
@@ -4080,14 +4095,14 @@ illustrative values)
   "interval": 14,
   "stations": [
     {
-      "store": "zespol", "provider": "IMGW-PIB", "code": "149190310", "name": "STROZA",
+      "store": "zespol", "provider": "IMGW", "code": "149190310", "name": "STROZA",
       "kind": "hydro", "river": "Raba", "hydrographic_code": "2138",
       "location": {"kind": "point", "lon": 19.9247, "lat": 49.7963, "reason": null,
-                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+                   "source": "pl.imgw.hydro_now", "uncertainty_m": 150.0, "on_boundary": false},
       "years": {"from": 1951, "to": 2025},
       "series": "2026-08-31",
-      "series_version": "series/versions/hydro_daily/2026-08-31_ab12cd34/series.json",
-      "file": "series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
+      "series_version": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/series.json",
+      "file": "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet",
       "sha256": "…",
       "license": "IMGW-PIB",
       "attribution": "Źródłem pochodzenia danych jest … zostały przetworzone.",
@@ -4096,10 +4111,10 @@ illustrative values)
                 "gaps": [{"from": "1981-06-02", "to": "1982-12-31", "units": 578}], "markers": []}
     },
     {
-      "store": "zespol", "provider": "IMGW-PIB", "code": "149200090", "name": "PROSZOWKI",
+      "store": "zespol", "provider": "IMGW", "code": "149200090", "name": "PROSZOWKI",
       "kind": "hydro", "river": "Szreniawa", "hydrographic_code": "2136",
       "location": {"kind": "point", "lon": 20.29, "lat": 50.19, "reason": null,
-                   "source": "api_hydro", "uncertainty_m": 150.0, "on_boundary": false},
+                   "source": "pl.imgw.hydro_now", "uncertainty_m": 150.0, "on_boundary": false},
       "years": null, "series": null, "series_version": null, "file": null, "sha256": null,
       "license": null, "attribution": null, "coverage": null, "chart": null
     }
@@ -4267,11 +4282,11 @@ over TLS.
   (`vendor.json`, `archiwista-docs.js`) are excluded by name. Nogat's GUI kit
   (`src/archiwista/web/nogat/`: the menu "Aplikacje", the hand-off module, the strip of
   the providers' lines `<nogat-sources>`, the administrators' views (`<nogat-admin-feedback>`), the regulamin files and the marks of the GUIs;
-  kit 1.0.0) is copied from Nogat whole, byte for byte and never edited; the same
+  kit 1.1.0) is copied from Nogat whole, byte for byte and never edited; the same
   test checks each kit file against the kit's own manifest `nogat-kit.json`
   (A-ADR-054). The Python
   environment is pinned by `uv.lock` (`uv sync --locked`, DEV-6.3); Kartograf and Obserwator
-  are pinned by commit in `pyproject.toml` until their tags (REL-5.3; from release 0.3.0 `v0.8.0` and `v3.0.0`). Updating an external library: download
+  are pinned by tag in `pyproject.toml` (release 0.3.3: `v0.8.2` and `v3.1.0`; by commit while a producer's release is pending, REL-5.3). Updating an external library: download
   the package from the source, check `integrity`, replace the files and sums
   in the manifest in the same commit.
 
@@ -4695,7 +4710,7 @@ needs IMGW-15..IMGW-19 in the same contracts (`obserwator-store/1`,
 `obserwator-meta/1`, `obserwator-series/1`, `imgw-project/1` — additive changes according to
 IMGW-13) and through the same read API, so that the Obserwator adapter can handle both
 providers without a separate path. Obserwator implemented this as the
-`CHMI` provider (display name "ČHMÚ") of the `obserwator` package (ADR-003 Obserwator,
+`CHMU` provider (display name "ČHMÚ") of the `obserwator` package (ADR-003 Obserwator,
 accepted 2026-10-18; spec
 `docs/superpowers/specs/2026-10-18-chmi-provider-design.md`; the value domains of `/1`
 widened before tag 3.0.0, and the provider code — according to
@@ -4735,17 +4750,17 @@ did not repeat them.
 | IMGW-7 | **Dataset series**: `build_series(root, /, *, dataset, …) -> SeriesReport` (`new`, `unchanged`, `cancelled`, `failed`) — a snapshot of all stations of the dataset from the current archive versions, including stations with gaps and without location (nothing is skipped because of missing data, P14): an `obserwator-series/1` Parquet file per station (columns `date`, `hydro_year`, `<V>_value`, `<V>_flag`) and the `series.json` index (12.8); the `hydro_year` column in all datasets, also meteo (both kinds of years for both kinds of data, P15); `source_files[]` = input archives; the same set of input `sha256` and the same schema version = `unchanged`, without writing (HSG pattern, ADR-036 D33) — it also protects against versions that differ only in the write bytes of the Parquet library; publication as in IMGW-2 | chart, coverage, set and Hydrolog without parsing archives | v0.5 |
 | IMGW-8 | **Series coverage**: `summarize_coverage(records, /, *, dataset, station_periods=None) -> list[StationCoverage]` — separately for each variable of a station (P16; result per station × variable, no station aggregate): first and last date with a value, list of gaps (from–to), number of units with a value and accumulated sums (`with_value`, `accumulated`); stored in `series.json` together with the input periods (`periods`; in datasets with station files, ČHMÚ, also the station periods `stations[<code>].periods`) | labels of 4.8.4 for any range and kind of years without reading series (A-ADR-021) | v0.5 |
 | IMGW-9 | **Station catalog**: a versioned `stations.geojson` (RFC 7946) with the fields from 4.8.1 for hydro and meteo; sources and validation from 4.8.1 (public IMGW API → Obserwator local location file → user file `station_code,latitude,longitude[,source]`, which supplements locations only — a code present only in it goes to `CatalogReport.problems`, not to the catalog; `0,0` and points outside the country = no location); a station without a location is a full entry (`geometry: null` and the reason for the lack: `none`, `zero`, `outside_country`), never skipped (P13, A-ADR-022); the hydrographic code as text (prefix comparison, P19) and the order from the IMGW list (rejected in 2.1.1, `IMGWTools/src/imgwtools/stations.py:284-292`); fix of the nonexistent field `riverName` (`IMGWTools/src/imgwtools/stations.py:349`); the `hydro-back` map API not required; `meteo_kind` = `climate` \| `precipitation` \| `null` (a station without a current series; ČHMÚ always `null`; Archiwista shows `null` as "rodzaj nieznany" (kind unknown), not an error): `slave` at `cb6af4f` always writes `null` — filled in 3.0.0 (fix on branch fix/archiwista-compat-2) | stations on the map, in the "Katalog" (Catalog) (also without location) and in the catchment; rebuildable station selection when sources change | v0.5 |
-| IMGW-10 | **Read API** (the counterpart of KA): `store_info(root, /)` (contract versions, providers), `iter_store(root, /, *, kind=None, provider=None) -> Iterator[StoreEntry]` (entries `archive`, `series`, `catalog`, `pmaxtp`, `observation` and `problem` with `problem_code` — among others `.incoming/` older than 24 h, unreadable sidecar, unknown schema version, version directory without a sidecar (`missing_sidecar`: interrupted or ongoing publication, IMGW-2 — a non-critical and possibly transient problem), unknown directory; ČHMÚ signal observations are publication history, not versions or problems), `read_meta(path, /) -> Meta` (typed, tolerant; `path` = main file of the version or its sidecar), `current_version(root, /, *, slot)` (slots `archive:<key>:<path>`, `series:<key>`, `catalog:pl.imgw.stations` \| `catalog:cz.chmi.stations`; a damaged version in a slot → `ObserwatorDataError`, and the adapter then shows the slot's problems from `iter_store`; a directory without a sidecar is not a version and is skipped without error), `read_catalog(version=None, /, *, root=None, provider=None)`, `read_series_index(version, /)`, `read_series(version=None, /, *, root=None, dataset=None, station, variables=None, start=None, end=None) -> Iterator[NormalizedRecord]` | Obserwator adapter without its own file parser (A-ADR-014, A-ADR-019) | v0.5 |
+| IMGW-10 | **Read API** (the counterpart of KA): `store_info(root, /)` (contract versions, providers), `iter_store(root, /, *, kind=None, provider=None) -> Iterator[StoreEntry]` (entries `archive`, `series`, `catalog`, `pmaxtp`, `observation` and `problem` with `problem_code` — among others `.incoming/` older than 24 h, unreadable sidecar, unknown schema version, version directory without a sidecar (`missing_sidecar`: interrupted or ongoing publication, IMGW-2 — a non-critical and possibly transient problem), unknown directory; ČHMÚ signal observations are publication history, not versions or problems), `read_meta(path, /) -> Meta` (typed, tolerant; `path` = main file of the version or its sidecar), `current_version(root, /, *, slot)` (slots `archive:<key>:<path>`, `series:<key>`, `catalog:pl.imgw.stations` \| `catalog:cz.chmu.stations`; a damaged version in a slot → `ObserwatorDataError`, and the adapter then shows the slot's problems from `iter_store`; a directory without a sidecar is not a version and is skipped without error), `read_catalog(version=None, /, *, root=None, provider=None)`, `read_series_index(version, /)`, `read_series(version=None, /, *, root=None, dataset=None, station, variables=None, start=None, end=None) -> Iterator[NormalizedRecord]` | Obserwator adapter without its own file parser (A-ADR-014, A-ADR-019) | v0.5 |
 | IMGW-11 | **Command catalog and CLI = API** (the counterpart of KB): `data_commands()` (commands, options, allowed values, descriptions in Polish), `validate_command`, `format_command` → `obserwator …`, `run_command` and `check_command` with `on_progress`, `on_notice` (level, code, text — also the information about the purpose of data use, 4.8.5) and `cancel` checked between files; the CLI calls the same functions (in 2.1.1 `imgw fetch` downloaded with its own `download_file`, `IMGWTools/src/imgwtools/cli/fetch.py:12-67`); exceptions from the `ObserwatorError` hierarchy | forms, the "Okno planu" (Plan window), a command to copy, cancellation without killing the process | v0.5 |
-| IMGW-12 | **Series export**: `export_series(version=None, /, *, root=None, dataset=None, station, variables=None, start=None, end=None, year_type=None, format="csv", path=None, …) -> Path \| Iterator[str]` (`station` and `path` named only; `path=None` = row stream) — UTF-8, separator `,`, decimal point, ISO dates, one header row with units, a year column in the chosen convention (`year_type`: `hydrological` or `calendar`, for hydro and meteo, P15; `None` = the numbering convention of the dataset's archives, i.e. the `year_type` of the `series.json` index), empty cell = missing, a flag column, formulas in the columns `attribution_source` and `attribution_processed` of the first data row; all days of the station's continuous calendar, also those with gaps (P14) | set (8.4) for Excel, QGIS and Hydrolog (`daily_values`, `dates`), consumed by Archiwista from v1.1 | v0.5 (Obserwator) |
+| IMGW-12 | **Series export**: `export_series(version=None, /, *, root=None, dataset=None, station, variables=None, start=None, end=None, year_type=None, format="csv", path=None, …) -> Path \| Iterator[str]` (`station` and `path` named only; `path=None` = row stream) — UTF-8, separator `,`, decimal point, ISO dates, one header row with units, a year column in the chosen convention (`year_type`: `hydrological` or `calendar`, for hydro and meteo, P15; `None` = the numbering convention of the dataset's archives, i.e. the `year_type` of the `series.json` index), empty cell = missing, a flag column, the providers' lines in the trailing columns `attribution` and `terms_notice` (Nogat DEV-20.5; Obserwator 3.1.0 has no `attribution_source` and `attribution_processed`); all days of the station's continuous calendar, also those with gaps (P14) | set (8.4) for Excel, QGIS and Hydrolog (`daily_values`, `dates`), consumed by Archiwista from v1.1 | v0.5 (Obserwator) |
 | IMGW-13 | **Schema versioning**: `obserwator-store/1`, `obserwator-meta/1`, `obserwator-series/1`, `imgw-project/1` (3.0.0 adds among others `obserwator-plan/1` and `obserwator-observation/1`) — within `/1` only additive changes, an incompatible change = `/2` and a reader of both versions in a transition period; read API version policy; offline contract tests on archive fixtures (CP1250, UTF-8 with BOM, quotes, both layouts of daily hydro files) | Archiwista declares the supported versions and does not read unknown ones instead of guessing | v0.5 |
 | IMGW-14 | **Withdrawn (2026-10-31, ECO-054, A-ADR-049):** the IMGW project manifest `imgw-project/1` and the project functions (`imgw project …`); Obserwator removes its projects and IMGW versions are pinned in Archiwista's project file `archiwista-project/1`; the command of a stored version is IMGW-21. The text of the requirement is in the history of this file | — | — |
-| IMGW-15 | **Provider in the contract**: every dataset, sidecar, station catalog entry and project job carries a provider (`dataset` `cz.chmi.<dataset>`, `country` `CZ`, `provider` `CHMI` — machine identifier; display name "ČHMÚ" from the provider descriptor); station identity = provider + identifier (WIGOS for ČHMÚ); `store_info` lists the supported providers (identifier, display name, datasets, license); `provider` filter (`IMGW-PIB` \| `CHMI`) in `iter_store`, `read_catalog` and the command catalog; ČHMÚ archive slot = file path on the server (as in IMGW-4); change only additive in `/1` or `/2` with a reader of both (IMGW-13) | one adapter and one index for PL and CZ stations, without code collisions; the "ČHMÚ" badge without translation in Archiwista's code | v0.6 |
-| IMGW-16 | **ČHMÚ archives, freshness and synchronization**: the datasets from 4.8.6 as 1:1 archives with an `obserwator-meta/1` sidecar (written as in IMGW-1..IMGW-3); `check_store`/`sync_store` for `cz.chmi.*` with a required `stations` (the unit of publication is the station — no "whole country"; `years` optional for hydro, not allowed for meteo; no combining with `pl.imgw.*` in one call), signal from the server directory listing, statuses as in IMGW-5; a file not published by the source = `unverifiable` with `error` `"nieopublikowany"` (synchronization: `unchanged` without a version; flat download: `not_published`), distinct from `missing` (file published, absent locally), without a job error; the same bytes under a new signal = `relabeled`, different bytes of the same canonical content (`content_sha256`, form `chmi-json/1`) = `unchanged` with the message `content_unchanged` and a signal observation (`observations/`, `obserwator-observation/1`); an `obserwator-plan/1` plan with the number of requests | freshness and "Pobierz nowsze" (Download newer) for ČHMÚ stations in the catchment; "nieopublikowany" (not published) as information, not a problem | v0.6 |
-| IMGW-17 | **ČHMÚ station catalog**: a separate version of the provider's station catalog (slot `catalog:cz.chmi.stations`, `stations/versions/chmi_stations/`; hydro from `meta1.json`, `meta3.json` and the station list archive, meteo from `meta1-<YYYYMMDD>.json` and the station list archive) with the fields and validation of 4.8.1 (WGS84 position with source and uncertainty; outside CZ or `0,0` = no position, the entry stays); name, river, catchment hierarchy code (`HLGP4`) as text in `hydrographic_code`; SPA thresholds in the `thresholds` object | ČHMÚ stations on the map, in the "Katalog" (Catalog) and in the catchment | v0.6 |
-| IMGW-18 | **ČHMÚ series and coverage**: `build_series` for `cz.chmi.*` (`obserwator-series/1`: the same columns, `null` → missing with a flag, `hydro_year` XI–X for hydro and meteo; `year_type` of the listing `calendar`; station periods `stations[<code>].periods`, so a year without a station file is unknown, not a gap; meteo also `<V>_quality` and `<V>_source_flag`); `summarize_coverage` separately for each variable (IMGW-8) written in `series.json`; `read_series`, `read_series_index` and `export_series` with unchanged signatures | coverage labels, chart and set for ČHMÚ stations the same as for IMGW | v0.6 |
+| IMGW-15 | **Provider in the contract**: every dataset, sidecar, station catalog entry and project job carries a provider (`dataset` `cz.chmu.<dataset>`, `country` `CZ`, `provider` `CHMU` — machine identifier; display name "ČHMÚ" from the provider descriptor); station identity = provider + identifier (WIGOS for ČHMÚ); `store_info` lists the supported providers (identifier, display name, datasets, license); `provider` filter (`IMGW` \| `CHMU`) in `iter_store`, `read_catalog` and the command catalog; ČHMÚ archive slot = file path on the server (as in IMGW-4); change only additive in `/1` or `/2` with a reader of both (IMGW-13) | one adapter and one index for PL and CZ stations, without code collisions; the "ČHMÚ" badge without translation in Archiwista's code | v0.6 |
+| IMGW-16 | **ČHMÚ archives, freshness and synchronization**: the datasets from 4.8.6 as 1:1 archives with an `obserwator-meta/1` sidecar (written as in IMGW-1..IMGW-3); `check_store`/`sync_store` for `cz.chmu.*` with a required `stations` (the unit of publication is the station — no "whole country"; `years` optional for hydro, not allowed for meteo; no combining with `pl.imgw.*` in one call), signal from the server directory listing, statuses as in IMGW-5; a file not published by the source = `unverifiable` with `error` `"nieopublikowany"` (synchronization: `unchanged` without a version; flat download: `not_published`), distinct from `missing` (file published, absent locally), without a job error; the same bytes under a new signal = `relabeled`, different bytes of the same canonical content (`content_sha256`, form `chmu-json/1`) = `unchanged` with the message `content_unchanged` and a signal observation (`observations/`, `obserwator-observation/1`); an `obserwator-plan/1` plan with the number of requests | freshness and "Pobierz nowsze" (Download newer) for ČHMÚ stations in the catchment; "nieopublikowany" (not published) as information, not a problem | v0.6 |
+| IMGW-17 | **ČHMÚ station catalog**: a separate version of the provider's station catalog (slot `catalog:cz.chmu.stations`, `stations/versions/chmu_stations/`; hydro from `meta1.json`, `meta3.json` and the station list archive, meteo from `meta1-<YYYYMMDD>.json` and the station list archive) with the fields and validation of 4.8.1 (WGS84 position with source and uncertainty; outside CZ or `0,0` = no position, the entry stays); name, river, catchment hierarchy code (`HLGP4`) as text in `hydrographic_code`; SPA thresholds in the `thresholds` object | ČHMÚ stations on the map, in the "Katalog" (Catalog) and in the catchment | v0.6 |
+| IMGW-18 | **ČHMÚ series and coverage**: `build_series` for `cz.chmu.*` (`obserwator-series/1`: the same columns, `null` → missing with a flag, `hydro_year` XI–X for hydro and meteo; `year_type` of the listing `calendar`; station periods `stations[<code>].periods`, so a year without a station file is unknown, not a gap; meteo also `<V>_quality` and `<V>_source_flag`); `summarize_coverage` separately for each variable (IMGW-8) written in `series.json`; `read_series`, `read_series_index` and `export_series` with unchanged signatures | coverage labels, chart and set for ČHMÚ stations the same as for IMGW | v0.6 |
 | IMGW-19 | **ČHMÚ commands, project and license**: ČHMÚ synchronization and series commands in `data_commands()` with `format_command` → `obserwator …` (CLI = API, `cancel`); an `imgw-project/1` project with jobs of both providers (a job = one dataset, so one provider); restoring ČHMÚ pins with identical bytes or explicitly by content (`restored_by_content`, job state `content_match`); `license` CC BY 4.0 (`id` `CC-BY-4.0`, `terms_url`) with ČHMÚ attribution in archive sidecars, the catalog and series, and in the CSV export (in processed form with a note about the processing); `on_notice` messages in Polish | the "Okno planu" (Plan window), a command to copy, project jobs and attributions without Archiwista's knowledge of ČHMÚ | v0.6 |
-| IMGW-20 | **Dataset key convention** (4.2.1): dataset key = `dataset` of the `obserwator-meta/1` sidecar and of the `series.json` listing in the form `<country>.<provider>.<dataset>[_<variant>]` (lowercase, dots between parts, underscores within: `pl.imgw.hydro_daily`, `cz.chmi.meteo_daily`); unchanged from the first release with the store; renaming only through the Obserwator alias table — raw `dataset` in the sidecar unchanged, normalized `dataset_key` from `read_meta` (`None` for an unknown key, not an empty string; 3.0.0: `DATASET_KEY_ALIASES`, `resolve_dataset_key`; model: `_DEV_DATASETS` of Kartograf); the provider only in the `provider` field (`IMGW-PIB`, `CHMI`), and the key prefix (`imgw`, `chmi`) is not its identifier (IMGW-15) | index, filters and pins based on the key without parsing the key; the same key contract as in Kartograf (KA-8); old sidecars readable after renaming | v0.5 |
+| IMGW-20 | **Dataset key convention** (4.2.1): dataset key = `dataset` of the `obserwator-meta/1` sidecar and of the `series.json` listing in the form `<country>.<provider>.<dataset>[_<variant>]` (lowercase, dots between parts, underscores within: `pl.imgw.hydro_daily`, `cz.chmu.meteo_daily`); unchanged from the first release with the store; renaming only through the Obserwator alias table — raw `dataset` in the sidecar unchanged, normalized `dataset_key` from `read_meta` (`None` for an unknown key, not an empty string; 3.0.0: `DATASET_KEY_ALIASES`, `resolve_dataset_key`; model: `_DEV_DATASETS` of Kartograf); the provider only in the `provider` field (`IMGW`, `CHMU`), and the key prefix (`imgw`, `chmu`) is not its identifier (IMGW-15) | index, filters and pins based on the key without parsing the key; the same key contract as in Kartograf (KA-8); old sidecars readable after renaming | v0.5 |
 | IMGW-21 | **The command of a stored version** (added 2026-10-31, ECO-054; the counterpart of KB-6): `command_for_version(version, *, root=None) -> CommandCall` for a stored archive or series version (a path relative to the store), offline and read-only; where the metadata does not rebuild the call, a refusal of its error class with `code` `unsupported` and `details["reason"]` `command_not_rebuildable` | the check, re-pin and restore of an IMGW version pinned from the store, the command shown for a version, `polecenia.sh` (4.7, 8.4, A-ADR-049) | projects (released with v0.3 and v0.4, D2) |
 
 ### 12.8 Obserwator format contract (recommendation, A-ADR-020)
@@ -4766,7 +4781,7 @@ compatibility would have given is provided by a **common envelope** — the same
 | Field | Meaning in `obserwator-meta/1` |
 |---|---|
 | `schema` | `obserwator-meta/1` |
-| `dataset`, `country`, `provider` | `pl.imgw.<dataset>` (e.g. `pl.imgw.hydro_daily`; key convention 4.2.1, IMGW-20), `PL`, `IMGW-PIB`; ČHMÚ — `cz.chmi.<dataset>`, `CZ`, `CHMI`; station catalog — `pl.imgw.stations`, `cz.chmi.stations` |
+| `dataset`, `country`, `provider` | `pl.imgw.<dataset>` (e.g. `pl.imgw.hydro_daily`; key convention 4.2.1, IMGW-20), `PL`, `IMGW`; ČHMÚ — `cz.chmu.<dataset>`, `CZ`, `CHMU`; station catalog — `pl.imgw.stations`, `cz.chmu.stations` |
 | `request` | what produced the file: archive — `server_path`, `year`, `month` (ČHMÚ also `station_code`, `param`); dataset series — only `dataset` (the full key; the periods of the inputs are in `series.json`: `periods`, and for ČHMÚ also `stations[<code>].periods`); station catalog — `user_locations` (the user's file name or `null`), and the sources in `extra.catalog` |
 | `license` | `{id, attribution, url}` with the IMGW formulas (4.8.5); `id` `IMGW-PIB` (ČHMÚ: `CC-BY-4.0` and the additive `terms_url`); in the series sidecar (and the ČHMÚ catalog) the processing formula is appended after ". ", without a trailing period |
 | `downloaded_at` | the moment the version was written (UTC, ISO 8601) |
@@ -4774,7 +4789,7 @@ compatibility would have given is provided by a **common envelope** — the same
 | `extra.version` | `label`, `label_source` (`last_modified`, `downloaded`, `inputs`; 4.8.1) |
 | `extra.http` | `url`, `etag`, `last_modified`, `content_length` of the IMGW response |
 | `extra.derived`, `extra.source_files[]` | dataset series: `series`, station catalog: `catalog`; series inputs (`name`, `file` — the path of the archive version, `sha256`, `label`; ČHMÚ also `content_sha256`, `content_form`), as in HSG (ADR-036 D33) |
-| `content_sha256`, `content_form` | additive, optional, always together: the SHA-256 sum of the canonical form and its identifier (`chmi-json/1`) — only datasets with a canonical form (`cz.chmi.hydro_daily`, ČHMÚ station lists); the IMGW sidecars do not have these fields (read as `null`) |
+| `content_sha256`, `content_form` | additive, optional, always together: the SHA-256 sum of the canonical form and its identifier (`chmu-json/1`) — only datasets with a canonical form (`cz.chmu.hydro_daily`, ČHMÚ station lists); the IMGW sidecars do not have these fields (read as `null`) |
 
 Obserwator-only fields: `producer` (`obserwator`), `producer_version`,
 `extra.period` (the year or month of the archive and the year type),
@@ -4802,12 +4817,12 @@ so the index and project pins keep them (A-ADR-056). A root of the other kind is
 
 <data root>/                       settings field `obserwator_data`; built offline by Obserwator, read by Archiwista
   obserwator-data.json             {"schema": "obserwator-data/1", …}
-  stations/versions/<label>_<sha8>/stations.geojson        + stations.geojson.meta.json
-  stations/versions/chmi_stations/<label>_<sha8>/stations.geojson   ČHMÚ station catalog
+  stations/versions/imgw_stations/<label>_<sha8>/stations.geojson        + stations.geojson.meta.json
+  stations/versions/chmu_stations/<label>_<sha8>/stations.geojson   ČHMÚ station catalog
   series/versions/<dataset slug>/<label>_<sha8>/series.json + series.json.meta.json
                                             stations/<code>.parquet
-    e.g. series/versions/hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet
-  analyses/versions/<pl.imgw|cz.chmi>/<label>_<sha8>/analyses.json + analyses.json.meta.json
+    e.g. series/versions/imgw_hydro_daily/2026-08-31_ab12cd34/stations/149190310.parquet
+  analyses/versions/<pl.imgw|cz.chmu>/<label>_<sha8>/analyses.json + analyses.json.meta.json
                                    Hydrolog's analyses of the stations (Obserwator's ADR-016)
   .incoming/<host>_<pid>_<token>/  working directories (cleaned up after 24 h)
 ```
@@ -4838,7 +4853,7 @@ only for the chart and the set. Sidecar and index (excerpts, illustrative values
   "producer_version": "…",
   "dataset": "pl.imgw.hydro_daily",
   "country": "PL",
-  "provider": "IMGW-PIB",
+  "provider": "IMGW",
   "request": {"dataset": "pl.imgw.hydro_daily"},
   "license": {"id": "IMGW-PIB",
               "attribution": "Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy. Dane Instytutu Meteorologii i Gospodarki Wodnej – Państwowego Instytutu Badawczego zostały przetworzone",
@@ -5228,7 +5243,7 @@ Acceptance criteria:
    an inconsistent vertical datum or coordinate system gives a warning with a ready-made command
    for the missing download.
 4. The index of the Obserwator catalog with ČHMÚ data matches `iter_store` of Obserwator; PL
-   and CZ station codes do not collide; ČHMÚ entries have `provider` `CHMI`,
+   and CZ station codes do not collide; ČHMÚ entries have `provider` `CHMU`,
    and the interface shows the "ČHMÚ" badge; ČHMÚ stations without location only
    in the "Katalog".
 5. Coverage labels of ČHMÚ stations match a manual calculation for the table of
@@ -5317,7 +5332,7 @@ Criteria: a VRT and GeoTIFF mosaic of NMT 0.5 m sheets for an area goes into the
 | Load on public services | slowdowns, blocks on the source side | low | Kartograf's cache, assistant limits, 2 network jobs at a time |
 | UI without type checking (A-ADR-028: Preact + htm with no build step) | errors detected only at runtime | medium | browser tests (Playwright), JSDoc annotations, contract tests with OpenAPI; adding Vite and TypeScript later without rewriting components |
 | Data license terms on handover | attribution violation | low | the lines of the providers' terms (A-ADR-055) in every answer and view of the data, the CLI text, the hand-off and the export (`README.txt`, `ATTRIBUTION.txt`); on screen one strip a view with every line in its dialog, and there "Kopiuj atrybucję" |
-| Dependence on Obserwator (3.0.0 with the store, IMGW-1..IMGW-13 and IMGW-21, released with Archiwista 0.3.0, which pins its tag `v3.0.0`); optional from A-ADR-024 (extra `[obserwator]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for Obserwator; releases v0.1–v0.4 and an installation without Obserwator do not need it | medium | Obserwator is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by Obserwator; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
+| Dependence on Obserwator (3.0.0 with the store, IMGW-1..IMGW-13 and IMGW-21, released with Archiwista 0.3.0; release 0.3.3 pins its tag `v3.1.0`, whose provider ids `IMGW` and `CHMU` it alone reads); optional from A-ADR-024 (extra `[obserwator]`) | IMGW data (v0.5), and with it the MVP (v1.0, A-ADR-025), wait for Obserwator; releases v0.1–v0.4 and an installation without Obserwator do not need it | medium | Obserwator is a plugin and does not block v0.1–v0.4 (5.8); contract agreed early (12.7–12.8), source interface from v0.1, contract tests on a catalog built by Obserwator; IMGW-2, IMGW-4 and IMGW-11 fix errors independent of Archiwista |
 | ČHMÚ stations in Obserwator (IMGW-15..IMGW-19; the tool was renamed from IMGWTools in ECO-057) | v0.6, and with it the MVP, waits for Obserwator; a separate package changes the adapter and the extra | medium | requirements reported before v0.5 (section 12.7), the same contracts with the supplier as an additive change, one Obserwator adapter; adapter decision at the Obserwator release (4.8.6, A-ADR-024) |
 | ČHMÚ archives per station (no country-wide archive) | hundreds of requests during synchronization, slow plans | medium | synchronization of selected stations only (area, project), plan with the number of requests, 2 network jobs at a time |
 | Version conflicts of scientific libraries between Kartograf and Obserwator (numpy, pandas, GDAL/rasterio, pyarrow) | installation impossible or environment divergence with `[obserwator]` | medium | one lock file for a consistent set, CI in two configurations (without and with `[obserwator]`), contract tests against the producers' `develop` (5.8, 11, A-ADR-024) |

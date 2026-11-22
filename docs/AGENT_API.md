@@ -1,7 +1,8 @@
 # Archiwista API for agents and scripts
 
 For AI agents (for example Claude Code) and scripts using Archiwista without
-a browser: release 0.3.0, with v0.3 "Actions", v0.4 "Team" and the projects. It covers
+a browser: release 0.3.3, with v0.3 "Actions", v0.4 "Team" and the projects (released as
+0.3.0) and Obserwator 3.1.0's provider ids `IMGW` and `CHMU` (0.3.3). It covers
 reading the catalog,
 previews, layers, comparison, own data and project snapshots, areas, producer
 commands, plans and downloads, projects and jobs. Team mode adds sign-in, agent
@@ -30,7 +31,7 @@ parameter names and codes are English; texts for people (`title`, `detail`,
 | projects | `archiwista projects [--store MAGAZYN]` | `GET /projects` |
 | card of a project | `archiwista project PROJEKT` | `GET /projects/{project}` |
 | stations of the station catalogs (IMGW-PIB, ČHMÚ) with the coverage of each variable of their series, a page of them year by year (the Timeline), a station's card, a station's series as a chart, a comparison of 2 to 5 stations, and the datasets with station series (the Obserwator source) | `archiwista stations list [options]` (the parameters of `GET /stations` as options of the same names, a repeatable one repeated), `stations timeline --dataset … [options]` (the same options, `--dataset` required), `stations show KOD [--store …] [--provider …] [--dataset …] [--years …] [--year-type …]`, `stations series KOD --variable … [options]`, `stations compare --station MAGAZYN/DOSTAWCA/KOD --station … --dataset … --variable … [options]`, `stations datasets [--store …]` | `GET /stations`, `GET /stations/timeline`, `GET /stations/{code}`, `GET /stations/{code}/series`, `GET /stations/compare`, `GET /stations/datasets`; `GET /stations/{code}/coverage` and `GET /map/stations` over HTTP only |
-| a variable of a station's series as a hand-off to Hydrolog's statistics (`nogat-handoff/1` with `hydrolog-series/1`, A-ADR-052): every day of a daily series, or the annual maxima of complete hydrological years | `archiwista stations handoff KOD --variable … [--dataset …] [--resolution annual] [--from …] [--to …]` (the document itself on standard output; save it as `NAZWA.handoff.json`) | `GET /stations/{code}/handoff` |
+| a variable of a station's series as a hand-off to Hydrolog's statistics (`nogat-handoff/1` with `hydrolog-series/1`, A-ADR-052): every day of a daily series, or the annual maxima of complete hydrological years | `archiwista stations handoff KOD --variable … [--dataset …] [--resolution annual] [--from …] [--to …]` (the document itself on standard output; save it as `archiwista_handoff_NAZWA.json`) | `GET /stations/{code}/handoff` |
 | a new project; its name and description, its area, the store of a producer's pins (A-ADR-049) | `archiwista project-init KATALOG [--name NAZWA] [--description TEKST] [--area-id OBSZAR]`, `project-edit PROJEKT [--name NAZWA] [--description TEKST]`, `project-area PROJEKT (--area-id OBSZAR \| --clear)`, `project-store PROJEKT PRODUCENT --store MAGAZYN` | `POST /projects`, `PATCH /projects/{project}`, `PUT /projects/{project}/area`, `PUT /projects/{project}/stores/{producer}` |
 | a project's exports from its pins: copies in category folders with `README.txt` in `eksport/NAZWA/`, optionally a ZIP (A-ADR-049), their list and the ZIP | `archiwista project-export PROJEKT NAZWA [--group ZESTAW …] [--zip]`, `project-exports PROJEKT` | `POST /projects/{project}/exports`, `GET /projects/{project}/exports`, `GET /projects/{project}/exports/{name}/zip` |
 | a project's activity from the action log: its changes and its jobs, newest first, without the client address (A-ADR-049) | `archiwista project-activity PROJEKT [--limit N] [--cursor ID]` | `GET /projects/{project}/activity` |
@@ -501,8 +502,10 @@ cursor is safe in a URL).
   `path`, `files`, `zip`, `written_at` (of its `README.txt`) and `changed_since` (the
   project file changed after it: write it again). `GET
   /projects/{project}/exports/{name}/zip` (whoever sees the project) sends
-  `eksport/<name>.zip` as an attachment (`application/zip`, `Cache-Control:
-  private, no-store`), `404 not_found` when
+  `eksport/<name>.zip` as an attachment named `archiwista_export_<project>_<name>.zip`
+  (Nogat DEV-19.21: the name in lower-case ASCII with `-` for anything else, so
+  `raba-2024` of `raba` is `archiwista_export_raba_raba-2024.zip`; the file on disk keeps
+  its name; `application/zip`, `Cache-Control: private, no-store`), `404 not_found` when
   the export has none; like a file download, a link of the interface
   (`Sec-Fetch-Site: same-origin`, or `none` for an address typed in) passes
   with the session cookie alone, without `X-Archiwista-CSRF`.
@@ -849,18 +852,18 @@ keeps its place with `null` for both. No station with the variable is `400`
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"
 curl -sf -b "$JAR" -H "$H" \
   "$BASE/stations?area_id=$AREA&dataset=pl.imgw.hydro_daily&coverage=Q:continuous&min_complete_years=Q:30"
-curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW-PIB"
+curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW"
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310/coverage?variable=Q&years=1981-1983"
 curl -sf -b "$JAR" -H "$H" \
   "$BASE/stations/timeline?dataset=pl.imgw.hydro_daily&river_code=2138&river_scope=tributaries"
 archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
   --coverage=Q:continuous --min-complete-years=Q:30 --json
-archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
+archiwista stations show 149190310 --store=zespol --provider=IMGW --json
 archiwista stations datasets --json
 archiwista stations timeline --dataset=pl.imgw.hydro_daily --variable=Q --json
 archiwista stations series 149190310 --variable=Q --from=1981-01-01 --to=1983-12-31 --json
-archiwista stations compare --station=zespol/IMGW-PIB/149190310 \
-  --station=zespol/IMGW-PIB/149200090 --dataset=pl.imgw.hydro_daily --variable=Q --json
+archiwista stations compare --station=zespol/IMGW/149190310 \
+  --station=zespol/IMGW/149200090 --dataset=pl.imgw.hydro_daily --variable=Q --json
 ```
 
 ## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3), file download (v0.4)
@@ -1493,7 +1496,8 @@ server restart. This is a sampled audit, not a count of all failed requests.
   default). Reading is not logged.
 - **An export** is logged first (`log.export` with its `filters`, `format` and
   `count`) and holds every entry older than that one, newest first, as an
-  attachment: JSON Lines (`format=jsonl`, the default; `application/jsonl`, an
+  attachment named `archiwista_log_<UTC date>_<time>Z.<format>`
+  (`archiwista_log_2026-11-21_143022Z.jsonl`): JSON Lines (`format=jsonl`, the default; `application/jsonl`, an
   `ActionEntryModel` per line) or CSV (`format=csv`; UTF-8 with a BOM, CRLF, a
   header of the field names, the objects as JSON text, null as an empty cell). A
   CSV cell that starts with `=`, `+`, `-`, `@`, a tab, CR or LF begins with `'`, so

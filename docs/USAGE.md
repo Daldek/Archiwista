@@ -1,6 +1,7 @@
-# User guide: Archiwista 0.3.0
+# User guide: Archiwista 0.3.3
 
-Archiwista 0.3.0 (v0.3 "Actions", v0.4 "Team" and the projects in one release) shows a
+Archiwista 0.3.3 (v0.3 "Actions", v0.4 "Team" and the projects, released together as 0.3.0, with
+Obserwator 3.1.0 since 0.3.3) shows a
 Kartograf store, and the files of an Obserwator
 store, on a map, in a catalog and in file cards, with previews, the Fan, the
 Timeline and comparison; projects have a folder of own data and snapshots. It
@@ -101,9 +102,10 @@ pins of series and station catalogs are „bez sprawdzenia” (`not_checkable`) 
 check: no download rebuilds them; pins of archives are checked, re-pinned and restored
 as before.
 
-**After updating to this version** (administrator):
+**A store of the single Obserwator directory** (written before Obserwator's ADR-017;
+administrator, once):
 
-1. Install it with `uv sync --locked --all-extras` (Obserwator `0591b82`) and restart
+1. Install Archiwista with `uv sync --locked --all-extras` and restart
    `archiwista serve`. Nothing is renamed: `obserwator` keeps naming the directory of
    `obserwator-store.json`, now called the raw root.
 2. Run `archiwista doctor`. It names each directory by its field (`obserwator`,
@@ -138,6 +140,39 @@ as before.
    <data_dir>/obserwator-old`, then DATA is `<data_dir>/obserwator`); otherwise choose
    the store again under „Zmień…” → „Magazyn: obserwator” of each project's card. Remove
    OLD only after the scan shows the stations and series again.
+
+### Updating to 0.3.3 (Obserwator 3.1.0)
+
+Obserwator 3.1.0 names the providers by their national acronyms (Nogat ECO-082), and
+Archiwista 0.3.3 reads only those names: the provider `IMGW` (was `IMGW-PIB`) with its
+series in `series/versions/imgw_*` and its station catalog in
+`stations/versions/imgw_stations`, the provider `CHMU` (was `CHMI`) with the keys
+`cz.chmu.*` and the directories `chmu_*`, and a station's `location_source` the key of the
+dataset its position came from. The interface still names them „IMGW-PIB” and „ČHMÚ”. A data
+root built by Obserwator 3.0 shows no stations or series; nothing is translated. As
+administrator:
+
+1. Install Archiwista 0.3.3 with `uv sync --locked --all-extras` (Obserwator 3.1.0).
+2. Keep the raw root as it is: Obserwator 3.1.0 reads its older sidecars under the new names.
+   Build a new data root from it with Obserwator 3.1.0 (its CHANGELOG, 3.1.0), with no job
+   writing the store:
+
+   ```sh
+   obserwator store init --kind data --root NEW
+   obserwator series build --root NEW --raw-root RAW --dataset pl.imgw.hydro_daily  # each dataset
+   obserwator store catalog --root NEW --raw-root RAW --provider IMGW
+   obserwator store catalog --root NEW --raw-root RAW --provider CHMU
+   obserwator analyses build --root NEW
+   ```
+
+3. Set NEW as the store's `obserwator_data` („Katalog danych Obserwatora” in „Ustawienia”,
+   or in `config.toml` while the server is stopped) and rebuild the index from it:
+   `archiwista reindex --store <store>` (or „Odśwież” in the Store view).
+4. In each project with IMGW-PIB or ČHMÚ series or station catalog versions of the old data
+   root, pin those versions again from the new one; pins of archives stay valid.
+
+A script passes `--provider IMGW` or `--provider CHMU` (`?provider=`) and reads the new
+values; see the CHANGELOG of 0.3.3.
 
 ## The window
 
@@ -534,7 +569,8 @@ and a directory holding only one of them is no project.
   version's label before its extension (`M-33-44-A-d-2-2_2025-06-13.asc`). With the
   ZIP, `eksport/<name>.zip` holds the same content (the unpacked rasters too), and
   "Pobierz ZIP" at the export
-  downloads it. A pin whose store is not configured or whose version is not in the
+  downloads it as `archiwista_export_<project>_<name>.zip` (Nogat DEV-19.21; the file in
+  `eksport/` keeps its name). A pin whose store is not configured or whose version is not in the
   store is left out and counted. The list of the project's exports says "projekt
   zmieniony po eksporcie — wygeneruj ponownie" once the project file changes after an
   export; "Wygeneruj ponownie…" opens the form on its name, and writing it again
@@ -680,7 +716,9 @@ previews with the curtain, by cross-fading or side by side; this is a visual
 comparison and changes no data. The strip of sources under the maps gives the lines
 the terms of both versions' providers require (every line in „Źródła i warunki”),
 and „Eksportuj CSV” puts them in full in the table's last two columns, `attribution`
-and `terms_notice`, a line a cell from the first row down.
+and `terms_notice`, a line a cell from the first row down; the file is
+`archiwista_comparison_<a>_<b>.csv`, the sides' titles in lower-case ASCII with `-`
+between their words (`NMT · 2020` as `nmt-2020`, Nogat DEV-19.21).
 
 ![Comparison and curtain](reports/v0.2-screenshots/06-porownanie-kurtyna.webp)
 
@@ -780,7 +818,8 @@ event. Passwords, tokens, cookies and raw request addresses are not recorded.
 - **A row** opens the state before and after the change, its details, the
   session, the kind of actor and the address.
 - **"Eksportuj CSV"** and **"Eksportuj JSON Lines"** save every entry the filters
-  select as a file, as `log export` writes it.
+  select as a file, as `log export` writes it, named
+  `archiwista_log_<UTC date>_<time>Z.<format>` (`archiwista_log_2026-11-21_143022Z.csv`).
 
 At the terminal the owner of the installation reads and exports it:
 
@@ -921,9 +960,9 @@ archiwista stations list --q raba --sort name
 archiwista stations show 149190310 --years 1951-2025
 archiwista stations timeline --dataset pl.imgw.hydro_daily --river-code 2138 --river-scope tributaries
 archiwista stations series 149190310 --variable Q --from 1981-01-01 --to 1983-12-31
-archiwista stations compare --station zespol/IMGW-PIB/149190310 --station zespol/IMGW-PIB/149200090 --dataset pl.imgw.hydro_daily --variable Q
+archiwista stations compare --station zespol/IMGW/149190310 --station zespol/IMGW/149200090 --dataset pl.imgw.hydro_daily --variable Q
 archiwista stations datasets
-archiwista stations handoff 149190310 --variable Q --resolution annual > raba.handoff.json
+archiwista stations handoff 149190310 --variable Q --resolution annual > archiwista_handoff_raba.json
 ```
 
 `stations list` prints each station with the label of every variable of its series
@@ -967,7 +1006,8 @@ annual maxima of complete hydrological years, as a hand-off to Hydrolog
 value to the last (the first and last year with a maximum), not over the years of the
 archive before them. The same document comes from „Do Hydrologa” under the
 chart of the station card (choose „Dane” and „Zmienna”, then „Kopiuj do Hydrologa” or
-„Plik przekazania”, which saves `<subject>.handoff.json`), and Hydrolog's
+„Plik przekazania”, which saves `archiwista_handoff_<subject>.json`, the subject in
+lower-case ASCII with `-` between its words, Nogat DEV-19.21), and Hydrolog's
 „Statystyka przepływów” opens it with „Wczytaj z Archiwisty”. Where the browser
 cannot copy (an address `http://` on the network, not `127.0.0.1`, or a refusal) the
 text appears selected in a field under the buttons: press Ctrl+C, then „Wklej ze
@@ -1004,7 +1044,7 @@ shows nor changes it) and check it with `archiwista doctor`.
 The three-computer SMB/TLS deployment and shared-queue acceptance procedure is
 in [`reports/v0.4-lan-runbook.md`](reports/v0.4-lan-runbook.md). It ran on the
 LAN on 2026-10-30, on two computers with three people's sessions (a third
-computer remains untested). Team mode is in release 0.3.0.
+computer remains untested). Team mode is in every release since 0.3.0.
 
 ```toml
 [team]

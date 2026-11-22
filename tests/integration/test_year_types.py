@@ -81,7 +81,7 @@ def _half_years(writer: IndexWriter) -> None:
         accumulated=0,
         gaps=(),
     )
-    folder = "series/versions/hydro_semiannual"
+    folder = "series/versions/imgw_hydro_semiannual"
     writer.replace_series(
         STORE,
         "obserwator",
@@ -89,7 +89,7 @@ def _half_years(writer: IndexWriter) -> None:
         version=f"{folder}/2026-10-26_00000000/series.json",
         listing=SeriesListing(
             dataset=HALF_YEAR,
-            provider="IMGW-PIB",
+            provider="IMGW",
             kind="hydro",
             time_unit="half_year",
             year_type="hydrological",

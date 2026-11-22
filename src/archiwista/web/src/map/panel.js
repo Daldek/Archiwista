@@ -10,7 +10,7 @@
 import { listProjects, setProjectArea } from "../api.js";
 import { count } from "../format.js";
 import { useAction, useResource } from "../hooks.js";
-import { T, t } from "../labels/index.js";
+import { providerName, T, t } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
 import { projects as P } from "../labels/projects.js";
 import {
@@ -475,7 +475,7 @@ function StationFields({ station }) {
 function datasetTitle(item) {
   return t(L.stations.dataset_title, {
     dataset: item.dataset,
-    provider: item.provider,
+    provider: providerName(item.provider),
     year_type: L.stations.year_types[item.year_type] ?? item.year_type,
     years: item.years ? `${item.years.from}–${item.years.to}` : T.common.empty,
   });

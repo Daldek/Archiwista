@@ -38,7 +38,7 @@ from archiwista.sources import (
 )
 
 STORE = "dane"
-PL = "IMGW-PIB"
+PL = "IMGW"
 DAILY = "pl.imgw.hydro_daily"
 HALF_YEAR = "pl.imgw.hydro_semiannual"
 # The hydrological years 2001 to 2004 (1 XI 2000 to 31 X 2004).
@@ -92,7 +92,7 @@ def index(tmp_path: Path) -> Iterator[IndexQueries]:
                 name=f"Stacja {code[-1]}",
                 kind="hydro",
                 point=point,
-                location_source="api_hydro",
+                location_source="pl.imgw.hydro_now",
                 location_uncertainty_m=uncertainty,
             )
             for code, (point, uncertainty) in PLACES.items()
@@ -105,8 +105,8 @@ def index(tmp_path: Path) -> Iterator[IndexQueries]:
             STORE,
             "obserwator",
             PL,
-            slot="stations/versions",
-            version="stations/versions/2026-10-26_00000000/stations.geojson",
+            slot="stations/versions/imgw_stations",
+            version="stations/versions/imgw_stations/2026-10-26_00000000/stations.geojson",
             stations=stations,
         )
         _write_daily(writer)

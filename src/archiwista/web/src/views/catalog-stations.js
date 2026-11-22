@@ -34,7 +34,7 @@
 import { listStations, listStationTimeline } from "../api.js";
 import { count, int } from "../format.js";
 import { catalog as L } from "../labels/catalog.js";
-import { T, t } from "../labels/index.js";
+import { providerName, T, t } from "../labels/index.js";
 import {
   COMPARE_VIEW,
   compareParams,
@@ -661,7 +661,7 @@ function StationCells({ item, props }) {
     </div>
     <div role="gridcell" class="cell c-code">
       <span class="st-line mono ell">${item.code}</span>
-      <span class="st-line cell-sub">${item.provider}${store}</span>
+      <span class="st-line cell-sub">${providerName(item.provider)}${store}</span>
     </div>
     <div role="gridcell" class="cell c-river">
       <span class="st-line ell" title=${item.river ?? ""}>${item.river ?? "–"}</span>

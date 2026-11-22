@@ -32,7 +32,8 @@ _EXPORT_ANSWERS: dict[int | str, dict[str, Any]] = {
     200: {
         "description": (
             "Every entry the filters select, newest first, as an attachment"
-            " (`archiwista-log-<UTC time>.jsonl` or `.csv`): JSON Lines, or CSV in"
+            " (`archiwista_log_<UTC date>_<time>Z.jsonl` or `.csv`, Nogat DEV-19.21):"
+            " JSON Lines, or CSV in"
             " UTF-8 with a BOM, a header of the field names and CRLF, a cell that"
             " starts with `=`, `+`, `-`, `@`, a tab, CR or LF prefixed with `'`."
         ),

@@ -34,7 +34,7 @@ import { useApp } from "../context.js";
 import { count, day, int } from "../format.js";
 import { useResource } from "../hooks.js";
 import { catalog as C } from "../labels/catalog.js";
-import { T, t } from "../labels/index.js";
+import { providerName, T, t } from "../labels/index.js";
 import { station as L } from "../labels/station.js";
 import {
   COMPARE_VIEW,
@@ -234,7 +234,7 @@ function Heading({ station, params, annual = false }) {
       ${" · "}<span class="mono">${station.code}</span>
     </p>
     <div class="chip-row">
-      <span class="chip static">${station.provider}</span>
+      <span class="chip static">${providerName(station.provider)}</span>
       ${state ? html`<span class="chip static">${state}</span>` : null}
       <span class="chip static">
         <${Tech} value=${[["store", station.store]]}>${storeName(health, station.store)}</${Tech}>
@@ -305,7 +305,7 @@ function Location({ station }) {
  * @returns {string|null}
  */
 function stationPage(station) {
-  if (station.provider !== "IMGW-PIB" || station.kind !== "hydro") return null;
+  if (station.provider !== "IMGW" || station.kind !== "hydro") return null;
   return `https://hydro.imgw.pl/#/station/hydro/${encodeURIComponent(station.code)}`;
 }
 
@@ -433,7 +433,7 @@ function Metadata({ station }) {
     : null;
   const rows = [
     [M.code, mono(station.code)],
-    [M.provider, station.provider],
+    [M.provider, providerName(station.provider)],
     [M.type, stationType(station)],
     [M.river, station.river],
     [M.hydrographic_code, mono(station.hydrographic_code)],

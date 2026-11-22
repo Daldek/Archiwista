@@ -47,12 +47,12 @@ MESSAGES = {
     ),
     # C and CP: ČHMÚ under CC BY 4.0. CP states that the data were processed,
     # never how (ECO-071).
-    "chmi_source": _same(
+    "chmu_source": _same(
         "Źródło danych: Český hydrometeorologický ústav (ČHMÚ),"
         " https://opendata.chmi.cz, licencja CC BY 4.0"
         " (https://creativecommons.org/licenses/by/4.0/)"
     ),
-    "chmi_processed": _same("Dane ČHMÚ zostały przetworzone"),
+    "chmu_processed": _same("Dane ČHMÚ zostały przetworzone"),
     # G and Z: GUGiK and ČÚZK data, here the state borders against which
     # Obserwator's station catalogs check every position (PRG, RÚIAN).
     "gugik_source": _same(

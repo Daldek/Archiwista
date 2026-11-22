@@ -38,12 +38,12 @@ Stores = Callable[[str], Path]
 
 COMPARE = "station-compare"
 DAILY = "pl.imgw.hydro_daily"
-CZ_DAILY = "cz.chmi.hydro_daily"
-RABA = f"{STORE}/IMGW-PIB/149190310"
-BEZ_Q = f"{STORE}/IMGW-PIB/149190311"  # no position
-UNSERIED = f"{STORE}/IMGW-PIB/149190312"  # no series at all
-SPINDLER = f"{STORE}/CHMI/0-203-1-900001"  # values 2023-01-01 to 2024-12-31
-ZAPADLA = f"{STORE}/CHMI/0-203-1-900002"  # values 2004 to 2006
+CZ_DAILY = "cz.chmu.hydro_daily"
+RABA = f"{STORE}/IMGW/149190310"
+BEZ_Q = f"{STORE}/IMGW/149190311"  # no position
+UNSERIED = f"{STORE}/IMGW/149190312"  # no series at all
+SPINDLER = f"{STORE}/CHMU/0-203-1-900001"  # values 2023-01-01 to 2024-12-31
+ZAPADLA = f"{STORE}/CHMU/0-203-1-900002"  # values 2004 to 2006
 # The range and the time grid of each panel, read at one moment.
 PANELS = """
 (panels) => [...panels.querySelectorAll(".sch-plot")].map((plot) => ({

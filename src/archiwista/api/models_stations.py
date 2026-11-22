@@ -96,7 +96,7 @@ MIN_COMPARED = 2
 MAX_COMPARED = 5
 
 _SHA256 = "fdd30535e8085f861a106824ba4401a7e96187a6c54abc33511803acd87b4623"
-_SERIES_DIR = "series/versions/hydro_daily/2026-08-31_ab12cd34"
+_SERIES_DIR = "series/versions/imgw_hydro_daily/2026-08-31_ab12cd34"
 # The lines of an answer about IMGW-PIB stations with their positions, and of
 # one about their series alone (A-ADR-055), and the formula the sidecar of an
 # IMGW-PIB series version gives (Obserwator's).
@@ -147,13 +147,13 @@ _LOCATION_EXAMPLE = {
     "lon": 19.9247,
     "lat": 49.7963,
     "reason": None,
-    "source": "api_hydro",
+    "source": "pl.imgw.hydro_now",
     "uncertainty_m": 150.0,
     "on_boundary": False,
 }
 _STATION_EXAMPLE = {
     "store": "zespol",
-    "provider": "IMGW-PIB",
+    "provider": "IMGW",
     "code": "149190310",
     "name": "STROZA",
     "kind": "hydro",
@@ -167,7 +167,9 @@ _STATION_EXAMPLE = {
     "river_km": 74.3,
     "elevation_m": None,
     "catalog": "2026-10-17",
-    "catalog_version": "stations/versions/2026-10-17_5c1d9a20/stations.geojson",
+    "catalog_version": (
+        "stations/versions/imgw_stations/2026-10-17_5c1d9a20/stations.geojson"
+    ),
     "location": _LOCATION_EXAMPLE,
     "series": [_SERIES_EXAMPLE],
 }
@@ -211,7 +213,7 @@ _TIMELINE_SERIES_EXAMPLE = {
 }
 _TIMELINE_ITEM_EXAMPLE = {
     "store": "zespol",
-    "provider": "IMGW-PIB",
+    "provider": "IMGW",
     "code": "149190310",
     "name": "STROZA",
     "kind": "hydro",
@@ -224,7 +226,7 @@ _TIMELINE_ITEM_EXAMPLE = {
 }
 _POINT_EXAMPLE = {
     "store": "zespol",
-    "provider": "IMGW-PIB",
+    "provider": "IMGW",
     "code": "149190310",
     "name": "STROZA",
     "kind": "hydro",
@@ -248,7 +250,7 @@ _DATASET_EXAMPLE = {
     "store": "zespol",
     "dataset": "pl.imgw.hydro_daily",
     "name": "Dane hydrologiczne dobowe",
-    "provider": "IMGW-PIB",
+    "provider": "IMGW",
     "kind": "hydro",
     "time_unit": "day",
     "year_type": "hydrological",
@@ -277,7 +279,7 @@ _CHART_VARIABLE_EXAMPLE = {
         }
     ],
 }
-_HALF_YEAR_DIR = "series/versions/hydro_semiannual/2026-08-31_cd34ef56"
+_HALF_YEAR_DIR = "series/versions/imgw_hydro_semiannual/2026-08-31_cd34ef56"
 _ANNUAL_EXTREME_EXAMPLE = {
     "value": 223.0,
     "start": "2024-03-02",
@@ -313,7 +315,7 @@ _CHART_CHOICE_EXAMPLE = {
 }
 _COMPARED_EXAMPLE = {
     "store": "zespol",
-    "provider": "IMGW-PIB",
+    "provider": "IMGW",
     "code": "149190310",
     "name": "STROZA",
     "kind": "hydro",
@@ -364,8 +366,8 @@ class StationLookup(BaseModel):
     )
     provider: str | None = Field(
         default=None,
-        description="Provider of the stations: `IMGW-PIB` or `CHMI` (ČHMÚ).",
-        examples=["IMGW-PIB"],
+        description="Provider of the stations: `IMGW` or `CHMU` (ČHMÚ).",
+        examples=["IMGW"],
     )
     dataset: str | None = Field(
         default=None,
@@ -752,8 +754,8 @@ class StationChartQuery(BaseModel):
     )
     provider: str | None = Field(
         default=None,
-        description="Provider of the stations: `IMGW-PIB` or `CHMI` (ČHMÚ).",
-        examples=["IMGW-PIB"],
+        description="Provider of the stations: `IMGW` or `CHMU` (ČHMÚ).",
+        examples=["IMGW"],
     )
     dataset: str | None = Field(
         default=None,
@@ -868,7 +870,7 @@ class StationCompareQuery(BaseModel):
             "Repeatable, 2 to 5 times: a station as `<store>/<provider>/<code>`,"
             " in the order of the panels."
         ),
-        examples=[["zespol/IMGW-PIB/149190310", "zespol/IMGW-PIB/149200090"]],
+        examples=[["zespol/IMGW/149190310", "zespol/IMGW/149200090"]],
     )
     dataset: str = Field(
         description="Dataset key of the series compared (`pl.imgw.hydro_daily`).",
@@ -1172,7 +1174,7 @@ class StationItem(BaseModel):
     model_config = _examples(_STATION_EXAMPLE)
 
     store: str = Field(description="Store id.")
-    provider: str = Field(description="`IMGW-PIB` or `CHMI`; a code is its provider's.")
+    provider: str = Field(description="`IMGW` or `CHMU`; a code is its provider's.")
     code: str = Field(description="Station code, as text.")
     name: str | None
     kind: str | None = Field(description="`hydro` or `meteo`.")
@@ -1350,7 +1352,7 @@ class StationCard(IndexAnswer):
                         f"/mnt/nas/obserwator/{_SERIES_DIR}/stations/149190310.parquet"
                     ),
                     "aliases": [
-                        "Z:\\obserwator\\series\\versions\\hydro_daily\\2026-08-31_ab12cd34"
+                        "Z:\\obserwator\\series\\versions\\imgw_hydro_daily\\2026-08-31_ab12cd34"
                         "\\stations\\149190310.parquet"
                     ],
                     "personal": None,
@@ -1494,7 +1496,7 @@ class StationTimeline(IndexAnswer):
     model_config = _examples(
         {
             "store": "zespol",
-            "provider": "IMGW-PIB",
+            "provider": "IMGW",
             "code": "149190310",
             "name": "STROZA",
             "series": [_TIMELINE_SERIES_EXAMPLE],
@@ -1539,7 +1541,7 @@ class StationTimelineItem(BaseModel):
     model_config = _examples(_TIMELINE_ITEM_EXAMPLE)
 
     store: str = Field(description="Store id.")
-    provider: str = Field(description="`IMGW-PIB` or `CHMI`; a code is its provider's.")
+    provider: str = Field(description="`IMGW` or `CHMU`; a code is its provider's.")
     code: str = Field(description="Station code, as text.")
     name: str | None
     kind: str | None = Field(description="`hydro` or `meteo`.")
@@ -1766,7 +1768,7 @@ class StationDatasetItem(BaseModel):
         description="Dataset key, the `dataset` of the station routes."
     )
     name: str | None = Field(description="The producer's name of its segment.")
-    provider: str = Field(description="`IMGW-PIB` or `CHMI`.")
+    provider: str = Field(description="`IMGW` or `CHMU`.")
     kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
     time_unit: TimeUnit = Field(description="Unit of its series: `day`, `month`, …")
     year_type: YearType = Field(
@@ -2005,7 +2007,7 @@ class StationChart(IndexAnswer):
     model_config = _examples(
         {
             "store": "zespol",
-            "provider": "IMGW-PIB",
+            "provider": "IMGW",
             "code": "149190310",
             "dataset": "pl.imgw.hydro_daily",
             "kind": "hydro",
@@ -2028,7 +2030,7 @@ class StationChart(IndexAnswer):
         },
         {
             "store": "zespol",
-            "provider": "IMGW-PIB",
+            "provider": "IMGW",
             "code": "152160140",
             "dataset": "pl.imgw.hydro_semiannual",
             "kind": "hydro",

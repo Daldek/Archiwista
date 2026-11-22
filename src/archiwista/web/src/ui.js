@@ -321,3 +321,11 @@ export function loadStylesheet(href) {
   }
   return sheets.get(url);
 }
+
+/**
+ * The rejection handler of `loadStylesheet` for a part shown without waiting
+ * for its styles: a stylesheet that does not load leaves the part unstyled.
+ * Firefox fails the loads of a page being left, before `pagehide`, and still
+ * runs the page's handlers, so such a failure is no error of the page.
+ */
+export function unstyled() {}

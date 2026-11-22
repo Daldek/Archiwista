@@ -40,6 +40,7 @@ collect_ignore = (
         "integration/test_obserwator_jobs.py",
         "integration/test_obserwator_series.py",
         "integration/test_obserwator_stations.py",
+        "integration/test_obserwator_subset.py",
         "integration/test_series_labels.py",
         "integration/test_station_compare_api.py",
         "integration/test_station_datasets_api.py",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "archiwista"
-version = "0.3.2"
+version = "0.3.3"
 description = "Local web application for browsing the spatial-data stores that Kartograf writes: catalog, map, file previews, projects with snapshots. Web interface, HTTP API and CLI; never writes to a store."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -53,15 +53,16 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057).
-# Obserwator 3.0.1, the Git tag of Nogat's release set of the patch releases (REL-2.1,
-# REL-5.1), keeps a store in two roots, the raw root `store sync` downloads into and
-# the data root of the series, catalogs and analyses it builds offline (its ADR-015,
-# ADR-017; A-ADR-056), with the default root of each (`store_root(kind=…)`) and
-# `command_for_version` (IMGW-21, A-ADR-049). `[store]` brings `pyarrow` for the
-# Parquet series. The versions the adapter reads are `SUPPORTED_VERSIONS` in
-# `archiwista.adapter.obserwator` (REL-5.6).
+# Obserwator 3.1.0, the Git tag of Nogat's release set v0.2.0 (the release round of
+# 2026-11-21; REL-2.1, REL-5.1), keeps a store in two roots, the raw root
+# `store sync` downloads into and the data root of the series, catalogs and analyses it builds
+# offline (its ADR-015, ADR-017; A-ADR-056), with the default root of each
+# (`store_root(kind=…)`) and `command_for_version` (IMGW-21, A-ADR-049); a series
+# version may hold a subset of stations and years (`SeriesIndex.subset`, its ADR-026).
+# `[store]` brings `pyarrow` for the Parquet series. The versions the adapter reads are
+# `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator` (REL-5.6).
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@v3.0.1",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@v3.1.0",
 ]
 
 [dependency-groups]

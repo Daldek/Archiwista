@@ -108,7 +108,6 @@ export const compare = {
       a: "A: {title}",
       b: "B: {title}",
       differs: "różne",
-      file: "porownanie",
     },
   },
   layer_fields: {

@@ -36,6 +36,7 @@ import {
   html,
   Icon,
   loadStylesheet,
+  unstyled,
   useContext,
   useEffect,
   useId,
@@ -524,8 +525,8 @@ function part(item) {
 /** Load the styles of the downloads and of the job cards they show. */
 function useDownloadStyles() {
   useEffect(() => {
-    loadStylesheet(new URL("./downloads.css", import.meta.url));
-    loadCardStyles();
+    loadStylesheet(new URL("./downloads.css", import.meta.url)).catch(unstyled);
+    loadCardStyles().catch(unstyled);
   }, []);
 }
 

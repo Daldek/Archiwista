@@ -21,6 +21,7 @@ import {
   loadStylesheet,
   Modal,
   ProblemView,
+  unstyled,
   useEffect,
   useId,
   useRef,
@@ -39,7 +40,7 @@ export function FeedbackButton() {
   const [open, setOpen] = useState(false);
   const button = useRef(null);
   useEffect(() => {
-    loadStylesheet(new URL("./feedback.css", import.meta.url));
+    loadStylesheet(new URL("./feedback.css", import.meta.url)).catch(unstyled);
   }, []);
   const close = () => {
     setOpen(false);

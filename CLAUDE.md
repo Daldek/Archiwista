@@ -5,7 +5,7 @@ and the IMGW-PIB and ČHMÚ archives that Obserwator writes, downloading into th
 producers' API and keeping projects in its own file (A-ADR-049), for one person on
 `localhost` or a team on a local network (`[team]` of `config.toml`). Profile `app`
 (DEV-1.1; `ecosystem.yaml` is authoritative). Introduction: [README.md](README.md);
-specification: [docs/SPEC.md](docs/SPEC.md); the Nogat standard 1.0:
+specification: [docs/SPEC.md](docs/SPEC.md); the Nogat standard 1.1:
 [standards/](https://github.com/Daldek/Nogat/tree/main/standards).
 
 ## Critical rules
@@ -40,8 +40,8 @@ specification: [docs/SPEC.md](docs/SPEC.md); the Nogat standard 1.0:
   an explicit directory; documents write data paths as `<data-dir>`.
 - Python only from `.venv`, through `uv` (DEV-6.2). `uv.lock` is committed; install
   with `uv sync --locked --all-extras` (DEV-6.3; the extra `obserwator` is the Obserwator
-  source). Kartograf and Obserwator are pinned by commit in `pyproject.toml` until their
-  tags (REL-5.3); the release commit of 0.3.0 replaces them with `v0.8.0` and `v3.0.0`.
+  source). Kartograf and Obserwator are pinned by tag in `pyproject.toml` (0.3.3: `v0.8.2`,
+  `v3.1.0`); while a producer's release is pending, by its commit (REL-5.3, REL-5.6).
 - Code, identifiers, comments, docstrings, logs, commit messages, ADRs, plans and
   documents are English (DEV-2.1). Every text for a person has an English and a Polish
   variant in the catalog `src/archiwista/messages/` (one module per area, key

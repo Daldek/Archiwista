@@ -51,8 +51,8 @@ type DataOrigin = Literal[
     "imgw_processed",
     "imgw_stations",
     "pmaxtp",
-    "chmi_file",
-    "chmi_processed",
+    "chmu_file",
+    "chmu_processed",
 ]
 
 # The statuses of a plan's positions in the order the producers define them.
@@ -226,7 +226,7 @@ class EntryMeta:
 
     ``provider``, ``written_by`` and ``producer_version`` are the fields of
     the sidecar core every Nogat tool writes (DEV-19.16): the organisation
-    that publishes the data (``IMGW-PIB``, ``CHMI``), the package that wrote
+    that publishes the data (``IMGW``, ``CHMU``), the package that wrote
     the file (the sidecar's ``producer``, e.g. ``kartograf``, ``obserwator``;
     not the Archiwista producer id in ``producer``) and its version. A
     producer that does not know one leaves it ``None``.
@@ -427,12 +427,12 @@ class SourceEntry:
     ``version_path`` the version a link points to (a version's own path).
     ``slot_key`` is the producer's own name of the slot (the index keeps it with
     the slot), opaque to Archiwista; ``slot_name`` is what people call the
-    slot when the last part of ``slot_path`` is not a name (e.g. a directory
-    called ``versions``). ``skipped`` marks a version listed in
-    ``ScanScope.known_versions`` whose metadata was not read; ``meta`` carries
-    metadata read in the same pass. ``handle`` is the producer's own record of
-    the entry: opaque to Archiwista and passed back to the same adapter
-    unchanged.
+    slot when the last part of ``slot_path`` is not a name (e.g. an archive's
+    directory, which lacks its file's extension). ``skipped`` marks a version
+    listed in ``ScanScope.known_versions`` whose metadata was not read;
+    ``meta`` carries metadata read in the same pass. ``handle`` is the
+    producer's own record of the entry: opaque to Archiwista and passed back
+    to the same adapter unchanged.
 
     An ``observation`` is a record of the producer's publication history:
     the source published other bytes with the content of a version it

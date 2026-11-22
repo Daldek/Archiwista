@@ -25,7 +25,7 @@ import { getArea } from "../api.js";
 import { int } from "../format.js";
 import { useResource } from "../hooks.js";
 import { catalog as L } from "../labels/catalog.js";
-import { t } from "../labels/index.js";
+import { providerName, t } from "../labels/index.js";
 import { projects as P } from "../labels/projects.js";
 import { METEO_KINDS, STATION_STATES } from "../map/stations.js";
 import { html, Icon, ProblemView, Seg, Tech, useEffect, useState } from "../ui.js";
@@ -239,7 +239,7 @@ function StationFields({ query, stations, errors, onChange }) {
         ${stations.dataset ? null : html`<option value="">${SF.dataset_any}</option>`}
         ${withCurrent(datasets.map((item) => item.dataset), query.dataset).map((key) => {
           const item = datasets.find((candidate) => candidate.dataset === key);
-          const text = item ? t(SF.dataset_option, { name: item.name ?? key, provider: item.provider }) : key;
+          const text = item ? t(SF.dataset_option, { name: item.name ?? key, provider: providerName(item.provider) }) : key;
           return html`<option value=${key} title=${key}>${text}</option>`;
         })}
       </select>

@@ -31,6 +31,13 @@ export const common = {
     reason: "przyczyna",
     type: "typ",
   },
+  // A station provider's name for a person, by its id (Nogat ECO-082: the id
+  // is IMGW or CHMU, the text keeps the institute's acronym); an id without
+  // an entry is shown as it is.
+  provider: {
+    IMGW: "IMGW-PIB",
+    CHMU: "ČHMÚ",
+  },
   job_kind: {
     scan: "skan",
     footprints: "obrysy jednostek",
