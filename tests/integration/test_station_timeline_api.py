@@ -215,7 +215,7 @@ def test_dataset_is_required_and_unknown_parameters_are_refused(
     [
         {"dataset": DAILY, "limit": "1"},
         {"dataset": DAILY, "variable": ["H", "T"], "year_type": "calendar"},
-        {"dataset": "cz.chmi.meteo_daily", "sort": "name"},
+        {"dataset": "cz.chmu.meteo_daily", "sort": "name"},
     ],
 )
 def test_the_route_and_the_command_line_give_the_same_pages(
@@ -317,12 +317,12 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
         writer.replace_stations(
             STORE,
             "obserwator",
-            "IMGW-PIB",
+            "IMGW",
             slot="stations/versions",
             version="stations/versions/2026-10-26_00000000/stations.geojson",
             stations=[
                 Station(
-                    "IMGW-PIB",
+                    "IMGW",
                     code,
                     kind="hydro",
                     name=f"Stacja {index}",
@@ -330,7 +330,7 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
                     hydrographic_code=f"2138{index % 10}",
                     river_order=index,
                     point=(19.0 + index / 100, 50.0),
-                    location_source="api_hydro",
+                    location_source="pl.imgw.hydro_now",
                 )
                 for index, code in enumerate(codes)
             ],
@@ -342,7 +342,7 @@ def _perf_index(paths: AppPaths, root: Path) -> None:
             version=f"{folder}/series.json",
             listing=SeriesListing(
                 dataset=DAILY,
-                provider="IMGW-PIB",
+                provider="IMGW",
                 kind="hydro",
                 time_unit="day",
                 year_type="hydrological",

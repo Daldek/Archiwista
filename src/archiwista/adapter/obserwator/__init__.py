@@ -2,7 +2,7 @@
 
 One plugin reads both providers of the package, IMGW-PIB and ČHMÚ: a store
 of Obserwator holds the files of both, so a dataset (``pl.imgw.hydro_daily``,
-``cz.chmi.hydro_daily``) is what tells them apart. A store is two roots, the raw
+``cz.chmu.hydro_daily``) is what tells them apart. A store is two roots, the raw
 root of the archives and the data root of what Obserwator builds from them
 (Obserwator ADR-017, A-ADR-056). The factory compares the
 installed Obserwator with the range the adapter reads (``SUPPORTED_VERSIONS``)

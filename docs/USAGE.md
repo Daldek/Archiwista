@@ -534,7 +534,8 @@ and a directory holding only one of them is no project.
   version's label before its extension (`M-33-44-A-d-2-2_2025-06-13.asc`). With the
   ZIP, `eksport/<name>.zip` holds the same content (the unpacked rasters too), and
   "Pobierz ZIP" at the export
-  downloads it. A pin whose store is not configured or whose version is not in the
+  downloads it as `archiwista_export_<project>_<name>.zip` (Nogat DEV-19.21; the file in
+  `eksport/` keeps its name). A pin whose store is not configured or whose version is not in the
   store is left out and counted. The list of the project's exports says "projekt
   zmieniony po eksporcie — wygeneruj ponownie" once the project file changes after an
   export; "Wygeneruj ponownie…" opens the form on its name, and writing it again
@@ -680,7 +681,9 @@ previews with the curtain, by cross-fading or side by side; this is a visual
 comparison and changes no data. The strip of sources under the maps gives the lines
 the terms of both versions' providers require (every line in „Źródła i warunki”),
 and „Eksportuj CSV” puts them in full in the table's last two columns, `attribution`
-and `terms_notice`, a line a cell from the first row down.
+and `terms_notice`, a line a cell from the first row down; the file is
+`archiwista_comparison_<a>_<b>.csv`, the sides' titles in lower-case ASCII with `-`
+between their words (`NMT · 2020` as `nmt-2020`, Nogat DEV-19.21).
 
 ![Comparison and curtain](reports/v0.2-screenshots/06-porownanie-kurtyna.webp)
 
@@ -780,7 +783,8 @@ event. Passwords, tokens, cookies and raw request addresses are not recorded.
 - **A row** opens the state before and after the change, its details, the
   session, the kind of actor and the address.
 - **"Eksportuj CSV"** and **"Eksportuj JSON Lines"** save every entry the filters
-  select as a file, as `log export` writes it.
+  select as a file, as `log export` writes it, named
+  `archiwista_log_<UTC date>_<time>Z.<format>` (`archiwista_log_2026-11-21_143022Z.csv`).
 
 At the terminal the owner of the installation reads and exports it:
 
@@ -921,9 +925,9 @@ archiwista stations list --q raba --sort name
 archiwista stations show 149190310 --years 1951-2025
 archiwista stations timeline --dataset pl.imgw.hydro_daily --river-code 2138 --river-scope tributaries
 archiwista stations series 149190310 --variable Q --from 1981-01-01 --to 1983-12-31
-archiwista stations compare --station zespol/IMGW-PIB/149190310 --station zespol/IMGW-PIB/149200090 --dataset pl.imgw.hydro_daily --variable Q
+archiwista stations compare --station zespol/IMGW/149190310 --station zespol/IMGW/149200090 --dataset pl.imgw.hydro_daily --variable Q
 archiwista stations datasets
-archiwista stations handoff 149190310 --variable Q --resolution annual > raba.handoff.json
+archiwista stations handoff 149190310 --variable Q --resolution annual > archiwista_handoff_raba.json
 ```
 
 `stations list` prints each station with the label of every variable of its series
@@ -967,7 +971,8 @@ annual maxima of complete hydrological years, as a hand-off to Hydrolog
 value to the last (the first and last year with a maximum), not over the years of the
 archive before them. The same document comes from „Do Hydrologa” under the
 chart of the station card (choose „Dane” and „Zmienna”, then „Kopiuj do Hydrologa” or
-„Plik przekazania”, which saves `<subject>.handoff.json`), and Hydrolog's
+„Plik przekazania”, which saves `archiwista_handoff_<subject>.json`, the subject in
+lower-case ASCII with `-` between its words, Nogat DEV-19.21), and Hydrolog's
 „Statystyka przepływów” opens it with „Wczytaj z Archiwisty”. Where the browser
 cannot copy (an address `http://` on the network, not `127.0.0.1`, or a refusal) the
 text appears selected in a field under the buttons: press Ctrl+C, then „Wklej ze

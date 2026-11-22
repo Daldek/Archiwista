@@ -55,13 +55,16 @@ _FILE_SUFFIXES = frozenset({"json", "geojson", "gpkg", "html", "sqlite", "toml",
 # Dotted literals of the project that no catalog owns: permission actions and the
 # actions of the action log (``token.issue`` is no text of the ``token`` area).
 _NOT_KEYS = frozenset({*get_args(Action.__value__), *get_args(ActionName.__value__)})
-# Entries whose two languages read alike: a loan word, a code or a bare composition.
+# Entries whose two languages read alike: a loan word, a code, a bare composition
+# or a provider's acronym.
 _SAME_WORDS = frozenset(
     {
         "cli.own_problem",
         "cli.problem_line",
         "cli.station_chart_annual_min",
         "cli.version_title",
+        "common.provider_chmu",
+        "common.provider_imgw",
         "compare.field_sha256",
         "doctor.level_ok",
         "preview.kind_raster",
@@ -96,6 +99,8 @@ _DATA = frozenset(
         ("api/models_layers.py", "Kraków"),
         ("api/models_layers.py", "po odbiorze przyłączy"),
         ("config.py", "OSM GUGiK szary (tylko Polska)"),
+        ("file_names.py", "ł"),
+        ("file_names.py", "Ł"),
         ("index/queries.py", "ł"),
         ("index/queries.py", "Ł"),
         ("index/writer.py", "ł"),

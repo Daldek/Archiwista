@@ -239,7 +239,7 @@ def export(page: Page, button: str, tmp_path: Path, suffix: str) -> bytes:
         page.get_by_role("button", name=button, exact=True).click()
     download = started.value
     name = download.suggested_filename
-    assert re.fullmatch(rf"archiwista-log-\d{{8}}T\d{{6}}Z\.{suffix}", name)
+    assert re.fullmatch(rf"archiwista_log_\d{{4}}-\d\d-\d\d_\d{{6}}Z\.{suffix}", name)
     expect(page.get_by_role("status").filter(has_text="Zapisano plik")).to_have_text(
         f"Zapisano plik {name}."
     )

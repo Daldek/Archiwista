@@ -45,7 +45,7 @@ PEOPLE = {
     KASIA: ("Kasia Wrona", "szum-Sanu-pod-Lesko"),
 }
 DAILY = "pl.imgw.hydro_daily"
-PROVIDER = "IMGW-PIB"
+PROVIDER = "IMGW"
 RABA = "149190310"  # Raba Górna: located, with a daily series file
 SAVE = "PUT /api/v1/preferences"
 MENU = "#account-panel"

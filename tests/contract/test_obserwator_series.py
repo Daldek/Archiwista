@@ -28,8 +28,8 @@ type Stores = Callable[[str], Path]
 SERIES_SLOTS = (
     "series:pl.imgw.hydro_daily",
     "series:pl.imgw.meteo_precip_daily",
-    "series:cz.chmi.hydro_daily",
-    "series:cz.chmi.meteo_daily",
+    "series:cz.chmu.hydro_daily",
+    "series:cz.chmu.meteo_daily",
 )
 
 
@@ -132,7 +132,7 @@ def test_a_station_of_per_station_files_keeps_its_own_periods(
     """ČHMÚ: the station's files decide its known periods, the version's do not."""
     root = data_root(obserwator_store("complete_pl_cz"))
     czech = adapter.read_series_index(
-        root, _series_version(adapter, root, "series:cz.chmi.hydro_daily")
+        root, _series_version(adapter, root, "series:cz.chmu.hydro_daily")
     )
     polish = adapter.read_series_index(
         root, _series_version(adapter, root, "series:pl.imgw.hydro_daily")
@@ -186,7 +186,7 @@ def test_a_series_index_the_system_cannot_read_is_an_unavailable_store(
     store = tmp_path / "store"
     shutil.copytree(obserwator_store("complete_pl_cz"), store)
     root = data_root(store)
-    version = _series_version(adapter, root, "series:cz.chmi.meteo_daily")
+    version = _series_version(adapter, root, "series:cz.chmu.meteo_daily")
     path = root / version
     path.chmod(0)
     try:

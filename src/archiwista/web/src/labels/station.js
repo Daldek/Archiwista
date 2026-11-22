@@ -119,7 +119,7 @@ export const station = {
         "Skopiuj {what} {variable} jako przekazanie dla Hydrologa (Statystyka przepływów → " +
         "„{load}” → „{paste}”)",
       file_title:
-        "Zapisz {what} {variable} jako plik .handoff.json do wczytania w Hydrologu " +
+        "Zapisz {what} {variable} jako plik archiwista_handoff_….json do wczytania w Hydrologu " +
         "(Statystyka przepływów → „{load}” → „{open_file}”)",
       field: "Tekst przekazania dla Hydrologa",
       what_daily: "wartości dobowe",

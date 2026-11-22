@@ -35,8 +35,8 @@ SERIES = "series.json"
 META = ".meta.json"
 PL_HYDRO = "pl.imgw.hydro_daily"
 PL_PRECIP = "pl.imgw.meteo_precip_daily"
-CZ_HYDRO = "cz.chmi.hydro_daily"
-CZ_METEO = "cz.chmi.meteo_daily"
+CZ_HYDRO = "cz.chmu.hydro_daily"
+CZ_METEO = "cz.chmu.meteo_daily"
 _ROWS = (
     "SELECT dataset, provider, code, variable_key, variable, unit, first_date,"
     " last_date, with_value, accumulated, gaps, periods, file FROM station_series"
@@ -270,11 +270,11 @@ def test_the_index_holds_every_variable_of_each_current_series(
         "hydro-gaps-hydrological",
         "hydro-gaps-calendar",
         "hydro-empty",
-        "chmi-unknown-year",
-        "chmi-no-value",
+        "chmu-unknown-year",
+        "chmu-no-value",
         "meteo-accumulated-calendar",
         "meteo-accumulated-hydrological",
-        "chmi-meteo-hydrological",
+        "chmu-meteo-hydrological",
     ],
 )
 def test_each_year_counts_its_known_units_and_those_with_a_value(
@@ -323,7 +323,7 @@ def test_the_accumulated_sums_and_the_station_periods_are_kept(
         PL_HYDRO,
     ) == [
         (
-            "IMGW-PIB",
+            "IMGW",
             "hydro",
             "day",
             "hydrological",

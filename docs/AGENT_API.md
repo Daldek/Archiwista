@@ -501,8 +501,10 @@ cursor is safe in a URL).
   `path`, `files`, `zip`, `written_at` (of its `README.txt`) and `changed_since` (the
   project file changed after it: write it again). `GET
   /projects/{project}/exports/{name}/zip` (whoever sees the project) sends
-  `eksport/<name>.zip` as an attachment (`application/zip`, `Cache-Control:
-  private, no-store`), `404 not_found` when
+  `eksport/<name>.zip` as an attachment named `archiwista_export_<project>_<name>.zip`
+  (Nogat DEV-19.21: the name in lower-case ASCII with `-` for anything else, so
+  `raba-2024` of `raba` is `archiwista_export_raba_raba-2024.zip`; the file on disk keeps
+  its name; `application/zip`, `Cache-Control: private, no-store`), `404 not_found` when
   the export has none; like a file download, a link of the interface
   (`Sec-Fetch-Site: same-origin`, or `none` for an address typed in) passes
   with the session cookie alone, without `X-Archiwista-CSRF`.
@@ -849,18 +851,18 @@ keeps its place with `null` for both. No station with the variable is `400`
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"
 curl -sf -b "$JAR" -H "$H" \
   "$BASE/stations?area_id=$AREA&dataset=pl.imgw.hydro_daily&coverage=Q:continuous&min_complete_years=Q:30"
-curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW-PIB"
+curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310?store=zespol&provider=IMGW"
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/149190310/coverage?variable=Q&years=1981-1983"
 curl -sf -b "$JAR" -H "$H" \
   "$BASE/stations/timeline?dataset=pl.imgw.hydro_daily&river_code=2138&river_scope=tributaries"
 archiwista stations list --area-id="$AREA" --dataset=pl.imgw.hydro_daily \
   --coverage=Q:continuous --min-complete-years=Q:30 --json
-archiwista stations show 149190310 --store=zespol --provider=IMGW-PIB --json
+archiwista stations show 149190310 --store=zespol --provider=IMGW --json
 archiwista stations datasets --json
 archiwista stations timeline --dataset=pl.imgw.hydro_daily --variable=Q --json
 archiwista stations series 149190310 --variable=Q --from=1981-01-01 --to=1983-12-31 --json
-archiwista stations compare --station=zespol/IMGW-PIB/149190310 \
-  --station=zespol/IMGW-PIB/149200090 --dataset=pl.imgw.hydro_daily --variable=Q --json
+archiwista stations compare --station=zespol/IMGW/149190310 \
+  --station=zespol/IMGW/149200090 --dataset=pl.imgw.hydro_daily --variable=Q --json
 ```
 
 ## 6. Previews, layers, comparison, own data (v0.2), producers' commands and availability (v0.3), file download (v0.4)

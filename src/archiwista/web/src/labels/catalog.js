@@ -185,16 +185,17 @@ export const catalog = {
     on_boundary: "na granicy obszaru",
     located: "położenie",
     unlocated: "bez położenia",
+    // Obserwator's location sources: the key of the dataset the location came
+    // from, or `static` and `user` for its reference file and the user's file.
     source: {
-      api_hydro: "API IMGW (hydro)",
-      api_meteo: "API IMGW (meteo)",
+      "pl.imgw.hydro_now": "API IMGW (hydro)",
+      "pl.imgw.meteo_now": "API IMGW (meteo)",
       static: "plik położeń Obserwatora",
       user: "plik współrzędnych",
-      chmi_hydro_now: "ČHMÚ: dane bieżące hydro",
-      chmi_hydro_meta3: "ČHMÚ: metadane hydro",
-      chmi_hydro_stations: "ČHMÚ: lista stacji hydro",
-      chmi_meteo_now: "ČHMÚ: dane bieżące meteo",
-      chmi_meteo_stations: "ČHMÚ: lista stacji meteo",
+      "cz.chmu.hydro_now": "ČHMÚ: dane bieżące hydro",
+      "cz.chmu.hydro_stations": "ČHMÚ: lista stacji hydro",
+      "cz.chmu.meteo_now": "ČHMÚ: dane bieżące meteo",
+      "cz.chmu.meteo_stations": "ČHMÚ: lista stacji meteo",
     },
     reason: {
       none: "brak współrzędnych w źródłach",

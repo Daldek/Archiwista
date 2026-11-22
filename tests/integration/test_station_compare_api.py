@@ -31,8 +31,8 @@ from tests.fixtures.cli_errors import assert_same_error, refusal
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_SOURCE,
     CUZK_RUIAN,
     GUGIK_PRG,
     IMGW_PROCESSED,
@@ -43,7 +43,7 @@ from tests.fixtures.provider_lines import (
 
 STORE = "dane"
 DAILY = "pl.imgw.hydro_daily"
-CZ_DAILY = "cz.chmi.hydro_daily"
+CZ_DAILY = "cz.chmu.hydro_daily"
 RABA = "149190310"
 NO_Q = "149190311"  # no position, Q without a value
 UNSERIED = "149190312"  # no series at all
@@ -76,12 +76,12 @@ type Params = dict[str, str | list[str]]
 
 def imgw(code: str) -> str:
     """Return the address of an IMGW-PIB station of the store."""
-    return f"{STORE}/IMGW-PIB/{code}"
+    return f"{STORE}/IMGW/{code}"
 
 
-def chmi(code: str) -> str:
+def chmu(code: str) -> str:
     """Return the address of a ČHMÚ station of the store."""
-    return f"{STORE}/CHMI/{code}"
+    return f"{STORE}/CHMU/{code}"
 
 
 @dataclass(frozen=True)
@@ -149,22 +149,22 @@ def _chart(served: Served, station: str, **params: str) -> Any:
             id="imgw-H",
         ),
         pytest.param(
-            [chmi(SPINDLER), chmi(ZAPADLA)],
+            [chmu(SPINDLER), chmu(ZAPADLA)],
             CZ_DAILY,
             "H",
             "hydrological",
             ("2004-01-01", "2024-12-31"),
             4,
-            id="chmi-H-two-spans",
+            id="chmu-H-two-spans",
         ),
         pytest.param(
-            [chmi(ZAPADLA), chmi(SPINDLER)],
+            [chmu(ZAPADLA), chmu(SPINDLER)],
             CZ_DAILY,
             "T",
             "calendar",
             ("2004-01-01", "2024-12-31"),
             4,
-            id="chmi-T-calendar",
+            id="chmu-T-calendar",
         ),
     ],
 )
@@ -205,7 +205,7 @@ def test_the_stations_share_one_range_and_interval(
     ("stations", "dataset", "variable", "year_type"),
     [
         ([imgw(RABA), imgw(NO_Q)], DAILY, "Q", None),
-        ([chmi(SPINDLER), chmi(ZAPADLA)], CZ_DAILY, "T", "calendar"),
+        ([chmu(SPINDLER), chmu(ZAPADLA)], CZ_DAILY, "T", "calendar"),
     ],
 )
 def test_the_facts_of_each_station_are_those_of_its_card(
@@ -247,10 +247,10 @@ def test_the_facts_of_each_station_are_those_of_its_card(
     [
         ([imgw(RABA), imgw(NO_Q)], DAILY, "Q", IMGW_LINES),
         (
-            [chmi(SPINDLER), chmi(ZAPADLA)],
+            [chmu(SPINDLER), chmu(ZAPADLA)],
             CZ_DAILY,
             "T",
-            ([CHMI_SOURCE, CHMI_PROCESSED, CUZK_RUIAN], []),
+            ([CHMU_SOURCE, CHMU_PROCESSED, CUZK_RUIAN], []),
         ),
     ],
 )
@@ -368,8 +368,8 @@ def test_refusals(
     [
         [f"--station={imgw(RABA)}", f"--station={imgw(NO_Q)}", "--variable=H"],
         [
-            f"--station={chmi(SPINDLER)}",
-            f"--station={chmi(ZAPADLA)}",
+            f"--station={chmu(SPINDLER)}",
+            f"--station={chmu(ZAPADLA)}",
             "--variable=T",
             "--year-type=calendar",
             "--max-points=30",
@@ -382,7 +382,7 @@ def test_the_route_and_the_command_line_give_the_same_comparison(
 ) -> None:
     """``archiwista stations compare --json`` prints the route's answer."""
     # Arrange
-    dataset = CZ_DAILY if "CHMI" in argv[0] else DAILY
+    dataset = CZ_DAILY if "CHMU" in argv[0] else DAILY
     params: dict[str, list[str]] = {"dataset": [dataset]}
     for option in argv:
         name, _, value = option.removeprefix("--").partition("=")

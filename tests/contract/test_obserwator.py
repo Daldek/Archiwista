@@ -112,7 +112,7 @@ ARCHIVE_KEY = "archive:pl.imgw.hydro_daily:2024/codz_2024.zip"
 SERIES_KEY = "series:pl.imgw.hydro_daily"
 HYDRO_SERIES = Path("series/versions/hydro_daily")
 PL_CATALOG = Path("stations/versions")
-CZ_CATALOG = Path("stations/versions/chmi_stations")
+CZ_CATALOG = Path("stations/versions/chmu_stations")
 CZ_REGISTER_SLOT = Path(
     "archives/versions/hydrology/historical/data/daily/H_0-203-1-900001_DQ_2023"
 )
@@ -276,7 +276,7 @@ def test_series_and_catalogs_are_versions_and_nothing_is_a_problem(
     assert {e.kind for e in entries} == {"version"}
     (catalog,) = [e for e in entries if e.segment == "pl.imgw.stations"]
     assert catalog.slot_path == PL_CATALOG
-    assert catalog.meta is not None and catalog.meta.provider == "IMGW-PIB"
+    assert catalog.meta is not None and catalog.meta.provider == "IMGW"
 
 
 @pytest.mark.parametrize(
@@ -319,7 +319,7 @@ def test_an_observation_is_history_and_never_a_version(
 
     assert (observation.slot_path, observation.segment) == (
         CZ_REGISTER_SLOT,
-        "cz.chmi.hydro_daily",
+        "cz.chmu.hydro_daily",
     )
     assert observation.relative_path.parent == CZ_REGISTER_SLOT / "observations"
     assert observation.meta is None
@@ -379,17 +379,17 @@ def test_a_slot_has_the_producers_key_and_a_name_for_people(
     assert names["archive:pl.imgw.hydro_daily:2024/codz_2024.zip"] == "codz_2024.zip"
     cz_file = "precipitation/dly-0-203-0-90001-SRA.csv"
     assert (
-        names[f"archive:cz.chmi.meteo_daily:{cz_file}"] == "dly-0-203-0-90001-SRA.csv"
+        names[f"archive:cz.chmu.meteo_daily:{cz_file}"] == "dly-0-203-0-90001-SRA.csv"
     )
     assert names["catalog:pl.imgw.stations"] == "pl.imgw.stations"
-    assert names["catalog:cz.chmi.stations"] == "cz.chmi.stations"
+    assert names["catalog:cz.chmu.stations"] == "cz.chmu.stations"
     # A series is named by its directory, which says what it is.
     assert names["series:pl.imgw.hydro_daily"] is None
     assert {
         e.slot_path.name
         for e in entries
-        if e.slot_key == "series:cz.chmi.hydro_daily" and e.slot_path
-    } == {"chmi_hydro_daily"}
+        if e.slot_key == "series:cz.chmu.hydro_daily" and e.slot_path
+    } == {"chmu_hydro_daily"}
 
 
 def test_a_problem_without_a_slot_has_no_key_and_no_dataset(
@@ -415,24 +415,24 @@ def test_a_dataset_of_the_registry_is_described_by_its_polish_title_country_and_
     assert adapter.describe_segment(HYDRO) == SourceSegment(
         HYDRO, "hydro", "PL", HYDRO, "Dane hydrologiczne dobowe", True
     )
-    czech = adapter.describe_segment("cz.chmi.hydro_daily")
+    czech = adapter.describe_segment("cz.chmu.hydro_daily")
     assert (czech.country, czech.dataset_key, czech.known) == (
         "CZ",
-        "cz.chmi.hydro_daily",
+        "cz.chmu.hydro_daily",
         True,
     )
     assert {
         key: adapter.describe_segment(key).product
         for key in (
             "pl.imgw.meteo_precip_daily",
-            "cz.chmi.meteo_daily",
-            "cz.chmi.hydro_stations",
+            "cz.chmu.meteo_daily",
+            "cz.chmu.hydro_stations",
             "pl.imgw.pmaxtp",
         )
     } == {
         "pl.imgw.meteo_precip_daily": "meteo",
-        "cz.chmi.meteo_daily": "meteo",
-        "cz.chmi.hydro_stations": "hydro",
+        "cz.chmu.meteo_daily": "meteo",
+        "cz.chmu.hydro_stations": "hydro",
         "pl.imgw.pmaxtp": "pmaxtp",
     }
 
@@ -469,11 +469,11 @@ def test_a_station_catalog_is_named_after_its_provider_and_an_unknown_key_by_its
         "Katalog stacji IMGW-PIB",
         True,
     )
-    assert adapter.describe_segment("cz.chmi.stations") == SourceSegment(
-        "cz.chmi.stations",
+    assert adapter.describe_segment("cz.chmu.stations") == SourceSegment(
+        "cz.chmu.stations",
         "stations",
         "CZ",
-        "cz.chmi.stations",
+        "cz.chmu.stations",
         "Katalog stacji ČHMÚ",
         True,
     )
@@ -505,23 +505,23 @@ def test_the_two_providers_keep_their_datasets_catalogs_and_countries_apart(
     catalogs = {e.segment: e for e in entries if e.relative_path.parts[0] == "stations"}
 
     assert {(m.provider, m.country) for m in metas} == {
-        ("IMGW-PIB", "PL"),
-        ("CHMI", "CZ"),
+        ("IMGW", "PL"),
+        ("CHMU", "CZ"),
     }
     assert {e.segment[:3] for e in entries if e.segment and e.meta} == {"pl.", "cz."}
     assert {name: e.slot_path for name, e in catalogs.items()} == {
         "pl.imgw.stations": PL_CATALOG,
-        "cz.chmi.stations": CZ_CATALOG,
+        "cz.chmu.stations": CZ_CATALOG,
     }
     assert [e.meta.provider for e in catalogs.values() if e.meta] == [
-        "IMGW-PIB",
-        "CHMI",
+        "IMGW",
+        "CHMU",
     ]
     slots = Counter(e.slot_path for e in entries if e.kind == "version")
     assert slots[PL_CATALOG] == slots[CZ_CATALOG] == 1
 
 
-def test_the_canonical_content_of_a_chmi_file_is_kept_and_is_none_for_imgw(
+def test_the_canonical_content_of_a_chmu_file_is_kept_and_is_none_for_imgw(
     obserwator_store: Stores, adapter: ObserwatorAdapter
 ) -> None:
     """The producer's canonical content rides along; nothing is computed."""
@@ -533,9 +533,9 @@ def test_the_canonical_content_of_a_chmi_file_is_kept_and_is_none_for_imgw(
         if e.meta is not None and e.relative_path.parts[0] == "archives"
     }
 
-    assert ("cz.chmi.hydro_daily", "chmi-json/1", False) in forms
+    assert ("cz.chmu.hydro_daily", "chmu-json/1", False) in forms
     assert (HYDRO, None, True) in forms
-    assert ("cz.chmi.meteo_daily", None, True) in forms
+    assert ("cz.chmu.meteo_daily", None, True) in forms
 
 
 def test_the_origin_of_a_version_is_its_trees_form_of_its_providers_data(
@@ -556,12 +556,12 @@ def test_the_origin_of_a_version_is_its_trees_form_of_its_providers_data(
 
     assert isinstance(adapter, DataOriginAdapter)
     assert origins == {
-        ("archives", "IMGW-PIB", "imgw_file"),
-        ("series", "IMGW-PIB", "imgw_processed"),
-        ("stations", "IMGW-PIB", "imgw_stations"),
-        ("archives", "CHMI", "chmi_file"),
-        ("series", "CHMI", "chmi_processed"),
-        ("stations", "CHMI", "chmi_processed"),
+        ("archives", "IMGW", "imgw_file"),
+        ("series", "IMGW", "imgw_processed"),
+        ("stations", "IMGW", "imgw_stations"),
+        ("archives", "CHMU", "chmu_file"),
+        ("series", "CHMU", "chmu_processed"),
+        ("stations", "CHMU", "chmu_processed"),
     }
     cell = "pmaxtp/versions/POT/751_317/2026-10-25_3f9c2a71/cell.json"
     assert adapter.data_origin(cell, None) == "pmaxtp"

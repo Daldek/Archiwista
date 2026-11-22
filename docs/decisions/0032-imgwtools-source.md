@@ -349,3 +349,30 @@ requirement ids IMGW-1 to IMGW-21 keep their names. Nothing is migrated (ECO-056
 index is rebuilt (`SCHEMA_VERSION` 18), and a settings file, a store or a project file
 that names `imgw` is renamed by hand or written again. The names above in decisions 1
 to 14 read through this map.
+
+**Erratum 3 (2026-11-21, Nogat ECO-082, its plan `2026-11-21-national-provider-names`
+step 4; Obserwator 3.1.0):** ČHMÚ's identifiers are its national acronym without
+diacritics. The provider this record calls `CHMI` is `CHMU`, the dataset keys `cz.chmi.*`
+are `cz.chmu.*` (the station catalog `cz.chmu.stations`), and the store directories
+named by them `series/versions/chmu_*`, `stations/versions/chmu_stations` and
+`analyses/versions/cz.chmu`. A station's `location_source` names the dataset its
+position came from (`pl.imgw.hydro_now`, `pl.imgw.meteo_now`, `cz.chmu.hydro_now`,
+`cz.chmu.hydro_stations`, `cz.chmu.meteo_now`, `cz.chmu.meteo_stations`), or `static`
+and `user` as before. No decision changes and nothing is translated: Archiwista reads
+only the new names, and its index is rebuilt (`archiwista reindex`) from a data root
+that Obserwator 3.1.0 built; the raw root stays, as Obserwator reads its archives' older
+sidecars under the new key and provider. The old names in decisions 1 to 14 read through this map.
+
+**Erratum 4 (2026-11-21, Nogat ECO-082 as extended the same day, DEV-2.5; Obserwator
+3.1.0):** IMGW-PIB's identifiers lose the legal suffix too. The provider this record and
+erratum 2 call `IMGW-PIB` is `IMGW`: the `provider` of the API, of its filters
+`?provider=` and `--provider`, of a station's reference `<store>/IMGW/<code>` and of the
+index, and the hand-off's `provenance.series.source` `imgw` (Nogat's registry id). The
+dataset keys `pl.imgw.*`, the store's directories and the licence id `IMGW-PIB` (which
+names IMGW-PIB's terms in Obserwator's sidecars) are unchanged. Text for a person keeps
+the institute's acronym: the interface and the command line's text name a provider by
+its id through one table (`common.provider_imgw`, `common.provider_chmu` of the
+messages, `provider` of `web/src/labels/common.js`), „IMGW-PIB” and „ČHMÚ” (SPEC 6.7);
+the attribution lines are unchanged. No decision changes and nothing is translated:
+the index is rebuilt (`archiwista reindex`) from a data root Obserwator 3.1.0 built,
+which reads stored sidecars with the provider `IMGW-PIB` as `IMGW`.

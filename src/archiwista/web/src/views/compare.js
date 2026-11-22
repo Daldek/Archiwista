@@ -23,6 +23,7 @@
  * in A or B, objects per layer, fields added, removed and changed.
  */
 
+import { nameSlug } from "../../nogat/nogat-handoff.js";
 import { buildLinked, getComparison, getLinked, getLocalLayers, getVersion } from "../api.js";
 import { useApp } from "../context.js";
 import { day, int, size, stamp } from "../format.js";
@@ -775,14 +776,10 @@ function csvCell(text) {
   return /[",\r\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
 }
 
-/** `porownanie-<A>-<B>.csv` with the sides' names in safe letters. */
+/**
+ * `archiwista_comparison_<a>_<b>.csv` (Nogat DEV-19.21): the sides' titles by the kit's
+ * `nameSlug`, `NMT · 2020` as `nmt-2020`; a title with nothing left is left out.
+ */
 function csvName(titles) {
-  const slug = (text) =>
-    text
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^A-Za-z0-9._-]+/g, "_")
-      .replace(/^[_.]+|[_.]+$/g, "")
-      .slice(0, 60);
-  return `${[L.table.csv.file, ...titles.map(slug)].filter(Boolean).join("-")}.csv`;
+  return `${["archiwista_comparison", ...titles.map(nameSlug)].filter(Boolean).join("_")}.csv`;
 }

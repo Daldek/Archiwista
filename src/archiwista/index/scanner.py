@@ -74,7 +74,7 @@ from archiwista.index.types import (
     PassSummary,
 )
 from archiwista.index.writer import IndexWriter
-from archiwista.messages import message, with_detail
+from archiwista.messages import lookup, message, with_detail
 from archiwista.sources import (
     CurrentVersionAdapter,
     Footprint,
@@ -1192,7 +1192,7 @@ def _index_stations(
             writer.drop_stations(store, provider)
             text = message(
                 "scan.stations_unreadable",
-                provider=provider,
+                provider=lookup(f"common.provider_{provider.lower()}", provider),
                 path=version,
                 detail=str(error),
             )

@@ -87,6 +87,7 @@ from archiwista.auth import Principal, ProjectVisibility, WritableProjects
 from archiwista.auth.authorize import Authorizer
 from archiwista.config import AppSettings, SettingsService
 from archiwista.errors import NotFoundError
+from archiwista.file_names import download_name, name_slug
 from archiwista.index import IndexQueries
 from archiwista.jobs import JobSupervisor
 from archiwista.messages import message
@@ -645,8 +646,9 @@ def list_project_exports(
         200: {
             "description": (
                 "The export's ZIP, `Content-Disposition: attachment` as"
-                " `<name>.zip`: its folders and `README.txt`; `Cache-Control:"
-                " private, no-store`."
+                " `archiwista_export_<project>_<name>.zip` (Nogat DEV-19.21; the"
+                " name in lower-case ASCII, `-` for anything else): its folders and"
+                " `README.txt`; `Cache-Control: private, no-store`."
             ),
             "content": {"application/zip": {}},
         },
@@ -671,10 +673,13 @@ def get_project_export_zip(
     found = project_service.project_export_zip(
         settings.get(), queries, project, name, visible=visible
     )
+    # The person's name stays on disk; the download is named by DEV-19.21.
     return FileResponse(
         found,
         media_type="application/zip",
-        filename=found.name,
+        filename=download_name(
+            "export", name_slug(project), name_slug(found.stem), extension="zip"
+        ),
         headers={"Cache-Control": CACHE_CONTROL},
     )
 
