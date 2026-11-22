@@ -21,7 +21,7 @@ Archiwista is a local web application for browsing the spatial-data stores that 
 
 ## Run
 
-Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista needs Kartograf 0.8.0 with its public read API of the store (KA-1 to KA-6) and its commands, and, for the optional extra `obserwator`, Obserwator 3.0.0. `pyproject.toml` pins each by a commit of its `develop` until its tag exists; the release commit of 0.3.0 replaces the commits with the tags `v0.8.0` and `v3.0.0` (REL-5.3). `uv.lock` pins every package with its SHA-256 sum.
+Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista 0.3.3 needs Kartograf 0.8 (`>=0.8.0,<0.9`) with its public read API of the store (KA-1 to KA-6) and its commands, and, for the optional extra `obserwator`, Obserwator 3.1 (`>=3.1.0,<4`). `pyproject.toml` pins them by their tags `v0.8.2` and `v3.1.0`, and `uv.lock` pins every package with its SHA-256 sum.
 
 ```bash
 uv sync --locked                      # the environment in .venv, from uv.lock
@@ -36,7 +36,7 @@ The server listens on `127.0.0.1` only (port 8090, the setting `port`; `--port N
 
 The first start after an update that changes the schema of the local index (`SCHEMA_VERSION = 1`; 0.2.0 has 6, so the first start of 0.3.0 rebuilds it) runs a full scan: with a disconnected store, wait with the update or connect the store before the scan.
 
-**Upgrading to 0.3.3 with Obserwator 3.1.0.** The providers' identifiers are their national acronyms without diacritics or legal suffix (Nogat ECO-082): IMGW-PIB's provider is `IMGW` (in `provider`, `--provider`/`?provider=` and a station's reference `<store>/IMGW/<code>`; its keys `pl.imgw.*` are unchanged, its directories are `series/versions/imgw_*` and `stations/versions/imgw_stations`, and the interface and the command line's text still name it „IMGW-PIB”); for ČHMÚ the provider `CHMU`, the dataset keys `cz.chmu.*` and the store directories `series/versions/chmu_*`, `stations/versions/chmu_stations`, `analyses/versions/cz.chmu`; a station's `location_source` is the key of the dataset its position came from (`pl.imgw.hydro_now`, `cz.chmu.meteo_stations`…, or `static`, `user`). Archiwista reads only the new names and translates nothing. The raw root stays as it is (Obserwator 3.1.0 reads its archives' older sidecars under the new names); build a new Obserwator data root with Obserwator 3.1.0 from it (Obserwator's CHANGELOG), set it as the store's `obserwator_data` („Katalog danych Obserwatora” in „Ustawienia”), then rebuild the index with `archiwista reindex --store <store>`. A project's pins of ČHMÚ versions of the old data root are pinned again from the new one.
+**Upgrading to 0.3.3 with Obserwator 3.1.0.** The providers' identifiers are their national acronyms without diacritics or legal suffix (Nogat ECO-082): IMGW-PIB's provider is `IMGW` (in `provider`, `--provider`/`?provider=` and a station's reference `<store>/IMGW/<code>`; its keys `pl.imgw.*` are unchanged, its directories are `series/versions/imgw_*` and `stations/versions/imgw_stations`, and the interface and the command line's text still name it „IMGW-PIB”); for ČHMÚ the provider `CHMU`, the dataset keys `cz.chmu.*` and the store directories `series/versions/chmu_*`, `stations/versions/chmu_stations`, `analyses/versions/cz.chmu`; a station's `location_source` is the key of the dataset its position came from (`pl.imgw.hydro_now`, `cz.chmu.meteo_stations`…, or `static`, `user`). Archiwista reads only the new names and translates nothing, so a data root built by Obserwator 3.0 shows no stations or series. The raw root stays as it is (Obserwator 3.1.0 reads its archives' older sidecars under the new names). After `uv sync --locked --all-extras`: build a new data root `<new-data-root>` from the raw root `<raw-root>` with Obserwator 3.1.0 (its CHANGELOG, 3.1.0): `obserwator series build --root <new-data-root> --raw-root <raw-root> --dataset <key>` for each dataset of the series, `obserwator store catalog --root <new-data-root> --raw-root <raw-root> --provider IMGW` and `--provider CHMU`, then `obserwator analyses build --root <new-data-root>`; set it as the store's `obserwator_data` („Katalog danych Obserwatora” in „Ustawienia”, or `obserwator_data` of the store's `[[stores]]` in `config.toml` while the server is stopped); then rebuild the index from it with `archiwista reindex --store <store>`. A project's pins of IMGW-PIB and ČHMÚ series and station catalog versions of the old data root are pinned again from the new one (its archive pins stay valid).
 
 ## Deploy
 
@@ -116,7 +116,7 @@ Archiwista never writes to a store itself: a download goes through the producer'
 |---|---|
 | [Kartograf](https://github.com/Daldek/Kartograf) | writes the stores that Archiwista reads; the only importer of it is the adapter in `src/archiwista/adapter/kartograf/` |
 | [Obserwator](https://github.com/Daldek/Obserwator) | writes the IMGW-PIB and ČHMÚ archives, series and station catalogs; an optional plugin (`archiwista[obserwator]`), imported only by the adapter in `src/archiwista/adapter/obserwator/` |
-| [Nogat](https://github.com/Daldek/Nogat) | the ecosystem: the standard 1.0 that this repository follows and the error registry |
+| [Nogat](https://github.com/Daldek/Nogat) | the ecosystem: the standard 1.1 that this repository follows and the error registry |
 | QGIS | analysis and editing of the files that Archiwista shows; the QGIS plugin is in the Kartograf repository |
 
 ## Errors and exit codes
@@ -143,7 +143,7 @@ Archiwista holds no data of its own besides the project files it writes on a per
 | Document | Content |
 |---|---|
 | [CHANGELOG.md](https://github.com/Daldek/Archiwista/blob/main/docs/CHANGELOG.md) | changes by release |
-| [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md) | the user guide of 0.3.0: the views, projects and own data, jobs, the action log, IMGW stations, the team server |
+| [USAGE.md](https://github.com/Daldek/Archiwista/blob/main/docs/USAGE.md) | the user guide of 0.3.3: the views, projects and own data, jobs, the action log, IMGW stations, the team server |
 | [AGENT_API.md](https://github.com/Daldek/Archiwista/blob/main/docs/AGENT_API.md) | the HTTP API and the CLI with `--json` for scripts and AI agents |
 | [PRD.md](https://github.com/Daldek/Archiwista/blob/main/docs/PRD.md) | product requirements: problem, users, requirements, success measures, open decisions |
 | [SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md) | scope: the MVP, what is out of it, stages with gates, dependencies on the producers, risks |
@@ -169,7 +169,7 @@ The gate (DEV-7.6) runs from a git working directory and applies `uv sync --lock
 
 ## Status, licence, author
 
-Release **0.3.0** (the first tag, `v0.3.0`; a member of the first joint release of the Nogat ecosystem): v0.3 "Actions" (availability at the source, downloads through the producer's API), v0.4 "Team", projects in Archiwista's own file (A-ADR-049) and the Obserwator source with the station views of v0.5 "IMGW stations", as one release. Before it, 0.2.0 "Previews" (2026-10-20): the local index, the map and the catalog of a Kartograf store, file previews, the Fan and the Timeline, comparison with the curtain, and own data of a project with snapshots. Next: the rest of v0.5, v0.6 "PL + CZ"; the MVP is v1.0 ([SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md)). The API may change until v1.0.
+Release **0.3.3** (tag `v0.3.3`), with Nogat's release round of 2026-11-21: Obserwator 3.1.0 with the providers' identifiers `IMGW` and `CHMU`, the providers' strip folded to one line on a phone, Nogat's kit 1.1.0, the files Archiwista names as `archiwista_<content>_<qualifiers>.<extension>` and a fix of page errors in Firefox; 0.3.1 and 0.3.2 fixed defects ([CHANGELOG.md](https://github.com/Daldek/Archiwista/blob/main/docs/CHANGELOG.md)). Release **0.3.0** (the first tag, `v0.3.0`; a member of the first joint release of the Nogat ecosystem): v0.3 "Actions" (availability at the source, downloads through the producer's API), v0.4 "Team", projects in Archiwista's own file (A-ADR-049) and the Obserwator source with the station views of v0.5 "IMGW stations", as one release. Before it, 0.2.0 "Previews" (2026-10-20): the local index, the map and the catalog of a Kartograf store, file previews, the Fan and the Timeline, comparison with the curtain, and own data of a project with snapshots. Next: the rest of v0.5, v0.6 "PL + CZ"; the MVP is v1.0 ([SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md)). The API may change until v1.0.
 
 MIT licence: [LICENSE](https://github.com/Daldek/Archiwista/blob/main/LICENSE).
 

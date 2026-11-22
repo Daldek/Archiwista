@@ -1,14 +1,13 @@
 # Archiwista Architecture
 
-**Version described:** the code of `develop` after release 0.3.0 (`0.3.1.dev0` in
-`pyproject.toml` until the release commit of 0.3.1); the release before 0.3.0 is 0.2.0
-"Podglądy" (Previews).
+**Version described:** release 0.3.3 (Nogat's release round of 2026-11-21, with Obserwator
+3.1.0); the releases before it are 0.3.2, 0.3.1, 0.3.0 and 0.2.0 "Podglądy" (Previews).
 History: [`CHANGELOG.md`](CHANGELOG.md), state:
 [`PROGRESS.md`](PROGRESS.md), instructions:
 [`USAGE.md`](USAGE.md), [`AGENT_API.md`](AGENT_API.md).
 Measurements and acceptance: [`reports/v0.2-measurements.md`](reports/v0.2-measurements.md),
 [`reports/v0.3-measurements.md`](reports/v0.3-measurements.md);
-standards: [`CLAUDE.md`](../CLAUDE.md) and the Nogat standard 1.0.
+standards: [`CLAUDE.md`](../CLAUDE.md) and the Nogat standard 1.1.
 
 Every claim about the behaviour of the system describes the **code** in this repository
 (`src/`, `tests/`), not a plan or a spec. Requirements and scope are in
@@ -60,8 +59,8 @@ commands, `list_commands`, `command_schema`, `parse_command`, `validate_command`
 (section 2.2). The rest of the application knows only the source interface
 `src/archiwista/sources/`. A missing Kartograf function is a requirement on
 Kartograf (SPEC 12), not a workaround in Archiwista. The adapter reads Kartograf
-`>=0.8.0.dev0,<0.9` with KA-1..KA-6 (`SUPPORTED_VERSIONS`: while a commit is pinned the
-range starts at the development version, REL-5.6; the release narrows it to `>=0.8.0`).
+`>=0.8.0,<0.9` with KA-1..KA-6 (`SUPPORTED_VERSIONS`; while a commit is pinned the range
+starts at the development version, REL-5.6), and the Obserwator adapter Obserwator `>=3.1.0,<4`.
 
 **Release boundaries:** Archiwista does not download data itself: a download is the
 producer's command run by its adapter in a `download` job (v0.3, ADR-037); it does not

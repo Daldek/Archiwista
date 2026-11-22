@@ -7,64 +7,14 @@ command-line interface may change.
 
 ## [Unreleased]
 
-Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
+Changes since 0.3.2: release 0.3.3, a patch for Nogat's release round of 2026-11-21. It
+adapts Archiwista to Obserwator 3.1.0 and to Nogat's standard 1.1 (the providers'
+identifiers, a fix of 0.3.3 by Nogat's plan `2026-11-21-national-provider-names`; the names
+of the files it hands to a person; the strip folded on a phone; Nogat's kit 1.1.0) and fixes
+a page error in Firefox.
 
 ### Changed
 
-- **Files Archiwista names for a person follow Nogat's one pattern
-  `<tool>_<content>_<qualifiers>.<extension>` (DEV-19.21, ECO-083, plan
-  `2026-11-21-download-file-names` step 5).** The comparison's „Eksportuj CSV” saves
-  `archiwista_comparison_<a>_<b>.csv`, the sides' titles by the kit's `nameSlug`
-  (`archiwista_comparison_nmt-2020_nmt-2024.csv`, was `porownanie-NMT_2020-NMT_2024.csv`);
-  the action log's export (`GET /log/export`, „Eksportuj CSV”/„Eksportuj JSON Lines”) is
-  `archiwista_log_2026-11-21_143022Z.jsonl` (was `archiwista-log-20261121T143022Z.jsonl`);
-  an export's ZIP (`GET /projects/{project}/exports/{name}/zip`, „Pobierz ZIP”) is sent as
-  `archiwista_export_<project>_<name>.zip` (`archiwista_export_raba_raba-2024.zip`), while
-  the file in `eksport/` keeps the name the person gave; the hand-off is that of the kit
-  above. `project-export`'s folders and ZIP, a stored file sent as it is and a CLI
-  `--output` keep their names.
-- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `4bf0ce3`, the commit of
-  its `develop` at `3.1.0.dev0` with Nogat's copies of standard 1.1, the commit of Nogat's
-  release set candidate-11 for its release round of 2026-11-21 (`pyproject.toml`,
-  `uv.lock`; `1a11df5` of its `develop`, then `facf5ef`, `ddd7a22`, `dafcee4` and
-  `de06926`, before); the release commit replaces it with the tag. Kartograf stays
-  `v0.8.2`.
-- With Obserwator 3.1.0 a series version may hold chosen stations and years only
-  (`subset` of `series.json`, Obserwator ADR-026). Archiwista reads it as any version:
-  on the coverage labels, the timeline and the card the years not chosen are „nieznany”,
-  not gaps; a station not chosen has no series of the dataset, as a station without
-  series (on the map a point without coverage colour); a hand-off spans the version's
-  values. ČHMÚ's `cz.chmu.meteo_daily` has six files per station (`snow/…-SCE.csv`,
-  `snow/…-SNO.csv` beside the four before) and the variables `snow_cover` and
-  `fresh_snow` [cm], which the coverage and the card list as they list IMGW-PIB's. The
-  `formula_versions` and `derived` of Obserwator's analyses exports are not read by
-  Archiwista, which lists stored analyses as versions only.
-- The copy of Nogat's `handoff-1.schema.json` is Nogat's of `develop` `263e83c` (last
-  changed in `c47c42e`), whose first example records Hydrolog 0.9.0's result (Nogat plan
-  `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6); the schema itself is unchanged.
-- On a phone (up to 860 px) the strip of the providers' lines of a view or a card is one
-  line, its lines cut with an ellipsis, followed by „więcej”, which unfolds them in place
-  („zwiń” folds them again), and „Źródła i warunki”; wider screens are unchanged (Nogat
-  ECO-080, DEV-20.5; A-ADR-054 erratum 5). Nogat's kit 1.0.0 is copied again from Nogat
-  `5f8cce0` into `src/archiwista/web/nogat/`: `nogat-sources.js` and `.css`,
-  `nogat-kit.json`, and the kit's draft regulamin for operators `nogat-terms-operator.md`
-  (Nogat ECO-079), which no page links.
-- Nogat's kit is 1.1.0 (Nogat ECO-081): its manifest `nogat-kit.json` is copied from Nogat
-  `0e128be`, the kit's files and their hashes unchanged since `5f8cce0`.
-- Nogat's kit 1.1.0 is copied again, whole and byte for byte, from Nogat `c2507fa` into
-  `src/archiwista/web/nogat/` (A-ADR-054 erratum 6; Nogat ECO-081, ECO-082): its
-  regulamin templates `nogat-terms.md`, `.html` and the operators' draft
-  `nogat-terms-operator.md` name ČHMÚ's block `chmu` instead of `chmi`, and
-  `nogat-kit.json` has their hashes. Archiwista fills no regulamin, so nothing else
-  changes; the strip's „więcej” on a phone is that of the kit 1.1.0 (ECO-080).
-- Nogat's kit 1.1.0 is copied again, whole and byte for byte, from Nogat `4d755ee` (A-ADR-054
-  erratum 7; Nogat ECO-083, DEV-19.21): „Plik przekazania” of the station card saves the
-  hand-off as `archiwista_handoff_<subject>.json`, the subject in lower-case ASCII with
-  `-` between its words (`archiwista_handoff_nowy-sacz-q-maksima-roczne.json`), no longer
-  `<subject>.handoff.json`; Hydrolog opens it as before. The texts that named the file
-  follow (the button's title, `stations handoff --help`). The copy of Nogat's
-  `error_registry.json` is that of the standard numbered 1.1 (`_errors.py` generated
-  again; the codes are unchanged).
 - **ČHMÚ's identifiers are its national acronym without diacritics (Nogat ECO-082, plan
   `2026-11-21-national-provider-names` step 4; Obserwator 3.1.0), a fix of 0.3.3.** The
   provider `CHMI` is `CHMU` (in the API's `provider`, the filters
@@ -82,9 +32,13 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
   `terms_notice` alone, which Archiwista did not read. **Migration:** the old names are
   not read or translated. The raw root stays: Obserwator 3.1.0 reads its archives' older
   sidecars under the new key and provider (their raw `dataset` stays as written). Build a
-  new Obserwator data root with Obserwator 3.1.0 from the raw root, set it as the store's `obserwator_data` („Katalog danych Obserwatora”), then
-  rebuild the index with `archiwista reindex --store <store>`; pin a project's ČHMÚ
-  versions of the old data root again from the new one (A-ADR-032 erratum 3).
+  new Obserwator data root with Obserwator 3.1.0 from the raw root (`obserwator series
+  build --root NEW --raw-root RAW --dataset <key>` for each dataset, `obserwator store
+  catalog --root NEW --raw-root RAW --provider IMGW` and `--provider CHMU`, `obserwator
+  analyses build --root NEW`), set it as the store's `obserwator_data` („Katalog danych
+  Obserwatora”), then rebuild the index with `archiwista reindex --store <store>`; pin a
+  project's ČHMÚ series and catalog versions of the old data root again from the new one
+  (A-ADR-032 erratum 3; USAGE, "Updating to 0.3.3").
 - **IMGW-PIB's provider id is `IMGW` (Nogat ECO-082 as extended on 2026-11-21, DEV-2.5;
   Obserwator 3.1.0), a fix of 0.3.3.** The provider `IMGW-PIB` is `IMGW` in the API's
   `provider`, the filters `?provider=`/`--provider`, a station's reference
@@ -105,6 +59,53 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
   with the provider `IMGW-PIB` as `IMGW`), a script that passes `--provider IMGW-PIB`
   passes `IMGW`, and a project's IMGW-PIB series and catalog versions of the old data root
   are pinned again from the new one.
+- **Obserwator (extra `obserwator`) is 3.1.0 (tag `v3.1.0`, was `v3.0.1`), and Archiwista
+  reads only it: the adapter's `SUPPORTED_VERSIONS` is `>=3.1.0,<4` (was `>=3.0.0,<4`),
+  so an Obserwator 3.0 installed beside Archiwista is reported incompatible by `archiwista
+  doctor` and `GET /sources` (`source_incompatible`), as its data use the old names above.**
+  **Migration:** `uv sync --locked --all-extras` installs it. Kartograf stays `v0.8.2`.
+- With Obserwator 3.1.0 a series version may hold chosen stations and years only
+  (`subset` of `series.json`, Obserwator ADR-026). Archiwista reads it as any version:
+  on the coverage labels, the timeline and the card the years not chosen are „nieznany”,
+  not gaps; a station not chosen has no series of the dataset, as a station without
+  series (on the map a point without coverage colour); a hand-off spans the version's
+  values. ČHMÚ's `cz.chmu.meteo_daily` has six files per station (`snow/…-SCE.csv`,
+  `snow/…-SNO.csv` beside the four before) and the variables `snow_cover` and
+  `fresh_snow` [cm], which the coverage and the card list as they list IMGW-PIB's. The
+  `formula_versions` and `derived` of Obserwator's analyses exports are not read by
+  Archiwista, which lists stored analyses as versions only.
+- **Files Archiwista names for a person follow Nogat's one pattern
+  `<tool>_<content>_<qualifiers>.<extension>` (DEV-19.21, ECO-083, plan
+  `2026-11-21-download-file-names` step 5).** The comparison's „Eksportuj CSV” saves
+  `archiwista_comparison_<a>_<b>.csv`, the sides' titles by the kit's `nameSlug`
+  (`archiwista_comparison_nmt-2020_nmt-2024.csv`, was `porownanie-NMT_2020-NMT_2024.csv`);
+  the action log's export (`GET /log/export`, „Eksportuj CSV”/„Eksportuj JSON Lines”) is
+  `archiwista_log_2026-11-21_143022Z.jsonl` (was `archiwista-log-20261121T143022Z.jsonl`);
+  an export's ZIP (`GET /projects/{project}/exports/{name}/zip`, „Pobierz ZIP”) is sent as
+  `archiwista_export_<project>_<name>.zip` (`archiwista_export_raba_raba-2024.zip`), while
+  the file in `eksport/` keeps the name the person gave; the hand-off is the kit's
+  (below). `project-export`'s folders and ZIP, a stored file sent as it is and a CLI
+  `--output` keep their names.
+- **Nogat's kit 1.1.0** (Nogat ECO-081; A-ADR-054 errata 5 to 7) is copied whole, byte for
+  byte, from Nogat `4d755ee` into `src/archiwista/web/nogat/` (was 1.0.0).
+  - On a phone (up to 860 px) the strip of the providers' lines of a view or a card is one
+    line, its lines cut with an ellipsis, followed by „więcej”, which unfolds them in place
+    („zwiń” folds them again), and „Źródła i warunki”; wider screens are unchanged (Nogat
+    ECO-080, DEV-20.5).
+  - „Plik przekazania” of the station card saves the hand-off as
+    `archiwista_handoff_<subject>.json`, the subject in lower-case ASCII with `-` between
+    its words (`archiwista_handoff_nowy-sacz-q-maksima-roczne.json`), no longer
+    `<subject>.handoff.json` (Nogat ECO-083, DEV-19.21); Hydrolog opens it as before. The
+    texts that named the file follow (the button's title, `stations handoff --help`).
+  - The regulamin templates `nogat-terms.md` and `.html` name ČHMÚ's block `chmu` instead of
+    `chmi` (ECO-082), and the kit holds the operators' draft regulamin
+    `nogat-terms-operator.md` (ECO-079). Archiwista fills and links no regulamin, so nothing
+    else changes.
+- The copies of Nogat's schemas follow the standard 1.1: `error_registry.json` is that of
+  the standard numbered 1.1 (`_errors.py` generated again; the codes are unchanged), and
+  `handoff-1.schema.json` is Nogat's of `263e83c`, whose first example records Hydrolog
+  0.9.0's result (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6); the schema
+  itself is unchanged.
 
 ### Fixed
 
