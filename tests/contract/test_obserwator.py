@@ -205,6 +205,20 @@ def test_installed_obserwator_within_supported_range() -> None:
     )
 
 
+def test_the_supported_range_starts_at_obserwator_3_1() -> None:
+    """Obserwator 3.0.x is outside the range: the adapter reads what 3.1.0 writes.
+
+    Series versions of a subset of stations and the datasets ``cz.chmu.*`` came with
+    3.1.0; the range admits its development versions only while the extra pins a
+    commit (REL-5.6).
+    """
+    supported = SpecifierSet(SUPPORTED_VERSIONS)
+
+    assert not supported.contains(Version("3.0.1"), prereleases=True)
+    assert supported.contains(Version("3.1.0"), prereleases=True)
+    assert not supported.contains(Version("4.0.0"), prereleases=True)
+
+
 def test_adapter_implements_the_source_interface_and_describes_its_datasets(
     adapter: ObserwatorAdapter,
 ) -> None:
