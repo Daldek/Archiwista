@@ -210,7 +210,7 @@ class ObserwatorAdapter:
     Parameters
     ----------
     supported_versions : str
-        Obserwator versions Archiwista supports, e.g. ``">=3.0.0,<4"``.
+        Obserwator versions Archiwista supports, e.g. ``">=3.1.0,<4"``.
 
     Notes
     -----
