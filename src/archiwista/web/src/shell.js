@@ -610,7 +610,12 @@ function OverlayHost({ overlay, route, value, onClose }) {
   const [module, setModule] = useState(null);
   useEffect(() => {
     let live = true;
-    load(overlay).then((loadedModule) => live && setModule(loadedModule));
+    // A card whose modules do not load is not shown: Firefox fails the loads
+    // of a page being left, before `pagehide`, and still runs its handlers.
+    load(overlay).then(
+      (loadedModule) => live && setModule(loadedModule),
+      () => {},
+    );
     return () => {
       live = false;
     };

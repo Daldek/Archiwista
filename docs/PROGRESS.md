@@ -63,6 +63,34 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
      (locally 3 of 30 runs failed, 4 of 30 under CPU load). Fixed in the fixture
      (`fix/ci-2026-11-21`): `Tab` forgets the requests of a document when the next one
      commits (30 of 30 runs, idle and under load).
+   - `tests/e2e/test_preferences.py::test_the_basemap_and_the_year_type_follow_a_person_not_a_colleague[firefox]`
+     (CI of `develop` `9e9e365`, 2026-11-21): a page error „The operation was aborted.” of
+     the downloads' discovery in a page the test left. Firefox stops the loads of a page
+     being left before `pagehide` and still runs the page's handlers (a probe page: a
+     request still waiting rejects with a `TypeError`, a body being read with `AbortError`,
+     a stylesheet fires `error`, an import rejects); the shell's readers (the downloads, the
+     count of running jobs) rethrew the `AbortError` as a fault of the page, and the
+     stylesheets the shell adds after it is shown and a card's modules rejected unhandled
+     („Stylesheet not loaded”). Not the map: MapLibre's loads end in its `error` event, and
+     `map.remove()` on `pagehide` would come after the handlers ran. Locally 1 of 140 runs of
+     the test (1 of 40 idle, 0 of 40 under CPU load, 0 of 60 idle) and 1 of 180 rounds of
+     its steps. Fixed in the page (`fix/map-teardown`): `api.js` reads every body through
+     `readBody` (a body that does not come whole is the network's problem unless the
+     caller's signal stopped it), and those stylesheets and a card's modules that do not
+     load leave the part unstyled or the card unshown.
+     `tests/e2e/test_shell.py::test_loads_the_browser_stops_on_leaving_a_page_raise_no_error_of_the_page`
+     makes both happen in Chromium and Firefox: it fails without the fix (the CI's „The
+     operation was aborted.” and „Stylesheet not loaded”) and passed 20 of 20 runs with it
+     idle and 20 of 20 under CPU load. With the fix the CI's test and
+     `test_project_card.py::test_verify_runs_offline_and_marks_each_pin_while_network_jobs_say_why[firefox]`
+     (its „Stylesheet not loaded”, 1 in 55 local runs, is [INFERENCE] one of those
+     stylesheets; 0 of 80 runs reproduced it before) passed 80 of 80 runs idle and 80 of 80
+     under CPU load.
+     Still open: `src/boot.js` loads the page once more when an import fails, and Firefox
+     fails the imports of a page being left the same way, so leaving the page while its
+     modules load reloads the page it left (probe: `page.goto` fails with
+     `NS_BINDING_ABORTED`, a link ends on the old address). When the import fails the page
+     cannot tell this from a network change (`pagehide` comes later); it needs a decision.
    - `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens[chromium]`
      (gate of 2026-11-10): a network change on the computer (a Docker veth, Tailscale) makes
      Chromium cancel the queued module requests of the boot (`net::ERR_NETWORK_CHANGED`), and

@@ -11,7 +11,7 @@
 
 import { catalog as L } from "./labels/catalog.js";
 import { navigate, readRoute } from "./router.js";
-import { html, Icon, loadStylesheet, useEffect } from "./ui.js";
+import { html, Icon, loadStylesheet, unstyled, useEffect } from "./ui.js";
 
 /** Parameters of `GET /slots` the catalog keeps in its address, by the API's names. */
 export const SLOT_PARAMS = Object.freeze([
@@ -75,7 +75,7 @@ export function takeSearchFocus() {
  */
 export function SearchButton() {
   useEffect(() => {
-    loadStylesheet(new URL("./search.css", import.meta.url));
+    loadStylesheet(new URL("./search.css", import.meta.url)).catch(unstyled);
     window.addEventListener("keydown", shortcut);
     return () => window.removeEventListener("keydown", shortcut);
   }, []);
