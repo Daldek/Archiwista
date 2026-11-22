@@ -29,7 +29,7 @@
 
 import { count, day, int } from "../format.js";
 import { catalog as L } from "../labels/catalog.js";
-import { t } from "../labels/index.js";
+import { providerName, t } from "../labels/index.js";
 import { StationSymbol, stationShape, stationType } from "../map/stations.js";
 import {
   html,
@@ -292,7 +292,7 @@ export function StationTimeline(props) {
     <div class="stl-bar">
       <span class="stl-dataset">
         <b>${dataset?.name ?? datasetKey}</b>
-        ${dataset ? html`<span class="faint"> · ${dataset.provider}</span>` : null}
+        ${dataset ? html`<span class="faint"> · ${providerName(dataset.provider)}</span>` : null}
         ${yearType
           ? html`<span class="muted"> · ${TL.year_types[yearType] ?? yearType}</span>`
           : null}
@@ -607,7 +607,7 @@ function unitForms(series) {
 /** A station for its row heading's title: name, type, river, code, provider, location. */
 function stationTitle(station) {
   const place = station.location.kind === "point" ? null : S.unlocated;
-  const code = `${station.code} · ${station.provider}`;
+  const code = `${station.code} · ${providerName(station.provider)}`;
   return [station.name ?? S.unnamed, stationType(station), station.river, code, place]
     .filter(Boolean)
     .join(" · ");

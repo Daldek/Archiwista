@@ -6,8 +6,9 @@ A-ADR-054), the first-run wizard, offline mode with MapLibre's worker and the
 packaged glyphs under the CSP, every ES module loading without errors (the
 syntax check without Node.js), in Chromium and Firefox an interface
 upgraded on the same address reaching the next visit, view modules included,
-and a module the browser could not fetch: the page loads once more, and when
-that load fails too it says so with a button loading it again.
+a module the browser could not fetch: the page loads once more, and when
+that load fails too it says so with a button loading it again, and in both
+the loads Firefox stops on a page being left raising no error of the page.
 """
 
 import os
@@ -101,6 +102,35 @@ async (paths) => {
 # browser fails to fetch as Chromium does when the computer's network changes.
 START_MODULE = "**/static/src/labels/common.js"
 START_FAILED = "Nie udało się wczytać Archiwisty."
+# The stylesheets of parts of the shell shown without waiting for them (the
+# downloads, the search, „Zgłoś uwagę”).
+SHELL_STYLES = re.compile(r"/static/src/(downloads|search|feedback)\.css$")
+# What Firefox does to the loads of a page being left, before ``pagehide``,
+# while it still runs the page's handlers (Chromium drops the page without
+# running them): once ``window.__stopBodies`` is set, the body of every answer
+# rejects with ``AbortError`` when it is read; ``window.__stopped`` counts them.
+STOP_BODIES = """
+window.__stopBodies = false;
+window.__stopped = 0;
+const fetchAnswer = window.fetch;
+window.fetch = async (...args) => {
+  const response = await fetchAnswer(...args);
+  if (!window.__stopBodies) return response;
+  window.__stopped += 1;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.error(new DOMException("The operation was aborted. ", "AbortError"));
+    },
+  });
+  return new Response(body, { status: response.status, headers: response.headers });
+};
+"""
+# The shell reads the queue's running jobs, the session's downloads and the
+# server's health again when the page becomes visible.
+SHOW_PAGE = """() => {
+  window.__stopBodies = true;
+  document.dispatchEvent(new Event("visibilitychange"));
+}"""
 
 Serve = Callable[..., Served]
 
@@ -543,3 +573,29 @@ def test_a_module_that_never_loads_leaves_a_message_not_a_reload_loop(
     assert page_loads(tab, served) == 3
     expect(tab.page.locator(".boot .spinner")).to_have_count(0)
     tab.assert_clean()
+
+
+def test_loads_the_browser_stops_on_leaving_a_page_raise_no_error_of_the_page(
+    serve: Serve, engine_tab: Tab
+) -> None:
+    """Stylesheets that fail and answers whose bodies stop are no page errors.
+
+    Firefox fails the loads of a page being left before ``pagehide`` and runs
+    the page's handlers: an answer's body being read rejects with
+    ``AbortError``, which the shell's readers took for a fault of the page
+    (CI of ``develop`` ``9e9e365``, 2026-11-21), and a stylesheet the shell
+    added after it was shown rejected unhandled. Here both happen on a page
+    that stays, in Chromium and Firefox.
+    """
+    served = serve()
+    page = engine_tab.page
+    page.route(SHELL_STYLES, lambda route: route.abort())
+    page.add_init_script(STOP_BODIES)
+    open_shell(page, served.token_url())
+
+    page.evaluate(SHOW_PAGE)
+    page.wait_for_function("() => window.__stopped >= 3")
+    engine_tab.settle()
+
+    expect(page.get_by_role("navigation", name="Widoki")).to_be_visible()
+    engine_tab.assert_clean()

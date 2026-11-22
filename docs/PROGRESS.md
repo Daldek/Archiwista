@@ -10,6 +10,12 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 The working branch is `develop`; every branch named below is merged into it. Release 0.3.0
 is tagged `v0.3.0` on `main`.
 
+**Nogat's release round of 2026-11-21** is integrated on `chore/round-integration` (from
+`develop` `9e9e365`; not merged until the author approves): `fix/map-teardown`,
+`feat/phone-sources-strip` and `fix/national-provider-names` merged in that order, then
+IMGW-PIB's `imgw_` slugs (Nogat plan `2026-11-21-national-provider-names`, decision 1a)
+with Obserwator pinned to `de06926` of its `develop`.
+
 **Release 0.3.0 is closed** (the author, 2026-11-16): Archiwista's first tag, a member of
 the first joint release of the Nogat ecosystem (Nogat release set candidate-6; ECO-074). It
 holds what `develop` held: v0.3 "Actions", v0.4 "Team", the projects (A-ADR-049) and the
@@ -29,16 +35,17 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
 | Data output (DEV §19, ECO-051) and `nogat.toml` | done | store markers and roots, the producers' default roots offered in the wizard, tests isolated from the producers' settings (ADR-031, ADR-033); `data_dir`, `cache_dir`, `lang` and the table `gui` of `nogat.toml` (A-ADR-053) |
 | Obserwator source and station views | done | Obserwator stores indexed, stations, series coverage, the station map, Katalog list, Timeline, card, chart and comparison (ADR-032, ADR-045); monthly charts and annual extremes (A-ADR-051); a station's series handed to Hydrolog through Nogat's kit, with „Dane” and „Zmienna” (A-ADR-052, A-ADR-054) |
 | Obserwator's commands and its two roots (A-ADR-050, A-ADR-056; Obserwator pin `3816b3c`) | done | each store names Obserwator's raw root (`obserwator`, `obserwator-store.json`) and its data root (`obserwator_data`, `obserwator-data.json`, read only), each probed by its kind (reason `wrong_root`); Archiwista runs only `store sync` into the raw root. Obserwator's catalog kind `synop` (its daily synoptic data, Obserwator ADR-022) is shown as `synoptic`, „stacja synoptyczna”; its four download-only datasets (ADR-023) are not indexed. Limits: series and station catalogs are built by Obserwator offline, so a project's pins of them are `not_checkable`; Obserwator has no run mode that keeps the stored versions (a restore takes the source's current file); `pmaxtp sync` is not in Archiwista's catalog (A-ADR-050 option C) |
-| The providers' lines (A-ADR-055 and its errata 1 to 4) | done | `attribution` and `terms_notice` on every station, map, Katalog, version and comparison answer, the CLI, `ATTRIBUTION.txt` in exports and the hand-off; one compact strip of Nogat's kit per view or overlay, the terms linked, the G and Z lines of station catalogs' sidecars, one CP without the detail of processing (ECO-071). Not in PNG previews (Next 6) |
-| Nogat's GUI kit (A-ADR-054 and its errata 1 to 4) | done | kit 1.0.0 of Nogat `8dbdcaa` in `web/nogat/` (byte for byte, checked against `nogat-kit.json`): the menu „Aplikacje”, the hand-off, the strip `<nogat-sources>`, „Zgłoszenia” on `<nogat-admin-feedback>` |
+| The providers' lines (A-ADR-055 and its errata 1 to 5) | done | `attribution` and `terms_notice` on every station, map, Katalog, version and comparison answer, the CLI, `ATTRIBUTION.txt` in exports and the hand-off; one compact strip of Nogat's kit per view or overlay, the terms linked, the G and Z lines of station catalogs' sidecars, one CP without the detail of processing (ECO-071); ČHMÚ's origins `chmu_file` and `chmu_processed` (ECO-082). Not in PNG previews (Next 6) |
+| Nogat's GUI kit (A-ADR-054 and its errata 1 to 7) | done | kit 1.1.0 of Nogat `4d755ee` in `web/nogat/` (byte for byte, checked against `nogat-kit.json`): the menu „Aplikacje”, the hand-off (saved as `archiwista_handoff_<subject>.json`, ECO-083), the strip `<nogat-sources>` (one line with „więcej” on a phone, Nogat ECO-080, ECO-081), the regulamin's block `chmu` (ECO-082), „Zgłoszenia” on `<nogat-admin-feedback>`; `error_registry.json` of the standard 1.1 (Nogat `975136e`, unchanged in `4d755ee`). On `chore/round-integration`, not merged |
 | User guide `/instrukcja` (A-ADR-048) | done | 13 Polish slides served without a session, „Instrukcja” in the top bar; no link on the sign-in page; its pictures need taking again when the views they show change |
 | Nogat standard 1.0 | done | structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry (A-ADR-030); the items that need the author: Open questions |
 | Test server :8090 | done | https://archiwista-test.debever.pl, user unit `archiwista-public.service`, runs `7a11c76` (`develop`) since 2026-11-15. One store, `agent-tmp` („Magazyn agent-tmp”, kind share), the author's single place for downloaded data (2026-11-15): `kartograf` = `<share>/agent-tmp/hydroni/kartograf` and `obserwator` = `<share>/agent-tmp/obserwator` on the NAS (CIFS), `obserwator_data` = `<data-dir>/obserwator-target/data` on the local disk (processed, served fast). Projects `h07` (4 sets, 2909 pins) and `kaczawa` (Hydrograf :8080's Kaczawa, set `2026-1`, 205 pins) use `agent-tmp`, 0 missing; one known problem (`missing_sidecar` of an `.aux.xml`). State schema 1 and index schema 1 since `1c18fb3`. Backups in `<data-dir>/archiwista-public/backup-2026-11-14-v1/`, rollback steps in `<data-dir>/archiwista-public/backup-2026-11-13/ROLLBACK.txt` |
 | Pins of Nogat's release set candidate-5 | done | Kartograf `e14bc78`, Obserwator `f4f6a8d` (Next 7) |
-| Obserwator 3.1.0 for Nogat's release round of 2026-11-21 | done | `chore/obserwator-3.1.0`, not merged: Obserwator pinned to `1a11df5` (`3.1.0.dev0`), Kartograf stays `v0.8.2`; a series version of chosen stations and years (Obserwator ADR-026) is read as any version (`tests/integration/test_obserwator_subset.py`, SPEC 4.8.4), ČHMÚ's snow files and variables (SPEC 4.8.6); Nogat's `handoff-1.schema.json` of `263e83c` (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6). Full gate passed on `4d42cf7` (3,049 passed, 93.32 %, 3,249 s). The version number and Nogat's kit copy wait for the coordinator |
+| Obserwator 3.1.0 for Nogat's release round of 2026-11-21 | done | `chore/obserwator-3.1.0`, merged (`58f4c5c`); on `chore/round-integration` Obserwator is pinned to `de06926` of its `develop` (`3.1.0.dev0`; `1a11df5` before), Kartograf stays `v0.8.2`; a series version of chosen stations and years (Obserwator ADR-026) is read as any version (`tests/integration/test_obserwator_subset.py`, SPEC 4.8.4), ČHMÚ's snow files and variables (SPEC 4.8.6); Nogat's `handoff-1.schema.json` of `263e83c` (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6). Full gate passed on `4d42cf7` (3,049 passed, 93.32 %, 3,249 s). The version number waits for the coordinator |
+| Providers' national names and the files Archiwista names (Nogat ECO-082, ECO-083, DEV-2.5, DEV-19.21; A-ADR-032 errata 3 and 4, A-ADR-055 erratum 5) | done | on `chore/round-integration`, not merged: the providers `IMGW` and `CHMU`, the keys `cz.chmu.*`, each provider's slugs and store directories `imgw_*` and `chmu_*` (`stations/versions/imgw_stations` beside `chmu_stations`; PMAXTP's product `imgw_pmaxtp`), a station's `location_source` the key of its dataset; old names are neither read nor translated, the index is rebuilt from a data root Obserwator 3.1.0 built; the files Archiwista names for a person are `archiwista_<content>_<qualifiers>.<extension>` (`file_names.py`) |
 | Every format at version 1 (Nogat REL-1.4, ECO-072) | done | merged and deployed (`1c18fb3`): the state backup `archiwista-state/1` (a `/2` copy still imports), the job protocol 1, the index schema 1 (an index of another number is rebuilt) and the state schema 1 in one migration (a database numbered 5 is renumbered when it opens; schema 2 to 4 no longer opens) |
 | Project files readable by the folder's group (A-ADR-058, finding E2-01 of the scenario test of 2026-11-15) | done | merged as `800231c`: what Archiwista writes in a project's directory takes the folder's permissions instead of `umask 077`; its full gate: 3,025 passed, 2 failed only through TMPDIR in a setgid directory (E7-12, Next 14) |
-| Gate | done | 2026-11-16, Nogat's integration run of candidate-5 (`800231c`): on Archiwista's own lock 3,026 passed, 1 failed (C2), 93.77 %, 4,464 s; in the candidate's environment 3,024 passed, 3 failed (C2, C3); both in Next 14. 2026-11-15: the full gate passed on `chore/pins-candidate-5` (`4f37655`, 4885 s; merged as `e534b40`); on `docs/session-2026-11-15` one e2e test, `test_map_previews.py::test_year_buttons_select_layer_and_tiles`, failed under load and passed alone three times (Next 2) |
+| Gate | done | 2026-11-22, `chore/round-integration` (`37346f1`, Obserwator `de06926`): the full gate passed, 3,059 passed, 93.69 %, 4,576 s. The gates of its merged branches had failed only under load: `feat/phone-sources-strip` 17 (preview warm-up and `serve` tests, timeouts in a run of 3 h 28 min) and `fix/national-provider-names` 2 (`test_pasted_command.py` offline, `test_jobs.py::test_second_index_job_for_store_conflicts`); each passed alone on the integration branch. 2026-11-16, Nogat's integration run of candidate-5 (`800231c`): on Archiwista's own lock 3,026 passed, 1 failed (C2), 93.77 %, 4,464 s; in the candidate's environment 3,024 passed, 3 failed (C2, C3); both in Next 14. 2026-11-15: the full gate passed on `chore/pins-candidate-5` (`4f37655`, 4885 s; merged as `e534b40`); on `docs/session-2026-11-15` one e2e test, `test_map_previews.py::test_year_buttons_select_layer_and_tiles`, failed under load and passed alone three times (Next 2) |
 | CI (Linux) | done | `ci.yml` runs the gate (Python 3.12, the required check, and 3.15), the suite without the extra `obserwator` and a dependency audit; every job passed on `develop` at `1c18fb3`, `7a11c76` and `747ee1f` (2026-11-14 and 2026-11-15). `live.yml` ran once, on its schedule of 2026-11-09 (`90c5ac9`), and passed (Next 9) |
 | v0.5 "IMGW stations", the rest | blocked | its built part (the Obserwator source and the station views above) is in release 0.3.0 with Obserwator `v3.0.0`; the archive badge of the stations (SPEC 9.2, 4.8.4) and the input archives of the station card need a producer capability the source interface lacks |
 | v0.6 "PL + CZ" | blocked | Kartograf KF (merged PL + CZ surface) |
@@ -63,6 +70,34 @@ approves. Its items: the known defects of Next 14 named there as fixed in 0.3.1.
      (locally 3 of 30 runs failed, 4 of 30 under CPU load). Fixed in the fixture
      (`fix/ci-2026-11-21`): `Tab` forgets the requests of a document when the next one
      commits (30 of 30 runs, idle and under load).
+   - `tests/e2e/test_preferences.py::test_the_basemap_and_the_year_type_follow_a_person_not_a_colleague[firefox]`
+     (CI of `develop` `9e9e365`, 2026-11-21): a page error „The operation was aborted.” of
+     the downloads' discovery in a page the test left. Firefox stops the loads of a page
+     being left before `pagehide` and still runs the page's handlers (a probe page: a
+     request still waiting rejects with a `TypeError`, a body being read with `AbortError`,
+     a stylesheet fires `error`, an import rejects); the shell's readers (the downloads, the
+     count of running jobs) rethrew the `AbortError` as a fault of the page, and the
+     stylesheets the shell adds after it is shown and a card's modules rejected unhandled
+     („Stylesheet not loaded”). Not the map: MapLibre's loads end in its `error` event, and
+     `map.remove()` on `pagehide` would come after the handlers ran. Locally 1 of 140 runs of
+     the test (1 of 40 idle, 0 of 40 under CPU load, 0 of 60 idle) and 1 of 180 rounds of
+     its steps. Fixed in the page (`fix/map-teardown`): `api.js` reads every body through
+     `readBody` (a body that does not come whole is the network's problem unless the
+     caller's signal stopped it), and those stylesheets and a card's modules that do not
+     load leave the part unstyled or the card unshown.
+     `tests/e2e/test_shell.py::test_loads_the_browser_stops_on_leaving_a_page_raise_no_error_of_the_page`
+     makes both happen in Chromium and Firefox: it fails without the fix (the CI's „The
+     operation was aborted.” and „Stylesheet not loaded”) and passed 20 of 20 runs with it
+     idle and 20 of 20 under CPU load. With the fix the CI's test and
+     `test_project_card.py::test_verify_runs_offline_and_marks_each_pin_while_network_jobs_say_why[firefox]`
+     (its „Stylesheet not loaded”, 1 in 55 local runs, is [INFERENCE] one of those
+     stylesheets; 0 of 80 runs reproduced it before) passed 80 of 80 runs idle and 80 of 80
+     under CPU load.
+     Still open: `src/boot.js` loads the page once more when an import fails, and Firefox
+     fails the imports of a page being left the same way, so leaving the page while its
+     modules load reloads the page it left (probe: `page.goto` fails with
+     `NS_BINDING_ABORTED`, a link ends on the old address). When the import fails the page
+     cannot tell this from a network change (`pagehide` comes later); it needs a decision.
    - `tests/e2e/test_sign_in.py::test_a_temporary_password_is_changed_before_the_shell_opens[chromium]`
      (gate of 2026-11-10): a network change on the computer (a Docker veth, Tailscale) makes
      Chromium cancel the queued module requests of the boot (`net::ERR_NETWORK_CHANGED`), and

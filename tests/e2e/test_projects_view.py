@@ -39,9 +39,9 @@ from tests.fixtures.group_folder import group_folder
 from tests.fixtures.make_store import StoreManifest, make_store
 from tests.fixtures.permissions import add_people, principal, share
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_SHORT,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_SHORT,
+    CHMU_SOURCE,
     IMGW_SOURCE,
     IMGW_TERMS_PUBLIC_DATA,
 )
@@ -96,7 +96,7 @@ API_POST = """async ([path, body]) => {
 # Of Obserwator's fixture store: an IMGW-PIB archive as published (S, then RD)
 # and a ČHMÚ series Obserwator processed (C and CP).
 IMGW_ARCHIVE = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
-CZ_SERIES = "series/versions/chmi_hydro_daily"
+CZ_SERIES = "series/versions/chmu_hydro_daily"
 
 
 def served_store(
@@ -468,8 +468,8 @@ def test_the_strip_holds_the_lines_of_the_data_the_projects_pin(
 
     # Assert
     answer = api(page, f"/projects/{project}")
-    assert shown == [IMGW_SOURCE, CHMI_SHORT]
-    assert full == [IMGW_SOURCE, CHMI_SOURCE, CHMI_PROCESSED, IMGW_TERMS_PUBLIC_DATA]
+    assert shown == [IMGW_SOURCE, CHMU_SHORT]
+    assert full == [IMGW_SOURCE, CHMU_SOURCE, CHMU_PROCESSED, IMGW_TERMS_PUBLIC_DATA]
     assert full == [*answer["attribution"], *answer["terms_notice"]]
     expect(page.locator(SOURCES)).to_have_count(1)
     tab.assert_clean()

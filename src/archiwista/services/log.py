@@ -29,6 +29,7 @@ from typing import Literal
 
 from archiwista.auth import Principal
 from archiwista.auth.authorize import Authorizer
+from archiwista.file_names import download_name
 from archiwista.state import ActionEntry, ActionPage, ActionQuery, StateStore
 
 type ExportFormat = Literal["jsonl", "csv"]
@@ -79,7 +80,8 @@ class LogExport:
     count : int
         How many entries it holds (``log.export`` says so too).
     filename : str
-        The name of its file, ``archiwista-log-<UTC time>.<format>``.
+        The name of its file, ``archiwista_log_<UTC date>_<time>Z.<format>``
+        (Nogat DEV-19.21): ``archiwista_log_2026-11-21_143022Z.jsonl``.
     """
 
     state: StateStore
@@ -176,7 +178,7 @@ def export(
         details={"filters": _filters(query), "format": format, "count": count},
     )
     moment = (now or datetime.now(UTC)).astimezone(UTC)
-    name = f"archiwista-log-{moment:%Y%m%dT%H%M%SZ}.{format}"
+    name = download_name("log", f"{moment:%Y-%m-%d_%H%M%SZ}", extension=format)
     return LogExport(state, selected, format, count, name)
 
 

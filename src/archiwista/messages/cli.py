@@ -2477,13 +2477,15 @@ MESSAGES = {
             "Writes a variable of a station's series as a hand-off to Hydrolog's"
             " statistics (nogat-handoff/1 with hydrolog-series/1): its daily values,"
             " or with --resolution annual its annual maxima (like GET"
-            " /api/v1/stations/CODE/handoff); save it as NAME.handoff.json."
+            " /api/v1/stations/CODE/handoff); save it as"
+            " archiwista_handoff_NAME.json."
         ),
         (
             "Wypisuje zmienną szeregu stacji jako przekazanie do statystyk Hydrologa"
             " (nogat-handoff/1 z hydrolog-series/1): jej wartości dobowe albo z"
             " --resolution annual maksima roczne (jak GET"
-            " /api/v1/stations/KOD/handoff); zapisz je jako NAZWA.handoff.json."
+            " /api/v1/stations/KOD/handoff); zapisz je jako"
+            " archiwista_handoff_NAZWA.json."
         ),
     ),
     "stations_handoff_start_help": Text(
@@ -2559,8 +2561,8 @@ MESSAGES = {
         "identyfikator magazynu",
     ),
     "stations_provider_help": Text(
-        "provider of the stations: IMGW-PIB or CHMI",
-        "dostawca stacji: IMGW-PIB albo CHMI",
+        "provider of the stations: IMGW or CHMU",
+        "dostawca stacji: IMGW albo CHMU",
     ),
     "stations_dataset_help": Text(
         (

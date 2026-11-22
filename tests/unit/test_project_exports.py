@@ -30,8 +30,8 @@ from archiwista.projects.exports import (
     write_export,
 )
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_PUBLIC_DATA,
@@ -43,7 +43,7 @@ GUGIK = Attribution(("Główny Urząd Geodezji i Kartografii",))
 # A station series of Obserwator, processed; a file of IMGW-PIB as published.
 SERIES = Attribution((IMGW_SOURCE, IMGW_PROCESSED), (IMGW_TERMS_PUBLIC_DATA,))
 ARCHIVE = Attribution((IMGW_SOURCE,), (IMGW_TERMS_PUBLIC_DATA,))
-CHMI = Attribution((CHMI_SOURCE, CHMI_PROCESSED))
+CHMU = Attribution((CHMU_SOURCE, CHMU_PROCESSED))
 NO_LINES = Attribution()
 
 
@@ -223,7 +223,7 @@ def test_exports_write_export_describes_every_file_and_source_in_readme(
         [
             _item(sheet, label="2024-06-13", sets=("2024", "2014"), lines=GUGIK),
             _item(tile, "ORTO", lines=GUGIK),
-            _item(czech, "OBSERWATOR", lines=CHMI),
+            _item(czech, "OBSERWATOR", lines=CHMU),
             _item(archive, "OBSERWATOR", lines=ARCHIVE),
             _item(series, "OBSERWATOR", lines=SERIES),
         ],
@@ -249,8 +249,8 @@ def test_exports_write_export_describes_every_file_and_source_in_readme(
         "\nŹródła danych i warunki korzystania\n"
         f"- {IMGW_SOURCE}\n"
         f"- {IMGW_PROCESSED}\n"
-        f"- {CHMI_SOURCE}\n"
-        f"- {CHMI_PROCESSED}\n"
+        f"- {CHMU_SOURCE}\n"
+        f"- {CHMU_PROCESSED}\n"
         "- Główny Urząd Geodezji i Kartografii\n"
         f"- {IMGW_TERMS_PUBLIC_DATA}\n"
     )

@@ -38,14 +38,14 @@ PMAXTP_MONOGRAPH = (
     " Ozga-Zieliński, Instytut Meteorologii i Gospodarki Wodnej – Państwowy"
     " Instytut Badawczy, Warszawa 2022"
 )
-CHMI_SOURCE = (
+CHMU_SOURCE = (
     "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz,"
     " licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)"
 )
-CHMI_PROCESSED = "Dane ČHMÚ zostały przetworzone"
+CHMU_PROCESSED = "Dane ČHMÚ zostały przetworzone"
 # CP as an older product wrote it, naming what was done (before ECO-071).
-CHMI_PROCESSED_OLD = "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
-CHMI_SHORT = "Źródło: ČHMÚ, CC BY 4.0"
+CHMU_PROCESSED_OLD = "Dane ČHMÚ zostały przetworzone (normalizacja i zmiana formatu)"
+CHMU_SHORT = "Źródło: ČHMÚ, CC BY 4.0"
 IMGW_TERMS_PUBLIC_DATA = (
     "Regulamin danych IMGW-PIB: https://danepubliczne.imgw.pl/regulations"
 )

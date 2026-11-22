@@ -28,8 +28,8 @@ from tests.fixtures.api_store import served_store
 from tests.fixtures.local_server import local_paths
 from tests.fixtures.obserwator_roots import store_fields
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_PUBLIC_DATA,
@@ -37,11 +37,11 @@ from tests.fixtures.provider_lines import (
 
 STORE = "dane"
 IMGW_ARCHIVE = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
-IMGW_SERIES = "series/versions/hydro_daily"
+IMGW_SERIES = "series/versions/imgw_hydro_daily"
 CZ_ARCHIVE = (
     "archives/versions/hydrology/historical/data/daily/H_0-203-1-900001_DQ_2023"
 )
-CZ_SERIES = "series/versions/chmi_hydro_daily"
+CZ_SERIES = "series/versions/chmu_hydro_daily"
 
 type Stores = Callable[[str], Path]
 
@@ -129,7 +129,7 @@ def test_a_projects_card_carries_the_lines_of_its_pinned_data_once_each(
 
     # Assert
     assert (card["attribution"], card["terms_notice"]) == (
-        [IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE],
+        [IMGW_SOURCE, IMGW_PROCESSED, CHMU_SOURCE],
         [IMGW_TERMS_PUBLIC_DATA],
     )
 
@@ -151,7 +151,7 @@ def test_the_list_merges_the_lines_of_its_projects(served: Served) -> None:
     # Assert
     assert len(listed["items"]) == len(served.projects)
     assert (listed["attribution"], listed["terms_notice"]) == (
-        [IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE, CHMI_PROCESSED],
+        [IMGW_SOURCE, IMGW_PROCESSED, CHMU_SOURCE, CHMU_PROCESSED],
         [IMGW_TERMS_PUBLIC_DATA],
     )
 
@@ -170,8 +170,8 @@ def test_the_project_command_ends_its_text_with_the_lines(
     # Assert
     assert status == 0
     assert capsys.readouterr().out.splitlines()[-2:] == [
-        f"  {CHMI_SOURCE}",
-        f"  {CHMI_PROCESSED}",
+        f"  {CHMU_SOURCE}",
+        f"  {CHMU_PROCESSED}",
     ]
 
 

@@ -55,7 +55,7 @@ Serve = Callable[..., Served]
 Stores = Callable[[str], Path]
 
 DAILY = "pl.imgw.hydro_daily"
-CZ_DAILY = "cz.chmi.hydro_daily"
+CZ_DAILY = "cz.chmu.hydro_daily"
 STATIONS = re.compile(r"/api/v1/map/stations\?")
 LOADED = re.compile(r"\bstacj\w* w widoku|Brak stacji w widoku")
 LEGEND = (

@@ -215,7 +215,7 @@ def test_a_segment_is_a_dataset_named_by_the_registry_with_its_country(
         "pl.imgw.hydro_daily",
         True,
     )
-    czech_catalog = segments["cz.chmi.stations"]
+    czech_catalog = segments["cz.chmu.stations"]
     assert (czech_catalog.name, czech_catalog.country) == (
         "Katalog stacji ČHMÚ",
         "CZ",
@@ -246,22 +246,22 @@ def test_the_store_view_groups_the_datasets_of_both_providers_by_their_family(
     # Assert
     assert grouped == {
         "hydro": [
-            "cz.chmi.hydro_daily",
-            "cz.chmi.hydro_now",
-            "cz.chmi.hydro_stations",
+            "cz.chmu.hydro_daily",
+            "cz.chmu.hydro_now",
+            "cz.chmu.hydro_stations",
             "pl.imgw.hydro_daily",
             "pl.imgw.hydro_now",
             "pl.imgw.hydro_stations",
         ],
         "meteo": [
-            "cz.chmi.meteo_daily",
-            "cz.chmi.meteo_now",
-            "cz.chmi.meteo_stations",
+            "cz.chmu.meteo_daily",
+            "cz.chmu.meteo_now",
+            "cz.chmu.meteo_stations",
             "pl.imgw.meteo_now",
             "pl.imgw.meteo_precip_daily",
             "pl.imgw.meteo_stations",
         ],
-        "stations": ["cz.chmi.stations", "pl.imgw.stations"],
+        "stations": ["cz.chmu.stations", "pl.imgw.stations"],
     }
     assert usage is not None
     assert {item.product for item in usage.products} == {"hydro", "meteo", "stations"}
@@ -295,14 +295,17 @@ def test_a_slot_keeps_its_key_a_name_for_people_and_its_versions_a_provider(
         "codz_2024.zip",
         "archive:pl.imgw.hydro_daily:2024/codz_2024.zip",
     )
-    assert keys["series/versions/hydro_daily"] == (
-        "hydro_daily",
+    assert keys["series/versions/imgw_hydro_daily"] == (
+        "imgw_hydro_daily",
         "series:pl.imgw.hydro_daily",
     )
-    assert keys["stations/versions"] == ("pl.imgw.stations", "catalog:pl.imgw.stations")
-    assert keys["stations/versions/chmi_stations"] == (
-        "cz.chmi.stations",
-        "catalog:cz.chmi.stations",
+    assert keys["stations/versions/imgw_stations"] == (
+        "pl.imgw.stations",
+        "catalog:pl.imgw.stations",
+    )
+    assert keys["stations/versions/chmu_stations"] == (
+        "cz.chmu.stations",
+        "catalog:cz.chmu.stations",
     )
     assert {key for _, key in keys.values()} == set(_slots(env.root))
     by_producer = {
@@ -311,7 +314,7 @@ def test_a_slot_keeps_its_key_a_name_for_people_and_its_versions_a_provider(
         if entry.version and entry.kind not in ("problem", "observation")
     }
     assert providers == by_producer
-    assert set(providers.values()) == {"IMGW-PIB", "CHMI"}
+    assert set(providers.values()) == {"IMGW", "CHMU"}
 
 
 def _register(root: Path) -> tuple[StoreEntry, StoreEntry]:
@@ -371,7 +374,7 @@ def test_an_observation_is_the_history_of_its_slot_and_changes_no_count(
     assert env.versions() == produced
     assert sum(p.versions for p in env.queries.products()) == len(produced)
     assert env.queries.issues(STORE) == ()
-    assert env.queries.observations(STORE, "series/versions/hydro_daily") == ()
+    assert env.queries.observations(STORE, "series/versions/imgw_hydro_daily") == ()
     assert env.queries.observations(STORE, "no/such/slot") == ()
     assert env.queries.observations(STORE, slot) == history
     assert again.versions_written == 0

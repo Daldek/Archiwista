@@ -27,13 +27,14 @@ import pytest
 from playwright.sync_api import Locator, Page, Request, Route, expect
 
 from archiwista.config import AppSettings, BasemapConfig, ConfigStore, StoreConfig
+from archiwista.file_names import name_slug
 from archiwista.security import CSRF_HEADER
 from archiwista.sources.registry import load_registry
 from tests.fixtures.browser import Served, Tab, session_headers
 from tests.fixtures.local_server import local_paths, serving
 from tests.fixtures.make_store import NMT, StoreManifest, make_store
 from tests.fixtures.provider_lines import (
-    CHMI_SOURCE,
+    CHMU_SOURCE,
     IMGW_PROCESSED,
     IMGW_SOURCE,
     IMGW_TERMS_HYDRO,
@@ -659,12 +660,14 @@ def test_csv_export_matches_table(
     expected = comparison(page, versions)
     titles = [expected["a"]["title"], expected["b"]["title"]]
     groups = {"metadata": "Metadane z indeksu", "sidecar": "Pola surowego sidecara"}
+    # Nogat DEV-19.21: the kit's nameSlug of each side's title, as name_slug.
+    name = "_".join(["archiwista_comparison", *map(name_slug, titles)]) + ".csv"
 
     def export() -> list[list[str]]:
         with page.expect_download() as started:
             panel(page).get_by_role("button", name="Eksportuj CSV").click()
         download = started.value
-        assert re.fullmatch(r"porownanie-[\w.-]+\.csv", download.suggested_filename)
+        assert download.suggested_filename == name
         saved = tmp_path / download.suggested_filename
         download.save_as(saved)
         data = saved.read_bytes()
@@ -792,7 +795,7 @@ def test_compare_save_csv_joins_the_lines_beyond_the_last_row_into_it(
     served = compare_store.served
     page = open_session(tab, served)
     _, versions = version_pair(page, compare_store.store)
-    attribution = [IMGW_SOURCE, IMGW_PROCESSED, CHMI_SOURCE]
+    attribution = [IMGW_SOURCE, IMGW_PROCESSED, CHMU_SOURCE]
     terms = [IMGW_TERMS_PUBLIC_DATA, IMGW_TERMS_HYDRO]
 
     def two_rows(route: Route) -> None:
@@ -823,7 +826,7 @@ def test_compare_save_csv_joins_the_lines_beyond_the_last_row_into_it(
     assert header[-2:] == ["attribution", "terms_notice"]
     assert [row[-2:] for row in rows] == [
         [IMGW_SOURCE, IMGW_TERMS_PUBLIC_DATA],
-        [f"{IMGW_PROCESSED}\n{CHMI_SOURCE}", IMGW_TERMS_HYDRO],
+        [f"{IMGW_PROCESSED}\n{CHMU_SOURCE}", IMGW_TERMS_HYDRO],
     ]
     tab.assert_clean()
 

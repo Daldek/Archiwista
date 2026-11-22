@@ -4,9 +4,9 @@ Verbatim copies (ERR-3, AGI-4.1, DEV-15.6) of the files below from the
 [Nogat](https://github.com/Daldek/Nogat) repository; Nogat's
 `uv run scripts/ecosystem.py drift` reports each copy as current, behind or modified.
 
-- `error_registry.json` (Nogat `standards/error_registry.json` at commit `7786271`, the
-  standard numbered 1.0; SHA-256
-  `8a5b015414b039cc89cc06d2f4947834804403da35c16bcc863f44e1b54dcaa3`): error codes, exit
+- `error_registry.json` (Nogat `standards/error_registry.json` at commit `975136e`, the
+  standard numbered 1.1, whose registry changes only its `standard_version`; SHA-256
+  `0531b7307046b42ac7d222ac49e111ceca92e6d291265ef22ef6a40b4980ecb4`): error codes, exit
   codes and HTTP statuses. `src/archiwista/_errors.py` is generated from it with
   `uv run scripts/generate_errors.py`.
 - `result-1.schema.json`, `error-1.schema.json`, `commands-1.schema.json` (Nogat

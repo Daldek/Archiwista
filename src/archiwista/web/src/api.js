@@ -260,7 +260,7 @@ export async function request(method, path, { query, json, body, type, signal } 
     headers["Content-Type"] = type ?? "application/octet-stream";
   }
   const response = await send(method, API_PREFIX + path + search(query), { headers, body, signal });
-  return response.status === 204 ? null : response.json();
+  return response.status === 204 ? null : readBody(response, "json", signal);
 }
 
 /**
@@ -369,7 +369,7 @@ export function apiHeaders(address) {
 export async function getImage(address, { signal } = {}) {
   const headers = { Accept: IMAGE_ANSWERS };
   const response = await send("GET", apiAddress(address), { headers, signal });
-  return response.blob();
+  return readBody(response, "blob", signal);
 }
 
 /**
@@ -383,7 +383,7 @@ export async function getImage(address, { signal } = {}) {
 export async function getLinked(address, { signal } = {}) {
   const headers = { Accept: JSON_ANSWERS };
   const response = await send("GET", apiAddress(address), { headers, signal });
-  return response.json();
+  return readBody(response, "json", signal);
 }
 
 /**
@@ -402,7 +402,7 @@ export async function getLinked(address, { signal } = {}) {
 export async function buildLinked(address, { force = false } = {}) {
   const headers = { Accept: JSON_ANSWERS, "Content-Type": "application/json" };
   const response = await send("POST", apiAddress(address), { headers, body: JSON.stringify({ force }) });
-  return response.json();
+  return readBody(response, "json");
 }
 
 // Session (step 8) ------------------------------------------------------------
@@ -1147,7 +1147,7 @@ export function getLog(filters = {}, { signal } = {}) {
  * @param {"jsonl"|"csv"} format
  * @param {RequestOptions} [options]
  * @returns {Promise<{blob: Blob, name: string}>} The file and the name the
- *   server gave it (`archiwista-log-<UTC time>.<format>`).
+ *   server gave it (`archiwista_log_<UTC date>_<time>Z.<format>`).
  * @throws {ApiError} As `getLog`.
  */
 export async function exportLog(filters, format, { signal } = {}) {
@@ -1155,8 +1155,8 @@ export async function exportLog(filters, format, { signal } = {}) {
   const address = `${API_PREFIX}/log/export${search({ ...filters, format })}`;
   const response = await send("GET", address, { headers, signal });
   const disposition = response.headers.get("Content-Disposition") ?? "";
-  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `archiwista-log.${format}`;
-  return { blob: await response.blob(), name };
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `archiwista_log.${format}`;
+  return { blob: await readBody(response, "blob", signal), name };
 }
 
 // Background jobs (9b) --------------------------------------------------------
@@ -1973,6 +1973,25 @@ async function send(method, address, options) {
   const { response, problem } = await exchange(method, address, options);
   if (problem !== null) throw new ApiError(problem);
   return response;
+}
+
+/**
+ * Read the body of an answer `send` gave as `kind` (`json`, `blob`).
+ *
+ * A body that does not come whole is an answer that did not come: the
+ * network's problem, as for a request without an answer, unless the caller's
+ * `signal` stopped it (`AbortError`). Chromium rejects such a read with a
+ * `TypeError`; Firefox, which stops the loads of a page being left before
+ * `pagehide` and still runs the page's handlers, with `AbortError`, as the
+ * caller's abort. A body that is no JSON throws its `SyntaxError`.
+ */
+async function readBody(response, kind, signal) {
+  try {
+    return await response[kind]();
+  } catch (error) {
+    if (signal?.aborted || error?.name === "SyntaxError") throw error;
+    throw new ApiError(networkProblem());
+  }
 }
 
 /**

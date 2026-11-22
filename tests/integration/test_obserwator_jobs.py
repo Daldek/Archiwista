@@ -49,7 +49,7 @@ CALL = {
 }
 SLOT_2023 = "archives/versions/dane_hydrologiczne/dobowe/2023/codz_2023"
 SLOT_2024 = "archives/versions/dane_hydrologiczne/dobowe/2024/codz_2024"
-SERIES = "series/versions/hydro_daily"
+SERIES = "series/versions/imgw_hydro_daily"
 GROUP = "IMGW"
 SERIES_GROUP = "Serie"
 

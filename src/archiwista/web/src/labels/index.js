@@ -29,3 +29,14 @@ export function t(text, values = {}) {
     Object.hasOwn(values, name) ? String(values[name]) : whole,
   );
 }
+
+/**
+ * A station provider's name for a person (`IMGW` is „IMGW-PIB”, `CHMU`
+ * „ČHMÚ”, Nogat ECO-082); an id without a name is shown as it is.
+ *
+ * @param {string} id - The provider's id, as the API gives it.
+ * @returns {string}
+ */
+export function providerName(id) {
+  return common.provider[id] ?? id;
+}

@@ -48,9 +48,9 @@ from playwright.sync_api import Locator, Route, expect
 from tests.fixtures.browser import FIREFOX_KNOWN_CRASH, Served, Tab
 from tests.fixtures.obserwator_statistics import HALF_YEARS_ONLY, MONTHLY
 from tests.fixtures.provider_lines import (
-    CHMI_PROCESSED,
-    CHMI_SHORT,
-    CHMI_SOURCE,
+    CHMU_PROCESSED,
+    CHMU_SHORT,
+    CHMU_SOURCE,
     CUZK_RUIAN,
     GUGIK_PRG,
     IMGW_PROCESSED,
@@ -74,9 +74,9 @@ from tests.fixtures.station_browser import (
 Serve = Callable[..., Served]
 Stores = Callable[[str], Path]
 
-RABA = "IMGW-PIB/149190310"
-SPINDLER = "CHMI/0-203-1-900001"
-HALF_YEARS = f"IMGW-PIB/{HALF_YEARS_ONLY}"
+RABA = "IMGW/149190310"
+SPINDLER = "CHMU/0-203-1-900001"
+HALF_YEARS = f"IMGW/{HALF_YEARS_ONLY}"
 VERTEX = re.compile(r"(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)")
 MAX_POINTS = re.compile(r"[?&]max_points=(\d+)")
 # The page as on a plain-HTTP address of the network, where browsers give no
@@ -122,7 +122,7 @@ def test_the_gaps_are_grey_bands_the_line_never_crosses(
     # Arrange
     served = serve(station_settings(obserwator_store("complete"), tmp_path))
     page = open_session(engine_tab, served)
-    query = urlencode({"store": STORE, "provider": "IMGW-PIB", "variable": "H"})
+    query = urlencode({"store": STORE, "provider": "IMGW", "variable": "H"})
     (variable,) = api(page, f"/stations/149190310/series?{query}")["variables"]
     valued = [point["t"] for point in variable["points"] if point["mean"] is not None]
 
@@ -442,7 +442,10 @@ def test_the_annual_chart_saves_its_complete_years_maxima_as_a_hand_off_to_hydro
     doc = json.loads(text)
 
     # Assert
-    assert saved.suggested_filename.endswith("— Q, maksima roczne.handoff.json")
+    assert re.fullmatch(
+        r"archiwista_handoff_[a-z0-9-]+-q-maksima-roczne\.json",
+        saved.suggested_filename,
+    )
     assert text == json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
     assert (doc["schema"], doc["payload"]["schema"]) == (
         "nogat-handoff/1",
@@ -650,7 +653,7 @@ def test_station_chart_series_chart_imgw_lines_join_the_cards_one_strip(
     engine_tab.assert_clean()
 
 
-def test_station_chart_series_chart_chmi_lines_join_the_cards_one_strip(
+def test_station_chart_series_chart_chmu_lines_join_the_cards_one_strip(
     serve: Serve, engine_tab: Tab, obserwator_store: Stores, tmp_path: Path
 ) -> None:
     """Špindlerův Mlýn: the short ČHMÚ and ČÚZK lines on screen, the rest behind."""
@@ -671,9 +674,9 @@ def test_station_chart_series_chart_chmi_lines_join_the_cards_one_strip(
 
     # Assert
     lines = [*chart["attribution"], *chart["terms_notice"]]
-    assert lines == [CHMI_SOURCE, CHMI_PROCESSED]
+    assert lines == [CHMU_SOURCE, CHMU_PROCESSED]
     assert [line for line in full if line in lines] == lines
-    assert shown == [CHMI_SHORT, "Źródło: ČÚZK, CC BY 4.0"]
+    assert shown == [CHMU_SHORT, "Źródło: ČÚZK, CC BY 4.0"]
     assert CUZK_RUIAN in full
     expect(credit).to_have_attribute("href", "https://opendata.chmi.cz")
     engine_tab.assert_clean()

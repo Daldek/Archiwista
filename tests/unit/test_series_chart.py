@@ -64,7 +64,7 @@ def _variable(
 
 def _series(variable: CoverageVariable, dataset: str) -> StationCoverage:
     return StationCoverage(
-        store="dane", provider="IMGW-PIB", code="149190310", dataset=dataset,
+        store="dane", provider="IMGW", code="149190310", dataset=dataset,
         kind="hydro", time_unit="day", year_type="hydrological", span=None,
         file="s.parquet", series="2026-08-31", series_version=f"{dataset}.json",
         variables=(variable,),

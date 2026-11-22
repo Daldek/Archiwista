@@ -26,7 +26,7 @@ from tests.fixtures.obserwator_roots import data_root, raw_root
 type Stores = Callable[[str], Path]
 
 PL_CATALOG = "catalog:pl.imgw.stations"
-CZ_CATALOG = "catalog:cz.chmi.stations"
+CZ_CATALOG = "catalog:cz.chmu.stations"
 
 
 @pytest.fixture
@@ -71,9 +71,9 @@ def test_each_provider_of_the_registry_has_its_catalog_slot(
         for provider in providers()
     }
 
-    assert named == {"IMGW-PIB": "IMGW-PIB", "CHMI": "CHMI"}
-    assert adapter.station_catalog(PL_CATALOG) == "IMGW-PIB"
-    assert adapter.station_catalog(CZ_CATALOG) == "CHMI"
+    assert named == {"IMGW": "IMGW", "CHMU": "CHMU"}
+    assert adapter.station_catalog(PL_CATALOG) == "IMGW"
+    assert adapter.station_catalog(CZ_CATALOG) == "CHMU"
 
 
 @pytest.mark.parametrize("variant", ["complete", "complete_pl_cz"])
@@ -99,7 +99,7 @@ def test_the_catalog_slots_are_the_producers_catalogs_and_nothing_else(
 
 
 @pytest.mark.parametrize(
-    ("key", "count"), [(PL_CATALOG, 6), (CZ_CATALOG, 7)], ids=["imgw", "chmi"]
+    ("key", "count"), [(PL_CATALOG, 6), (CZ_CATALOG, 7)], ids=["imgw", "chmu"]
 )
 def test_read_stations_gives_every_station_the_producer_reads(
     obserwator_store: Stores, adapter: ObserwatorAdapter, key: str, count: int
@@ -134,7 +134,7 @@ def test_a_station_keeps_the_fields_of_the_catalog(
             root, _catalog_version(adapter, root, PL_CATALOG)
         )
     }
-    chmi = {
+    chmu = {
         s.code: s
         for s in adapter.read_stations(
             root, _catalog_version(adapter, root, CZ_CATALOG)
@@ -142,7 +142,7 @@ def test_a_station_keeps_the_fields_of_the_catalog(
     }
 
     assert imgw["149190310"] == Station(
-        provider="IMGW-PIB",
+        provider="IMGW",
         code="149190310",
         kind="hydro",
         name="Raba Górna",
@@ -150,7 +150,7 @@ def test_a_station_keeps_the_fields_of_the_catalog(
         hydrographic_code="213",
         river_order=12,
         point=(20.1, 49.7),
-        location_source="api_hydro",
+        location_source="pl.imgw.hydro_now",
         location_uncertainty_m=5566.0,
         active=True,
     )
@@ -164,19 +164,26 @@ def test_a_station_keeps_the_fields_of_the_catalog(
         "149190312": "none",
         "149190313": "outside_country",
     }
-    hydro = chmi["0-203-1-900001"]
+    hydro = chmu["0-203-1-900001"]
     assert (hydro.kind, hydro.river, hydro.hydrographic_code) == (
         "hydro",
         "Labe",
         "1-05-03-0110",
     )
-    meteo = chmi["0-203-0-90001"]
+    meteo = chmu["0-203-0-90001"]
     assert (meteo.meteo_kind, meteo.established_year, meteo.elevation_m) == (
         None,
         1961,
         318.5,
     )
-    assert chmi["0-203-1-900002"].active is False
+    assert chmu["0-203-1-900002"].active is False
+    # The location source is the key of the dataset the position came from, which
+    # the station views label (Obserwator 3.1.0, Nogat ECO-082).
+    assert {s.location_source for s in chmu.values() if s.point is not None} == {
+        "cz.chmu.hydro_stations",
+        "cz.chmu.hydro_now",
+        "cz.chmu.meteo_now",
+    }
 
 
 def test_a_version_unlike_its_sidecar_is_the_producers_error(

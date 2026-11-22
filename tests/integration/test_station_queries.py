@@ -31,8 +31,8 @@ from archiwista.sources import Station
 
 STORE = "dane"
 OTHER = "drugi"
-PL = "IMGW-PIB"
-CZ = "CHMI"
+PL = "IMGW"
+CZ = "CHMU"
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def index(tmp_path: Path) -> Iterator[tuple[IndexWriter, IndexQueries]]:
 def _write(
     writer: IndexWriter, provider: str, stations: list[Station], store: str = STORE
 ) -> None:
-    slot = "stations/versions" + ("/chmi_stations" if provider == CZ else "")
+    slot = f"stations/versions/{'chmu' if provider == CZ else 'imgw'}_stations"
     writer.replace_stations(
         store,
         "obserwator",
@@ -243,7 +243,7 @@ def test_two_providers_and_two_stores_never_share_a_station(
     assert card is not None
     assert (card.name, card.location, card.location_reason) == ("Lhota", "none", "none")
     assert card.catalog_version == (
-        "stations/versions/chmi_stations/2026-10-26_00000000/stations.geojson"
+        "stations/versions/chmu_stations/2026-10-26_00000000/stations.geojson"
     )
     assert queries.station(STORE, PL, "149190311") is None
     assert queries.station("unknown", PL, same) is None

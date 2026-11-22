@@ -231,7 +231,7 @@ def test_an_export_with_a_zip_is_downloaded_from_the_card(
     download.save_as(saved)
 
     # Assert: the folder's content, file by file.
-    assert download.suggested_filename == "hydro.zip"
+    assert download.suggested_filename == f"archiwista_export_{PROJECT}_hydro.zip"
     with zipfile.ZipFile(saved) as archive:
         names = sorted(name for name in archive.namelist() if not name.endswith("/"))
         assert names == sorted(path.relative_to(target).as_posix() for path in data)

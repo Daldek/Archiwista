@@ -11,15 +11,28 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
 
 ### Changed
 
-- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `1a11df5`, the commit of
+- **Files Archiwista names for a person follow Nogat's one pattern
+  `<tool>_<content>_<qualifiers>.<extension>` (DEV-19.21, ECO-083, plan
+  `2026-11-21-download-file-names` step 5).** The comparison's „Eksportuj CSV” saves
+  `archiwista_comparison_<a>_<b>.csv`, the sides' titles by the kit's `nameSlug`
+  (`archiwista_comparison_nmt-2020_nmt-2024.csv`, was `porownanie-NMT_2020-NMT_2024.csv`);
+  the action log's export (`GET /log/export`, „Eksportuj CSV”/„Eksportuj JSON Lines”) is
+  `archiwista_log_2026-11-21_143022Z.jsonl` (was `archiwista-log-20261121T143022Z.jsonl`);
+  an export's ZIP (`GET /projects/{project}/exports/{name}/zip`, „Pobierz ZIP”) is sent as
+  `archiwista_export_<project>_<name>.zip` (`archiwista_export_raba_raba-2024.zip`), while
+  the file in `eksport/` keeps the name the person gave; the hand-off is that of the kit
+  above. `project-export`'s folders and ZIP, a stored file sent as it is and a CLI
+  `--output` keep their names.
+- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `de06926`, the commit of
   its `develop` at `3.1.0.dev0` for Nogat's release round of 2026-11-21 (`pyproject.toml`,
-  `uv.lock`); the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
+  `uv.lock`; `1a11df5` of its `develop`, then `facf5ef`, `ddd7a22` and `dafcee4`, before);
+  the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
 - With Obserwator 3.1.0 a series version may hold chosen stations and years only
   (`subset` of `series.json`, Obserwator ADR-026). Archiwista reads it as any version:
   on the coverage labels, the timeline and the card the years not chosen are „nieznany”,
   not gaps; a station not chosen has no series of the dataset, as a station without
   series (on the map a point without coverage colour); a hand-off spans the version's
-  values. ČHMÚ's `cz.chmi.meteo_daily` has six files per station (`snow/…-SCE.csv`,
+  values. ČHMÚ's `cz.chmu.meteo_daily` has six files per station (`snow/…-SCE.csv`,
   `snow/…-SNO.csv` beside the four before) and the variables `snow_cover` and
   `fresh_snow` [cm], which the coverage and the card list as they list IMGW-PIB's. The
   `formula_versions` and `derived` of Obserwator's analyses exports are not read by
@@ -27,6 +40,82 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
 - The copy of Nogat's `handoff-1.schema.json` is Nogat's of `develop` `263e83c` (last
   changed in `c47c42e`), whose first example records Hydrolog 0.9.0's result (Nogat plan
   `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6); the schema itself is unchanged.
+- On a phone (up to 860 px) the strip of the providers' lines of a view or a card is one
+  line, its lines cut with an ellipsis, followed by „więcej”, which unfolds them in place
+  („zwiń” folds them again), and „Źródła i warunki”; wider screens are unchanged (Nogat
+  ECO-080, DEV-20.5; A-ADR-054 erratum 5). Nogat's kit 1.0.0 is copied again from Nogat
+  `5f8cce0` into `src/archiwista/web/nogat/`: `nogat-sources.js` and `.css`,
+  `nogat-kit.json`, and the kit's draft regulamin for operators `nogat-terms-operator.md`
+  (Nogat ECO-079), which no page links.
+- Nogat's kit is 1.1.0 (Nogat ECO-081): its manifest `nogat-kit.json` is copied from Nogat
+  `0e128be`, the kit's files and their hashes unchanged since `5f8cce0`.
+- Nogat's kit 1.1.0 is copied again, whole and byte for byte, from Nogat `c2507fa` into
+  `src/archiwista/web/nogat/` (A-ADR-054 erratum 6; Nogat ECO-081, ECO-082): its
+  regulamin templates `nogat-terms.md`, `.html` and the operators' draft
+  `nogat-terms-operator.md` name ČHMÚ's block `chmu` instead of `chmi`, and
+  `nogat-kit.json` has their hashes. Archiwista fills no regulamin, so nothing else
+  changes; the strip's „więcej” on a phone is that of the kit 1.1.0 (ECO-080).
+- Nogat's kit 1.1.0 is copied again, whole and byte for byte, from Nogat `4d755ee` (A-ADR-054
+  erratum 7; Nogat ECO-083, DEV-19.21): „Plik przekazania” of the station card saves the
+  hand-off as `archiwista_handoff_<subject>.json`, the subject in lower-case ASCII with
+  `-` between its words (`archiwista_handoff_nowy-sacz-q-maksima-roczne.json`), no longer
+  `<subject>.handoff.json`; Hydrolog opens it as before. The texts that named the file
+  follow (the button's title, `stations handoff --help`). The copy of Nogat's
+  `error_registry.json` is that of the standard numbered 1.1 (`_errors.py` generated
+  again; the codes are unchanged).
+- **ČHMÚ's identifiers are its national acronym without diacritics (Nogat ECO-082, plan
+  `2026-11-21-national-provider-names` step 4; Obserwator 3.1.0), a fix of 0.3.3.** The
+  provider `CHMI` is `CHMU` (in the API's `provider`, the filters
+  `?provider=`/`--provider`, a station's reference `<store>/CHMU/<code>`), its dataset
+  keys `cz.chmi.*` are `cz.chmu.*` (catalog slot `catalog:cz.chmu.stations`) and the store
+  directories follow (`series/versions/chmu_*`, `stations/versions/chmu_stations`,
+  `analyses/versions/cz.chmu`). A station's `location.source` (`location_source`) is the
+  key of the dataset its position came from: `api_hydro` is `pl.imgw.hydro_now`,
+  `api_meteo` `pl.imgw.meteo_now`, `chmi_hydro_now` and `chmi_hydro_meta3`
+  `cz.chmu.hydro_now`, `chmi_hydro_stations` `cz.chmu.hydro_stations`, `chmi_meteo_now`
+  `cz.chmu.meteo_now` and `chmi_meteo_stations` `cz.chmu.meteo_stations`; `static` and
+  `user` stay, and the „Katalog” labels them as before. The plugin interface's
+  `DataOrigin` values `chmi_file` and `chmi_processed` are `chmu_file` and
+  `chmu_processed` (A-ADR-055 erratum 5). Obserwator's CSVs end with `attribution` and
+  `terms_notice` alone, which Archiwista did not read. **Migration:** the old names are
+  not read or translated. The raw root stays: Obserwator 3.1.0 reads its archives' older
+  sidecars under the new key and provider (their raw `dataset` stays as written). Build a
+  new Obserwator data root with Obserwator 3.1.0 from the raw root, set it as the store's `obserwator_data` („Katalog danych Obserwatora”), then
+  rebuild the index with `archiwista reindex --store <store>`; pin a project's ČHMÚ
+  versions of the old data root again from the new one (A-ADR-032 erratum 3).
+- **IMGW-PIB's provider id is `IMGW` (Nogat ECO-082 as extended on 2026-11-21, DEV-2.5;
+  Obserwator 3.1.0), a fix of 0.3.3.** The provider `IMGW-PIB` is `IMGW` in the API's
+  `provider`, the filters `?provider=`/`--provider`, a station's reference
+  `<store>/IMGW/<code>` and the index; a hand-off's `provenance.series.source` is `imgw`.
+  Its slugs start with its acronym as ČHMÚ's do (Nogat plan decision 1a): the series
+  directories `series/versions/hydro_daily`, `meteo_precip_daily`… are
+  `series/versions/imgw_hydro_daily`, `imgw_meteo_precip_daily`… and its station catalog
+  moves from `stations/versions` itself to `stations/versions/imgw_stations`, beside
+  `chmu_stations`; PMAXTP, grouped by its slug for want of a family, is the product
+  `imgw_pmaxtp` (was `pmaxtp`; the catalog filter `product`). The keys `pl.imgw.*` and the
+  licence id `IMGW-PIB` stay. Text for a person keeps the institute's acronym: the
+  interface (a station's badge, its card, the lists, the comparison, the timeline, the
+  chart's annual note, a dataset's chip) and the command line's text name the providers
+  „IMGW-PIB” and „ČHMÚ” by their ids, where they showed the id before; the attribution
+  lines are unchanged (A-ADR-032 erratum 4).
+  **Migration:** as for ČHMÚ above: `IMGW-PIB` is not read or translated, the index is
+  rebuilt from a data root Obserwator 3.1.0 built (it reads the raw root's stored sidecars
+  with the provider `IMGW-PIB` as `IMGW`), a script that passes `--provider IMGW-PIB`
+  passes `IMGW`, and a project's IMGW-PIB series and catalog versions of the old data root
+  are pinned again from the new one.
+
+### Fixed
+
+- **Leaving a page in Firefox while it loads raises no error of the page** (CI of `develop`
+  `9e9e365`, 2026-11-21; `web/src/api.js`, `downloads.js`, `search.js`, `feedback.js`,
+  `shell.js`): Firefox stops the loads of a page being left before `pagehide` and still
+  runs the page's handlers. An answer whose body it stopped rejected with `AbortError`,
+  which the readers of the shell (the downloads, the count of running jobs) took for a
+  fault of the page; now a body that does not come whole is the network's problem, as a
+  request without an answer is, in Chromium too (whose readers got a `TypeError`). The
+  stylesheets of the downloads, the search and „Zgłoś uwagę”, which the shell adds after
+  it is shown, and the modules of a card leave the part unstyled or the card unshown when
+  they do not load, instead of an uncaught „Stylesheet not loaded”.
 
 ## [0.3.2] - 2026-11-20
 

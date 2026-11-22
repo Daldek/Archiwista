@@ -47,7 +47,7 @@ import { getStationHandoff, getStationSeries } from "../api.js";
 import { useApp } from "../context.js";
 import { count, day } from "../format.js";
 import { useResource, useSize } from "../hooks.js";
-import { t } from "../labels/index.js";
+import { providerName, t } from "../labels/index.js";
 import { station as L } from "../labels/station.js";
 import { useProviderLines } from "../provider-lines.js";
 import { setParams } from "../router.js";
@@ -286,7 +286,8 @@ export function handoffKinds(charts) {
  * „Do Hydrologa” (A-ADR-052, A-ADR-054): what Hydrolog's „Statystyka przepływów” gets,
  * chosen here — the daily values of a series of days or the annual maxima of complete
  * hydrological years, and the variable — then „Kopiuj do Hydrologa” or „Plik przekazania”,
- * written by Nogat's kit (`nogat-handoff.js`, DEV-15.5): the file `<subject>.handoff.json`
+ * written by Nogat's kit (`nogat-handoff.js`, DEV-15.5): the file
+ * `archiwista_handoff_<subject>.json` (DEV-19.21, the subject by the kit's `nameSlug`)
  * in 2-space JSON with a final newline; a copy goes to the clipboard, or where the browser
  * has no Clipboard API (a plain-HTTP address on the network) or refuses it, into a field
  * below with its text selected for Ctrl+C. It starts at the chart shown and its first
@@ -515,7 +516,7 @@ function ChartFigure({ chart, width, extent, onRange, loading, whole }) {
  * @returns {string}
  */
 export function chartNote(chart, whole) {
-  if (chart.resolution === "annual") return t(C.annual_note, { provider: chart.provider });
+  if (chart.resolution === "annual") return t(C.annual_note, { provider: providerName(chart.provider) });
   const unit = chart.time_unit === "month" ? "month" : "day";
   if (chart.interval <= 1) return C.values[unit];
   const interval = count(chart.interval, C.interval_units[unit]);

@@ -185,14 +185,14 @@ _COUNTRY_TREES = frozenset({"archives", "series"})
 # whatever its provider, is PMAXTP's.
 _ORIGINS: Mapping[tuple[str, str], DataOrigin] = MappingProxyType(
     {
-        ("archives", "IMGW-PIB"): "imgw_file",
-        ("series", "IMGW-PIB"): "imgw_processed",
-        ("stations", "IMGW-PIB"): "imgw_stations",
-        ("analyses", "IMGW-PIB"): "imgw_processed",
-        ("archives", "CHMI"): "chmi_file",
-        ("series", "CHMI"): "chmi_processed",
-        ("stations", "CHMI"): "chmi_processed",
-        ("analyses", "CHMI"): "chmi_processed",
+        ("archives", "IMGW"): "imgw_file",
+        ("series", "IMGW"): "imgw_processed",
+        ("stations", "IMGW"): "imgw_stations",
+        ("analyses", "IMGW"): "imgw_processed",
+        ("archives", "CHMU"): "chmu_file",
+        ("series", "CHMU"): "chmu_processed",
+        ("stations", "CHMU"): "chmu_processed",
+        ("analyses", "CHMU"): "chmu_processed",
     }
 )
 _PMAXTP_TREE = "pmaxtp"
@@ -374,8 +374,8 @@ class ObserwatorAdapter:
         No disk access. A dataset of the registry has its Polish title for a
         name, its provider's country and the family the registry declares for
         it as a product; a station catalog (``pl.imgw.stations``,
-        ``cz.chmi.stations``) and a provider's stored analyses
-        (``pl.imgw.analyses``, ``cz.chmi.analyses``), slots of the data root
+        ``cz.chmu.stations``) and a provider's stored analyses
+        (``pl.imgw.analyses``, ``cz.chmu.analyses``), slots of the data root
         that are no datasets of the registry, are named after their provider
         and are of the family ``stations`` or ``analyses``; any other key is
         not recognised and is its own name.
@@ -390,7 +390,7 @@ class ObserwatorAdapter:
         SourceSegment
             ``dataset_key`` is the current key of the dataset. ``product`` is
             its family: the ``kind`` of the registry (``hydro``, ``meteo``),
-            for the dataset that has none (PMAXTP) its short name, ``pmaxtp``,
+            for the dataset that has none (PMAXTP) its slug, ``imgw_pmaxtp``,
             ``stations`` for a catalog and ``analyses`` for stored analyses;
             ``None`` for a key that is not recognised. Obserwator has no
             products, so it only groups the datasets, and the key itself is
@@ -468,7 +468,7 @@ class ObserwatorAdapter:
 
         A provider's catalog is the slot ``catalog:<key prefix>.stations`` of
         the producer's registry (``catalog:pl.imgw.stations`` is IMGW-PIB's,
-        ``catalog:cz.chmi.stations`` ČHMÚ's); no disk access.
+        ``catalog:cz.chmu.stations`` ČHMÚ's); no disk access.
 
         Parameters
         ----------
@@ -478,7 +478,7 @@ class ObserwatorAdapter:
         Returns
         -------
         str or None
-            The provider's id (``IMGW-PIB``, ``CHMI``); ``None`` for any other
+            The provider's id (``IMGW``, ``CHMU``); ``None`` for any other
             slot.
         """
         kind, _, dataset = slot_key.partition(":")
@@ -1150,10 +1150,10 @@ def _slot_name(slot: str | None) -> str | None:
     """Name a slot for people where the name of its directory is none.
 
     An archive is named by its file (its directory has no extension), a
-    station catalog and a provider's stored analyses by their key (the first
-    catalog lies in a directory called ``versions``, the analyses in one named
-    after the provider); a series and a PMAXTP cell keep the name of their
-    directory (``None``).
+    station catalog and a provider's stored analyses by their key (their
+    directories are named after the provider: ``imgw_stations``,
+    ``chmu_stations``, ``pl.imgw``, ``cz.chmu``); a series and a PMAXTP cell
+    keep the name of their directory (``None``).
     """
     kind, _, rest = (slot or "").partition(":")
     if kind == "archive":
