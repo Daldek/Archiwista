@@ -23,10 +23,12 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
   the file in `eksport/` keeps the name the person gave; the hand-off is that of the kit
   above. `project-export`'s folders and ZIP, a stored file sent as it is and a CLI
   `--output` keep their names.
-- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `de06926`, the commit of
-  its `develop` at `3.1.0.dev0` for Nogat's release round of 2026-11-21 (`pyproject.toml`,
-  `uv.lock`; `1a11df5` of its `develop`, then `facf5ef`, `ddd7a22` and `dafcee4`, before);
-  the release commit replaces it with the tag. Kartograf stays `v0.8.2`.
+- Obserwator (extra `obserwator`) is re-pinned from `v3.0.1` to `4bf0ce3`, the commit of
+  its `develop` at `3.1.0.dev0` with Nogat's copies of standard 1.1, the commit of Nogat's
+  release set candidate-11 for its release round of 2026-11-21 (`pyproject.toml`,
+  `uv.lock`; `1a11df5` of its `develop`, then `facf5ef`, `ddd7a22`, `dafcee4` and
+  `de06926`, before); the release commit replaces it with the tag. Kartograf stays
+  `v0.8.2`.
 - With Obserwator 3.1.0 a series version may hold chosen stations and years only
   (`subset` of `series.json`, Obserwator ADR-026). Archiwista reads it as any version:
   on the coverage labels, the timeline and the card the years not chosen are „nieznany”,
