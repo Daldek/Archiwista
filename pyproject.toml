@@ -63,7 +63,7 @@ dependencies = [
 # `SUPPORTED_VERSIONS` in `archiwista.adapter.obserwator` (REL-5.6). The release commit
 # replaces the commit with the tag v3.1.0.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@facf5ef426abe08661bf5fb0cae3cd1d90b1289f",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@a4f98e0085cca3951e65ffa4d14a78b6a9d485d2",
 ]
 
 [dependency-groups]
