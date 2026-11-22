@@ -14,7 +14,8 @@ line, byte for byte the card's ``attribution`` and ``terms_notice``, and
 „Kopiuj atrybucję” there copies them one per line, as „Kopiuj ścieżkę
 pliku” copies the series file's path (read back in Chromium, whose
 clipboard Playwright can grant); Esc closes
-the dialog and not the card. The IMGW
+the dialog and not the card. On a phone the strip is one line, which „więcej”
+unfolds in place and „zwiń” folds again (Nogat ECO-080). The IMGW
 station page is a plain link the page never requests.
 """
 
@@ -351,4 +352,40 @@ def test_the_strip_of_a_station_shows_its_catalogs_border_line_short(
     # Assert
     assert shown == [IMGW_SOURCE, IMGW_PROCESSED, "Źródło: GUGiK (PRG)"]
     assert full == [IMGW_SOURCE, IMGW_PROCESSED, GUGIK_PRG, IMGW_TERMS_PUBLIC_DATA]
+    tab.assert_clean()
+
+
+def test_on_a_phone_the_strip_is_one_line_that_unfolds_in_place(
+    serve: Serve, tab: Tab, obserwator_store: Stores, tmp_path: Path
+) -> None:
+    """At 390 px S, P and G fold to one line; „więcej” unfolds it, „zwiń” folds it."""
+    # Arrange
+    served = serve(station_settings(obserwator_store("complete"), tmp_path))
+    page = open_session(tab, served)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(
+        address(served, view="catalog", product="hydro", station=station_of(RABA))
+    )
+    card = dialog(page, "Raba Górna")
+    strip = card.locator(SOURCES)
+    lines = strip.locator(".nogat-sources-lines")
+    expect(lines).to_be_visible()
+    line = float(
+        lines.evaluate("(node) => parseFloat(getComputedStyle(node).lineHeight)")
+    )
+
+    # Act
+    folded = lines.bounding_box()
+    strip.get_by_role("button", name="więcej", exact=True).click()
+    unfolded = lines.bounding_box()
+    strip.get_by_role("button", name="zwiń", exact=True).click()
+    refolded = lines.bounding_box()
+
+    # Assert
+    assert folded is not None and unfolded is not None and refolded is not None
+    assert folded["height"] < 2 * line
+    assert unfolded["height"] > 2 * line
+    assert refolded["height"] == folded["height"]
+    assert strip_lines(strip) == [IMGW_SOURCE, IMGW_PROCESSED, "Źródło: GUGiK (PRG)"]
+    expect(strip.get_by_role("button", name=SOURCES_BUTTON)).to_be_visible()
     tab.assert_clean()

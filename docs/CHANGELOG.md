@@ -27,6 +27,15 @@ Changes since 0.3.2, for Nogat's release round of 2026-11-21 (Obserwator 3.1.0).
 - The copy of Nogat's `handoff-1.schema.json` is Nogat's of `develop` `263e83c` (last
   changed in `c47c42e`), whose first example records Hydrolog 0.9.0's result (Nogat plan
   `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6); the schema itself is unchanged.
+- On a phone (up to 860 px) the strip of the providers' lines of a view or a card is one
+  line, its lines cut with an ellipsis, followed by „więcej”, which unfolds them in place
+  („zwiń” folds them again), and „Źródła i warunki”; wider screens are unchanged (Nogat
+  ECO-080, DEV-20.5; A-ADR-054 erratum 5). Nogat's kit 1.0.0 is copied again from Nogat
+  `5f8cce0` into `src/archiwista/web/nogat/`: `nogat-sources.js` and `.css`,
+  `nogat-kit.json`, and the kit's draft regulamin for operators `nogat-terms-operator.md`
+  (Nogat ECO-079), which no page links.
+- Nogat's kit is 1.1.0 (Nogat ECO-081): its manifest `nogat-kit.json` is copied from Nogat
+  `0e128be`, the kit's files and their hashes unchanged since `5f8cce0`.
 
 ### Fixed
 
