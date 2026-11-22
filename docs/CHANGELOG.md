@@ -5,7 +5,7 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
-## [Unreleased]
+## [0.3.3] - 2026-11-22
 
 Changes since 0.3.2: release 0.3.3, a patch for Nogat's release round of 2026-11-21. It
 adapts Archiwista to Obserwator 3.1.0 and to Nogat's standard 1.1 (the providers'
