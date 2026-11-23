@@ -53,7 +53,7 @@ from pathlib import Path
 from typing import Literal
 
 from archiwista.config import AppSettings, StoreConfig, StoreDirectory
-from archiwista.errors import ProducerError, SourceUnavailableError
+from archiwista.errors import ProducerError, SourceUnavailableError, UnsupportedError
 from archiwista.index.geometry import (
     WGS84,
     BBox,
@@ -66,12 +66,14 @@ from archiwista.index.geometry import (
 )
 from archiwista.index.projects import ProjectScanSummary, scan_projects
 from archiwista.index.queries import IndexQueries
+from archiwista.index.series import join_months
 from archiwista.index.types import (
     BatchResult,
     CurrentVersionLookup,
     IndexStatus,
     KeyedSlot,
     PassSummary,
+    SeriesMonth,
 )
 from archiwista.index.writer import IndexWriter
 from archiwista.messages import lookup, message, with_detail
@@ -85,6 +87,7 @@ from archiwista.sources import (
     SegmentDescriptionAdapter,
     SegmentedAdapter,
     SeriesIndexAdapter,
+    SeriesListing,
     SourceAdapter,
     SourceEntry,
     SourcePartition,
@@ -1222,9 +1225,19 @@ def _index_series(
     Run after the pass, outside its transaction, as ``_index_stations``: a
     series index is read only when the current version of its slot is not the
     one its coverage was read from (a full scan reads every one again), in
-    the directory the version lies in. A dataset whose series has no slot or
-    no current version anymore has no coverage; one whose current version
-    the producer refuses has none either, and the scan says so.
+    the directory the version lies in. A series kept as one version per
+    calendar month, in a slot per month (Obserwator's hourly series), is one
+    series of its dataset: when the version of any month is new, every month
+    is read again and the months are joined (``join_months``). A dataset whose
+    series has no slot or no current version anymore has no coverage; a month
+    the producer refuses is left out and the scan says so, and so is the
+    dataset when no version is left. A dataset whose series the producer
+    refuses by its unit (``UnsupportedError``: a unit Archiwista does not
+    know) has no coverage and its slots are recorded as skipped
+    (``replace_skipped_series``); its versions stay listed. The scan says so
+    once per dataset when the version of one of its slots is new to that
+    record, and on a full scan, as a warning, never a failure (Nogat ECO-085,
+    A-ADR-059).
 
     Raises
     ------
@@ -1232,41 +1245,93 @@ def _index_series(
         The system cannot read a series index.
     """
     producer = target.producer
-    current: dict[str, tuple[KeyedSlot, str, Path]] = {}
+    held: dict[str, list[tuple[KeyedSlot, str, Path]]] = {}
     for slot in writer.keyed_slots(store, producer):
         dataset = series.series_dataset(slot.key)
         if dataset is None or slot.current is None:
             continue
         root = target.root_of(slot.current)
         if root is not None:
-            current[dataset] = (slot, slot.current, root)
+            held.setdefault(dataset, []).append((slot, slot.current, root))
     read = writer.series_catalogs(store, producer)
-    for dataset in sorted(read.keys() - current.keys()):
+    for dataset in sorted(read.keys() - held.keys()):
         writer.drop_series(store, dataset)
-    for dataset in sorted(current):
-        slot, version, root = current[dataset]
+    skipped = writer.skipped_series(store, producer)
+    refused: dict[str, tuple[str, str]] = {}
+    reported: dict[str, tuple[str, UnsupportedError]] = {}
+    for dataset in sorted(held):
+        parts = held[dataset]
         known = read.get(dataset)
-        unchanged = known is not None and (known.slot, known.version) == (
-            slot.path,
-            version,
-        )
-        if unchanged and not full:
+        current = {slot.path: version for slot, version, _ in parts}
+        if known is not None and known.parts() == current and not full:
             continue
+        listings: list[tuple[str, str, SeriesListing]] = []
         try:
-            listing = series.read_series_index(root, Path(version))
-        except ProducerError as error:
-            writer.drop_series(store, dataset)
-            text = message(
-                "scan.series_unreadable",
-                dataset=dataset,
-                path=version,
-                detail=str(error),
-            )
-            emit(ScanNotice("warning", "series_unreadable", text))
+            for slot, version, root in parts:
+                try:
+                    listing = series.read_series_index(root, Path(version))
+                except ProducerError as error:
+                    text = message(
+                        "scan.series_unreadable",
+                        dataset=dataset,
+                        path=version,
+                        detail=str(error),
+                    )
+                    emit(ScanNotice("warning", "series_unreadable", text))
+                    continue
+                listings.append((slot.path, version, listing))
+        except UnsupportedError as error:
+            if known is not None:
+                writer.drop_series(store, dataset)
+            for slot, version, _ in parts:
+                refused[slot.path] = (dataset, version)
+                if full or skipped.get(slot.path) != version:
+                    reported[dataset] = (version, error)
             continue
-        writer.replace_series(
-            store, producer, slot=slot.path, version=version, listing=listing
+        if not listings:
+            writer.drop_series(store, dataset)
+            continue
+        _write_series(writer, store, producer, listings)
+    writer.replace_skipped_series(store, producer, refused)
+    for dataset in sorted(reported):
+        version, refusal = reported[dataset]
+        text = message(
+            "scan.series_skipped", dataset=dataset, path=version, detail=str(refusal)
         )
+        emit(ScanNotice("warning", "series_skipped", text))
+
+
+def _write_series(
+    writer: IndexWriter,
+    store: str,
+    producer: str,
+    listings: Sequence[tuple[str, str, SeriesListing]],
+) -> None:
+    """Write a dataset's coverage from its version, or its months joined.
+
+    ``listings`` are the slot, the version and the index read of each slot of
+    the dataset's series: one of a series of one version, else one per
+    month, recorded in month order with the latest month's slot and version.
+    """
+    if len(listings) == 1 and listings[0][2].month is None:
+        slot, version, listing = listings[0]
+        writer.replace_series(
+            store, producer, slot=slot, version=version, listing=listing
+        )
+        return
+    ordered = sorted(listings, key=lambda item: item[2].month or "")
+    slot, version, _ = ordered[-1]
+    writer.replace_series(
+        store,
+        producer,
+        slot=slot,
+        version=version,
+        listing=join_months([listing for _, _, listing in ordered]),
+        months=[
+            SeriesMonth(listing.month or "", slot_path, path)
+            for slot_path, path, listing in ordered
+        ],
+    )
 
 
 def _indexed(queries: IndexQueries, store: str) -> bool:

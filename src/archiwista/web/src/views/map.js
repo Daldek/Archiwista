@@ -52,7 +52,7 @@ import { useDownloadEnd } from "../downloads.js";
 import { Fan } from "../fan/fan.js";
 import { count, stamp } from "../format.js";
 import { NARROW, useMedia, useResource, useSize } from "../hooks.js";
-import { T, t } from "../labels/index.js";
+import { T, t, variableName } from "../labels/index.js";
 import { map as L } from "../labels/map.js";
 import { setDetails as D } from "../labels/set-details.js";
 import { MapCanvas } from "../map/canvas.js";
@@ -94,6 +94,7 @@ import { productNames, productStores } from "../map/products.js";
 import { DEFAULT_GRID, GRID_PRODUCER, scaleLabel } from "../map/sheets.js";
 import {
   isStationProduct,
+  kindShape,
   STATION_PARAM,
   STATION_PARAMS,
   stationAddress,
@@ -531,7 +532,7 @@ export default function MapScreen({ route, embedded = false }) {
             stations=${stationMode
               ? {
                   variable: station.color,
-                  shape: station.kind === "hydro" ? "triangle" : "square",
+                  shape: kindShape(station.kind),
                   aggregated: Boolean(stationView.data?.aggregated),
                 }
               : allStations && stationView.data
@@ -685,8 +686,10 @@ function ColorChips({ dataset, color, onChoose }) {
     <span class="color-chips-label" aria-hidden="true">${L.stations.color}:</span>
     ${variables.map((item) => {
       const on = item.key === color;
+      const variable = variableName(item.key);
+      const title = t(L.stations.color_title, { variable, unit: item.unit });
       return html`<button type="button" key=${item.key} class=${`chip${on ? " on" : ""}`}
-        aria-pressed=${on ? "true" : "false"} title=${t(L.stations.color_title, { variable: item.key, unit: item.unit })}
+        aria-pressed=${on ? "true" : "false"} title=${title}
         onClick=${() => onChoose(item.key)}>${item.key}</button>`;
     })}
   </div>`;

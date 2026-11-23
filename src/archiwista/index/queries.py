@@ -271,6 +271,7 @@ _VERSION_COLUMNS = """
     v.state AS version_state, v.missing_since AS missing_since,
     v.location AS location, v.location_reason AS location_reason,
     v.location_source AS location_source, v.attribution AS attribution,
+    v.tier AS tier, v.publication AS publication,
     (v.id = s.current_version_id) AS is_current,
     (v.id = s.full_sheet_version_id) AS is_full_sheet
 """
@@ -285,7 +286,8 @@ _STATION_COLUMNS = """
     s.location_reason AS location_reason, s.location_source AS location_source,
     s.location_uncertainty_m AS location_uncertainty_m, s.active AS active,
     s.established_year AS established_year, s.gauge_zero_m AS gauge_zero_m,
-    s.river_km AS river_km, s.elevation_m AS elevation_m, cv.label AS catalog,
+    s.river_km AS river_km, s.elevation_m AS elevation_m,
+    s.groundwater_kind AS groundwater_kind, cv.label AS catalog,
     c.version_path AS catalog_version, cv.attribution AS catalog_attribution
 """
 _STATION_SOURCE = (
@@ -324,8 +326,8 @@ _SERIES_COLUMNS = """
     s.accumulated AS accumulated, s.gaps AS gaps, s.periods AS periods,
     s.file AS file, s.sha256 AS sha256, c.kind AS kind, c.time_unit AS time_unit,
     c.first_year AS first_year, c.periods AS version_periods,
-    c.version_path AS version_path, sv.label AS series, sv.license AS license,
-    sv.attribution AS attribution
+    c.version_path AS version_path, c.months AS months, sv.label AS series,
+    sv.license AS license, sv.attribution AS attribution
 """
 # The stations whose ids a JSON list gives, as the key of their series.
 _SERIES_OF_STATIONS = (
@@ -1499,8 +1501,8 @@ class IndexQueries:
                 where.add("c.store_id = ?", _store_id(stores, store))
             rows = connection.execute(
                 "SELECT c.store_id, c.dataset, c.provider, c.kind, c.time_unit,"
-                " c.first_year, c.periods, c.version_path, sv.label AS series,"
-                " g.name AS segment_name FROM series_catalogs c"
+                " c.first_year, c.periods, c.version_path, c.months,"
+                " sv.label AS series, g.name AS segment_name FROM series_catalogs c"
                 " LEFT JOIN versions sv"
                 " ON sv.store_id = c.store_id AND sv.path = c.version_path"
                 " LEFT JOIN slots sl"
@@ -1551,6 +1553,7 @@ class IndexQueries:
                     series=row["series"],
                     series_version=row["version_path"],
                     variables=tuple(keys.get((row["store_id"], row["dataset"]), ())),
+                    months=_months(row["months"]),
                 )
             )
         return tuple(found)
@@ -3013,6 +3016,7 @@ def _station(
         catalog_version=row["catalog_version"],
         catalog_attribution=row["catalog_attribution"],
         on_boundary=row["id"] in boundary,
+        groundwater_kind=row["groundwater_kind"],
     )
 
 
@@ -3342,8 +3346,8 @@ def _station_coverage(
             variable=row["variable"],
             unit=row["unit"],
             period=row["period"],
-            first=as_date(row["first_date"]),
-            last=as_date(row["last_date"]),
+            first=_unit(row["first_date"]),
+            last=_unit(row["last_date"]),
             with_value=row["with_value"],
             accumulated=row["accumulated"],
             gaps=_date_ranges(row["gaps"]),
@@ -3391,6 +3395,7 @@ def _station_coverage(
         sha256=first["sha256"],
         license=first["license"],
         attribution=first["attribution"],
+        months=_months(first["months"]),
     )
 
 
@@ -3431,11 +3436,26 @@ def _only_with_value(variables: Sequence[CoverageVariable]) -> list[CoverageVari
 
 
 def _date_ranges(value: str) -> tuple[DateRange, ...]:
-    """Ranges of days written as JSON by the writer (``[["2001-01-01", ...]]``)."""
-    return tuple(
-        (date.fromisoformat(start), date.fromisoformat(end))
-        for start, end in json.loads(value)
-    )
+    """Ranges of units written as JSON by the writer (``[["2001-01-01", ...]]``)."""
+    return tuple((_moment(start), _moment(end)) for start, end in json.loads(value))
+
+
+def _unit(value: str | None) -> date | None:
+    """Return a unit the writer wrote (``_moment``), ``None`` without one."""
+    return None if value is None else _moment(value)
+
+
+def _moment(text: str) -> date:
+    """Return a day ``YYYY-MM-DD``, or an hour's start ``YYYY-MM-DDTHH:MM:SSZ`` (UTC).
+
+    An hourly series keeps its units as times (``IndexWriter.replace_series``).
+    """
+    return datetime.fromisoformat(text) if "T" in text else date.fromisoformat(text)
+
+
+def _months(value: str | None) -> tuple[str, ...]:
+    """Return the months of ``series_catalogs.months`` (``[[month, …], …]``)."""
+    return () if value is None else tuple(str(item[0]) for item in json.loads(value))
 
 
 def _variant_facts(
@@ -3513,6 +3533,8 @@ def _summary(
         ),
         attribution=row["attribution"],
         pinned_by=pins.get((row["store_id"], row["version_path"]), ()),
+        tier=row["tier"],
+        publication=row["publication"],
     )
 
 

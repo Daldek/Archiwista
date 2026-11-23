@@ -46,4 +46,10 @@ MESSAGES = {
             " producenta: {detail}"
         ),
     ),
+    # A series of a unit the index does not know (Nogat ECO-085, A-ADR-059):
+    # skipped, never a failure; ``detail`` is the adapter's reason.
+    "series_skipped": Text(
+        "The coverage of the stations of {dataset} is not indexed ({path}): {detail}",
+        "Pokrycia stacji {dataset} nie ma w indeksie ({path}): {detail}",
+    ),
 }

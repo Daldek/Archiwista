@@ -5,13 +5,15 @@
  * (`obserwator`) is drawn as its stations in place of outlines. A station is a
  * point whose shape says its type — a triangle for a water gauge, a square
  * for a climatological or synoptic station, a circle for a precipitation
- * post — and whose colour and fill say the coverage state of one variable,
+ * post, a diamond for a groundwater station (a bore or a spring) — and whose
+ * colour and fill say the coverage state of one variable,
  * the "Kolor punktów": green solid (continuous), orange solid (gaps), orange
  * half (partial), grey hollow (no data), grey dashed outline (unknown).
  * Never colour alone: the fill and outline tell the states apart, and the
- * legend names each (`StationSymbol` draws the same shapes as SVG). The 15
- * images `<shape>-<state>` are drawn once on a canvas and added with
- * `map.addImage`.
+ * legend names each (`StationSymbol` draws the same shapes as SVG; the
+ * neutral fill of a type in the legend and the lists is grey, Obserwator's
+ * brown for the groundwater diamond). The 20 images `<shape>-<state>` are
+ * drawn once on a canvas and added with `map.addImage`.
  *
  * The points are one GeoJSON source clustered by MapLibre; a cluster is a
  * neutral circle with its count, never a coverage colour. A click on a
@@ -38,7 +40,7 @@ import { html } from "../ui.js";
 /** The producer whose plugin keeps the station catalogs (Obserwator). */
 export const STATION_PRODUCER = "obserwator";
 /** Products that are a station kind (`kind` of `GET /map/stations`). */
-export const STATION_KINDS = ["hydro", "meteo"];
+export const STATION_KINDS = ["hydro", "meteo", "groundwater"];
 /** Types of a meteo station, the type chips (`meteo_kind`). */
 export const METEO_KINDS = ["synoptic", "climate", "precipitation"];
 /** Address parameters of the station view; a change of product clears the first four. */
@@ -51,7 +53,7 @@ const YEAR_TYPES = ["hydrological", "calendar"];
 /** The coverage states of SPEC 4.8.4, in the order of the legend. */
 export const STATION_STATES = ["continuous", "gaps", "partial", "no_data", "unknown"];
 /** The station shapes, in the order of the legend. */
-export const STATION_SHAPES = ["triangle", "square", "circle"];
+export const STATION_SHAPES = ["triangle", "square", "circle", "diamond"];
 /** Most stations spread around a cluster that cannot expand. */
 export const SPREAD_MAX = 8;
 /** Layers a pointer can hit, the topmost first. */
@@ -64,6 +66,9 @@ const COLORS = {
   greyInk: "#667085",
   ink: "#344054",
   cluster: "#475467",
+  // Obserwator's groundwater symbol (`--station-groundwater` of its GUI).
+  groundwater: "#a0612a",
+  groundwaterInk: "#5c3510",
 };
 // Logical size of a point's image and the device pixels per unit drawn.
 const ICON_PX = 18;
@@ -87,8 +92,8 @@ export function isStationProduct(product) {
 
 /**
  * Whether the map offers a product: a station product only as a station kind
- * (`hydro`, `meteo`); the station catalog and PMAXTP have nothing to draw, and
- * the catalog's stations are those of the two kinds.
+ * (`hydro`, `meteo`, `groundwater`); the station catalog and PMAXTP have
+ * nothing to draw, and the catalog's stations are those of the three kinds.
  *
  * @param {import("../types.js").Product} product
  * @returns {boolean}
@@ -154,7 +159,8 @@ export function compareParams(stations, choice = {}) {
  * The choices of the station view.
  *
  * @param {Object<string, string>} params - Route parameters.
- * @param {string|null} product - The product of the filters (a family: `hydro`, `meteo`).
+ * @param {string|null} product - The product of the filters (a family: `hydro`, `meteo`,
+ *   `groundwater`).
  * @param {import("../types.js").StationDatasets|null|undefined} answer
  * @returns {StationChoice}
  */
@@ -182,15 +188,39 @@ export function stationChoice(params, product, answer) {
 
 /**
  * The shape of a station: its type (SPEC 6.7; D12: a synoptic station is a
- * square like a climatological one, a meteo station of no kind too).
+ * square like a climatological one, a meteo station of no kind too; a
+ * groundwater station is a diamond, as Obserwator draws it).
  *
  * @param {{kind: string|null, meteo_kind: string|null}} station
- * @returns {"triangle"|"square"|"circle"}
+ * @returns {"triangle"|"square"|"circle"|"diamond"}
  */
 export function stationShape(station) {
-  if (station.kind === "hydro") return "triangle";
   if (station.meteo_kind === "precipitation") return "circle";
+  return kindShape(station.kind);
+}
+
+/**
+ * The shape of a station kind's points, the precipitation posts aside.
+ *
+ * @param {string|null} kind - `hydro`, `meteo`, `groundwater` or none.
+ * @returns {"triangle"|"square"|"diamond"}
+ */
+export function kindShape(kind) {
+  if (kind === "hydro") return "triangle";
+  if (kind === "groundwater") return "diamond";
   return "square";
+}
+
+/**
+ * The family whose remembered year type numbers a station kind's labels
+ * without `year_type`, as the API chooses it: hydro's for hydro data,
+ * meteo's for meteo and groundwater data (`YearTypes.of_kind`).
+ *
+ * @param {string|null} kind - `hydro`, `meteo` or `groundwater`.
+ * @returns {"hydro"|"meteo"}
+ */
+export function yearTypeFamily(kind) {
+  return kind === "meteo" || kind === "groundwater" ? "meteo" : "hydro";
 }
 
 /**
@@ -207,14 +237,21 @@ export function stationState(station, variable) {
 }
 
 /**
- * The name of a station's type for people: "wodowskaz", "posterunek opadowy"…
+ * The name of a station's type for people: "wodowskaz", "posterunek opadowy",
+ * "stacja wód podziemnych: źródło"…
  *
- * @param {{kind: string|null, meteo_kind: string|null}} station
+ * @param {{kind: string|null, meteo_kind: string|null,
+ *   groundwater_kind?: string|null}} station
  * @returns {string}
  */
 export function stationType(station) {
-  if (station.kind === "hydro") return L.stations.kind.hydro;
-  return L.stations.kind[station.meteo_kind] ?? L.stations.kind.meteo;
+  const K = L.stations.kind;
+  if (station.kind === "hydro") return K.hydro;
+  if (station.kind === "groundwater") {
+    const object = L.stations.groundwater_kinds[station.groundwater_kind];
+    return object ? t(L.stations.groundwater_type, { kind: object }) : K.groundwater;
+  }
+  return K[station.meteo_kind] ?? K.meteo;
 }
 
 /**
@@ -225,11 +262,12 @@ export function stationType(station) {
  * @param {{shape: string, state: string, size?: number, title?: string}} props
  */
 export function StationSymbol({ shape, state, size = 16, title = null }) {
-  const style = fillStyle(state);
+  const style = fillStyle(state, shape);
   const outline = shapePath(shape, 16);
   const half = state === "partial";
   return html`<svg class="station-symbol" width=${size} height=${size} viewBox="0 0 16 16"
-    role=${title ? "img" : null} aria-label=${title} aria-hidden=${title ? null : "true"}>
+    role=${title ? "img" : null} aria-label=${title} aria-hidden=${title ? null : "true"}
+    data-shape=${shape}>
     <path d=${outline} fill=${half ? "#ffffff" : style.fill} />
     ${half ? html`<path d=${halfPath(shape, 16)} fill=${style.fill} />` : null}
     <path d=${outline} fill="none" stroke=${style.stroke} stroke-width="1.6"
@@ -250,7 +288,7 @@ export function ClusterSymbol({ label }) {
 }
 
 /**
- * Add the 15 images of the points: `<shape>-<state>`, drawn once.
+ * Add the 20 images of the points: `<shape>-<state>`, drawn once.
  *
  * @param {*} map - A MapLibre map whose style is loaded.
  */
@@ -509,7 +547,8 @@ function samePosition(leaves) {
   return leaves.every((leaf) => leaf.geometry.coordinates[0] === lon && leaf.geometry.coordinates[1] === lat);
 }
 
-function fillStyle(state) {
+/** A state's fill and outline; the neutral `shape` fill of the diamond is Obserwator's brown. */
+function fillStyle(state, shape) {
   switch (state) {
     case "continuous":
       return { fill: COLORS.green, stroke: "#14532d", dashed: false };
@@ -520,7 +559,9 @@ function fillStyle(state) {
     case "no_data":
       return { fill: "#ffffff", stroke: COLORS.greyInk, dashed: false };
     case "shape":
-      return { fill: COLORS.cluster, stroke: "#1d2939", dashed: false };
+      return shape === "diamond"
+        ? { fill: COLORS.groundwater, stroke: COLORS.groundwaterInk, dashed: false }
+        : { fill: COLORS.cluster, stroke: "#1d2939", dashed: false };
     default:
       return { fill: "#ffffff", stroke: COLORS.grey, dashed: true };
   }
@@ -536,6 +577,7 @@ function shapePath(shape, side) {
     const s = side * 0.18;
     return `M${s} ${s} H${side - s} V${side - s} H${s} Z`;
   }
+  if (shape === "diamond") return `M${mid} ${m} L${far} ${mid} L${mid} ${far} L${m} ${mid} Z`;
   const r = mid - m;
   return `M${mid - r} ${mid} a${r} ${r} 0 1 0 ${2 * r} 0 a${r} ${r} 0 1 0 ${-2 * r} 0`;
 }
@@ -554,12 +596,13 @@ function halfPath(shape, side) {
     const s = side * 0.18;
     return `M${s} ${mid} H${side - s} V${side - s} H${s} Z`;
   }
+  if (shape === "diamond") return `M${m} ${mid} L${far} ${mid} L${mid} ${far} Z`;
   const r = mid - m;
   return `M${mid - r} ${mid} A${r} ${r} 0 0 0 ${mid + r} ${mid} Z`;
 }
 
 function drawSymbol(context, shape, state, side) {
-  const style = fillStyle(state);
+  const style = fillStyle(state, shape);
   const path = new Path2D(shapePath(shape, side));
   const half = state === "partial";
   context.save();

@@ -13,8 +13,10 @@ no settings: an empty ``nogat.toml``, every directory they would use inside a
 canary tree that does not exist yet, and their default language. ``Canary.check``
 fails when anything appeared in the tree, which only a call that wrote
 without a store root of its own can cause (Decision 1 of the plan of
-2026-10-25). ``tests/conftest.py`` applies it to every test; a test that needs
-another value sets that variable itself.
+2026-10-25). Obserwator's ``state_dir``, where its ``store sync`` spools the
+answers of current data whatever the root (its ADR-030), lies beside the tree.
+``tests/conftest.py`` applies it to every test; a test that needs another value
+sets that variable itself.
 """
 
 import shutil
@@ -79,6 +81,17 @@ class Canary:
         """Obserwator's reference data directory (``OBSERWATOR_REFERENCE_DIR``)."""
         return self.base / "reference"
 
+    @property
+    def state_dir(self) -> Path:
+        """``state_dir`` of Obserwator, outside the tree (``<work>/state``).
+
+        Obserwator 3.2.0 spools there every answer of current data its ``store
+        sync`` gets (``<state_dir>/obserwator/captures``, its ADR-030 D7) whatever
+        the store root: a write of the producer's own state, not of a default
+        root, which would otherwise reach the developer's real state directory.
+        """
+        return self.base.parent / "state"
+
     def environment(self) -> dict[str, str]:
         """Return the variables that lead every default of the producers here.
 
@@ -87,10 +100,12 @@ class Canary:
         ``KARTOGRAF_DATA_DIR`` would win over ``NOGAT_DATA_DIR``.
         """
         data, cache = str(self.data_dir), str(self.cache_dir)
+        state = str(self.state_dir)
         return {
             "NOGAT_CONFIG": str(self.settings_file),
             "NOGAT_DATA_DIR": data,
             "NOGAT_CACHE_DIR": cache,
+            "NOGAT_STATE_DIR": state,
             "NOGAT_LANG": LANGUAGE,
             "KARTOGRAF_ROOT": str(self.kartograf_root),
             "KARTOGRAF_DATA_DIR": data,
@@ -100,6 +115,7 @@ class Canary:
             "OBSERWATOR_RAW_ROOT": str(self.obserwator_raw_root),
             "OBSERWATOR_DATA_DIR": data,
             "OBSERWATOR_CACHE_DIR": cache,
+            "OBSERWATOR_STATE_DIR": state,
             "OBSERWATOR_REFERENCE_DIR": str(self.obserwator_reference_dir),
             "OBSERWATOR_LANG": LANGUAGE,
         }

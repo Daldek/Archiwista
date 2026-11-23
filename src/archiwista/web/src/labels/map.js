@@ -266,7 +266,11 @@ export const map = {
       synoptic: "stacja synoptyczna",
       climate: "stacja klimatologiczna",
       precipitation: "posterunek opadowy",
+      groundwater: "stacja wód podziemnych",
     },
+    // The object of a groundwater station (`groundwater_kind`), after its family.
+    groundwater_kinds: { bore: "otwór obserwacyjny", spring: "źródło" },
+    groundwater_type: "stacja wód podziemnych: {kind}",
     cluster: "{count} w skupisku",
     cluster_click: "Kliknij, aby przybliżyć; stacje w jednym miejscu rozsuną się wokół skupiska (Esc zwija)",
     cell: "{count} w tej komórce",
@@ -299,11 +303,13 @@ export const map = {
       triangle: "wodowskaz",
       square: "stacja klimatologiczna albo synoptyczna",
       circle: "posterunek opadowy",
+      diamond: "stacja wód podziemnych: otwór obserwacyjny albo źródło",
       fills: "Kolor punktów: pokrycie {variable} w zakresie lat",
       no_variable: "Bez szeregów stacji: punkty bez koloru pokrycia (nieznane).",
       all_products:
-        "Stacje wszystkich typów, bez koloru pokrycia: wybierz „Stacje hydrologiczne” albo " +
-        "„Stacje meteorologiczne”, aby zobaczyć pokrycie szeregów.",
+        "Stacje wszystkich typów, bez koloru pokrycia: wybierz „Stacje hydrologiczne”, " +
+        "„Stacje meteorologiczne” albo „Stacje wód podziemnych”, aby zobaczyć pokrycie " +
+        "szeregów.",
       states: {
         continuous: "ciągły — wartość w każdej znanej jednostce",
         gaps: "luki — braki w znanych latach",

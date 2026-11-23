@@ -272,6 +272,27 @@ MESSAGES = {
             " hydrologicznego wyznaczone z nich."
         ),
     ),
+    # A series of hours or weeks has no chart in Archiwista (A-ADR-059).
+    "chart_hour": Text(
+        (
+            "Archiwista draws no chart of the hourly series {dataset}: Obserwator's"
+            " interface draws it; the station's card lists its coverage."
+        ),
+        (
+            "Archiwista nie rysuje wykresu szeregu godzinowego {dataset}: rysuje go"
+            " interfejs Obserwatora; karta stacji podaje jego pokrycie."
+        ),
+    ),
+    "chart_week": Text(
+        (
+            "Archiwista draws no chart of the weekly series {dataset}; the station's"
+            " card lists its coverage."
+        ),
+        (
+            "Archiwista nie rysuje wykresu szeregu tygodniowego {dataset}; karta"
+            " stacji podaje jego pokrycie."
+        ),
+    ),
     "chart_variable_required": Text(
         (
             "Name a variable of the series (variable): only an annual chart"

@@ -9,7 +9,7 @@ the text of both languages.
 """
 
 from dataclasses import replace
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -289,6 +289,73 @@ def test_characteristics_write_their_gaps_by_month() -> None:
     )
 
 
+def _hour(month: int, day: int, hour: int) -> datetime:
+    return datetime(2025, month, day, hour, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("gap", "texts"),
+    [
+        (
+            (_hour(9, 15, 6), _hour(9, 15, 11)),
+            (
+                "luki <1% · najdł. 2025.09.15 06:00–11:00 UTC",
+                "gaps <1% · longest 2025.09.15 06:00–11:00 UTC",
+            ),
+        ),
+        (
+            (_hour(9, 30, 22), _hour(10, 1, 1)),
+            (
+                "luki <1% · najdł. 2025.09.30 22:00–2025.10.01 01:00 UTC",
+                "gaps <1% · longest 2025.09.30 22:00–2025.10.01 01:00 UTC",
+            ),
+        ),
+        (
+            (_hour(9, 15, 6), _hour(9, 15, 6)),
+            (
+                "luki <1% · najdł. 2025.09.15 06:00 UTC",
+                "gaps <1% · longest 2025.09.15 06:00 UTC",
+            ),
+        ),
+    ],
+)
+def test_hours_write_their_gaps_in_utc_hours(
+    gap: DateRange, texts: tuple[str, str]
+) -> None:
+    """An hourly series: the hours of the longest gap, its last day when another."""
+    coverage = _coverage(_hour(1, 1, 0), _hour(12, 31, 23), gap)
+
+    label = _label(
+        coverage,
+        [(date(2025, 1, 1), date(2025, 12, 31))],
+        (2025, 2025),
+        time_unit="hour",
+    )
+
+    assert (label.state, label.units) == ("gaps", 8760)
+    assert _texts(label, "hour") == texts
+
+
+def test_weeks_write_their_gaps_from_a_monday_to_a_sunday() -> None:
+    """A weekly series: two weeks without a reading are 5 to 18 III 2012, 2 of 53."""
+    coverage = _coverage(
+        date(2012, 1, 4), date(2012, 12, 31), (date(2012, 3, 5), date(2012, 3, 12))
+    )
+
+    label = _label(
+        coverage,
+        [(date(2012, 1, 1), date(2012, 12, 31))],
+        (2012, 2012),
+        time_unit="week",
+    )
+
+    assert (label.state, label.units, label.with_value) == ("gaps", 53, 51)
+    assert _texts(label, "week") == (
+        "luki 4% · najdł. 2012.03.05–2012.03.18",
+        "gaps 4% · longest 2012.03.05–2012.03.18",
+    )
+
+
 def test_no_data_names_the_variables_that_have_a_value() -> None:
     """Hydro: "brak danych (tylko H)"; a missing Q never hides H (P16)."""
     label = _label(_coverage(None, None), YEARS_2000_2002, (2000, 2002))
@@ -310,6 +377,9 @@ def test_no_data_names_the_variables_that_have_a_value() -> None:
         ("hydro", "day", "calendar", YearTypes(), "calendar"),
         ("meteo", "month", "calendar", YearTypes(meteo="hydrological"), "calendar"),
         ("hydro", "half_year", "calendar", YearTypes(hydro="calendar"), "hydrological"),
+        # Groundwater numbers its years as meteo does.
+        ("groundwater", "week", None, YearTypes(meteo="hydrological"), "hydrological"),
+        ("groundwater", "day", None, YearTypes(hydro="hydrological"), "calendar"),
     ],
 )
 def test_the_year_type_of_a_label(

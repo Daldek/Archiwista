@@ -27,6 +27,7 @@
 .sc-var { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12.5px; line-height: 1.45; }
 .sc-var .station-symbol { flex: none; display: block; }
 .sc-key { min-width: 1.6em; }
+.sc-name { color: var(--text-2); }
 .sc-label { color: var(--text); }
 
 .sc-details { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 10px; }

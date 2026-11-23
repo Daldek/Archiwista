@@ -176,3 +176,20 @@ def statistics_store(
 
     root = tmp_path_factory.mktemp("obserwator-statistics") / "store"
     return build_statistics_store(root, obserwator_store("complete"))
+
+
+@pytest.fixture(scope="session")
+def tiers_store(
+    obserwator_store: Callable[[str], Path], tmp_path_factory: pytest.TempPathFactory
+) -> Path:
+    """Return ``groundwater`` with Obserwator 3.2.0's tiers, built once (A-ADR-059).
+
+    IMGW-PIB's telemetry, a captured answer and the hourly series of two months
+    beside ČHMÚ's groundwater, written by Obserwator's public writers
+    (``tests/fixtures/obserwator_tiers.py``). Tests share the store read-only and
+    copy it to change it.
+    """
+    from tests.fixtures.obserwator_tiers import build_tiers_store
+
+    root = tmp_path_factory.mktemp("obserwator-tiers") / "store"
+    return build_tiers_store(root, obserwator_store("groundwater"))

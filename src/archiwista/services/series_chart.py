@@ -75,7 +75,9 @@ _HALVES: tuple[HalfYear, ...] = ("winter", "summer")
 # The unit of half-year characteristics: one a hydrological year and key.
 _HALF_YEAR: TimeUnit = "half_year"
 # The order of the charts of a station, and of the series a chart prefers:
-# days, months, then the annual charts of half-year characteristics.
+# days, months, then the annual charts of half-year characteristics. A series of
+# weeks or hours has no chart in Archiwista (Obserwator's GUI draws the hourly
+# one, A-ADR-059): its coverage is listed only.
 CHART_ORDER: Mapping[TimeUnit, int] = {"day": 0, "month": 1, "half_year": 2}
 
 type Statistics = Mapping[str, Mapping[Statistic, str]]
@@ -371,11 +373,13 @@ def chart_choices(
 
     A series of days offers each of its variables; one of monthly statistics
     and half-year characteristics (an annual chart) the variables with a
-    value only. A series without a variable to draw is left out.
+    value only. A series without a variable to draw, and one of weeks or
+    hours (no unit of ``CHART_ORDER``), is left out.
     ``statistics`` is the producer's ``statistics_of``.
     """
     choices: list[StationChartChoice] = []
-    for series in sorted(found, key=lambda item: CHART_ORDER[item.time_unit]):
+    charted = [series for series in found if series.time_unit in CHART_ORDER]
+    for series in sorted(charted, key=lambda item: CHART_ORDER[item.time_unit]):
         named = statistics(series.dataset)
         resolution: ChartResolution = "unit"
         held: list[tuple[str, str, Sequence[CoverageVariable]]]

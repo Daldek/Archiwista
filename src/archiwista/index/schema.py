@@ -7,12 +7,18 @@ user_version``) means an atomic rebuild instead of a migration (SPEC 4.4):
 every object is dropped and the current schema created in one transaction,
 which readers in other processes see either before or after. Until the first
 release every format is version 1 (Nogat REL-1.4, ECO-072), so an index
-numbered before that (up to 18) is rebuilt as one of any other version.
+numbered before that (up to 18) is rebuilt as one of any other version. An
+addition within version 1 (Nogat ECO-085: a column, a table or a value of a
+constraint that older code never reads) keeps the number: an index of version
+1 written before it is completed in place, in one transaction, by
+``initialize`` (``_ADDITIONS``, A-ADR-059; a table whose constraint widens is
+rebuilt with its rows), and keeps everything it holds.
 
 Tables (version 1): ``stores``, ``segments``, ``slots`` (with ``slot_key``,
 the producer's own name of a slot), ``versions`` (with ``provider``, the
-organisation that publishes the data, and ``content_sha256``, the producer's
-canonical content) with the 1:1 ``version_sidecars`` (raw sidecar) and
+organisation that publishes the data, ``content_sha256``, the producer's
+canonical content, and the ``tier`` and ``publication`` its sidecar records)
+with the 1:1 ``version_sidecars`` (raw sidecar) and
 ``version_shapes`` (outlines that are not plain boxes, native outlines; a
 WGS84 outline is the polygon of the native rectangle), ``observations`` (the
 publication history of a slot: a source served other bytes with the content
@@ -33,7 +39,9 @@ a plan fetches); ``station_catalogs`` and ``stations`` with the R*Tree
 ``station_points`` (the stations of the current version of each provider's
 station catalog in a store); ``series_catalogs``, ``station_series`` and
 ``series_years`` (the coverage of each dataset's current series of
-stations); ``session_tokens``; the own data of projects: ``own_folders``,
+stations, a series of one version per month joined over its months) and
+``skipped_series`` (the series slots of a unit the index does not know);
+``session_tokens``; the own data of projects: ``own_folders``,
 ``own_files``, ``own_file_states`` (observed states, at most 200 per file),
 ``snapshots`` (``.wersje/`` of a folder) and ``own_problems``; and
 ``index_info``. Public keys are a store's configured id (``stores.key``) and
@@ -44,7 +52,7 @@ the index.
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from archiwista.errors import ArchiwistaError
 from archiwista.paths import private_directory
@@ -54,7 +62,7 @@ SCHEMA_VERSION = 1
 # RETURNING, UPDATE FROM, row values, upserts and json_each.
 MIN_SQLITE_VERSION = (3, 35, 0)
 
-type SchemaState = Literal["created", "current", "rebuilt"]
+type SchemaState = Literal["created", "current", "completed", "rebuilt"]
 
 BUSY_TIMEOUT_MS = 10_000
 _CACHE_KIB = 32_768
@@ -168,6 +176,12 @@ CREATE TABLE versions (
     state TEXT NOT NULL DEFAULT 'present' CHECK (state IN ('present', 'missing')),
     missing_since TEXT,
     indexed_at TEXT NOT NULL,
+    -- What the sidecar records of data that are not the verified archive (Nogat
+    -- ECO-084, Obserwator ADR-030 D6): the tier (``telemetry``, ``operational``)
+    -- and the publication state of the source (``public``, ``private``); NULL
+    -- for none. Additions within version 1, last as ``_ADDITIONS`` adds them.
+    tier TEXT,
+    publication TEXT,
     UNIQUE (store_id, path)
 );
 CREATE INDEX versions_slot ON versions (slot_id, path);
@@ -446,6 +460,9 @@ CREATE TABLE stations (
     gauge_zero_m REAL,
     river_km REAL,
     elevation_m REAL,
+    -- A groundwater object's kind (``bore``, ``spring``; Obserwator ADR-032),
+    -- an addition within version 1 (``_ADDITIONS``).
+    groundwater_kind TEXT,
     UNIQUE (store_id, provider, code)
 );
 CREATE INDEX stations_code ON stations (code);
@@ -461,28 +478,56 @@ CREATE VIRTUAL TABLE station_points USING rtree (
 -- with what the labels need of it: the unit, the numbering of its archives,
 -- the first year the source publishes and the known periods (JSON
 -- [[from, to], ...], ISO dates). The rows are replaced when the current
--- version of the series' slot changes.
+-- version of the series' slot changes. A series kept as one version per
+-- calendar month (Obserwator's hourly series) is one row of its dataset whose
+-- ``slot_path`` and ``version_path`` are those of its latest month and
+-- ``months`` every month read (JSON [[month, slot, version], ...] in month
+-- order; NULL for a series of one version). The units ``week`` and ``hour`` and
+-- ``months`` are an addition within version 1 (``_ADDITIONS``: the table is
+-- rebuilt, its rows kept); a series of a unit the index does not know never
+-- comes here (``skipped_series``).
 CREATE TABLE series_catalogs (
     store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
     dataset TEXT NOT NULL,
     producer TEXT NOT NULL,
     provider TEXT NOT NULL,
     kind TEXT,
-    time_unit TEXT NOT NULL CHECK (time_unit IN ('day', 'month', 'half_year')),
+    time_unit TEXT NOT NULL
+        CHECK (time_unit IN ('day', 'week', 'month', 'half_year', 'hour')),
     year_type TEXT NOT NULL CHECK (year_type IN ('hydrological', 'calendar')),
     first_year INTEGER,
     periods TEXT NOT NULL,
     slot_path TEXT NOT NULL,
     version_path TEXT NOT NULL,
     read_at TEXT NOT NULL,
+    months TEXT,
     PRIMARY KEY (store_id, dataset)
+) WITHOUT ROWID;
+
+-- A slot of a dataset's series whose coverage the index does not hold, with the
+-- current version the producer refused because the index knows no series of
+-- its unit (``read_series_index`` raised ``UnsupportedError``: a unit a later
+-- producer may add; Nogat ECO-085, A-ADR-059). A scan reports a dataset when
+-- the version of one of its slots changes and on a full scan. An addition
+-- within version 1 (``_ADDITIONS``).
+CREATE TABLE skipped_series (
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    slot_path TEXT NOT NULL,
+    producer TEXT NOT NULL,
+    dataset TEXT NOT NULL,
+    version_path TEXT NOT NULL,
+    read_at TEXT NOT NULL,
+    PRIMARY KEY (store_id, slot_path)
 ) WITHOUT ROWID;
 
 -- A variable of a station's series in the current version of a dataset's
 -- series (IMGW-8): ``variable_key`` names it in the series index (``Q``,
 -- ``Q_max@winter``); the first and last date with a value, the gaps between
 -- them and the station's own known periods (JSON, NULL: the version's) as the
--- index gives them, and the station's series file relative to the store.
+-- index gives them (of an hourly series the starts of hours, UTC times
+-- ``YYYY-MM-DDTHH:MM:SSZ``, and the periods days; of a series of months joined
+-- over its months), and the station's series file relative to the store (of
+-- its latest month).
 CREATE TABLE station_series (
     id INTEGER PRIMARY KEY,
     store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
@@ -638,6 +683,38 @@ END;
 """
 
 
+class _Addition(NamedTuple):
+    """An addition within version 1 an index written before it lacks.
+
+    A column (``column``, with its type) added last to ``table``, as ``ALTER
+    TABLE`` adds it, so a new index and a completed one have the same columns;
+    a whole table (``column`` ``None``: its statement of ``_TABLES``); or, with
+    ``rebuilt``, a table that gets a constraint ``ALTER TABLE`` cannot change
+    beside its new last ``column``: renamed, created again by its statement of
+    ``_TABLES`` and given the rows of the old one, which is dropped.
+    """
+
+    table: str
+    column: str | None = None
+    rebuilt: bool = False
+
+
+# Additions within version 1 (Nogat ECO-085, A-ADR-059), in the order they came:
+# the tier and publication state of a version and a groundwater object's kind
+# (Obserwator ADR-030, ADR-032), the series slots of a unit the index does not
+# know, and the units ``week`` and ``hour`` of ``series_catalogs`` with the
+# months of a series kept as one version per month (its ADR-031, ADR-032).
+_ADDITIONS: tuple[_Addition, ...] = (
+    _Addition("versions", "tier TEXT"),
+    _Addition("versions", "publication TEXT"),
+    _Addition("stations", "groundwater_kind TEXT"),
+    _Addition("skipped_series"),
+    _Addition("series_catalogs", "months TEXT", rebuilt=True),
+)
+# The name an old table takes while a rebuild copies its rows.
+_REBUILT_SUFFIX = "_before_completion"
+
+
 class IndexUnsupportedError(ArchiwistaError, RuntimeError):
     """The Python SQLite library lacks a feature the index needs.
 
@@ -708,9 +785,11 @@ def initialize(path: Path) -> SchemaState:
     -------
     SchemaState
         ``created`` for a new file, ``current`` when the schema already
-        matches ``SCHEMA_VERSION``, ``rebuilt`` when an index of another
-        version (older or newer) was emptied and recreated. A rebuilt index
-        is empty: the next full scan fills it again.
+        matches ``SCHEMA_VERSION``, ``completed`` when an index of
+        ``SCHEMA_VERSION`` written before an addition within it got the
+        additions (``_ADDITIONS``: what it holds stays), ``rebuilt`` when an
+        index of another version (older or newer) was emptied and recreated.
+        A rebuilt index is empty: the next full scan fills it again.
 
     Raises
     ------
@@ -724,7 +803,7 @@ def initialize(path: Path) -> SchemaState:
     try:
         use_wal(connection, timeout_ms=BUSY_TIMEOUT_MS)
         if _user_version(connection) == SCHEMA_VERSION:
-            return "current"
+            return _complete(connection)
         # Dropping tables with foreign keys enabled runs checked deletes; a
         # rebuild removes everything anyway.
         connection.execute("PRAGMA foreign_keys = OFF")
@@ -733,7 +812,7 @@ def initialize(path: Path) -> SchemaState:
             version = _user_version(connection)
             if version == SCHEMA_VERSION:
                 connection.execute("COMMIT")
-                return "current"
+                return _complete(connection)
             existing = _drop_all(connection)
             _create(connection, rebuilt_from=version if existing else None)
             connection.execute("COMMIT")
@@ -746,6 +825,71 @@ def initialize(path: Path) -> SchemaState:
         return "rebuilt" if existing else "created"
     finally:
         connection.close()
+
+
+def _complete(connection: sqlite3.Connection) -> SchemaState:
+    """Add to an index of ``SCHEMA_VERSION`` the additions it lacks, in place.
+
+    One transaction, so a reader sees the index before or after it whole; the
+    additions are looked for again inside it, so two processes opening an
+    index at once add each one once.
+    """
+    if not _lacking(connection):
+        return "current"
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        lacking = _lacking(connection)
+        for statement in lacking:
+            connection.execute(statement)
+        connection.execute("COMMIT")
+    except BaseException:
+        connection.execute("ROLLBACK")
+        raise
+    return "completed" if lacking else "current"
+
+
+def _lacking(connection: sqlite3.Connection) -> list[str]:
+    """Return the statements of the additions an index lacks, in their order."""
+    tables = {
+        str(name)
+        for (name,) in connection.execute(
+            "SELECT name FROM sqlite_schema WHERE type = 'table'"
+        )
+    }
+    found: list[str] = []
+    for table, column, rebuilt in _ADDITIONS:
+        if column is None:
+            if table not in tables:
+                found.append(_table_statement(table))
+            continue
+        columns = [
+            str(row[1]) for row in connection.execute(f'PRAGMA table_info("{table}")')
+        ]
+        if column.partition(" ")[0] in columns:
+            continue
+        if not rebuilt:
+            found.append(f'ALTER TABLE "{table}" ADD COLUMN {column}')
+            continue
+        # No index, trigger or view names a rebuilt table, and no foreign key
+        # refers to it: renaming it moves nothing else.
+        old = f"{table}{_REBUILT_SUFFIX}"
+        kept = ", ".join(f'"{name}"' for name in columns)
+        found += [
+            f'ALTER TABLE "{table}" RENAME TO "{old}"',
+            _table_statement(table),
+            f'INSERT INTO "{table}" ({kept}) SELECT {kept} FROM "{old}"',
+            f'DROP TABLE "{old}"',
+        ]
+    return found
+
+
+def _table_statement(table: str) -> str:
+    """Return the statement of ``_TABLES`` that creates a table."""
+    return next(
+        statement
+        for statement in _statements(_TABLES)
+        if f"CREATE TABLE {table} (" in statement
+    )
 
 
 def _require_sqlite_features() -> None:
