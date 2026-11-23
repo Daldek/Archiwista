@@ -5,12 +5,16 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
-## [Unreleased]
+## [0.4.0] - 2026-11-23
 
-Changes since 0.3.3, to be released as 0.4.0: Archiwista's part (A1) of Obserwator 3.2.0,
-whose additions within version 1 of its formats (Nogat ECO-084, ECO-085) are the tiers
-and captures of operational data (its ADR-030), the hourly series kept as one version per
-month (ADR-031) and ČHMÚ's groundwater (ADR-032); A-ADR-059.
+Changes since 0.3.3: release 0.4.0, Archiwista's part (A1) of Obserwator 3.2.0 (Nogat
+ECO-084, ECO-085; A-ADR-059). It reads the additions within version 1 of Obserwator's
+formats: the tiers and captures of operational data (its ADR-030), the hourly series kept
+as one version per month (ADR-031) and ČHMÚ's groundwater (ADR-032). Kartograf stays
+`v0.8.2`, and Nogat's standard stays 1.1. The index stays at schema version 1 and is
+completed in place. Deploy 0.4.0 before Obserwator 3.2.0 writes captures or hourly series
+to shared roots, and run `archiwista reindex --store <store>` once for a store Obserwator
+3.2.0 wrote to first (USAGE, "Updating to 0.4.0").
 
 ### Added
 

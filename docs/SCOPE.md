@@ -2,7 +2,7 @@
 
 2026-10-17 · @Piotr
 
-**Status:** MVP scope approved; v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0; the current release is 0.3.3 · requirements:
+**Status:** MVP scope approved; v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0; the current release is 0.4.0 · requirements:
 [`PRD.md`](PRD.md) · details of each version and acceptance criteria:
 [`SPEC.md`](SPEC.md) section 13 · decision on the scope: A-ADR-025
 ([`DECISIONS.md`](DECISIONS.md)). The interface is Polish; the names of views
@@ -140,7 +140,7 @@ Full acceptance criteria: SPEC 13.
      agrees with the Kartograf read API (three live stores); the performance
      targets for 50,000 slots are met on SSD and SMB 3; a read-only store works;
      the security tests and the project visibility matrix are green. The
-     Kartograf API is released in Kartograf 0.8.0 (tag `v0.8.0`; release 0.3.3 pins
+     Kartograf API is released in Kartograf 0.8.0 (tag `v0.8.0`; release 0.4.0 pins
      `v0.8.2`).
 3. **v0.2 "Previews", released as 0.2.0 (2026-10-20).** Previews, the "Fan",
    the "Timeline", metadata comparison and the curtain; own project data and
@@ -199,9 +199,10 @@ Full acceptance criteria: SPEC 13.
      the `obserwator` CLI; coverage labels agree with the table of edge cases.
    - Status (2026-11-16): the Obserwator source, the station views and the
      synchronisation of archives are in `develop` (A-ADR-032, A-ADR-045, A-ADR-050,
-     A-ADR-056) and are in release 0.3.0 with Obserwator 3.0.0, and in 0.3.3 with
-     Obserwator 3.1.0 (the provider ids `IMGW` and `CHMU`); the archive badge of the
-     stations is not built.
+     A-ADR-056) and are in release 0.3.0 with Obserwator 3.0.0, in 0.3.3 with
+     Obserwator 3.1.0 (the provider ids `IMGW` and `CHMU`) and in 0.4.0 with Obserwator
+     3.2.0 (a version's tier and publication, ČHMÚ's groundwater stations, weekly and
+     hourly series; A-ADR-059); the archive badge of the stations is not built.
 8. **v0.6 "PL + CZ".** A PL + CZ view without merging, the merged border
    surface by Kartograf (KF), ČHMÚ stations through Obserwator in the v0.5
    views.

@@ -1,7 +1,7 @@
 # User guide: Archiwista 0.4.0
 
-Archiwista 0.4.0, in development (v0.3 "Actions", v0.4 "Team" and the projects, released
-together as 0.3.0, with Obserwator 3.1.0 since 0.3.3 and Obserwator 3.2.0 in 0.4.0) shows a
+Archiwista 0.4.0 (v0.3 "Actions", v0.4 "Team" and the projects, released together as 0.3.0,
+with Obserwator 3.1.0 since 0.3.3 and Obserwator 3.2.0 since 0.4.0) shows a
 Kartograf store, and the files of an Obserwator
 store, on a map, in a catalog and in file cards, with previews, the Fan, the
 Timeline and comparison; projects have a folder of own data and snapshots. It

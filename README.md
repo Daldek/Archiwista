@@ -21,7 +21,7 @@ Archiwista is a local web application for browsing the spatial-data stores that 
 
 ## Run
 
-Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista 0.4.0 (in development) needs Kartograf 0.8 (`>=0.8.0,<0.9`) with its public read API of the store (KA-1 to KA-6) and its commands, and, for the optional extra `obserwator`, Obserwator 3.2 (`>=3.2.0,<4`; 0.3.3 needs Obserwator 3.1). `pyproject.toml` pins them by their tags `v0.8.2` and `v3.2.0`, and `uv.lock` pins every package with its SHA-256 sum.
+Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista 0.4.0 needs Kartograf 0.8 (`>=0.8.0,<0.9`) with its public read API of the store (KA-1 to KA-6) and its commands, and, for the optional extra `obserwator`, Obserwator 3.2 (`>=3.2.0,<4`; 0.3.3 needs Obserwator 3.1). `pyproject.toml` pins them by their tags `v0.8.2` and `v3.2.0`, and `uv.lock` pins every package with its SHA-256 sum.
 
 ```bash
 uv sync --locked                      # the environment in .venv, from uv.lock
@@ -171,7 +171,7 @@ The gate (DEV-7.6) runs from a git working directory and applies `uv sync --lock
 
 ## Status, licence, author
 
-In development: **0.4.0**, with Obserwator 3.2.0 (tag `v3.2.0`): a version's tier and publication state, ČHMÚ's groundwater stations and the weekly and hourly series with their coverage (A-ADR-059).
+Release **0.4.0** (tag `v0.4.0`), with Obserwator 3.2.0 (tag `v3.2.0`; Nogat ECO-084, ECO-085) and Kartograf 0.8.2 (tag `v0.8.2`), following Nogat's standard 1.1: a version's tier and publication state, ČHMÚ's groundwater stations and the weekly and hourly series with their coverage, the index completed in place at schema version 1 (A-ADR-059).
 
 Release **0.3.3** (tag `v0.3.3`), with Nogat's release round of 2026-11-21: Obserwator 3.1.0 with the providers' identifiers `IMGW` and `CHMU`, the providers' strip folded to one line on a phone, Nogat's kit 1.1.0, the files Archiwista names as `archiwista_<content>_<qualifiers>.<extension>` and a fix of page errors in Firefox; 0.3.1 and 0.3.2 fixed defects ([CHANGELOG.md](https://github.com/Daldek/Archiwista/blob/main/docs/CHANGELOG.md)). Release **0.3.0** (the first tag, `v0.3.0`; a member of the first joint release of the Nogat ecosystem): v0.3 "Actions" (availability at the source, downloads through the producer's API), v0.4 "Team", projects in Archiwista's own file (A-ADR-049) and the Obserwator source with the station views of v0.5 "IMGW stations", as one release. Before it, 0.2.0 "Previews" (2026-10-20): the local index, the map and the catalog of a Kartograf store, file previews, the Fan and the Timeline, comparison with the curtain, and own data of a project with snapshots. Next: the rest of v0.5, v0.6 "PL + CZ"; the MVP is v1.0 ([SCOPE.md](https://github.com/Daldek/Archiwista/blob/main/docs/SCOPE.md)). The API may change until v1.0.
 

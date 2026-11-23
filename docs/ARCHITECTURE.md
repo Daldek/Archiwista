@@ -1,9 +1,8 @@
 # Archiwista Architecture
 
-**Version described:** 0.4.0 in development (`feature/obserwator-3.2.0`, with Obserwator
-3.2.0, tag `v3.2.0`, A-ADR-059); the releases before it are 0.3.3 (Nogat's
-release round of 2026-11-21, with Obserwator 3.1.0), 0.3.2, 0.3.1, 0.3.0 and 0.2.0
-"Podglądy" (Previews).
+**Version described:** release 0.4.0 (with Obserwator 3.2.0, tag `v3.2.0`, A-ADR-059); the
+releases before it are 0.3.3 (Nogat's release round of 2026-11-21, with Obserwator 3.1.0),
+0.3.2, 0.3.1, 0.3.0 and 0.2.0 "Podglądy" (Previews).
 History: [`CHANGELOG.md`](CHANGELOG.md), state:
 [`PROGRESS.md`](PROGRESS.md), instructions:
 [`USAGE.md`](USAGE.md), [`AGENT_API.md`](AGENT_API.md).
@@ -62,7 +61,7 @@ commands, `list_commands`, `command_schema`, `parse_command`, `validate_command`
 `src/archiwista/sources/`. A missing Kartograf function is a requirement on
 Kartograf (SPEC 12), not a workaround in Archiwista. The adapter reads Kartograf
 `>=0.8.0,<0.9` with KA-1..KA-6 (`SUPPORTED_VERSIONS`; while a commit is pinned the range
-starts at the development version, REL-5.6), and the Obserwator adapter Obserwator `>=3.1.0,<4`.
+starts at the development version, REL-5.6), and the Obserwator adapter Obserwator `>=3.2.0,<4`.
 
 **Release boundaries:** Archiwista does not download data itself: a download is the
 producer's command run by its adapter in a `download` job (v0.3, ADR-037); it does not

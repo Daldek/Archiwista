@@ -1,10 +1,10 @@
 # Archiwista API for agents and scripts
 
 For AI agents (for example Claude Code) and scripts using Archiwista without
-a browser: release 0.3.3, with v0.3 "Actions", v0.4 "Team" and the projects (released as
-0.3.0) and Obserwator 3.1.0's provider ids `IMGW` and `CHMU` (0.3.3), and 0.4.0 in
-development (Obserwator 3.2.0: a version's tier and publication, groundwater stations,
-weekly and hourly series; A-ADR-059). It covers
+a browser: release 0.4.0, with v0.3 "Actions", v0.4 "Team" and the projects (released as
+0.3.0), Obserwator 3.1.0's provider ids `IMGW` and `CHMU` (0.3.3) and Obserwator 3.2.0
+(0.4.0: a version's tier and publication, groundwater stations, weekly and hourly
+series; A-ADR-059). It covers
 reading the catalog,
 previews, layers, comparison, own data and project snapshots, areas, producer
 commands, plans and downloads, projects and jobs. Team mode adds sign-in, agent
