@@ -34,7 +34,7 @@
 import { listStations, listStationTimeline } from "../api.js";
 import { count, int } from "../format.js";
 import { catalog as L } from "../labels/catalog.js";
-import { providerName, T, t } from "../labels/index.js";
+import { providerName, T, t, variableName } from "../labels/index.js";
 import {
   COMPARE_VIEW,
   compareParams,
@@ -45,6 +45,7 @@ import {
   stationAddress,
   stationShape,
   stationType,
+  yearTypeFamily,
 } from "../map/stations.js";
 import { mergeLines, NO_LINES, SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { href, Link, navigate, setParams } from "../router.js";
@@ -118,9 +119,9 @@ export function activeStationFilters(params) {
 
 /**
  * The parameters of `GET /stations` of an address: the station kind is the
- * product's when the product is one (`hydro`, `meteo`); repeatable ones are
- * comma lists in the address. `location`, the page and the cursor are the
- * list's own.
+ * product's when the product is one (`hydro`, `meteo`, `groundwater`);
+ * repeatable ones are comma lists in the address. `location`, the page and
+ * the cursor are the list's own.
  *
  * @param {Object<string, string>} params - Route parameters.
  * @param {string|null} product - The product of the address.
@@ -152,17 +153,17 @@ export function stationQuery(params, product) {
 
 /**
  * The family whose remembered year type numbers the list without `year_type`,
- * as the API chooses it: the dataset's, else the station kind's, else meteo
- * for the meteo types, else hydro (a list of both families, P15).
+ * as the API chooses it: the dataset's, else the station kind's (groundwater
+ * data take meteo's), else meteo for the meteo types, else hydro (a list of
+ * every family, P15).
  *
  * @param {import("../types.js").StationListFilters} query - Of `stationQuery`.
  * @param {import("../types.js").StationDataset[]} datasets
  * @returns {"hydro"|"meteo"}
  */
 export function stationFamily(query, datasets) {
-  const dataset = datasets.find((item) => item.dataset === query.dataset);
-  if (dataset?.kind === "hydro" || dataset?.kind === "meteo") return dataset.kind;
-  if (query.kind === "hydro" || query.kind === "meteo") return query.kind;
+  const kind = datasets.find((item) => item.dataset === query.dataset)?.kind ?? query.kind;
+  if (STATION_KINDS.includes(kind)) return yearTypeFamily(kind);
   return query.meteo_kind.length ? "meteo" : "hydro";
 }
 
@@ -717,7 +718,11 @@ function coverageLines(item, datasetNames) {
   return item.series.flatMap((series) =>
     Object.values(series.coverage).map(
       (variable) => html`<span class="st-line st-var" key=${`${series.dataset}/${variable.key}`}
-        title=${t(S.variable_title, { variable: variable.variable, unit: variable.unit, label: variable.label })}>
+        title=${t(S.variable_title, {
+          variable: variableName(variable.variable),
+          unit: variable.unit,
+          label: variable.label,
+        })}>
         <${StationSymbol} shape=${shape} state=${variable.state} size=${12} />
         ${several ? html`<span class="faint">${datasetNames.get(series.dataset) ?? series.dataset} · </span>` : null}
         <b class="st-key">${variable.key}</b>

@@ -98,11 +98,17 @@ def mixed(
 
 
 def _series_datasets(root: Path) -> list[str]:
-    """Return the datasets whose series slot has a current version, by key."""
+    """Return the datasets whose series slot has a current version, by key.
+
+    A dataset builds a series of its own when it has a parser: the operational
+    files of ``cz.chmu.groundwater_recent`` (Obserwator 3.2.0) have none and no
+    series slot.
+    """
     return sorted(
         item.key
         for item in obserwator.datasets()
         if item.in_store
+        and item.parser is not None
         and item.time_unit in SERIES_UNITS
         and obserwator.current_version(root, slot=f"series:{item.key}") is not None
     )

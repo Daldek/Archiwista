@@ -528,6 +528,8 @@ def station_comparison(
     if not series:
         raise NotFoundError(message("api.compare_series_none", dataset=query.dataset))
     first = series[0]
+    if first.time_unit not in series_chart.CHART_ORDER:
+        raise _no_chart(first)
     if first.time_unit == "half_year":
         raise IndexQueryError(
             message("api.chart_half_year", dataset=first.dataset),
@@ -847,13 +849,18 @@ def _chart_series(
     NotFoundError
         The station has no series of ``query.dataset``.
     IndexQueryError
-        As ``station_chart``.
+        As ``station_chart``; a series of weeks or hours asked by
+        ``query.dataset`` has no chart (``_no_chart``), and without
+        ``dataset`` such a series is not offered.
     """
     if query.dataset is not None and not found:
         raise NotFoundError(
             message("api.station_series_none", code=row.code, dataset=query.dataset)
         )
-    offered = [_offered(series, adapter) for series in found]
+    charted = [item for item in found if item.time_unit in series_chart.CHART_ORDER]
+    if query.dataset is not None and not charted:
+        raise _no_chart(found[0])
+    offered = [_offered(series, adapter) for series in charted]
     held = [item for item in offered if all(name in item[2] for name in query.variable)]
     names = ", ".join(query.variable)
     if query.dataset is not None and not held:
@@ -926,6 +933,20 @@ def _offered(
             dict.fromkeys([*described, *(item.key for item in series.variables)])
         )
     return series, sources, names
+
+
+def _no_chart(series: StationCoverage) -> IndexQueryError:
+    """Return the refusal of a chart of a series of weeks or hours (A-ADR-059).
+
+    Archiwista lists their coverage only; Obserwator's interface draws the
+    hourly chart. Reason ``no_chart`` (``details.unit``).
+    """
+    key = "api.chart_hour" if series.time_unit == "hour" else "api.chart_week"
+    return IndexQueryError(
+        message(key, dataset=series.dataset),
+        reason="no_chart",
+        details={"option": "dataset", "unit": series.time_unit},
+    )
 
 
 def _annual_series(

@@ -27,7 +27,7 @@ import { useResource } from "../hooks.js";
 import { catalog as L } from "../labels/catalog.js";
 import { providerName, t } from "../labels/index.js";
 import { projects as P } from "../labels/projects.js";
-import { METEO_KINDS, STATION_STATES } from "../map/stations.js";
+import { METEO_KINDS, STATION_KINDS, STATION_STATES } from "../map/stations.js";
 import { html, Icon, ProblemView, Seg, Tech, useEffect, useState } from "../ui.js";
 import { segmentVariantNames } from "../variant.js";
 import { STATION_FILTERS } from "./catalog-stations.js";
@@ -201,8 +201,8 @@ function FileFields({ query, errors, onChange, select, countries, from, to }) {
  *
  * @typedef {object} StationPanel
  * @property {import("../types.js").StationDataset[]} datasets - Of the product's family.
- * @property {string|null} kind - The product's station kind (`hydro`, `meteo`), else
- *   `null` (both: the kind is a field).
+ * @property {string|null} kind - The product's station kind (`hydro`, `meteo`,
+ *   `groundwater`), else `null` (every kind: the kind is a field).
  * @property {"hydro"|"meteo"} family - Whose remembered year type numbers the list.
  * @property {string|null} dataset - The dataset the Timeline shows when the address
  *   names none (the product's first), else `null`.
@@ -249,10 +249,12 @@ function StationFields({ query, stations, errors, onChange }) {
       : html`<${Field} name="kind" label=${SF.kind} errors=${errors}>
           <select id="cat-f-kind" value=${query.kind ?? ""} onChange=${select("kind")}>
             <option value="">${SF.kind_any}</option>
-            ${["hydro", "meteo"].map((value) => html`<option value=${value}>${SF.kinds[value]}</option>`)}
+            ${STATION_KINDS.map(
+              (value) => html`<option value=${value}>${SF.kinds[value]}</option>`,
+            )}
           </select>
         </${Field}>`}
-    ${kind === "hydro"
+    ${kind === "hydro" || kind === "groundwater"
       ? null
       : html`<div class="field" role="group" aria-labelledby="cat-f-meteo_kind-label">
           <span class="field-label" id="cat-f-meteo_kind-label">${SF.meteo_kind}</span>

@@ -11,7 +11,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from archiwista.config import OwnFolderReason, OwnFolderSource
 from archiwista.index.series import (
@@ -348,7 +348,10 @@ class VersionSummary:
     """A version as listed in the catalog and on the file card.
 
     ``attribution`` is the attribution its sidecar gives
-    (``license.attribution``), ``None`` without one.
+    (``license.attribution``), ``None`` without one. ``tier`` and
+    ``publication`` are what its sidecar records of data that are not the
+    verified archive (``EntryMeta.tier``, ``EntryMeta.publication``), ``None``
+    for none.
     """
 
     path: str
@@ -370,6 +373,8 @@ class VersionSummary:
     location: LocationRef
     attribution: str | None
     pinned_by: tuple[PinRef, ...] = ()
+    tier: str | None = None
+    publication: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -934,13 +939,27 @@ class StationCatalogRecord:
     read_at: datetime
 
 
+class SeriesMonth(NamedTuple):
+    """A month of a series kept as one version per month, as the index read it.
+
+    ``month`` is ``YYYY-MM``; ``slot`` its slot and ``version`` the
+    ``series.json`` read, relative to the store.
+    """
+
+    month: str
+    slot: str
+    version: str
+
+
 @dataclass(frozen=True, slots=True)
 class SeriesCatalogRecord:
     """The series version a dataset's coverage in the index was read from.
 
     ``slot`` is the series' slot and ``version`` the ``series.json`` of the
     version read, relative to the store; ``read_at`` is when it was read
-    (UTC).
+    (UTC). Of a series kept as one version per month they are its latest
+    month's, and ``months`` holds every month read, in order (empty for a
+    series of one version).
     """
 
     dataset: str
@@ -949,6 +968,13 @@ class SeriesCatalogRecord:
     slot: str
     version: str
     read_at: datetime
+    months: tuple[SeriesMonth, ...] = ()
+
+    def parts(self) -> dict[str, str]:
+        """Return the version read of each slot: every month's, else the one's."""
+        if not self.months:
+            return {self.slot: self.version}
+        return {month.slot: month.version for month in self.months}
 
 
 @dataclass(frozen=True, slots=True)
@@ -1072,6 +1098,9 @@ class StationRow:
     the state borders its places were checked against (G, Z; A-ADR-055).
     ``on_boundary``: the station lies on the boundary of the query's area
     (closer to it than its location uncertainty); ``False`` without an area.
+    ``kind`` is the family (``hydro``, ``meteo``, ``groundwater``);
+    ``groundwater_kind`` what a groundwater object is (``bore``, ``spring``),
+    ``None`` for any other station.
     """
 
     store: str
@@ -1097,6 +1126,7 @@ class StationRow:
     catalog_version: str | None
     catalog_attribution: str | None
     on_boundary: bool = False
+    groundwater_kind: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1149,14 +1179,17 @@ class CoverageVariable:
 class StationCoverage:
     """The coverage of a station's series in one dataset, read from the index.
 
-    ``kind`` (``hydro``, ``meteo``) and ``time_unit`` are the dataset's;
-    ``year_type`` numbers the years of ``span``, the range R of the labels
-    (``None`` when the version knows no period). ``file`` is the station's
-    series file in the version ``series_version`` (its ``series.json``,
-    relative to the store), with its ``sha256``; ``series`` is the label of
-    that version and ``license`` and ``attribution`` its licence and the
-    formula the source requires (``None`` when the index has no such
-    version). Each variable keeps the order of the series index.
+    ``kind`` (``hydro``, ``meteo``, ``groundwater``) and ``time_unit`` are the
+    dataset's; ``year_type`` numbers the years of ``span``, the range R of the
+    labels (``None`` when the version knows no period). ``file`` is the
+    station's series file in the version ``series_version`` (its
+    ``series.json``, relative to the store), with its ``sha256``; ``series``
+    is the label of that version and ``license`` and ``attribution`` its
+    licence and the formula the source requires (``None`` when the index has
+    no such version). Of a series kept as one version per month (Obserwator's
+    hourly series) ``months`` are its months (``YYYY-MM``), the version is the
+    latest month's and the file the station's latest; empty for a series of
+    one version. Each variable keeps the order of the series index.
     """
 
     store: str
@@ -1174,6 +1207,7 @@ class StationCoverage:
     sha256: str | None = None
     license: str | None = None
     attribution: str | None = None
+    months: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1233,13 +1267,15 @@ class StationDataset:
     """A dataset with station series in a store's index (the dataset chip, 6.7).
 
     ``name`` is the producer's name of the dataset's segment; ``kind`` its
-    family (``hydro``, ``meteo``) and ``time_unit`` its unit. ``span`` is R
-    by default (SPEC 4.8.4; ``None`` when the version knows no period) in
-    ``year_type``, the default year type of its labels.
+    family (``hydro``, ``meteo``, ``groundwater``) and ``time_unit`` its unit.
+    ``span`` is R by default (SPEC 4.8.4; ``None`` when the version knows no
+    period) in ``year_type``, the default year type of its labels.
     ``series`` is the label of the current series version and
-    ``series_version`` its ``series.json``, relative to the store.
-    ``variables`` are the distinct keys of its stations' series, in the order
-    of the series index.
+    ``series_version`` its ``series.json``, relative to the store; of a series
+    kept as one version per month the latest month's, ``months`` holding every
+    month (``YYYY-MM``, empty for a series of one version). ``variables`` are
+    the distinct keys of its stations' series, in the order of the series
+    index.
     """
 
     store: str
@@ -1253,6 +1289,7 @@ class StationDataset:
     series: str | None
     series_version: str
     variables: tuple[DatasetVariable, ...]
+    months: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

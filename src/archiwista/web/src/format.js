@@ -20,6 +20,7 @@ const CLOCK = new Intl.DateTimeFormat("en-GB", {
   hourCycle: "h23",
 });
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const UTC_HOUR = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?Z$/;
 const EMPTY = "–";
 
 function parts(date) {
@@ -38,6 +39,19 @@ export function day(iso) {
   if (DATE_ONLY.test(iso)) return iso.replaceAll("-", ".");
   const p = parts(new Date(iso));
   return `${p.year}.${p.month}.${p.day}`;
+}
+
+/**
+ * A unit of a station series: a date as `RRRR.MM.DD`, an hour of an hourly
+ * series (a UTC time, `2026-09-15T06:00:00Z`) as `RRRR.MM.DD GG:MM UTC`.
+ *
+ * @param {string|null|undefined} iso - A date or a UTC time from the API.
+ * @returns {string} The unit, or a dash when there is none.
+ */
+export function unitTime(iso) {
+  if (!iso || DATE_ONLY.test(iso)) return day(iso);
+  const hour = UTC_HOUR.exec(iso);
+  return hour ? `${hour[1]}.${hour[2]}.${hour[3]} ${hour[4]}:${hour[5]} UTC` : day(iso);
 }
 
 /**

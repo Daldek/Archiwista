@@ -25,10 +25,10 @@ import json
 import re
 import sqlite3
 import unicodedata
-from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path, PurePosixPath
 from types import TracebackType
 from typing import Self
@@ -55,6 +55,7 @@ from archiwista.index.types import (
     ProjectWrite,
     ScanPass,
     SeriesCatalogRecord,
+    SeriesMonth,
     SnapshotWrite,
     StationCatalogRecord,
     StoredPlan,
@@ -114,6 +115,8 @@ _META_COLUMNS = (
     "vertical_crs",
     "resolution",
     "nodata",
+    "tier",
+    "publication",
 )
 _META_PLACEHOLDERS = ", ".join("?" for _ in _META_COLUMNS)
 _META_UPDATES = ", ".join(f"{column} = excluded.{column}" for column in _META_COLUMNS)
@@ -174,8 +177,9 @@ _INSERT_STATION = """
 INSERT INTO stations (
     store_id, provider, code, kind, meteo_kind, name, river, hydrographic_code,
     river_order, location, location_reason, location_source, location_uncertainty_m,
-    lon, lat, active, established_year, gauge_zero_m, river_km, elevation_m
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    lon, lat, active, established_year, gauge_zero_m, river_km, elevation_m,
+    groundwater_kind
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT (store_id, provider, code) DO NOTHING
 """
 # A station's variable met again in one series index keeps its first row.
@@ -1242,7 +1246,7 @@ class IndexWriter:
         Returns
         -------
         dict[str, SeriesCatalogRecord]
-            By dataset.
+            By dataset; a series kept as one version per month with its months.
         """
         store_id = self._store_id(store)
         return {
@@ -1253,9 +1257,19 @@ class IndexWriter:
                 slot=str(slot),
                 version=str(version),
                 read_at=datetime.fromisoformat(str(read_at)),
+                months=()
+                if months is None
+                else tuple(SeriesMonth(*item) for item in json.loads(str(months))),
             )
-            for dataset, provider, slot, version, read_at in self._connection.execute(
-                "SELECT dataset, provider, slot_path, version_path, read_at"
+            for (
+                dataset,
+                provider,
+                slot,
+                version,
+                read_at,
+                months,
+            ) in self._connection.execute(
+                "SELECT dataset, provider, slot_path, version_path, read_at, months"
                 " FROM series_catalogs WHERE store_id = ? AND producer = ?",
                 (store_id, producer),
             ).fetchall()
@@ -1269,6 +1283,7 @@ class IndexWriter:
         slot: str,
         version: str,
         listing: SeriesListing,
+        months: Sequence[SeriesMonth] = (),
     ) -> int:
         """Make a dataset's coverage in a store that of one series version.
 
@@ -1277,7 +1292,9 @@ class IndexWriter:
         each variable is computed from the gap lists, in both year types (one
         for half-year characteristics), against the station's own known
         periods or else the version's (``series_years``); a variable met
-        again for a station keeps its first row.
+        again for a station keeps its first row. The first and last unit and
+        the gaps of an hourly series are kept as UTC times
+        (``YYYY-MM-DDTHH:MM:SSZ``), the producer's form.
 
         Parameters
         ----------
@@ -1287,9 +1304,14 @@ class IndexWriter:
             The producer whose series it is.
         slot, version : str
             The series' slot and the ``series.json`` of the version read,
-            relative to the store.
+            relative to the store; of a series kept as one version per month
+            its latest month's.
         listing : SeriesListing
-            ``SeriesIndexAdapter.read_series_index`` of the version.
+            ``SeriesIndexAdapter.read_series_index`` of the version, or the
+            months joined (``series.join_months``).
+        months : Sequence[SeriesMonth], optional
+            Every month read of a series kept as one version per month, in
+            order; empty for a series of one version.
 
         Returns
         -------
@@ -1323,13 +1345,15 @@ class IndexWriter:
             connection.execute(
                 "INSERT INTO series_catalogs (store_id, dataset, producer, provider,"
                 " kind, time_unit, year_type, first_year, periods, slot_path,"
-                " version_path, read_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " version_path, read_at, months)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT (store_id, dataset) DO UPDATE SET"
                 " producer = excluded.producer, provider = excluded.provider,"
                 " kind = excluded.kind, time_unit = excluded.time_unit,"
                 " year_type = excluded.year_type, first_year = excluded.first_year,"
                 " periods = excluded.periods, slot_path = excluded.slot_path,"
-                " version_path = excluded.version_path, read_at = excluded.read_at",
+                " version_path = excluded.version_path, read_at = excluded.read_at,"
+                " months = excluded.months",
                 (
                     store_id,
                     listing.dataset,
@@ -1343,6 +1367,7 @@ class IndexWriter:
                     slot,
                     version,
                     _now(),
+                    _json([list(month) for month in months]) if months else None,
                 ),
             )
         return written
@@ -1366,6 +1391,71 @@ class IndexWriter:
                 (store_id, dataset),
             ).rowcount
         return max(removed, 0)
+
+    def skipped_series(self, store: str, producer: str) -> dict[str, str]:
+        """Return the version at which each refused series slot was refused.
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        producer : str
+            The producer whose series they are.
+
+        Returns
+        -------
+        dict[str, str]
+            The version of each slot of ``skipped_series``, by the slot's path.
+        """
+        store_id = self._store_id(store)
+        return {
+            str(slot): str(version)
+            for slot, version in self._connection.execute(
+                "SELECT slot_path, version_path FROM skipped_series"
+                " WHERE store_id = ? AND producer = ?",
+                (store_id, producer),
+            ).fetchall()
+        }
+
+    def replace_skipped_series(
+        self, store: str, producer: str, refused: Mapping[str, tuple[str, str]]
+    ) -> None:
+        """Make the producer's refused series slots in a store those of one scan.
+
+        One transaction: a slot no longer refused is forgotten, and a slot
+        keeps the time it was first refused at its version (``read_at``).
+
+        Parameters
+        ----------
+        store : str
+            Configured store id.
+        producer : str
+            The producer whose series they are.
+        refused : Mapping[str, tuple[str, str]]
+            The dataset and the current version of each refused slot, by the
+            slot's path (``SeriesIndexAdapter.read_series_index`` raised
+            ``UnsupportedError``).
+        """
+        store_id = self._store_id(store)
+        now = _now()
+        with self._transaction() as connection:
+            connection.execute(
+                "DELETE FROM skipped_series WHERE store_id = ? AND producer = ?"
+                f" AND slot_path NOT IN ({_IDS})",
+                (store_id, producer, json.dumps(sorted(refused))),
+            )
+            connection.executemany(
+                "INSERT INTO skipped_series (store_id, slot_path, producer, dataset,"
+                " version_path, read_at) VALUES (?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT (store_id, slot_path) DO UPDATE SET"
+                " producer = excluded.producer, dataset = excluded.dataset,"
+                " version_path = excluded.version_path, read_at = excluded.read_at"
+                " WHERE version_path != excluded.version_path",
+                [
+                    (store_id, slot, producer, dataset, version, now)
+                    for slot, (dataset, version) in sorted(refused.items())
+                ],
+            )
 
     # Problems found by check jobs.
 
@@ -2651,6 +2741,7 @@ def _station_row(store_id: int, provider: str, station: Station) -> tuple[object
         station.gauge_zero_m,
         station.river_km,
         station.elevation_m,
+        station.groundwater_kind,
     )
 
 
@@ -2660,7 +2751,7 @@ def _series_row(
     station: StationSeries,
     coverage: VariableCoverage,
 ) -> tuple[object, ...]:
-    """Values of ``_INSERT_SERIES``: dates in ISO, ranges as JSON."""
+    """Values of ``_INSERT_SERIES``: units in ISO (``_unit_text``), ranges as JSON."""
     return (
         store_id,
         listing.dataset,
@@ -2670,8 +2761,8 @@ def _series_row(
         coverage.variable,
         coverage.unit,
         coverage.period,
-        None if coverage.first is None else coverage.first.isoformat(),
-        None if coverage.last is None else coverage.last.isoformat(),
+        None if coverage.first is None else _unit_text(coverage.first),
+        None if coverage.last is None else _unit_text(coverage.last),
         coverage.with_value,
         coverage.accumulated,
         _ranges_json(coverage.gaps),
@@ -2695,8 +2786,16 @@ def _year_row(series_id: int, year: SeriesYear) -> tuple[object, ...]:
 
 
 def _ranges_json(ranges: Iterable[DateRange]) -> str:
-    """Ranges of days as JSON: ``[["2001-01-01", "2001-01-31"], ...]``."""
-    return _json([[start.isoformat(), end.isoformat()] for start, end in ranges])
+    """Ranges of units as JSON: ``[["2001-01-01", "2001-01-31"], ...]``."""
+    return _json([[_unit_text(start), _unit_text(end)] for start, end in ranges])
+
+
+def _unit_text(value: date) -> str:
+    """Return a day ``YYYY-MM-DD``, or an hour's start ``…THH:MM:SSZ`` (UTC)."""
+    if isinstance(value, datetime):
+        moment = value if value.tzinfo is None else value.astimezone(UTC)
+        return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return value.isoformat()
 
 
 def _meta_row(meta: EntryMeta) -> tuple[object, ...]:
@@ -2729,6 +2828,8 @@ def _meta_row(meta: EntryMeta) -> tuple[object, ...]:
         meta.vertical_crs,
         meta.resolution,
         meta.nodata,
+        meta.tier,
+        meta.publication,
     )
 
 

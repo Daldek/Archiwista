@@ -1,6 +1,7 @@
 """Local index: writing passes and reading the catalog (plan v0.1, step 5)."""
 
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -801,6 +802,96 @@ def test_index_schema_change_rebuilds_an_empty_index(tmp_path: Path) -> None:
     with IndexQueries(path) as queries:
         assert queries.status().stores == ()
         assert queries.slots(SlotQuery(), visible=ALL_PROJECTS).items == ()
+
+
+# ``series_catalogs`` as Archiwista 0.3.3 created it: days, months and half-years.
+_SERIES_CATALOGS_0_3_3 = """
+CREATE TABLE series_catalogs (
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    dataset TEXT NOT NULL,
+    producer TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    kind TEXT,
+    time_unit TEXT NOT NULL CHECK (time_unit IN ('day', 'month', 'half_year')),
+    year_type TEXT NOT NULL CHECK (year_type IN ('hydrological', 'calendar')),
+    first_year INTEGER,
+    periods TEXT NOT NULL,
+    slot_path TEXT NOT NULL,
+    version_path TEXT NOT NULL,
+    read_at TEXT NOT NULL,
+    PRIMARY KEY (store_id, dataset)
+) WITHOUT ROWID
+"""
+_CATALOG_ROW = (
+    "INSERT INTO series_catalogs (store_id, dataset, producer, provider, kind,"
+    " time_unit, year_type, first_year, periods, slot_path, version_path, read_at)"
+    " SELECT id, ?, 'obserwator', 'IMGW', 'hydro', ?, 'hydrological', 1951,"
+    " '[]', 'series/versions/x', 'series/versions/x/v/series.json', '2026-11-01'"
+    " FROM stores"
+)
+
+
+def _as_0_3_3(path: Path) -> None:
+    """Take from an index the additions within version 1 that came after 0.3.3."""
+    connection = sqlite3.connect(path, isolation_level=None)
+    try:
+        connection.execute("ALTER TABLE versions DROP COLUMN publication")
+        connection.execute("ALTER TABLE versions DROP COLUMN tier")
+        connection.execute("ALTER TABLE stations DROP COLUMN groundwater_kind")
+        connection.execute("DROP TABLE skipped_series")
+        connection.execute("DROP TABLE series_catalogs")
+        connection.execute(_SERIES_CATALOGS_0_3_3)
+        connection.execute(_CATALOG_ROW, ("pl.imgw.hydro_daily", "day"))
+    finally:
+        connection.close()
+
+
+def test_index_of_0_3_3_is_completed_in_place_keeping_its_rows(
+    tmp_path: Path,
+) -> None:
+    """Archiwista 0.3.3's index gets the additions within version 1 (A-ADR-059).
+
+    Its versions and its series catalogs stay; ``series_catalogs`` takes the
+    hours and weeks and has no months for the rows it had.
+    """
+    # Arrange
+    path = tmp_path / "index.sqlite"
+    with IndexWriter(path) as writer:
+        writer.sync_stores({STORE: {"kartograf": ROOT}})
+        a = version(SHEET_A, "2025-04-26_82710", 1)
+        write_pass(writer, [link(SHEET_A, a), a])
+    _as_0_3_3(path)
+    with closing(sqlite3.connect(path)) as old, pytest.raises(sqlite3.IntegrityError):
+        old.execute(_CATALOG_ROW, ("pl.imgw.hydro_subdaily", "hour"))
+
+    # Act
+    state = initialize(path)
+    again = initialize(path)
+
+    # Assert
+    assert (state, again) == ("completed", "current")
+    with IndexQueries(path) as queries:
+        assert _slots(queries) == [SHEET_A]
+    with closing(sqlite3.connect(path, isolation_level=None)) as connection:
+        connection.execute(_CATALOG_ROW, ("pl.imgw.hydro_subdaily", "hour"))
+        connection.execute(_CATALOG_ROW, ("cz.chmu.groundwater_weekly", "week"))
+        catalogs = connection.execute(
+            "SELECT dataset, time_unit, months FROM series_catalogs ORDER BY dataset"
+        ).fetchall()
+        columns = {
+            table: [row[1] for row in connection.execute(f"PRAGMA table_info({table})")]
+            for table in ("versions", "stations", "skipped_series")
+        }
+        tiers = connection.execute("SELECT tier, publication FROM versions").fetchall()
+    assert catalogs == [
+        ("cz.chmu.groundwater_weekly", "week", None),
+        ("pl.imgw.hydro_daily", "day", None),
+        ("pl.imgw.hydro_subdaily", "hour", None),
+    ]
+    assert columns["versions"][-2:] == ["tier", "publication"]
+    assert columns["stations"][-1] == "groundwater_kind"
+    assert columns["skipped_series"][:2] == ["store_id", "slot_path"]
+    assert tiers == [(None, None)]
 
 
 def test_index_producer_without_links_or_segments(

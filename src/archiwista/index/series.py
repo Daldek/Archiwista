@@ -4,10 +4,13 @@ Pure functions, no I/O: the index computes each year of a variable once, when
 it writes the series index of a version (``series_years``), and the labels of
 any range of years come from those rows without reading a series again
 (A-ADR-021). A year is counted in units of the series, as whole numbers: a
-day is its ordinal, a month ``year * 12 + month - 1`` and a half-year
+day is its ordinal, a week (Monday to Sunday, named by its Monday) the
+number of whole weeks from Monday 1 I 1, a month ``year * 12 + month - 1``, an
+hour (UTC) the day's ordinal times 24 plus its hour, and a half-year
 characteristic one unit per hydrological year (its winter, summer or annual
-value), which has no calendar year (SPEC 4.8.2). The hydrological year N runs
-from 1 XI of year N - 1 to 31 X of year N.
+value), which has no calendar year (SPEC 4.8.2). A week belongs to the year of
+its Monday. The hydrological year N runs from 1 XI of year N - 1 to 31 X of
+year N.
 
 For each year of a variable: ``units`` is the length of the year, ``known``
 its units within the known periods (the station's own periods, or else those
@@ -26,12 +29,19 @@ percent, and the longest gap the longest run of them.
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from archiwista.sources import DateRange, TimeUnit, VariableCoverage, YearType
+from archiwista.sources import (
+    DateRange,
+    SeriesListing,
+    StationSeries,
+    TimeUnit,
+    VariableCoverage,
+    YearType,
+)
 
 type Interval = tuple[int, int]
 type YearRange = tuple[int, int]
@@ -53,6 +63,9 @@ MAX_UNKNOWN_RANGES = 2
 LONG_GAP_DAYS = 30
 # The first month of the hydrological year (1 XI of the year before).
 _HYDROLOGICAL_START = 11
+# The days of a week and the hours of a day.
+_WEEK_DAYS = 7
+_DAY_HOURS = 24
 
 
 class YearTypes(BaseModel):
@@ -111,25 +124,61 @@ def hydrological_year(day: date) -> int:
 
 
 def unit_of(day: date, time_unit: TimeUnit) -> int:
-    """Return the unit a day lies in."""
+    """Return the unit a day lies in; of an hourly series, a time's hour (UTC).
+
+    A date alone is its first hour; a naive time is taken as UTC.
+    """
     if time_unit == "day":
         return day.toordinal()
+    if time_unit == "week":
+        return (day.toordinal() - 1) // _WEEK_DAYS
     if time_unit == "month":
         return day.year * 12 + day.month - 1
+    if time_unit == "hour":
+        if isinstance(day, datetime):
+            moment = day if day.tzinfo is None else day.astimezone(UTC)
+            return moment.toordinal() * _DAY_HOURS + moment.hour
+        return day.toordinal() * _DAY_HOURS
     return hydrological_year(day)
 
 
+def last_unit_of(day: date, time_unit: TimeUnit) -> int:
+    """Return the last unit of a range that ends on ``day``.
+
+    The unit ``day`` lies in, but of an hourly series the last hour of a date
+    alone (a known period of days ends with its last day's last hour).
+    """
+    if time_unit == "hour" and not isinstance(day, datetime):
+        return unit_of(day, time_unit) + _DAY_HOURS - 1
+    return unit_of(day, time_unit)
+
+
 def day_of(unit: int, time_unit: TimeUnit) -> date:
-    """Return the first day of a unit."""
+    """Return the first day of a unit; of an hour its start, an aware UTC time."""
     if time_unit == "day":
         return date.fromordinal(unit)
+    if time_unit == "week":
+        return date.fromordinal(unit * _WEEK_DAYS + 1)
     if time_unit == "month":
         return date(unit // 12, unit % 12 + 1, 1)
+    if time_unit == "hour":
+        day = date.fromordinal(unit // _DAY_HOURS)
+        return datetime.combine(day, time(unit % _DAY_HOURS), tzinfo=UTC)
     return date(unit - 1, _HYDROLOGICAL_START, 1)
+
+
+def last_day_of(unit: int, time_unit: TimeUnit) -> date:
+    """Return the last day of a unit; of an hour its start, as ``day_of``."""
+    if time_unit == "hour":
+        return day_of(unit, time_unit)
+    return day_of(unit + 1, time_unit) - timedelta(days=1)
 
 
 def year_span(year: int, year_type: YearType, time_unit: TimeUnit) -> Interval:
     """Return the first and last unit of a year.
+
+    A week belongs to the year of its Monday, the day that names it, so the
+    last week of a year may end in the next one.
 
     Raises
     ------
@@ -144,11 +193,13 @@ def year_span(year: int, year_type: YearType, time_unit: TimeUnit) -> Interval:
         start, end = date(year, 1, 1), date(year, 12, 31)
     else:
         start, end = date(year - 1, _HYDROLOGICAL_START, 1), date(year, 10, 31)
-    return unit_of(start, time_unit), unit_of(end, time_unit)
+    if time_unit == "week":
+        start += timedelta(days=_WEEK_DAYS - 1)
+    return unit_of(start, time_unit), last_unit_of(end, time_unit)
 
 
 def year_of(unit: int, year_type: YearType, time_unit: TimeUnit) -> int:
-    """Return the year a unit lies in."""
+    """Return the year a unit lies in (a week: the year of its Monday)."""
     if time_unit == "half_year":
         return unit
     day = day_of(unit, time_unit)
@@ -156,9 +207,10 @@ def year_of(unit: int, year_type: YearType, time_unit: TimeUnit) -> int:
 
 
 def intervals(ranges: Iterable[DateRange], time_unit: TimeUnit) -> list[Interval]:
-    """Return ranges of days as sorted, disjoint ranges of units."""
+    """Return ranges of days (or hours) as sorted, disjoint ranges of units."""
     return merge(
-        (unit_of(start, time_unit), unit_of(end, time_unit)) for start, end in ranges
+        (unit_of(start, time_unit), last_unit_of(end, time_unit))
+        for start, end in ranges
     )
 
 
@@ -276,7 +328,8 @@ class GapRun:
     """A run of consecutive known units without a value (SPEC 4.8.4).
 
     ``start`` is the first day of its first unit and ``end`` the last day of
-    its last one; ``units`` counts them.
+    its last one (of an hourly series the starts of its first and last hour,
+    aware UTC times); ``units`` counts them.
     """
 
     start: date
@@ -531,12 +584,141 @@ def gap_run(run: Interval, time_unit: TimeUnit) -> GapRun:
     start, end = run
     return GapRun(
         start=day_of(start, time_unit),
-        end=day_of(end + 1, time_unit) - timedelta(days=1),
+        end=last_day_of(end, time_unit),
         units=end - start + 1,
     )
 
 
 def _days(run: Interval, time_unit: TimeUnit) -> int:
-    """Return the days a run of units spans."""
+    """Return the whole days a run of units spans."""
     start, end = run
     return (day_of(end + 1, time_unit) - day_of(start, time_unit)).days
+
+
+def join_months(listings: Sequence[SeriesListing]) -> SeriesListing:
+    """Return the one series that the versions of its months make.
+
+    A series kept as one version per calendar month (``SeriesListing.month``,
+    Obserwator's hourly series) is one series of its dataset. Its known periods
+    are the union of the months'. A station's are the union of its own in each
+    month that has it (else that month's), and of the periods of each month
+    without it whose stations have none of their own: a source of every
+    station publishes it there without a value, while one of per-station files
+    does not publish it there at all (unknown). They are ``None`` when they are
+    the series'. A variable has the values of every month: its first and last
+    the earliest and latest, its gaps every known unit between them without a
+    value, across the boundaries of the months too, and ``with_value`` and
+    ``accumulated`` the sums. A station's file is that of the latest month
+    that has it. The joined series has no ``month``.
+
+    Parameters
+    ----------
+    listings : Sequence[SeriesListing]
+        The versions of the months of one dataset, in any order; not empty.
+
+    Returns
+    -------
+    SeriesListing
+        The dataset's facts of its latest month, the stations in the order
+        the months first name them, each variable in the order they first
+        name it.
+    """
+    ordered = sorted(listings, key=lambda listing: listing.month or "")
+    latest = ordered[-1]
+    unit = latest.time_unit
+    periods = _join_ranges(item for listing in ordered for item in listing.periods)
+    months = [
+        (
+            listing,
+            {station.code: station for station in listing.stations},
+            any(station.periods is not None for station in listing.stations),
+        )
+        for listing in ordered
+    ]
+    codes = dict.fromkeys(
+        station.code for listing in ordered for station in listing.stations
+    )
+    stations: list[StationSeries] = []
+    for code in codes:
+        known: list[DateRange] = []
+        held: list[tuple[StationSeries, list[Interval]]] = []
+        for listing, by_code, own in months:
+            station = by_code.get(code)
+            if station is not None:
+                pieces = listing.periods if station.periods is None else station.periods
+                known.extend(pieces)
+                held.append((station, intervals(pieces, unit)))
+            elif not own:
+                known.extend(listing.periods)
+        joined = _join_ranges(known)
+        parts: dict[str, list[tuple[VariableCoverage, list[Interval]]]] = {}
+        for station, units in held:
+            for coverage in station.variables:
+                parts.setdefault(coverage.key, []).append((coverage, units))
+        known_units = intervals(joined, unit)
+        last = held[-1][0]
+        stations.append(
+            StationSeries(
+                code=code,
+                file=last.file,
+                sha256=last.sha256,
+                rows=last.rows,
+                variables=tuple(
+                    _joined_variable(found, known_units, unit)
+                    for found in parts.values()
+                ),
+                periods=None if joined == periods else joined,
+            )
+        )
+    return SeriesListing(
+        dataset=latest.dataset,
+        provider=latest.provider,
+        kind=latest.kind,
+        time_unit=unit,
+        year_type=latest.year_type,
+        first_year=latest.first_year,
+        periods=periods,
+        stations=tuple(stations),
+    )
+
+
+def _joined_variable(
+    parts: Sequence[tuple[VariableCoverage, Sequence[Interval]]],
+    known: Sequence[Interval],
+    time_unit: TimeUnit,
+) -> VariableCoverage:
+    """Return a variable's coverage over its months, each with its known units."""
+    values = merge(
+        interval
+        for coverage, units in parts
+        for interval in value_intervals(coverage, units, time_unit)
+    )
+    firsts = [coverage.first for coverage, _ in parts if coverage.first is not None]
+    lasts = [coverage.last for coverage, _ in parts if coverage.last is not None]
+    gaps: tuple[DateRange, ...] = ()
+    if firsts and lasts:
+        span = [(unit_of(min(firsts), time_unit), unit_of(max(lasts), time_unit))]
+        gaps = tuple(
+            (day_of(start, time_unit), day_of(end, time_unit))
+            for start, end in subtract(intersect(known, span), values)
+        )
+    head = parts[0][0]
+    return VariableCoverage(
+        key=head.key,
+        variable=head.variable,
+        unit=head.unit,
+        period=head.period,
+        first=min(firsts, default=None),
+        last=max(lasts, default=None),
+        with_value=sum(coverage.with_value for coverage, _ in parts),
+        accumulated=sum(coverage.accumulated for coverage, _ in parts),
+        gaps=gaps,
+    )
+
+
+def _join_ranges(ranges: Iterable[DateRange]) -> tuple[DateRange, ...]:
+    """Return ranges of days sorted, the overlapping and adjacent ones joined."""
+    return tuple(
+        (date.fromordinal(start), date.fromordinal(end))
+        for start, end in intervals(ranges, "day")
+    )

@@ -196,6 +196,11 @@ export const catalog = {
       "cz.chmu.hydro_stations": "ČHMÚ: lista stacji hydro",
       "cz.chmu.meteo_now": "ČHMÚ: dane bieżące meteo",
       "cz.chmu.meteo_stations": "ČHMÚ: lista stacji meteo",
+      "cz.chmu.groundwater_now": "bieżące metadane ČHMÚ, wody podziemne",
+      "cz.chmu.groundwater_stations": "wykaz obiektów ČHMÚ, wody podziemne",
+      "pl.imgw.meteo_details":
+        "strona stacji w serwisie hydrologicznym IMGW-PIB (hydro.imgw.pl), stacje " +
+        "meteorologiczne",
     },
     reason: {
       none: "brak współrzędnych w źródłach",
@@ -273,7 +278,9 @@ export const catalog = {
         outside: "poza zakresem lat szeregu",
       },
       units: {
+        hour: ["godzina", "godziny", "godzin"],
         day: ["dzień", "dni", "dni"],
+        week: ["tydzień", "tygodnie", "tygodni"],
         month: ["miesiąc", "miesiące", "miesięcy"],
         half_year: ["półrocze", "półrocza", "półroczy"],
       },
@@ -298,7 +305,11 @@ export const catalog = {
       dataset_option: "{name} · {provider}",
       kind: "Rodzaj stacji",
       kind_any: "Wszystkie rodzaje",
-      kinds: { hydro: "wodowskazy", meteo: "stacje meteorologiczne" },
+      kinds: {
+        hydro: "wodowskazy",
+        meteo: "stacje meteorologiczne",
+        groundwater: "stacje wód podziemnych",
+      },
       meteo_kind: "Typ stacji",
       meteo_kind_hint: "Bez wybranego typu: stacje każdego typu.",
       meteo_kinds: { synoptic: "synoptyczne", climate: "klimatologiczne", precipitation: "opadowe" },
@@ -336,7 +347,8 @@ export const catalog = {
       year_types: { hydrological: "hydrologiczne", calendar: "kalendarzowe" },
       year_type_hint: "Rok hydrologiczny trwa od 1 XI do 31 X. Wybór trafia do adresu i jest zapamiętywany dla danych {family}.",
       year_type_failed: "Nie udało się zapamiętać wyboru lat.",
-      families: { hydro: "hydrologicznych", meteo: "meteorologicznych" },
+      // The remembered year type of groundwater data is meteo's (`YearTypes.of_kind`).
+      families: { hydro: "hydrologicznych", meteo: "meteorologicznych i wód podziemnych" },
       boundary: "Uwzględnij stacje na granicy obszaru",
     },
   },

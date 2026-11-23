@@ -11,7 +11,7 @@ the command line alike.
 
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import date
+from datetime import date, datetime
 from typing import Annotated, Any, Literal, Self, TypedDict, cast
 
 from pydantic import (
@@ -136,6 +136,7 @@ _SERIES_EXAMPLE = {
     "years": {"from": 1951, "to": 2025},
     "series": "2026-08-31",
     "series_version": f"{_SERIES_DIR}/series.json",
+    "months": [],
     "file": f"{_SERIES_DIR}/stations/149190310.parquet",
     "sha256": _SHA256,
     "license": "IMGW-PIB",
@@ -158,6 +159,7 @@ _STATION_EXAMPLE = {
     "name": "STROZA",
     "kind": "hydro",
     "meteo_kind": None,
+    "groundwater_kind": None,
     "river": "Raba",
     "hydrographic_code": "2138",
     "river_order": 12,
@@ -218,6 +220,7 @@ _TIMELINE_ITEM_EXAMPLE = {
     "name": "STROZA",
     "kind": "hydro",
     "meteo_kind": None,
+    "groundwater_kind": None,
     "river": "Raba",
     "hydrographic_code": "2138",
     "active": True,
@@ -231,6 +234,7 @@ _POINT_EXAMPLE = {
     "name": "STROZA",
     "kind": "hydro",
     "meteo_kind": None,
+    "groundwater_kind": None,
     "river": "Raba",
     "lon": 19.9247,
     "lat": 49.7963,
@@ -257,6 +261,7 @@ _DATASET_EXAMPLE = {
     "years": {"from": 1951, "to": 2025},
     "series": "2026-08-31",
     "series_version": f"{_SERIES_DIR}/series.json",
+    "months": [],
     "variables": [
         {"key": "H", "variable": "H", "unit": "cm", "period": None},
         _DATASET_VARIABLE_EXAMPLE,
@@ -427,7 +432,7 @@ class StationFilters(StationLookup):
     )
     kind: str | None = Field(
         default=None,
-        description="Station kind: `hydro` or `meteo`.",
+        description="Station kind: `hydro`, `meteo` or `groundwater`.",
         examples=["hydro"],
     )
     meteo_kind: list[MeteoKind] = Field(
@@ -963,13 +968,24 @@ class YearSpan(BaseModel):
 
 
 class GapSpan(BaseModel):
-    """A run of known units without a value: its first and last day, its units."""
+    """A run of known units without a value: its first and last day, its units.
+
+    Of an hourly series the starts of its first and last hour, UTC times.
+    """
 
     model_config = _examples(_GAP_EXAMPLE, aliased=True)
 
-    first: date = Field(alias="from", description="First day of its first unit.")
-    last: date = Field(alias="to", description="Last day of its last unit.")
-    units: int = Field(description="Units of the run (days, months or half-years).")
+    first: datetime | date = Field(
+        alias="from",
+        description="First day of its first unit (of an hour: its start, UTC).",
+    )
+    last: datetime | date = Field(
+        alias="to",
+        description="Last day of its last unit (of an hour: its start, UTC).",
+    )
+    units: int = Field(
+        description="Units of the run (days, weeks, months, half-years or hours)."
+    )
 
     @classmethod
     def of(cls, gap: GapRun | None) -> Self | None:
@@ -1001,11 +1017,19 @@ class VariableCoverageItem(BaseModel):
     label: str = Field(
         description=(
             "The label for a person, in the request's language (dates"
-            " `YYYY.MM.DD`, `YYYY.MM` for monthly and half-year characteristics)."
+            " `YYYY.MM.DD`, `YYYY.MM` for monthly and half-year characteristics,"
+            " hours `YYYY.MM.DD HH:MM` with `UTC`)."
         )
     )
-    first: date | None = Field(description="First day with a value in the series.")
-    last: date | None = Field(description="Last day with a value in the series.")
+    first: datetime | date | None = Field(
+        description=(
+            "First day with a value in the series (a weekly one: the reading's"
+            " date; an hourly one: the hour's start, a UTC time)."
+        )
+    )
+    last: datetime | date | None = Field(
+        description="Last day with a value in the series (the same forms)."
+    )
     known: YearSpan | None = Field(description="K1–K2: the first and last known year.")
     valued: YearSpan | None = Field(
         description="y1–y2: the first and last known year with a value."
@@ -1072,17 +1096,35 @@ class StationSeriesItem(BaseModel):
     model_config = _examples(_SERIES_EXAMPLE)
 
     dataset: str = Field(description="Dataset key.")
-    kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
-    time_unit: TimeUnit = Field(description="Unit of the series: `day`, `month`, …")
+    kind: str | None = Field(description="Its family: `hydro`, `meteo`, `groundwater`.")
+    time_unit: TimeUnit = Field(
+        description=(
+            "Unit of the series: `day`, `week`, `month`, `half_year` or `hour` (UTC)."
+        )
+    )
     year_type: YearType = Field(description="Numbering of the years of R.")
     years: YearSpan | None = Field(
         description="R, the range of the labels; `null` when no period is known."
     )
     series: str | None = Field(description="Label of the series version (its date).")
     series_version: str = Field(
-        description="The version's `series.json`, relative to the store."
+        description=(
+            "The version's `series.json`, relative to the store; of a series kept"
+            " as one version per month, its latest month's."
+        )
     )
-    file: str = Field(description="The station's series file, relative to the store.")
+    months: list[str] = Field(
+        description=(
+            "The months (`YYYY-MM`) of a series kept as one version per month, in"
+            " order, joined in its coverage; empty for a series of one version."
+        )
+    )
+    file: str = Field(
+        description=(
+            "The station's series file, relative to the store (of a series kept as"
+            " one version per month, of the latest month that has the station)."
+        )
+    )
     sha256: str | None = Field(description="SHA-256 of the station's series file.")
     license: str | None = Field(description="Licence of the series version.")
     attribution: str | None = Field(
@@ -1106,6 +1148,7 @@ class StationSeriesItem(BaseModel):
             years=YearSpan.of(found.span),
             series=found.series,
             series_version=found.series_version,
+            months=list(found.months),
             file=found.file,
             sha256=found.sha256,
             license=found.license,
@@ -1177,9 +1220,12 @@ class StationItem(BaseModel):
     provider: str = Field(description="`IMGW` or `CHMU`; a code is its provider's.")
     code: str = Field(description="Station code, as text.")
     name: str | None
-    kind: str | None = Field(description="`hydro` or `meteo`.")
+    kind: str | None = Field(description="`hydro`, `meteo` or `groundwater`.")
     meteo_kind: str | None = Field(
         description="Of a meteo station: `synoptic`, `climate`, `precipitation`."
+    )
+    groundwater_kind: str | None = Field(
+        description="Of a groundwater object: `bore` or `spring`."
     )
     river: str | None
     hydrographic_code: str | None = Field(description="The river's hydrographic code.")
@@ -1211,6 +1257,7 @@ class StationItem(BaseModel):
             name=row.name,
             kind=row.kind,
             meteo_kind=row.meteo_kind,
+            groundwater_kind=row.groundwater_kind,
             river=row.river,
             hydrographic_code=row.hydrographic_code,
             river_order=row.river_order,
@@ -1544,9 +1591,12 @@ class StationTimelineItem(BaseModel):
     provider: str = Field(description="`IMGW` or `CHMU`; a code is its provider's.")
     code: str = Field(description="Station code, as text.")
     name: str | None
-    kind: str | None = Field(description="`hydro` or `meteo`.")
+    kind: str | None = Field(description="`hydro`, `meteo` or `groundwater`.")
     meteo_kind: str | None = Field(
         description="Of a meteo station: `synoptic`, `climate`, `precipitation`."
+    )
+    groundwater_kind: str | None = Field(
+        description="Of a groundwater object: `bore` or `spring`."
     )
     river: str | None
     hydrographic_code: str | None = Field(description="The river's hydrographic code.")
@@ -1574,6 +1624,7 @@ class StationTimelineItem(BaseModel):
             name=row.name,
             kind=row.kind,
             meteo_kind=row.meteo_kind,
+            groundwater_kind=row.groundwater_kind,
             river=row.river,
             hydrographic_code=row.hydrographic_code,
             active=row.active,
@@ -1648,6 +1699,9 @@ class StationPoint(BaseModel):
     name: str | None
     kind: str | None
     meteo_kind: str | None
+    groundwater_kind: str | None = Field(
+        description="Of a groundwater object: `bore` or `spring`."
+    )
     river: str | None
     lon: float = Field(description="Longitude, WGS84.")
     lat: float = Field(description="Latitude, WGS84.")
@@ -1671,6 +1725,7 @@ class StationPoint(BaseModel):
             name=row.name,
             kind=row.kind,
             meteo_kind=row.meteo_kind,
+            groundwater_kind=row.groundwater_kind,
             river=row.river,
             lon=lon,
             lat=lat,
@@ -1769,8 +1824,12 @@ class StationDatasetItem(BaseModel):
     )
     name: str | None = Field(description="The producer's name of its segment.")
     provider: str = Field(description="`IMGW` or `CHMU`.")
-    kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
-    time_unit: TimeUnit = Field(description="Unit of its series: `day`, `month`, …")
+    kind: str | None = Field(description="Its family: `hydro`, `meteo`, `groundwater`.")
+    time_unit: TimeUnit = Field(
+        description=(
+            "Unit of its series: `day`, `week`, `month`, `half_year` or `hour` (UTC)."
+        )
+    )
     year_type: YearType = Field(
         description=(
             "Numbering of the years of its labels and of `years` without"
@@ -1787,7 +1846,17 @@ class StationDatasetItem(BaseModel):
     )
     series: str | None = Field(description="Label of the current series version.")
     series_version: str = Field(
-        description="The version's `series.json`, relative to the store."
+        description=(
+            "The version's `series.json`, relative to the store; of a series kept"
+            " as one version per month, its latest month's."
+        )
+    )
+    months: list[str] = Field(
+        description=(
+            "The months (`YYYY-MM`) of a series kept as one version per month, in"
+            " order (Obserwator's hourly series); empty for a series of one"
+            " version."
+        )
     )
     variables: list[DatasetVariableItem] = Field(
         description=(
@@ -1810,6 +1879,7 @@ class StationDatasetItem(BaseModel):
             years=YearSpan.of(found.span),
             series=found.series,
             series_version=found.series_version,
+            months=list(found.months),
             variables=[DatasetVariableItem.of(item) for item in found.variables],
         )
 
@@ -2067,7 +2137,7 @@ class StationChart(IndexAnswer):
     provider: str
     code: str = Field(description="Station code, as text.")
     dataset: str = Field(description="Dataset key of the series.")
-    kind: str | None = Field(description="Its family: `hydro`, `meteo`.")
+    kind: str | None = Field(description="Its family: `hydro`, `meteo`, `groundwater`.")
     time_unit: TimeUnit = Field(
         description=(
             "Unit of the series: `day` or `month`; `half_year` for the half-year"
@@ -2134,7 +2204,7 @@ class ComparedStation(BaseModel):
     provider: str
     code: str = Field(description="Station code, as text.")
     name: str | None
-    kind: str | None = Field(description="`hydro` or `meteo`.")
+    kind: str | None = Field(description="`hydro`, `meteo` or `groundwater`.")
     river: str | None
     hydrographic_code: str | None = Field(description="The river's hydrographic code.")
     location: StationLocationItem
@@ -2334,8 +2404,10 @@ def series_label_text(label: SeriesLabel, *, time_unit: TimeUnit) -> str:
     "częściowy · od 1972 · luki 12%", "brak danych (tylko H)" and "nieznane"
     in Polish (SPEC 4.8.4), with "· nieznane: 2011–2025" when some years of
     the range are not known (at most two ranges, else "· nieznane: 15 lat").
-    A label names one year as one; a gap is written in days ``RRRR.MM.DD``,
-    or in months ``RRRR.MM`` for monthly and half-year characteristics.
+    A label names one year as one; a gap is written in days ``RRRR.MM.DD`` (of
+    weeks from the Monday of the first to the Sunday of the last), in months
+    ``RRRR.MM`` for monthly and half-year characteristics, and in hours
+    ``RRRR.MM.DD GG:MM`` with ``UTC`` (the starts of its first and last hour).
 
     Parameters
     ----------
@@ -2392,10 +2464,19 @@ def _years(years: YearRange) -> str:
 
 
 def _gap_text(gap: GapRun | None, time_unit: TimeUnit) -> str:
-    """``1981.06.02–1982.12.31`` (``RRRR.MM`` for characteristics), or one unit."""
+    """``1981.06.02–1982.12.31`` (``RRRR.MM`` for characteristics), or one unit.
+
+    Hours: ``2026.09.15 06:00–11:00 UTC``, the date of the last hour written
+    only when it is another day.
+    """
     if gap is None:
         return ""
-    form = "%Y.%m.%d" if time_unit == "day" else "%Y.%m"
+    if time_unit == "hour":
+        start, end = gap.start.strftime("%Y.%m.%d %H:%M"), gap.end.strftime("%H:%M")
+        if gap.end.toordinal() != gap.start.toordinal():
+            end = gap.end.strftime("%Y.%m.%d %H:%M")
+        return f"{start} UTC" if gap.start == gap.end else f"{start}–{end} UTC"
+    form = "%Y.%m.%d" if time_unit in ("day", "week") else "%Y.%m"
     start, end = gap.start.strftime(form), gap.end.strftime(form)
     return start if start == end else f"{start}–{end}"
 

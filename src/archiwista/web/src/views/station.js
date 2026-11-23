@@ -31,10 +31,10 @@
 
 import { getStation, listStationDatasets } from "../api.js";
 import { useApp } from "../context.js";
-import { count, day, int } from "../format.js";
+import { count, day, int, unitTime } from "../format.js";
 import { useResource } from "../hooks.js";
 import { catalog as C } from "../labels/catalog.js";
-import { providerName, T, t } from "../labels/index.js";
+import { providerName, T, t, variableName } from "../labels/index.js";
 import { station as L } from "../labels/station.js";
 import {
   COMPARE_VIEW,
@@ -45,6 +45,7 @@ import {
   stationAddress,
   stationShape,
   stationType,
+  yearTypeFamily,
 } from "../map/stations.js";
 import { SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { navigate, readRoute, setParams } from "../router.js";
@@ -154,9 +155,9 @@ export function parseStation(value) {
   return { code, lookup: { store, provider } };
 }
 
-/** The family whose remembered year type numbers the card: its kind, else hydro. */
+/** The family whose remembered year type numbers the card (map/stations.js `yearTypeFamily`). */
 function familyOf(station) {
-  return station.kind === "meteo" ? "meteo" : "hydro";
+  return yearTypeFamily(station.kind);
 }
 
 function CardBody({ card, params, error, loading }) {
@@ -362,7 +363,7 @@ function SeriesCoverage({ series, name, shape }) {
     <ul class="sc-vars">
       ${Object.values(series.coverage).map(
         (variable) => html`<${VariableLine} key=${variable.key} variable=${variable} shape=${shape}
-          forms=${forms} />`,
+          forms=${forms} hourly=${series.time_unit === "hour"} />`,
       )}
     </ul>
   </div>`;
@@ -370,9 +371,12 @@ function SeriesCoverage({ series, name, shape }) {
 
 /**
  * A variable's line: the label of „luki” names its longest gap already, so
- * only the gap's length follows it; another label gets the gap's dates too.
+ * only the gap's length follows it; another label gets the gap's dates too
+ * (the hours of an hourly series in UTC). The labels count whole years, which
+ * an hourly series of a few months seldom knows, so its line adds the hours
+ * of its first and last value.
  */
-function VariableLine({ variable, shape, forms }) {
+function VariableLine({ variable, shape, forms, hourly = false }) {
   const gap = variable.longest_gap;
   const { key, unit, label } = variable;
   let longest = null;
@@ -380,16 +384,25 @@ function VariableLine({ variable, shape, forms }) {
     longest = t(L.coverage.longest_gap_units, { units: count(gap.units, forms) });
   } else if (gap) {
     const units = count(gap.units, forms);
-    longest = t(L.coverage.longest_gap, { from: day(gap.from), to: day(gap.to), units });
+    longest = t(L.coverage.longest_gap, { from: unitTime(gap.from), to: unitTime(gap.to), units });
   }
-  const title = t(L.coverage.variable_title, { variable: variable.variable, unit, label });
+  const name = T.common.variables[key];
+  const variableTitle = variableName(variable.variable);
+  const title = t(L.coverage.variable_title, { variable: variableTitle, unit, label });
   return html`<li class="sc-var" title=${title}>
     <${StationSymbol} shape=${shape} state=${variable.state} size=${13} />
     <b class="sc-key mono">${key}</b>
+    ${name ? html`<span class="sc-name">${name}</span>` : null}
     <span class="faint">${unit}</span>
     <span class="sc-label">${label}</span>
     <span class="faint sc-full">· ${count(variable.complete_years, L.coverage.full_years)}</span>
     ${longest ? html`<span class="faint sc-gap">· ${longest}</span>` : null}
+    ${hourly && variable.first
+      ? html`<span class="faint sc-span">· ${t(L.coverage.span, {
+          from: unitTime(variable.first),
+          to: unitTime(variable.last),
+        })}</span>`
+      : null}
   </li>`;
 }
 
@@ -468,7 +481,9 @@ function Origin({ card, names }) {
 
 /**
  * A series version: its label, the station's file (the person's own path
- * first, the server's and the aliased ones beside it), digest, index, licence.
+ * first, the server's and the aliased ones beside it), digest, index, licence;
+ * of a series kept as one version per month, the months joined (the file and
+ * the index are the latest month's).
  */
 function SeriesOrigin({ series, name, paths }) {
   const O = L.origin;
@@ -482,6 +497,10 @@ function SeriesOrigin({ series, name, paths }) {
       <${Tech} value=${[["dataset", series.dataset]]}>${t(O.series, { dataset: name })}</${Tech}>
     </h4>
     <dl class="kv fc-meta">
+      ${series.months?.length
+        ? html`<dt>${O.months}</dt><dd><span class="mono">${monthSpan(series.months)}</span>
+            <span class="faint">${t(O.months_note, { count: series.months.length })}</span></dd>`
+        : null}
       <dt>${O.version}</dt><dd><span class="mono">${series.series ?? T.common.empty}</span></dd>
       <dt>${O.file}</dt>
       <dd class="sc-file">
@@ -498,6 +517,13 @@ function SeriesOrigin({ series, name, paths }) {
       <dt>${O.license}</dt><dd>${series.license ?? T.common.empty}</dd>
     </dl>
   </div>`;
+}
+
+/** The months of a monthly-kept series: `2026-09–2026-10`, one month as it is. */
+function monthSpan(months) {
+  const first = months[0];
+  const last = months[months.length - 1];
+  return first === last ? first : `${first}–${last}`;
 }
 
 /** The catalog version the station comes from and the source of its position. */

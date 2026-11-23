@@ -16,7 +16,7 @@
 
 import { int, plural, size } from "../format.js";
 import { catalog as L } from "../labels/catalog.js";
-import { t } from "../labels/index.js";
+import { T, t } from "../labels/index.js";
 import { html, Icon, Spinner, useEffect, useLayoutEffect, useMemo, useRef, useState } from "../ui.js";
 import { variantFacts, variantName } from "../variant.js";
 
@@ -415,6 +415,28 @@ function versionTags(item, versions) {
   if (version.is_full_sheet) tags.push(html`<span class="cat-tag">${L.grid.full_sheet}</span>`);
   if (version.state === "missing") {
     tags.push(html`<span class="cat-badge bad">${L.grid.missing_version}</span>`);
+  }
+  return [...tags, ...tierTags(version)];
+}
+
+/**
+ * The tier of a version that is not verified data and the publication state its
+ * sidecar records (none: public, no tag).
+ *
+ * @param {import("../types.js").Version} version
+ */
+function tierTags(version) {
+  const C = T.common;
+  const tags = [];
+  if (version.tier) {
+    const title = t(C.tier_title, { tier: version.tier });
+    tags.push(html`<span class="cat-badge warn cat-tier" title=${title}>
+      ${C.tier[version.tier] ?? version.tier}</span>`);
+  }
+  if (version.publication) {
+    const title = t(C.publication_title, { publication: version.publication });
+    tags.push(html`<span class="cat-tag cat-publication" title=${title}>
+      ${C.publication[version.publication] ?? version.publication}</span>`);
   }
   return tags;
 }

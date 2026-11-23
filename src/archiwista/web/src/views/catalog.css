@@ -92,6 +92,8 @@
 .cat-badge.bad { background: var(--bad-bg); color: var(--bad-ink); }
 .cat-tag { display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border: 1px solid var(--line-2); border-radius: 5px; font-size: 10.5px; color: var(--text-2); white-space: nowrap; }
 .cat-tag.current { background: var(--ok-bg); border-color: #bbf7d0; color: var(--ok-ink); }
+/* The tier's words are long: they wrap in the version's column (the file rows grow). */
+.cat-badge.cat-tier { height: auto; min-height: 16px; white-space: normal; }
 
 .cat-more { position: absolute; left: 0; right: 0; top: 0; height: 44px; display: flex; align-items: center; justify-content: center; }
 .cat-empty { padding: 36px 20px; display: grid; justify-items: center; }

@@ -27,9 +27,9 @@
  * rows, opens its card (views/station.js).
  */
 
-import { count, day, int } from "../format.js";
+import { count, int, unitTime } from "../format.js";
 import { catalog as L } from "../labels/catalog.js";
-import { providerName, t } from "../labels/index.js";
+import { providerName, t, variableName } from "../labels/index.js";
 import { StationSymbol, stationShape, stationType } from "../map/stations.js";
 import {
   html,
@@ -352,7 +352,7 @@ function RowVariable({ variables, color, onChoose }) {
     <span class="stl-colors-label" aria-hidden="true">${TL.row_variable}:</span>
     ${variables.map((item) => {
       const on = item.key === color;
-      const title = t(TL.row_variable_title, { variable: item.key, unit: item.unit });
+      const title = t(TL.row_variable_title, { variable: variableName(item.key), unit: item.unit });
       return html`<button type="button" key=${item.key} class=${`chip${on ? " on" : ""}`}
         aria-pressed=${on ? "true" : "false"} title=${title}
         onClick=${() => onChoose(item.key)}>${item.key}</button>`;
@@ -470,7 +470,11 @@ function Tip({ row, col, span, yearType }) {
       })
     : null;
   const longest = gap
-    ? t(TL.longest_gap, { from: day(gap.from), to: day(gap.to), units: count(gap.units, forms) })
+    ? t(TL.longest_gap, {
+        from: unitTime(gap.from),
+        to: unitTime(gap.to),
+        units: count(gap.units, forms),
+      })
     : null;
   const unit = html`<span class="faint">(${variable.unit})</span>`;
   return html`<div><b>${name} · ${variable.key}</b> ${unit}</div>
@@ -599,7 +603,7 @@ function yearTitle(year, yearType) {
   return t(TL.year_calendar, { year });
 }
 
-/** The words of a series' unit: days, months or half-years. */
+/** The words of a series' unit: hours, days, weeks, months or half-years. */
 function unitForms(series) {
   return TL.units[series?.time_unit] ?? TL.units.day;
 }
@@ -616,7 +620,7 @@ function stationTitle(station) {
 /** A variable for its row heading's title: key, unit and label. */
 function variableTitle(variable) {
   const { key, unit, label } = variable;
-  return t(S.variable_title, { variable: key, unit, label });
+  return t(S.variable_title, { variable: variableName(key), unit, label });
 }
 
 /** Scroll a focused cell out from under the sticky row headings, into the view. */

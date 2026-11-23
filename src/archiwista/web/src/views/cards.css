@@ -85,6 +85,8 @@
 .fc-label { color: var(--text-2); overflow-wrap: anywhere; }
 .fc-marks { grid-column: 3; grid-row: 1; display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 .fc-pins { grid-column: 2 / -1; margin: 0 0 4px 8px; font-size: 12px; line-height: 1.5; }
+/* The tier and publication of a version, a row of their own: their words are long */
+.fc-tier { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 4px 8px; }
 .fc-pin .state-badge { margin-left: 2px; }
 
 .fc-details { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 10px; }
@@ -93,6 +95,8 @@
 .fc-version-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 /* „Porównaj z…” and „Pobierz plik” together on the right */
 .fc-version-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+/* The tier and publication of the version, under its title */
+.fc-version-tier { margin: 0; }
 .fc-compare { position: relative; }
 .fc-compare > summary { list-style: none; cursor: pointer; }
 .fc-compare > summary::-webkit-details-marker { display: none; }
@@ -232,7 +236,8 @@
   .fc-meta, .store-kv { grid-template-columns: 1fr; }
   .fc-version { grid-template-columns: 14px minmax(0, 1fr); }
   .fc-marks { grid-column: 2; grid-row: 2; justify-content: flex-start; padding-left: 8px; }
-  .fc-pins { grid-row: 3; }
+  .fc-tier { grid-row: 3; }
+  .fc-pins { grid-row: 4; }
   .store-head { align-items: flex-start; }
 }
 /* the project's exports (views/project-exports.js) */

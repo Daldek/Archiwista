@@ -192,6 +192,8 @@ _VERSION_EXAMPLE = {
     "missing_since": None,
     "location": _LOCATION_EXAMPLE,
     "pinned_by": [_PIN_EXAMPLE],
+    "tier": None,
+    "publication": None,
 }
 _KARTOGRAF_FIX = message("fix.install", "en", requirement="kartograf<0.9,>=0.8.0")
 _STALE_STORE_EXAMPLE = {
@@ -1136,6 +1138,21 @@ class Version(BaseModel):
     pinned_by: list[Pin] = Field(
         description="Pins of projects the session's principal sees."
     )
+    tier: str | None = Field(
+        description=(
+            "The tier of data that are not the verified archive, as the sidecar"
+            " records it (Obserwator: `telemetry` or `operational`, unverified"
+            " data); `null` for verified data and a producer without tiers."
+        )
+    )
+    publication: str | None = Field(
+        description=(
+            "The publication state of the version's source when it was written, as"
+            " the sidecar records it (`public` or `private`); `null` when it"
+            " records none (public). Signed-in people may download a private"
+            " version."
+        )
+    )
 
     @classmethod
     def of(cls, version: VersionSummary, store: str) -> Self:
@@ -1159,6 +1176,8 @@ class Version(BaseModel):
             missing_since=version.missing_since,
             location=Location.of(version.location),
             pinned_by=[Pin.of(pin) for pin in version.pinned_by],
+            tier=version.tier,
+            publication=version.publication,
         )
 
 

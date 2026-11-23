@@ -205,17 +205,18 @@ def test_installed_obserwator_within_supported_range() -> None:
     )
 
 
-def test_the_supported_range_starts_at_obserwator_3_1() -> None:
-    """Obserwator 3.0.x is outside the range: the adapter reads what 3.1.0 writes.
+def test_the_supported_range_starts_at_obserwator_3_2() -> None:
+    """Obserwator 3.1.x is outside the range: the adapter reads what 3.2.0 writes.
 
-    Series versions of a subset of stations and the datasets ``cz.chmu.*`` came with
-    3.1.0; the range admits its development versions only while the extra pins a
-    commit (REL-5.6).
+    The sidecar's ``tier`` and ``publication``, the captures, the hourly series of one
+    version per month and ČHMÚ's groundwater came with 3.2.0 (A-ADR-059); the range
+    starts at the release, its development versions outside it (REL-5.6).
     """
     supported = SpecifierSet(SUPPORTED_VERSIONS)
 
-    assert not supported.contains(Version("3.0.1"), prereleases=True)
-    assert supported.contains(Version("3.1.0"), prereleases=True)
+    assert not supported.contains(Version("3.1.0"), prereleases=True)
+    assert not supported.contains(Version("3.2.0.dev0"), prereleases=True)
+    assert supported.contains(Version("3.2.0"), prereleases=True)
     assert not supported.contains(Version("4.0.0"), prereleases=True)
 
 

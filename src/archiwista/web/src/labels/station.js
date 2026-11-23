@@ -22,7 +22,8 @@ export const station = {
     "dla danych {family}.",
   year_type_annual: "Wykres roczny: zawsze lata hydrologiczne",
   year_type_failed: "Nie udało się zapamiętać wyboru lat.",
-  families: { hydro: "hydrologicznych", meteo: "meteorologicznych" },
+  // The remembered year type of groundwater data is meteo's (`YearTypes.of_kind`).
+  families: { hydro: "hydrologicznych", meteo: "meteorologicznych i wód podziemnych" },
   location: {
     point: "Położenie: {lat}° N, {lon}° E",
     source: "źródło: {source}",
@@ -49,11 +50,14 @@ export const station = {
     series: "{dataset} · lata {year_type} {years}",
     full_years: ["pełny rok", "pełne lata", "pełnych lat"],
     longest_gap: "najdł. przerwa {from}–{to} ({units})",
+    span: "wartości {from}–{to}",
     longest_gap_units: "najdł. przerwa: {units}",
     variable_title: "{variable} ({unit}): {label}",
   },
   units: {
+    hour: ["godzina", "godziny", "godzin"],
     day: ["dzień", "dni", "dni"],
+    week: ["tydzień", "tygodnie", "tygodni"],
     month: ["miesiąc", "miesiące", "miesięcy"],
     half_year: ["półrocze", "półrocza", "półroczy"],
     year: ["rok", "lata", "lat"],
@@ -67,7 +71,7 @@ export const station = {
   },
   chart: {
     series: "Szereg",
-    series_units: { day: "dobowe", month: "miesięczne" },
+    series_units: { hour: "godzinowe", day: "dobowe", week: "tygodniowe", month: "miesięczne" },
     series_annual: "Roczne (z charakterystyk półrocznych)",
     variable: "Zmienna",
     second: "Druga zmienna",
@@ -170,6 +174,8 @@ export const station = {
   },
   origin: {
     series: "Szereg: {dataset}",
+    months: "Miesiące szeregu",
+    months_note: "· wersje miesięczne: {count}; plik i spis szeregów to ostatni miesiąc",
     version: "Wersja szeregów",
     file: "Plik stacji",
     sha256: "SHA-256",

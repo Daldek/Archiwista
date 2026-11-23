@@ -40,3 +40,15 @@ export function t(text, values = {}) {
 export function providerName(id) {
   return common.provider[id] ?? id;
 }
+
+/**
+ * A station variable for a person: its key with its name when the dictionary
+ * has one (`H_asl — rzędna zwierciadła wody`), else the key as it is.
+ *
+ * @param {string} key - The variable's key, as the API gives it.
+ * @returns {string}
+ */
+export function variableName(key) {
+  const name = common.variables[key];
+  return name ? `${key} — ${name}` : key;
+}

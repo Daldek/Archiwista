@@ -5,6 +5,94 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
+## [Unreleased]
+
+Changes since 0.3.3, to be released as 0.4.0: Archiwista's part (A1) of Obserwator 3.2.0,
+whose additions within version 1 of its formats (Nogat ECO-084, ECO-085) are the tiers
+and captures of operational data (its ADR-030), the hourly series kept as one version per
+month (ADR-031) and ČHMÚ's groundwater (ADR-032); A-ADR-059.
+
+### Added
+
+- **A version shows its tier and publication state (Nogat ECO-084; Obserwator ADR-030 D6;
+  A-ADR-059).** `Version` of the API (the rows of `GET /slots`, `versions` of the file
+  card `GET /stores/{store}/slots/{slot}`, `version` of `GET /stores/{store}/versions/{version}`)
+  has `tier` (`telemetry` or `operational`: data that are not the provider's verified
+  archive) and `publication` (`public` or `private`: the state of the version's source when
+  it was written), each as its sidecar records it; `null` is a sidecar that records none,
+  verified and public data, and every Kartograf version. `archiwista entry` and `version`
+  print them after a version (`, telemetry: operational data, unverified`, `, operational
+  data, unverified`, `, private`, `, public`; in Polish `, telemetria: dane operacyjne,
+  niezweryfikowane`, `, dane operacyjne, niezweryfikowane`, `, prywatna`, `, publiczna`).
+  In the „Katalog” file list, on the file card's version axis and under the chosen
+  version's title a version has a badge „telemetria: dane operacyjne, niezweryfikowane” or
+  „dane operacyjne, niezweryfikowane” and, when its sidecar records one, „publiczne” or
+  „prywatne”; verified data without a recorded state show nothing. Downloads do not
+  change: a signed-in person may download a private version (Obserwator ADR-030 D5).
+- **Groundwater stations of ČHMÚ (Obserwator ADR-032).** The station kind `groundwater`, an
+  observation bore or a spring: `kind` `groundwater` and the new `groundwater_kind` (`bore`,
+  `spring`, else `null`) on the items of `GET /stations`, `GET /stations/timeline`,
+  `GET /stations/{code}` and the points of `GET /map/stations`, and `?kind=groundwater`;
+  `archiwista stations` prints `groundwater (bore)`. The product „Stacje wód podziemnych”
+  on the map and in the „Katalog” draws them as a diamond (brown in the legend and the
+  lists), named „stacja wód podziemnych: otwór obserwacyjny” or „…: źródło” in tooltips,
+  lists, the Timeline and the station card; the Katalog's „Rodzaj stacji” has „stacje wód
+  podziemnych”, and a groundwater product has no type chips. The location sources
+  `cz.chmu.groundwater_now` („bieżące metadane ČHMÚ, wody podziemne”),
+  `cz.chmu.groundwater_stations` („wykaz obiektów ČHMÚ, wody podziemne”) and
+  `pl.imgw.meteo_details` (the station page of IMGW-PIB's hydrological service, meteo
+  stations) are named, and the variables `H_asl` [m] („rzędna zwierciadła wody”) and
+  `spring_yield` [l/s] („wydajność źródła”) are named on the card and in tooltips.
+  Groundwater data take the year type remembered for meteo data (the hint reads „…
+  zapamiętywany dla danych meteorologicznych i wód podziemnych”).
+- **Weekly and hourly series are indexed with their coverage (A-ADR-059).** A series of
+  weeks (ČHMÚ's `cz.chmu.groundwater_weekly`) counts calendar weeks, Monday to Sunday, and
+  a week belongs to the year of its Monday; a series of hours (`pl.imgw.hydro_subdaily`,
+  `cz.chmu.hydro_subdaily`) counts UTC hours. `time_unit` of the station and dataset answers
+  is `day`, `week`, `month`, `half_year` or `hour`. Of an hourly series a variable's
+  `first` and `last` and a gap's `from` and `to` are UTC times `YYYY-MM-DDTHH:MM:SSZ` (the
+  start of the hour), and a label writes a gap `2026.09.15 06:00–11:00 UTC`; a weekly gap
+  runs from the Monday of its first week to the Sunday of its last. The station card, the
+  Timeline and the comparison count such a series in weeks or hours and give hours in UTC
+  („wartości RRRR.MM.DD GG:MM UTC–…”).
+- **A series kept as one version per month is one series (Obserwator ADR-031).** The
+  monthly slots `series:<key>:<YYYY-MM>` of an hourly dataset are joined into one series of
+  the dataset: its known periods, values and gaps run across the months, `series_version`
+  is the latest month's version and `file` the station's file of the latest month that has
+  it, and the new `months` (`YYYY-MM`, in order; empty for a series of one version) of
+  `StationSeriesItem` and `StationDatasetItem` lists them. The station card's „Pochodzenie”
+  has a row „Miesiące szeregu”. When any month's version changes, a scan reads every month
+  again.
+- **A series of a unit Archiwista does not know is skipped, never a failure (Nogat
+  ECO-085).** Its versions stay listed with their tier and publication; the coverage of its
+  stations is not read, the scan records its slots (the index table `skipped_series`) and
+  gives one warning notice `series_skipped` per dataset, again only when the version of one
+  of its slots changes or on a full scan.
+
+### Changed
+
+- **Obserwator (extra `obserwator`) is 3.2.0 (tag `v3.2.0`, was `v3.1.0`), and Archiwista
+  reads only it: the adapter's `SUPPORTED_VERSIONS` is `>=3.2.0,<4` (was `>=3.1.0,<4`), so
+  an Obserwator 3.1 installed beside Archiwista is reported incompatible by `archiwista
+  doctor` and `GET /sources` (`source_incompatible`).** Kartograf stays `v0.8.2`.
+  **Migration:** `uv sync --locked --all-extras` installs it (USAGE, "Updating to 0.4.0").
+- **The first start completes the index in place.** The index stays at schema version 1:
+  `versions.tier`, `versions.publication`, `stations.groundwater_kind`, the table
+  `skipped_series` and the column `series_catalogs.months` are additions within version 1,
+  and `series_catalogs` is rebuilt in place with its rows for the units `week` and `hour`.
+  Nothing is emptied (the job history stays) and no full scan is needed; versions of
+  Obserwator 3.2.0 that an older Archiwista indexed get their tier and publication from one
+  `archiwista reindex --store <store>` (USAGE, "Updating to 0.4.0").
+- **No chart of an hourly or weekly series.** The station card's chart offers daily,
+  monthly and annual series only, also when the address names an hourly or weekly one;
+  `GET /stations/{code}/series` with `dataset` of such a series and `GET /stations/compare`
+  of one answer `400` with `details.reason` `no_chart` (`details.unit` `hour` or `week`),
+  which the comparison shows. Obserwator's interface draws the hourly chart.
+- A version of a month of an hourly series has the data year of its month
+  (`request.month` of its sidecar). A series whose unit Archiwista does not know is refused
+  by the adapter as `unsupported` (reason `series_unit`) before its file is read, no longer
+  as a producer error (`series_unreadable`).
+
 ## [0.3.3] - 2026-11-22
 
 Changes since 0.3.2: release 0.3.3, a patch for Nogat's release round of 2026-11-21. It

@@ -127,15 +127,20 @@ MESSAGES = {
     "obserwator_product_meteo": Text(
         "Meteorological stations", "Stacje meteorologiczne"
     ),
+    "obserwator_product_groundwater": Text(
+        "Groundwater stations", "Stacje wód podziemnych"
+    ),
     "obserwator_product_analyses": Text("Station analyses", "Analizy stacji"),
     "obserwator_series_unit": Text(
         (
             "The series of {dataset} are kept by the unit {unit}, which Archiwista"
-            " cannot measure (day, month or half-year)."
+            " does not know (it knows days, weeks, months, half-years and hours):"
+            " their versions are listed, the coverage of their stations is not read."
         ),
         (
-            "Szeregi {dataset} mają jednostkę {unit}, której Archiwista nie umie"
-            " zmierzyć (dzień, miesiąc albo półrocze)."
+            "Szeregi {dataset} mają jednostkę {unit}, której Archiwista nie zna"
+            " (zna dni, tygodnie, miesiące, półrocza i godziny): ich wersje są na"
+            " liście, pokrycia ich stacji nie odczytuje."
         ),
     ),
     "obserwator_series_station": Text(
