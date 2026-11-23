@@ -1,7 +1,7 @@
-# User guide: Archiwista 0.3.3
+# User guide: Archiwista 0.4.0
 
-Archiwista 0.3.3 (v0.3 "Actions", v0.4 "Team" and the projects, released together as 0.3.0, with
-Obserwator 3.1.0 since 0.3.3) shows a
+Archiwista 0.4.0 (v0.3 "Actions", v0.4 "Team" and the projects, released together as 0.3.0,
+with Obserwator 3.1.0 since 0.3.3 and Obserwator 3.2.0 since 0.4.0) shows a
 Kartograf store, and the files of an Obserwator
 store, on a map, in a catalog and in file cards, with previews, the Fan, the
 Timeline and comparison; projects have a folder of own data and snapshots. It
@@ -140,6 +140,42 @@ administrator, once):
    <data_dir>/obserwator-old`, then DATA is `<data_dir>/obserwator`); otherwise choose
    the store again under „Zmień…” → „Magazyn: obserwator” of each project's card. Remove
    OLD only after the scan shows the stations and series again.
+
+### Updating to 0.4.0 (Obserwator 3.2.0)
+
+Obserwator 3.2.0 adds to its formats, within version 1 (Nogat ECO-085), the tier and
+publication state of a version, captures of operational data, hourly series kept as one
+version per month and ČHMÚ's groundwater; Archiwista 0.4.0 reads them (A-ADR-059) and needs
+Obserwator 3.2 (`archiwista doctor` reports an Obserwator 3.1 incompatible). As
+administrator:
+
+1. Install Archiwista 0.4.0 with `uv sync --locked --all-extras` (Obserwator 3.2.0, tag
+   `v3.2.0`).
+2. Deploy it before Obserwator 3.2.0 writes captures or hourly series to the shared roots
+   (ECO-085: the readers first). 0.3.3 cannot read them: it skips the month slots of an
+   hourly series and reports a weekly series unreadable.
+3. Start it. On its first start 0.4.0 completes the existing index in place, in one
+   transaction: it adds `versions.tier`, `versions.publication`,
+   `stations.groundwater_kind` and the table `skipped_series`, and rebuilds the table
+   `series_catalogs` in place, keeping its rows, for the units `week` and `hour` and its
+   new column `months`. Everything the index holds stays, the job history included, and
+   no full scan is needed.
+4. If Obserwator 3.2.0 wrote to a store before 0.4.0 indexed it, run `archiwista reindex
+   --store <store>` once, so that the tier and publication of those versions are read: a
+   full scan reads every sidecar again (about 1,645 s for the test server's `agent-tmp`).
+5. Run Archiwista with the same `state_dir` as Obserwator's timers (the same account, or
+   the same `state_dir` in `[nogat]` of `nogat.toml`). Obserwator, called by Archiwista's
+   downloads, keeps the answers of some sources (`pl.imgw.hydro_now`, for instance) in its
+   spool `<state_dir>/obserwator/captures/`, as the `state_dir` it sees in Archiwista's
+   process says; the night's `store sync` of Obserwator's timers seals that spool into
+   capture versions, and a spool under another `state_dir` is sealed by nothing.
+
+Downloads do not change: a version of a private source („prywatne”) is downloaded by any
+signed-in person, as Obserwator's ADR-030 D5 allows Archiwista's signed-in users. What
+Nogat's ECO-084 leaves to a later minor release is a public view without sign-in, which
+would honour `private`. A script reads `tier`, `publication`, `groundwater_kind`, `months`
+and the UTC hours of an hourly series ([`AGENT_API.md`](AGENT_API.md)); see the CHANGELOG
+of 0.4.0.
 
 ### Updating to 0.3.3 (Obserwator 3.1.0)
 
@@ -399,6 +435,13 @@ versions a scan has just indexed.
   „Źródła i warunki”, which opens „Źródła danych i warunki korzystania” with every
   line and the terms, and there „Kopiuj atrybucję” (every line, one a line; `Esc`
   closes only this window). Nothing when no row's producer names its data's origin.
+- **Unverified and private data** (0.4.0, Obserwator 3.2.0): a version of data that are
+  not the provider's verified archive has in its row the badge „telemetria: dane
+  operacyjne, niezweryfikowane” (IMGW-PIB's telemetry) or „dane operacyjne,
+  niezweryfikowane” (Obserwator's captures of current data, ČHMÚ's recent data, the
+  hourly series), and „publiczne” or „prywatne” when its sidecar records the state of its
+  source; the verified archive shows neither. A private version is downloaded as any
+  other by a signed-in person.
 
 ## File card
 
@@ -411,7 +454,8 @@ versions a scan has just indexed.
 - **Version:** year and date of the data, label (campaign, release or download
   date), request, full sheet, resolution, horizontal and vertical systems,
   nodata, size, SHA-256, download date and the location with the source of the
-  footprint.
+  footprint. The tier and publication badges of the Catalog's rows stand on the
+  timeline beside each version and under the chosen version's title.
 - **The strip of sources** at the card's foot, under every tab: the lines the terms of
   the chosen version's provider require (A-ADR-055; for a producer that names no origin
   of its data, the attribution of its sidecar, e.g. GUGiK's, which only the window that
@@ -839,10 +883,13 @@ and `--until` with a time zone. An export is itself an entry of the log.
 
 ## IMGW stations
 
-A product of Obserwator chosen on the map („Stacje hydrologiczne” or „Stacje
-meteorologiczne”) shows its stations in place of outlines. The shape of a point is the
+A product of Obserwator chosen on the map („Stacje hydrologiczne”, „Stacje
+meteorologiczne” or, from 0.4.0, „Stacje wód podziemnych”) shows its stations in place of
+outlines. The shape of a point is the
 station type: a triangle for a water gauge, a square for a climatological or synoptic
-station, a circle for a precipitation post. Its colour and fill are the coverage of
+station, a circle for a precipitation post, a diamond for a groundwater station of ČHMÚ
+(„stacja wód podziemnych: otwór obserwacyjny” or „…: źródło”; brown in the legend and the
+lists). Its colour and fill are the coverage of
 the variable chosen in "Kolor punktów" in the bar (green solid "ciągły", orange solid
 "luki", orange half "częściowy", grey hollow "brak danych", grey dashed "nieznane");
 the legend names each, and the tooltip of a point gives the label of every variable.
@@ -917,6 +964,23 @@ line and the links to the terms (for a position of IMGW-PIB the hydrological
 service's terms too), with „Kopiuj atrybucję”.
 
 ![The station card](reports/v0.5-screenshots/04-karta-stacji.webp)
+
+Weekly and hourly series (0.4.0, Obserwator 3.2.0): ČHMÚ's weekly groundwater readings
+and the hourly series of IMGW-PIB and ČHMÚ (`pl.imgw.hydro_subdaily`,
+`cz.chmu.hydro_subdaily`) have their coverage on the card, in the Catalog and in the
+Timeline, counted in weeks (Monday to Sunday; a week belongs to the year of its Monday) or
+in UTC hours. An hourly series gives its first and last values as „wartości RRRR.MM.DD
+GG:MM UTC–…” and its gaps in UTC hours („2026.09.15 06:00–11:00 UTC”); its label is
+„nieznane” while its months do not fill a year, as for any series whose years are not
+wholly known. Obserwator keeps such a series as one version per month, and Archiwista
+joins the months into one series: „Pochodzenie” names the months in the row „Miesiące
+szeregu” and gives the file and the series index of the latest month. Groundwater
+stations show `H_asl` as „rzędna zwierciadła wody” [m] and `spring_yield` as „wydajność
+źródła” [l/s], and their years follow the year type remembered for meteorological data.
+Neither kind of series has a chart in Archiwista: „Wykres” draws the station's daily,
+monthly and annual series, also when the address names an hourly or weekly one, and the
+comparison of such a series shows the server's refusal (Obserwator's interface draws the
+hourly chart).
 
 "Wykres" draws one variable of the station's series, or two with "Druga zmienna" (a
 second unit gets the right axis). It opens on the whole period the variable's label

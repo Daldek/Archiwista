@@ -18,7 +18,7 @@ uv run playwright install chromium firefox
 GATE_CHECK_AUTHOR=0 scripts/gate.sh
 ```
 
-Archiwista 0.3.3 is the current release; the next versions are planned in
+Archiwista 0.4.0 is the current release; the next versions are planned in
 [`docs/SPEC.md`](docs/SPEC.md) section 13. A feature or a change of a public
 interface starts with a plan in `docs/plans/` that the maintainer approves:
 specification → plan → implementation. Feedback on these documents is especially

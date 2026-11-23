@@ -29,9 +29,11 @@ type ItemStatus = Literal["ok", "failed"]
 type RunStatus = Literal["ok", "partial", "failed"]
 # The year numbering of a series: hydrological (1 XI to 31 X) or calendar.
 type YearType = Literal["hydrological", "calendar"]
-# The unit of a series: a day, a month, or a half-year characteristic (one
-# value of each key in a hydrological year).
-type TimeUnit = Literal["day", "month", "half_year"]
+# The unit of a series: a day, a calendar week (Monday to Sunday, named by its
+# Monday: a weekly reading keeps its own date), a month, a half-year
+# characteristic (one value of each key in a hydrological year), or an hour
+# (UTC; a series kept as one version per calendar month).
+type TimeUnit = Literal["day", "week", "month", "half_year", "hour"]
 # A statistic of a half-year characteristic that is an extreme of its variable.
 type Extreme = Literal["min", "max"]
 # A statistic of a variable over a month or a half-year that a dataset of such
@@ -236,6 +238,13 @@ class EntryMeta:
     (a file republished with other bytes but the same content): the digest
     of that form and its name. Both are ``None`` when the producer has none;
     they are never computed here.
+
+    ``tier`` and ``publication`` are what the sidecar records of data that are
+    not the verified archive (Nogat ECO-084; Obserwator ADR-030 D6): the tier
+    (``telemetry``, ``operational``: unverified data) and the publication
+    state of the version's source when it was written (``public``,
+    ``private``), as provenance. ``None`` is a sidecar that records none: the
+    verified data and public, or a producer without tiers.
     """
 
     producer: str
@@ -272,6 +281,8 @@ class EntryMeta:
     producer_version: str | None = None
     content_sha256: str | None = None
     content_form: str | None = None
+    tier: str | None = None
+    publication: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -304,8 +315,10 @@ class Station:
     and the station is kept (P13, A-ADR-022): a location is never guessed.
     ``hydrographic_code`` is the river's code on the provider's list (IMGW:
     Raba ``2138``; its tributaries' codes begin with it, P19) and
-    ``river_order`` the station's place on that list. ``None`` is what the
-    catalog does not say.
+    ``river_order`` the station's place on that list. ``kind`` is the family
+    (``hydro``, ``meteo``, ``groundwater``: a bore or a spring, whose
+    ``groundwater_kind`` is ``bore`` or ``spring``, Obserwator ADR-032).
+    ``None`` is what the catalog does not say.
     """
 
     provider: str
@@ -325,6 +338,7 @@ class Station:
     gauge_zero_m: float | None = None
     river_km: float | None = None
     elevation_m: float | None = None
+    groundwater_kind: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,7 +350,10 @@ class VariableCoverage:
     ``summer``, ``annual``; ``Q_max@winter``). ``first`` and ``last`` are the
     first and last unit with a value (``None``: no value at all), ``gaps`` the
     maximal closed ranges of units without a value between them, a unit given
-    by a date in it. ``with_value`` counts the units with a value and
+    by a date in it. Of an hourly series each is the start of an hour, an aware
+    UTC ``datetime`` (a ``date``); of a weekly one ``first`` and ``last`` are
+    the dates of readings and a gap runs from the Monday of its first week to
+    the Monday of its last. ``with_value`` counts the units with a value and
     ``accumulated`` those holding an accumulated sum of the days before them.
     """
 
@@ -373,11 +390,14 @@ class StationSeries:
 class SeriesListing:
     """The index of a version of a dataset's series, without its series files.
 
-    ``provider`` and ``kind`` (``hydro``, ``meteo``) are the dataset's;
-    ``time_unit`` its unit and ``year_type`` the numbering of its archives;
-    ``first_year`` the first year the source publishes (``None``: not
-    declared). ``periods`` are the known periods of the version: the union of
-    its inputs' periods (SPEC 4.8.4).
+    ``provider`` and ``kind`` (``hydro``, ``meteo``, ``groundwater``) are the
+    dataset's; ``time_unit`` its unit and ``year_type`` the numbering of its
+    archives; ``first_year`` the first year the source publishes (``None``:
+    not declared). ``periods`` are the known periods of the version: the union
+    of its inputs' periods (SPEC 4.8.4), days also of an hourly series.
+    ``month`` is the calendar month (``YYYY-MM``) a version holds of a series
+    kept as one version per month, each in a slot of its own (Obserwator's
+    hourly series); ``None`` for a series of one version.
     """
 
     dataset: str
@@ -388,6 +408,7 @@ class SeriesListing:
     first_year: int | None
     periods: tuple[DateRange, ...]
     stations: tuple[StationSeries, ...]
+    month: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

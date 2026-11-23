@@ -81,6 +81,26 @@ export const common = {
   actor: {
     local: "właściciel lokalny",
   },
+  // The tier of a version that is not the verified archive (`Version.tier`,
+  // Nogat DEV-20.8 words); verified data have none.
+  tier: {
+    telemetry: "telemetria: dane operacyjne, niezweryfikowane",
+    operational: "dane operacyjne, niezweryfikowane",
+  },
+  tier_title: "Dane spoza zweryfikowanego archiwum dostawcy (tier: {tier})",
+  // The publication state of a version's source (`Version.publication`); none: public.
+  publication: {
+    public: "publiczne",
+    private: "prywatne",
+  },
+  publication_title:
+    "Stan publikacji źródła wersji (publication: {publication}); zalogowane osoby " +
+    "mogą pobrać także wersję prywatną",
+  // Names of station variables for people, by key; a key without one is shown as it is.
+  variables: {
+    H_asl: "rzędna zwierciadła wody",
+    spring_yield: "wydajność źródła",
+  },
   problem: {
     network_title: "Brak połączenia",
     network:

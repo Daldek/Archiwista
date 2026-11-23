@@ -422,7 +422,8 @@ function ProductStep({ products, productsError, filters, onFilters, stores, stat
 
 /**
  * The dataset chips, the type chips of a meteo or mixed product and the
- * stations on an area's boundary (SPEC 6.7, ADR-045).
+ * stations on an area's boundary (SPEC 6.7, ADR-045); a hydro or groundwater
+ * product has no type chips.
  *
  * @param {{station: StationPanel}} props
  */
@@ -452,7 +453,7 @@ function StationFields({ station }) {
           )}</div>`
         : null}
     </div>
-    ${choice.kind === "hydro"
+    ${choice.kind === "hydro" || choice.kind === "groundwater"
       ? null
       : html`<div class="station-field" role="group" aria-labelledby=${`${id}-types`}>
           <span class="station-field-label" id=${`${id}-types`}>${S.types}</span>

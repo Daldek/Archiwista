@@ -669,6 +669,11 @@
  * @property {string|null} missing_since
  * @property {Location} location
  * @property {Pin[]} pinned_by - Pins of projects the session's principal sees.
+ * @property {"telemetry"|"operational"|null} tier - The tier of data that are not
+ *   the verified archive, as the sidecar records it; null for verified data.
+ * @property {"public"|"private"|null} publication - The publication state of the
+ *   version's source when it was written; null when the sidecar records none
+ *   (public). Signed-in people may download a private version.
  */
 
 /**
@@ -881,6 +886,25 @@
  */
 
 /**
+ * A station's family, the product of its stations.
+ *
+ * @typedef {"hydro"|"meteo"|"groundwater"} StationKind
+ */
+
+/**
+ * The object of a groundwater station: an observation bore or a spring.
+ *
+ * @typedef {"bore"|"spring"} GroundwaterKind
+ */
+
+/**
+ * The unit of a station series: `hour` (hours in UTC; Obserwator keeps one version
+ * per month) and `week` (a calendar week, Monday to Sunday) have no chart here.
+ *
+ * @typedef {"hour"|"day"|"week"|"month"|"half_year"} TimeUnit
+ */
+
+/**
  * The coverage state of a variable's label in R (SPEC 4.8.4).
  *
  * @typedef {"continuous"|"gaps"|"partial"|"no_data"|"unknown"} SeriesState
@@ -910,12 +934,14 @@
  * @property {string} dataset - Dataset key, the `dataset` of the station routes.
  * @property {string|null} name - The producer's name of its segment.
  * @property {string} provider - `IMGW` or `CHMU`.
- * @property {string|null} kind - Its family (`hydro`, `meteo`): the product.
- * @property {string} time_unit - `day`, `month`, `half_year`.
+ * @property {StationKind|null} kind - Its family: the product.
+ * @property {TimeUnit} time_unit - The unit of its series.
  * @property {YearType} year_type - Default numbering of the years of its labels.
  * @property {YearSpan|null} years - R by default; null when no period is known.
  * @property {string|null} series - Label of the current series version.
  * @property {string} series_version - Its `series.json`, relative to the store.
+ * @property {string[]} months - The months (`YYYY-MM`) of a series kept as one
+ *   version per month; empty for a series of one version.
  * @property {DatasetVariable[]} variables - In the order of the series index; the
  *   first is the default colour of the points.
  */
@@ -948,8 +974,9 @@
  * @property {string} provider - `IMGW` or `CHMU`.
  * @property {string} code
  * @property {string|null} name
- * @property {string|null} kind - `hydro` or `meteo`.
+ * @property {StationKind|null} kind
  * @property {string|null} meteo_kind - `synoptic`, `climate` or `precipitation`.
+ * @property {GroundwaterKind|null} groundwater_kind - Of a groundwater station.
  * @property {string|null} river
  * @property {number} lon - WGS84.
  * @property {number} lat
@@ -993,7 +1020,7 @@
  * @property {string} bbox - The view `min_lon,min_lat,max_lon,max_lat` (WGS84).
  * @property {string} [store]
  * @property {string} [dataset] - Dataset key: its stations and their coverage.
- * @property {string} [kind] - `hydro` or `meteo`.
+ * @property {StationKind} [kind]
  * @property {string[]} [meteo_kind] - Repeated: these station types only.
  * @property {YearType} [year_type]
  * @property {string} [years] - R: `1951-2025` or one year.
@@ -1005,7 +1032,8 @@
  */
 
 /**
- * A run of known units without a value.
+ * A run of known units without a value: the dates of its first and last unit,
+ * of an hourly series their UTC times (`2026-09-15T06:00:00Z`).
  *
  * @typedef {{from: string, to: string, units: number}} GapSpan
  */
@@ -1029,14 +1057,17 @@
  *
  * @typedef {object} StationSeries
  * @property {string} dataset - Dataset key.
- * @property {string|null} kind
- * @property {string} time_unit
+ * @property {StationKind|null} kind
+ * @property {TimeUnit} time_unit
  * @property {YearType} year_type - Numbering of the years of R.
  * @property {YearSpan|null} years - R.
  * @property {string|null} series - Label of the series version.
  * @property {string} series_version - The version's `series.json`, relative to the
- *   store.
- * @property {string} file - The station's series file, relative to the store.
+ *   store; of a series kept as one version per month, its latest month's.
+ * @property {string[]} months - The months (`YYYY-MM`) of a series kept as one
+ *   version per month (an hourly one), joined in its coverage; empty otherwise.
+ * @property {string} file - The station's series file, relative to the store (of a
+ *   monthly-kept series, the latest month's that has the station).
  * @property {string|null} sha256 - SHA-256 of the station's series file.
  * @property {string|null} license - Licence of the series version.
  * @property {string|null} attribution - The attribution of the series version's
@@ -1054,7 +1085,9 @@
  * @property {number|null} lat
  * @property {string|null} reason - Without a position: `none`, `zero`,
  *   `outside_country`.
- * @property {string|null} source - Source of the position in the catalog.
+ * @property {string|null} source - Source of the position in the catalog: the key
+ *   of a dataset (`pl.imgw.hydro_now`, `cz.chmu.groundwater_now`, …), `static` or
+ *   `user`.
  * @property {number|null} uncertainty_m
  * @property {boolean} on_boundary - On the area's boundary (with an area).
  */
@@ -1067,8 +1100,9 @@
  * @property {string} provider - `IMGW` or `CHMU`; a code is its provider's.
  * @property {string} code
  * @property {string|null} name
- * @property {string|null} kind - `hydro` or `meteo`.
+ * @property {StationKind|null} kind
  * @property {string|null} meteo_kind
+ * @property {GroundwaterKind|null} groundwater_kind - Of a groundwater station.
  * @property {string|null} river
  * @property {string|null} hydrographic_code - The river's hydrographic code.
  * @property {number|null} river_order - Place of the station on its river.
@@ -1111,7 +1145,8 @@
  *
  * @typedef {object} StationChartChoice
  * @property {string} dataset
- * @property {string} time_unit - `day`, `month` or `half_year`.
+ * @property {TimeUnit} time_unit - `day`, `month` or `half_year`: the server offers
+ *   no chart of an `hour` or `week` series.
  * @property {"unit"|"annual"} resolution - `annual` for half-year characteristics.
  * @property {ChartChoiceVariable[]} variables - Of days all, of statistics those
  *   with a value.
@@ -1324,7 +1359,7 @@
  * @property {string} [dataset] - Only stations with a series of it, its coverage only.
  * @property {string} [years] - R of the labels.
  * @property {YearType} [year_type] - Default: the type remembered for the family.
- * @property {string} [kind] - `hydro` or `meteo`.
+ * @property {StationKind} [kind]
  * @property {string[]} [meteo_kind]
  * @property {boolean} [active]
  * @property {string} [river_code]
@@ -1377,8 +1412,8 @@
  *
  * @typedef {object} TimelineSeries
  * @property {string} dataset
- * @property {string|null} kind
- * @property {"day"|"month"|"half_year"} time_unit
+ * @property {StationKind|null} kind
+ * @property {TimeUnit} time_unit
  * @property {YearType} year_type - Numbering of the years of R.
  * @property {YearSpan|null} years - R; `null` when no period is known.
  * @property {string|null} series - Label of the series version.
@@ -1393,8 +1428,9 @@
  * @property {string} provider
  * @property {string} code
  * @property {string|null} name
- * @property {string|null} kind
+ * @property {StationKind|null} kind
  * @property {string|null} meteo_kind
+ * @property {GroundwaterKind|null} groundwater_kind - Of a groundwater station.
  * @property {string|null} river
  * @property {string|null} hydrographic_code
  * @property {boolean|null} active

@@ -36,7 +36,7 @@ import { pins as P } from "../labels/pins.js";
 import { setDetails as D } from "../labels/set-details.js";
 import { timeline as TL } from "../labels/timeline.js";
 import { GROUP_PARAM, LAYER_PARAM } from "../map/previews.js";
-import { isStationProduct } from "../map/stations.js";
+import { isStationProduct, STATION_KINDS } from "../map/stations.js";
 import { ViewLayout } from "../panels.js";
 import { mergeLines, NO_LINES, SourcesStrip, useProviderLines } from "../provider-lines.js";
 import { href, Link, navigate, setParams } from "../router.js";
@@ -199,7 +199,9 @@ export default function Catalog({ route }) {
     const seen = new Set();
     const productDatasets = (datasets.data?.items ?? []).filter(
       (item) =>
-        (item.kind === family || !["hydro", "meteo"].includes(family)) && !seen.has(item.dataset) && seen.add(item.dataset),
+        (item.kind === family || !STATION_KINDS.includes(family)) &&
+        !seen.has(item.dataset) &&
+        seen.add(item.dataset),
     );
     // The Timeline shows one dataset: the address's, else the product's first.
     const timelineShown = params[LAYOUT_PARAM] === TIMELINE_LAYOUT;

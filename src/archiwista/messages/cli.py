@@ -664,6 +664,18 @@ MESSAGES = {
         ", file missing",
         ", brak pliku",
     ),
+    # The tier and publication state a version's sidecar records (A-ADR-059):
+    # the words of Nogat DEV-20.8 for unverified data.
+    "version_tier_telemetry": Text(
+        ", telemetry: operational data, unverified",
+        ", telemetria: dane operacyjne, niezweryfikowane",
+    ),
+    "version_tier_operational": Text(
+        ", operational data, unverified",
+        ", dane operacyjne, niezweryfikowane",
+    ),
+    "version_publication_private": Text(", private", ", prywatna"),
+    "version_publication_public": Text(", public", ", publiczna"),
     "version_pinned": Text(
         "; pinned in: {projects}",
         "; przypięta w: {projects}",

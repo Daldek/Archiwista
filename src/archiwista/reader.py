@@ -69,6 +69,9 @@ READ_COMMANDS = frozenset(
 # ``q`` is the positional QUERY of ``search``; every other parameter of
 # ``GET /slots`` is the option ``--<name with hyphens>``.
 _QUERY = "q"
+# The tiers and publication states a version's sidecar may record (A-ADR-059).
+_TIERS = frozenset({"telemetry", "operational"})
+_PUBLICATIONS = frozenset({"private", "public"})
 
 type _Commands = argparse._SubParsersAction[argparse.ArgumentParser]
 
@@ -446,6 +449,10 @@ def _version_line(version: Version) -> str:
         marks += message("cli.version_full_sheet")
     if version.state == "missing":
         marks += message("cli.version_missing")
+    if version.tier in _TIERS:
+        marks += message(f"cli.version_tier_{version.tier}")
+    if version.publication in _PUBLICATIONS:
+        marks += message(f"cli.version_publication_{version.publication}")
     if version.pinned_by:
         names = ", ".join(pin.name for pin in version.pinned_by)
         marks += message("cli.version_pinned", projects=names)

@@ -433,16 +433,22 @@ def _station_line(item: StationItem | StationTimelineItem | ComparedStation) -> 
         place = message("cli.station_unlocated", reason=_reason(item.location.reason))
     elif item.location.on_boundary:
         place = message("cli.station_on_boundary")
+    groundwater = None if isinstance(item, ComparedStation) else item.groundwater_kind
     return message(
         "cli.station_line",
         code=item.code,
         name=_value(item.name),
-        kind=_value(item.kind),
+        kind=_kind(item.kind, groundwater),
         provider=_provider(item.provider),
         store=item.store,
         river=river,
         place=place,
     )
+
+
+def _kind(kind: str | None, groundwater: str | None) -> str:
+    """Return a station's family and groundwater kind: ``groundwater (bore)``."""
+    return _value(kind) if groundwater is None else f"{_value(kind)} ({groundwater})"
 
 
 def _page_end(found: StationList | StationTimelinePage) -> list[str]:
@@ -515,7 +521,7 @@ def _card_text(card: StationCard) -> str:
         ),
         message(
             "cli.station_facts",
-            kind=_value(item.kind),
+            kind=_kind(item.kind, item.groundwater_kind),
             river=_value(item.river),
             river_code=_value(item.hydrographic_code),
             active=_active(item.active),

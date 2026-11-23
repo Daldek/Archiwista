@@ -35,6 +35,7 @@ producer surface as ``ProducerError`` with the message unchanged.
 """
 
 import os
+import re
 import shlex
 import tempfile
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
@@ -156,14 +157,27 @@ _ANALYSES = "analyses"
 # Obserwator's `meteo_kind` values by their name in the index (Obserwator ADR-022
 # D5: a station of the current synop series is `synop`).
 _METEO_KINDS = MappingProxyType({"synop": "synoptic"})
-# The slot of a dataset's series: ``series:<dataset key>``.
+# The slot of a dataset's series: ``series:<dataset key>``, or one slot per month
+# ``series:<dataset key>:<YYYY-MM>`` of a sub-daily series (Obserwator ADR-031),
+# whose versions lie in ``series/versions/<slug>/…``.
 _SERIES = "series"
-# The unit of each series a dataset builds, by the registry's time unit.
+_SERIES_TREE = ("series", "versions")
+# The unit of each series a dataset builds, by the registry's time unit: the
+# days, the weeks of ČHMÚ's weekly groundwater readings (ADR-032), the months,
+# the half-years and the hours of a sub-daily series, one version per month
+# (ADR-031). A series of any other unit, one Obserwator may add later, is refused
+# as ``unsupported`` (reason ``series_unit``): its versions are listed, the
+# coverage of its stations is not read (Nogat ECO-085, A-ADR-059).
 _SERIES_UNITS: Mapping[str, TimeUnit] = {
     "day": "day",
+    "week": "week",
     "month": "month",
     "half_year": "half_year",
+    "hour": "hour",
 }
+_SERIES_UNIT = "series_unit"
+# The month of a version of a sub-daily series, ``request.month`` of its sidecar.
+_MONTH = re.compile(r"([0-9]{4})-(0[1-9]|1[0-2])")
 # The unit of a dataset of half-year characteristics, and the statistics of
 # its characteristics that are extremes, in the order of the registry.
 _HALF_YEAR = "half_year"
@@ -210,7 +224,7 @@ class ObserwatorAdapter:
     Parameters
     ----------
     supported_versions : str
-        Obserwator versions Archiwista supports, e.g. ``">=3.1.0,<4"``.
+        Obserwator versions Archiwista supports, e.g. ``">=3.2.0,<4"``.
 
     Notes
     -----
@@ -389,9 +403,10 @@ class ObserwatorAdapter:
         -------
         SourceSegment
             ``dataset_key`` is the current key of the dataset. ``product`` is
-            its family: the ``kind`` of the registry (``hydro``, ``meteo``),
-            for the dataset that has none (PMAXTP) its slug, ``imgw_pmaxtp``,
-            ``stations`` for a catalog and ``analyses`` for stored analyses;
+            its family: the ``kind`` of the registry (``hydro``, ``meteo``,
+            ``groundwater``), for the dataset that has none (PMAXTP) its slug,
+            ``imgw_pmaxtp``, ``stations`` for a catalog and ``analyses`` for
+            stored analyses;
             ``None`` for a key that is not recognised. Obserwator has no
             products, so it only groups the datasets, and the key itself is
             not read (SPEC 4.2.1).
@@ -401,15 +416,18 @@ class ObserwatorAdapter:
     def product_name(self, product: str) -> str | None:
         """Name a family of datasets after its stations, the map's product.
 
-        A family (``hydro``, ``meteo``) holds datasets of several kinds
-        (daily, monthly, half-year data, the station list), and the map draws
-        it as its stations; the stored analyses are named as such; any other
-        product keeps the default name.
+        A family (``hydro``, ``meteo``, ``groundwater``: ČHMÚ's bores and
+        springs, Obserwator ADR-032) holds datasets of several kinds (daily,
+        monthly, half-year data, the station list), and the map draws it as its
+        stations; the stored analyses are named as such; any other product
+        keeps the default name.
         """
         if product == "hydro":
             return str(message("source.obserwator_product_hydro", "pl"))
         if product == "meteo":
             return str(message("source.obserwator_product_meteo", "pl"))
+        if product == "groundwater":
+            return str(message("source.obserwator_product_groundwater", "pl"))
         if product == _ANALYSES:
             return str(message("source.obserwator_product_analyses", "pl"))
         return None
@@ -529,7 +547,9 @@ class ObserwatorAdapter:
         """Return the dataset whose series a slot is.
 
         A dataset's series is the slot ``series:<dataset key>`` of a dataset
-        of the producer's registry; no disk access.
+        of the producer's registry, or one slot per calendar month
+        ``series:<dataset key>:<YYYY-MM>`` of a sub-daily series (Obserwator
+        ADR-031); no disk access.
 
         Parameters
         ----------
@@ -539,14 +559,15 @@ class ObserwatorAdapter:
         Returns
         -------
         str or None
-            The dataset key (``pl.imgw.hydro_daily``); ``None`` for any other
-            slot.
+            The dataset key (``pl.imgw.hydro_daily``, ``pl.imgw.hydro_subdaily``
+            of ``series:pl.imgw.hydro_subdaily:2026-10``); ``None`` for any
+            other slot.
         """
-        kind, _, dataset = slot_key.partition(":")
+        kind, _, rest = slot_key.partition(":")
         if kind != _SERIES:
             return None
         try:
-            return str(get_dataset(dataset).key)
+            return str(get_dataset(rest.partition(":")[0]).key)
         except ObserwatorError:
             return None
 
@@ -556,7 +577,11 @@ class ObserwatorAdapter:
         Obserwator checks ``series.json`` against its sidecar and that every
         station's series file is there, without reading one. The dataset's
         provider, family, unit and first year come from the registry entry
-        the index names.
+        the index names. A version of a sub-daily series (Obserwator ADR-031)
+        holds one calendar month (``SeriesListing.month``) and its coverage
+        gives the starts of hours, aware UTC times; a weekly one (ČHMÚ's
+        groundwater, its ADR-032) the dates of its readings and the Mondays of
+        the weeks without one.
 
         Parameters
         ----------
@@ -573,12 +598,22 @@ class ObserwatorAdapter:
 
         Raises
         ------
+        UnsupportedError
+            The dataset's series are kept by a unit the index does not know
+            (reason ``series_unit``, ``details`` ``dataset`` and ``unit``): one
+            a later Obserwator may add beside the days, weeks, months,
+            half-years and hours. Told from the registry by the dataset whose
+            directory the version lies in (``series/versions/<slug>/…``),
+            before the file is read.
         SourceUnavailableError
             The system cannot read the file.
         ProducerError
             Obserwator refused the version: broken, unlike its sidecar, or no
             series index.
         """
+        named = _series_directory_dataset(version)
+        if named is not None:
+            _series_unit(named)
         path = root / version
         try:
             index = read_series_index(path)
@@ -587,14 +622,7 @@ class ObserwatorAdapter:
             raise _unavailable(str(path), str(error)) from error
         except ObserwatorError as error:
             raise _failure(str(path), error) from error
-        unit = _SERIES_UNITS.get(dataset.time_unit)
-        if unit is None:
-            text = message(
-                "source.obserwator_series_unit",
-                dataset=dataset.key,
-                unit=dataset.time_unit,
-            )
-            raise ProducerError(PACKAGE, "ObserwatorDataError", text)
+        unit = _series_unit(dataset)
         directory = PurePosixPath(version.as_posix()).parent
         return _series_listing(index, dataset, directory, unit)
 
@@ -1250,7 +1278,13 @@ def _polish(text: str) -> str:
 
 
 def _entry_meta(store: str, relative: Path, meta: Meta) -> EntryMeta:
-    """Producer-neutral metadata from a parsed ``obserwator-meta/1`` sidecar."""
+    """Producer-neutral metadata from a parsed ``obserwator-meta/1`` sidecar.
+
+    The year of the data is the sidecar's period, or the year of the month a
+    version of a sub-daily series holds (``request.month``, ADR-031). ``tier``
+    and ``publication`` are the sidecar's (ADR-030 D6): only a version of data
+    that are not the verified archive records them.
+    """
     version = as_mapping(meta.extra.get("version"))
     period = as_mapping(meta.extra.get("period"))
     return EntryMeta(
@@ -1261,7 +1295,7 @@ def _entry_meta(store: str, relative: Path, meta: Meta) -> EntryMeta:
         dataset_key=meta.dataset_key,
         label=as_text(version.get("label")),
         label_source=as_text(version.get("label_source")),
-        data_year=_year(period.get("year")),
+        data_year=_data_year(period.get("year"), meta.request.get("month")),
         downloaded_at=meta.downloaded_at,
         sha256=meta.sha256,
         size_bytes=meta.size_bytes,
@@ -1275,6 +1309,8 @@ def _entry_meta(store: str, relative: Path, meta: Meta) -> EntryMeta:
         producer_version=meta.producer_version,
         content_sha256=meta.content_sha256,
         content_form=meta.content_form,
+        tier=meta.tier,
+        publication=meta.publication,
     )
 
 
@@ -1306,6 +1342,10 @@ def _raw_sidecar(meta: Meta) -> dict[str, object]:
     if meta.content_sha256 is not None:
         raw["content_sha256"] = meta.content_sha256
         raw["content_form"] = meta.content_form
+    if meta.tier is not None:
+        raw["tier"] = meta.tier
+    if meta.publication is not None:
+        raw["publication"] = meta.publication
     return raw
 
 
@@ -1335,6 +1375,7 @@ def _station(feature: StationFeature) -> Station:
         gauge_zero_m=_number(properties.get("gauge_zero_m")),
         river_km=_number(properties.get("river_km")),
         elevation_m=_number(properties.get("elevation_m")),
+        groundwater_kind=as_text(properties.get("groundwater_kind")),
     )
 
 
@@ -1344,7 +1385,10 @@ def _series_listing(
     directory: PurePosixPath,
     unit: TimeUnit,
 ) -> SeriesListing:
-    """Convert a series index; each station's file relative to the store."""
+    """Convert a series index; each station's file relative to the store.
+
+    ``month`` is the month a version of a sub-daily series holds (ADR-031).
+    """
     return SeriesListing(
         dataset=index.dataset,
         provider=dataset.provider,
@@ -1357,6 +1401,7 @@ def _series_listing(
             _station_series(code, station, directory)
             for code, station in index.stations.items()
         ),
+        month=index.month,
     )
 
 
@@ -1436,6 +1481,53 @@ def _unavailable(where: str, detail: str) -> SourceUnavailableError:
 
 def _year(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _data_year(year: object, month: object) -> int | None:
+    """Return the year of a version's period, else of its month (ADR-031)."""
+    found = _year(year)
+    if found is not None or not isinstance(month, str):
+        return found
+    match = _MONTH.fullmatch(month)
+    return None if match is None else int(match[1])
+
+
+def _series_directory_dataset(version: Path) -> DatasetDescriptor | None:
+    """Return the dataset whose directory a series version lies in, if any.
+
+    A series version is ``series/versions/<slug>/…`` (Obserwator ADR-001, its
+    months ``series/versions/<slug>/<YYYY-MM>/…``, ADR-031); ``None`` for a path
+    of another form or a slug the registry does not know.
+    """
+    parts = PurePosixPath(version.as_posix()).parts
+    if len(parts) < 3 or parts[:2] != _SERIES_TREE:
+        return None
+    try:
+        return get_dataset(parts[2])
+    except ObserwatorError:
+        return None
+
+
+def _series_unit(dataset: DatasetDescriptor) -> TimeUnit:
+    """Return the unit of a dataset's series the index holds.
+
+    Raises
+    ------
+    UnsupportedError
+        Any other unit (reason ``series_unit``): the series is left out of the
+        coverage, its versions stay listed (Nogat ECO-085).
+    """
+    unit = _SERIES_UNITS.get(dataset.time_unit)
+    if unit is None:
+        text = message(
+            "source.obserwator_series_unit", dataset=dataset.key, unit=dataset.time_unit
+        )
+        raise UnsupportedError(
+            text,
+            reason=_SERIES_UNIT,
+            details={"dataset": dataset.key, "unit": dataset.time_unit},
+        )
+    return unit
 
 
 def _source_files(value: object) -> tuple[str, ...]:

@@ -1,8 +1,10 @@
 # Archiwista API for agents and scripts
 
 For AI agents (for example Claude Code) and scripts using Archiwista without
-a browser: release 0.3.3, with v0.3 "Actions", v0.4 "Team" and the projects (released as
-0.3.0) and Obserwator 3.1.0's provider ids `IMGW` and `CHMU` (0.3.3). It covers
+a browser: release 0.4.0, with v0.3 "Actions", v0.4 "Team" and the projects (released as
+0.3.0), Obserwator 3.1.0's provider ids `IMGW` and `CHMU` (0.3.3) and Obserwator 3.2.0
+(0.4.0: a version's tier and publication, groundwater stations, weekly and hourly
+series; A-ADR-059). It covers
 reading the catalog,
 previews, layers, comparison, own data and project snapshots, areas, producer
 commands, plans and downloads, projects and jobs. Team mode adds sign-in, agent
@@ -379,6 +381,16 @@ cursor is safe in a URL).
   `GET /stores/{store}/versions/{version}`: all values of the version from the
   index, the outline in WGS84 and the raw sidecar; the sidecar alone:
   `GET …/versions/{version}/sidecar`.
+- A version (`Version`: the rows of `GET /slots`, `versions` of the slot card, `version`
+  of the version card) has `tier` and `publication` (0.4.0), as its sidecar records them:
+  `tier` `telemetry` (IMGW-PIB's monthly telemetry) or `operational` (current or
+  unverified data: Obserwator's captures, ČHMÚ's `recent`, the hourly series), both
+  „dane operacyjne, niezweryfikowane”; `publication` `public` or `private`, the state of
+  the version's source when it was written. `null` means the sidecar records none: the
+  verified archive and public, and every Kartograf version. A private version is
+  downloaded as any other by a signed-in person (Obserwator ADR-030 D5). The text of
+  `archiwista entry` and `version` adds `, telemetry: operational data, unverified` or
+  `, operational data, unverified` and `, private` or `, public` to a version's line.
 - `archiwista version-command MAGAZYN WERSJA` /
   `GET /stores/{store}/versions/{version}/command` (A-ADR-049 D-10): the
   producer's call that selects the stored version again (`VersionCommand`:
@@ -757,7 +769,8 @@ rivers (`sort=river`, the default: by the hydrographic code, so a tributary foll
 its river, then the provider's order on the river, then the name) or by name
 (`sort=name`). `q` finds a station whose name or river contains the text (case
 ignored; no character is a wildcard) or whose code begins with it; a cursor belongs
-to its `q` and `sort`. Filters: `store`, `provider`, `kind`, `active`, `river_code` with
+to its `q` and `sort`. Filters: `store`, `provider`, `kind` (`hydro`, `meteo` or
+`groundwater`), `active`, `river_code` with
 `river_scope` (`exact`, or `tributaries`: every code that begins with it),
 `dataset` (a dataset key such as `pl.imgw.hydro_daily`), `variable`, `coverage`
 (`Q:continuous`, `H:gaps`; states of one variable are alternatives) and
@@ -766,10 +779,12 @@ to its `q` and `sort`. Filters: `store`, `provider`, `kind`, `active`, `river_co
 `location` (`any`, `with`, `none`), `limit` and `cursor`; an area is `area_id` or
 `bbox` with `bbox_crs`, and it takes the stations on its boundary too, those closer
 to it than their location uncertainty (`location.on_boundary`; `boundary=false`
-leaves them out). Each item has its `location` and `series[]`: per dataset the
+leaves them out). Each item has its `kind`, `meteo_kind`, `groundwater_kind` (of a
+groundwater object, 0.4.0: `bore` or `spring`; `null` for any other station), its
+`location` and `series[]`: per dataset the
 series version, the station's `file` with its `sha256`, the `license` and
 `attribution` its sidecar gives (the lines to show are the answer's `attribution`
-and `terms_notice`, above), and `coverage` with an entry per variable
+and `terms_notice`, above), `months` (below) and `coverage` with an entry per variable
 (`state`, the `label` in the request's language and the structure behind it); a
 station has no single label. `counts` counts the whole result: `located`,
 `boundary`, `unlocated` (no position: after the attribute and coverage filters,
@@ -784,18 +799,33 @@ code that several stations share answers `400` with `details.reason`
 and `provider`. Without Obserwator every station route answers `503
 missing_dependency` (`source_unavailable`) with the fix in `hint`. `GET
 /stations/datasets` names the datasets with station series (`archiwista stations
-datasets`): each one's key, the producer's name of its segment, provider, family,
-unit, the year type of its labels, R by default (`years`), the label of its current
-series version and its `variables` (the distinct keys of its stations' series); use a
+datasets`): each one's key, the producer's name of its segment, provider, family
+(`hydro`, `meteo`, `groundwater`), unit (`time_unit`), the year type of its labels, R by
+default (`years`), the label of its current series version, `months` and its
+`variables` (the distinct keys of its stations' series); use a
 key as `dataset` and a variable as `variable` of the other routes. `meteo_kind`
 (repeatable: `synoptic`, `climate`, `precipitation`) keeps the meteo stations of
 those kinds, the counts too. Without `year_type` the routes and `archiwista stations`
 number the years as `year_types` of `GET /preferences` says for the data's family
-(hydro hydrological and meteo calendar by default; a list of both families, without
-`dataset`, `kind` or `meteo_kind`, as hydro); a given `year_type` wins and changes
-nothing, and half-year characteristics stay hydrological. `PUT /preferences` with
+(hydro hydrological and meteo calendar by default; groundwater data take meteo's; a
+list of both families, without `dataset`, `kind` or `meteo_kind`, as hydro); a given
+`year_type` wins and changes nothing, and half-year characteristics stay hydrological.
+`PUT /preferences` with
 `{"year_types": {"hydro": …, "meteo": …}}` changes the choice of the session's
 person only (`archiwista stations` reads the computer owner's).
+A series' `time_unit` is `day`, `week`, `month`, `half_year` or `hour` (`week` and
+`hour` from 0.4.0, A-ADR-059). A week runs Monday to Sunday and belongs to the year of
+its Monday; of a weekly series a variable's `first` and `last` are the dates of
+readings (`YYYY-MM-DD`) and a gap's `from` and `to` the Monday of its first week and the
+Sunday of its last. An hour is a UTC hour: of an hourly series a variable's `first` and
+`last` and a gap's `from` and `to` are the starts of hours as UTC times
+`YYYY-MM-DDTHH:MM:SSZ` (`2026-09-15T06:00:00Z`), and a label writes a gap
+`2026.09.15 06:00–11:00 UTC`; every other unit keeps dates. A series kept as one version
+per calendar month (Obserwator's hourly series, slots `series:<key>:<YYYY-MM>`) is one
+series of its dataset: `months` lists its months (`YYYY-MM`, in order; `[]` for a series
+of one version), `series_version` is its latest month's `series.json` and `file` the
+station's file of the latest month that has it, and its coverage runs across the
+months.
 `GET /stations/timeline` (`archiwista stations timeline`) is the Timeline
 of a page: the filters, order and cursor of `GET /stations` with `dataset`
 required, each item a station with its `series` exactly as `GET
@@ -838,7 +868,10 @@ and what was done, no `terms_notice`), each left out when empty; Hydrolog shows 
 with the series and carries them on.
 `version` must be the current one in the index (`409` otherwise; read the card
 again); half-year characteristics are not drawn as a line of units (`400`, reason
-`half_year_chart`; ask `resolution=annual`). `GET /stations/compare` (`archiwista stations compare`) is one
+`half_year_chart`; ask `resolution=annual`). A series of weeks or hours has no chart
+(0.4.0; Obserwator's interface draws the hourly one): without `dataset` it is not chosen
+and the card's `charts` leave it out, and named by `dataset` it is `400` with reason
+`no_chart` and `details.unit` `week` or `hour`; read its coverage instead. `GET /stations/compare` (`archiwista stations compare`) is one
 variable of 2 to 5 stations' series of one `dataset` over one range: `station`
 repeated, each `<store>/<provider>/<code>` in the order of the panels; `from` and
 `to` by default the variable's known spans at the stations together. Every
@@ -846,7 +879,8 @@ station's `chart` is its own chart (`GET /stations/{code}/series`) over that ran
 with the one `interval` of the answer, and its `coverage` the variable's label and
 facts as on its card in `year_type`; a station without the series or the variable
 keeps its place with `null` for both. No station with the variable is `400`
-(reason `unknown_variable`), none with a series of the dataset `404`.
+(reason `unknown_variable`), a dataset of weeks or hours `400 no_chart`, none with a
+series of the dataset `404`.
 
 ```sh
 curl -sf -b "$JAR" -H "$H" "$BASE/stations/datasets"

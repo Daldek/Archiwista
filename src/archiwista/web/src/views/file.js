@@ -278,6 +278,9 @@ function VersionAxis({ versions, chosen }) {
               ? html`<${Badge} level="bad">${t(L.axis.missing, { since: day(version.missing_since) })}</${Badge}>`
               : null}
           </span>
+          ${version.tier || version.publication
+            ? html`<p class="fc-tier"><${TierBadges} version=${version} /></p>`
+            : null}
           ${version.pinned_by.length ? html`<${Pins} pins=${version.pinned_by} />` : null}
         </li>`;
       })}
@@ -298,6 +301,25 @@ function Pins({ pins }) {
       </span>`;
     })}
   </p>`;
+}
+
+/**
+ * The tier of a version that is not verified data (`Version.tier`) and the
+ * publication state its sidecar records; a version recording none is public
+ * and gets no badge.
+ *
+ * @param {{version: import("../types.js").Version}} props
+ */
+function TierBadges({ version }) {
+  const C = T.common;
+  return html`${version.tier
+      ? html`<${Badge} level="warn" title=${t(C.tier_title, { tier: version.tier })}>
+          ${C.tier[version.tier] ?? version.tier}</${Badge}>`
+      : null}
+    ${version.publication
+      ? html`<${Badge} title=${t(C.publication_title, { publication: version.publication })}>
+          ${C.publication[version.publication] ?? version.publication}</${Badge}>`
+      : null}`;
 }
 
 function VersionDetails({ store, card, version, versions, tab, style, onPinned }) {
@@ -326,6 +348,9 @@ function VersionDetails({ store, card, version, versions, tab, style, onPinned }
           })} />
       </div>
     </div>
+    ${version.tier || version.publication
+      ? html`<p class="chip-row fc-version-tier"><${TierBadges} version=${version} /></p>`
+      : null}
     <${VersionTabs} tab=${tab} panel=${panel} />
     <div class="fc-panel" role="tabpanel" id=${panel} aria-labelledby=${`${panel}-${tab}`}>
       ${tab === "preview"

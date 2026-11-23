@@ -7,25 +7,32 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 
 ## Status
 
-The working branch is `develop`; every branch named below is merged into it.
+The working branch is `chore/release-0.4.0` (from `develop` `24a43d6`); every other branch
+named below is merged into `develop`.
 
-**Release 0.3.3** is Archiwista's part of Nogat's release round of 2026-11-21 (standard 1.1;
-Nogat plans `2026-11-21-national-provider-names`, `2026-11-21-phone-sources-strip` and
-`2026-11-21-download-file-names`), a patch: Obserwator 3.1.0 (extra `obserwator`, tag
-`v3.1.0`) with the providers' identifiers `IMGW` and `CHMU`, IMGW-PIB's `imgw_` slugs and a
-station's `location_source` by its dataset key, taken as a fix (the index is rebuilt from a
-data root Obserwator 3.1.0 built: README "Upgrading to 0.3.3", USAGE "Updating to 0.3.3");
-the fix of the page errors Firefox raised on leaving a page (`fix/map-teardown`); the
-providers' strip on one line on a phone (`feat/phone-sources-strip`); Nogat's kit 1.1.0;
-and the files Archiwista names for a person as `archiwista_<content>_<qualifiers>.<extension>`
-(DEV-19.21). Kartograf stays `v0.8.2`. The branches were integrated on
-`chore/round-integration` and merged into `develop` (`bfd42c8`, then `chore/copies-round`,
-`e96b164`).
+**Release 0.4.0** is Archiwista's part A1 of Obserwator 3.2.0 (Nogat ECO-084, ECO-085;
+A-ADR-059), a minor release with Nogat's standard 1.1 (1.2 is open on Nogat's `develop`, not
+released): Obserwator 3.2.0 (extra `obserwator`, tag `v3.2.0`; `SUPPORTED_VERSIONS`
+`>=3.2.0,<4`) and Kartograf `v0.8.2`; a version's tier and publication state in the API, the
+CLI and the interface (downloads unchanged); ČHMÚ's groundwater stations (kind
+`groundwater`, `groundwater_kind` bore or spring, a brown diamond); weekly and hourly series
+indexed with their coverage, the monthly slots of an hourly series joined into one series;
+no hourly or weekly chart (`400 no_chart`); a series of an unknown unit skipped with
+`skipped_series` and one `series_skipped` warning; the index completed in place at schema
+version 1. It is deployed before Obserwator 3.2.0 writes captures or hourly series to shared
+roots, and a store Obserwator 3.2.0 wrote to first is rebuilt once with `archiwista reindex
+--store <store>` (README "Upgrading to 0.4.0", USAGE "Updating to 0.4.0").
+`feature/obserwator-3.2.0` is merged into `develop` (`24a43d6`); the release is prepared on
+`chore/release-0.4.0`, not merged or tagged until the author approves (Next 15).
 
 **Earlier releases**, tagged on `main`: 0.3.0 (2026-11-16, Archiwista's first tag, a member of
 the first joint release of the Nogat ecosystem, ECO-074: v0.3 "Actions", v0.4 "Team", the
 projects of A-ADR-049 and the built part of v0.5 "IMGW stations"), 0.3.1 (2026-11-18) and
-0.3.2 (2026-11-20), defect fixes only.
+0.3.2 (2026-11-20), defect fixes only, and 0.3.3 (2026-11-22), Archiwista's part of Nogat's
+release round of 2026-11-21 (standard 1.1): Obserwator 3.1.0 with the providers' identifiers
+`IMGW` and `CHMU`, the providers' strip on one line on a phone, Nogat's kit 1.1.0, the files
+Archiwista names as `archiwista_<content>_<qualifiers>.<extension>` (DEV-19.21) and the fix
+of Firefox's page errors on leaving a page.
 
 | Component | State | Note |
 |---|---|---|
@@ -39,16 +46,17 @@ projects of A-ADR-049 and the built part of v0.5 "IMGW stations"), 0.3.1 (2026-1
 | The providers' lines (A-ADR-055 and its errata 1 to 5) | done | `attribution` and `terms_notice` on every station, map, Katalog, version and comparison answer, the CLI, `ATTRIBUTION.txt` in exports and the hand-off; one compact strip of Nogat's kit per view or overlay, the terms linked, the G and Z lines of station catalogs' sidecars, one CP without the detail of processing (ECO-071); ČHMÚ's origins `chmu_file` and `chmu_processed` (ECO-082). Not in PNG previews (Next 6) |
 | Nogat's GUI kit (A-ADR-054 and its errata 1 to 7) | done, in 0.3.3 | kit 1.1.0 of Nogat `4d755ee` in `web/nogat/` (byte for byte, checked against `nogat-kit.json`): the menu „Aplikacje”, the hand-off (saved as `archiwista_handoff_<subject>.json`, ECO-083), the strip `<nogat-sources>` (one line with „więcej” on a phone, Nogat ECO-080, ECO-081), the regulamin's block `chmu` (ECO-082), „Zgłoszenia” on `<nogat-admin-feedback>`; `error_registry.json` of the standard 1.1 (Nogat `975136e`, unchanged in `4d755ee`). |
 | User guide `/instrukcja` (A-ADR-048) | done | 13 Polish slides served without a session, „Instrukcja” in the top bar; no link on the sign-in page; its pictures need taking again when the views they show change |
-| Nogat standard 1.1 | done | 1.0: structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry (A-ADR-030); 1.1, in 0.3.3: the providers' identifiers by their national acronyms (DEV-2.5), the files Archiwista names (DEV-19.21), the strip folded on a phone (DEV-20.5), kit 1.1.0 and the error registry of 1.1; the items that need the author: Open questions |
+| Nogat standard 1.1 | done | 1.0: structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry (A-ADR-030); 1.1, in 0.3.3: the providers' identifiers by their national acronyms (DEV-2.5), the files Archiwista names (DEV-19.21), the strip folded on a phone (DEV-20.5), kit 1.1.0 and the error registry of 1.1; 0.4.0 follows 1.1 (1.2 is open on Nogat's `develop`, not released); the items that need the author: Open questions |
 | Test server :8090 | done | https://archiwista-test.debever.pl, user unit `archiwista-public.service`, its checkout `<data-dir>/archiwista-public/app` is at `v0.3.1` (`0b66beb`; it ran `7a11c76` of `develop` from 2026-11-15). One store, `agent-tmp` („Magazyn agent-tmp”, kind share), the author's single place for downloaded data (2026-11-15): `kartograf` = `<share>/agent-tmp/hydroni/kartograf` and `obserwator` = `<share>/agent-tmp/obserwator` on the NAS (CIFS), `obserwator_data` = `<data-dir>/obserwator-target/data` on the local disk (processed, served fast). Projects `h07` (4 sets, 2909 pins) and `kaczawa` (Hydrograf :8080's Kaczawa, set `2026-1`, 205 pins) use `agent-tmp`, 0 missing; one known problem (`missing_sidecar` of an `.aux.xml`). State schema 1 and index schema 1 since `1c18fb3`. Backups in `<data-dir>/archiwista-public/backup-2026-11-14-v1/`, rollback steps in `<data-dir>/archiwista-public/backup-2026-11-13/ROLLBACK.txt` |
-| Producers' pins | done | Kartograf `v0.8.2` (`>=0.8.0,<0.9`) and Obserwator `v3.1.0` (extra `obserwator`, `>=3.1.0,<4`), the tags of release 0.3.3 in `pyproject.toml` and `uv.lock` |
+| Producers' pins | done | Kartograf `v0.8.2` (`>=0.8.0,<0.9`) and Obserwator `v3.2.0` (extra `obserwator`, `>=3.2.0,<4`), the tags of release 0.4.0 in `pyproject.toml` and `uv.lock` (0.3.3 pinned Obserwator `v3.1.0`) |
 | Obserwator 3.1.0 for Nogat's release round of 2026-11-21 | done, in 0.3.3 | `chore/obserwator-3.1.0`, merged (`58f4c5c`); Obserwator 3.1.0, Kartograf `v0.8.2`; a series version of chosen stations and years (Obserwator ADR-026) is read as any version (`tests/integration/test_obserwator_subset.py`, SPEC 4.8.4), ČHMÚ's snow files and variables (SPEC 4.8.6); Nogat's `handoff-1.schema.json` of `263e83c` (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6). Full gate passed on `4d42cf7` (3,049 passed, 93.32 %, 3,249 s) |
+| Obserwator 3.2.0, Archiwista's A1 (Nogat ECO-084, ECO-085; A-ADR-059) | done, in 0.4.0 | `feature/obserwator-3.2.0`, merged (`24a43d6`): tier and publication of a version (`Version.tier`, `Version.publication`, the CLI's version lines, the badges of the „Katalog” and the file card; downloads unchanged, signed-in people download private versions); ČHMÚ's groundwater stations (`groundwater_kind`, the diamond, the kind filter, the location sources and the variables `H_asl`, `spring_yield`); weekly and hourly series indexed with their coverage (`index/series.py`: the week of its Monday, UTC hours; `join_months` of the monthly slots, `months` in the station and dataset answers, „Miesiące szeregu”); no hourly or weekly chart (`400 no_chart`); `skipped_series` and `series_skipped` for an unknown unit; the index completed in place at schema 1 (`initialize` gives `completed`). Tests: `tests/e2e/test_version_tiers.py`, `tests/e2e/test_groundwater_stations.py`, the fixture store `tests/fixtures/obserwator_tiers.py` (`tiers_store`) |
 | Providers' national names and the files Archiwista names (Nogat ECO-082, ECO-083, DEV-2.5, DEV-19.21; A-ADR-032 errata 3 and 4, A-ADR-055 erratum 5) | done, in 0.3.3 | merged into `develop` (`bfd42c8`): the providers `IMGW` and `CHMU`, the keys `cz.chmu.*`, each provider's slugs and store directories `imgw_*` and `chmu_*` (`stations/versions/imgw_stations` beside `chmu_stations`; PMAXTP's product `imgw_pmaxtp`), a station's `location_source` the key of its dataset; old names are neither read nor translated, the index is rebuilt from a data root Obserwator 3.1.0 built; the files Archiwista names for a person are `archiwista_<content>_<qualifiers>.<extension>` (`file_names.py`) |
 | Every format at version 1 (Nogat REL-1.4, ECO-072) | done | merged and deployed (`1c18fb3`): the state backup `archiwista-state/1` (a `/2` copy still imports), the job protocol 1, the index schema 1 (an index of another number is rebuilt) and the state schema 1 in one migration (a database numbered 5 is renumbered when it opens; schema 2 to 4 no longer opens) |
 | Project files readable by the folder's group (A-ADR-058, finding E2-01 of the scenario test of 2026-11-15) | done | merged as `800231c`: what Archiwista writes in a project's directory takes the folder's permissions instead of `umask 077`; its full gate: 3,025 passed, 2 failed only through TMPDIR in a setgid directory (E7-12, Next 14) |
-| Gate | done | Nogat's `set verify` of candidate-11 (Obserwator `4bf0ce3`) passed; in one of its runs `tests/integration/test_jobs.py::test_worker_logs_warnings_and_errors_as_app_records_and_deletes_nothing` failed once and passed alone 5 of 5 (a race, Next 2). 2026-11-22, `chore/copies-round` (Obserwator `4bf0ce3`): the full gate passed, 3,059 passed, 93.69 %, 4,200 s. 2026-11-22, `chore/round-integration` (`37346f1`, Obserwator `de06926`): the full gate passed, 3,059 passed, 93.69 %, 4,576 s. The gates of its merged branches had failed only under load: `feat/phone-sources-strip` 17 (preview warm-up and `serve` tests, timeouts in a run of 3 h 28 min) and `fix/national-provider-names` 2 (`test_pasted_command.py` offline, `test_jobs.py::test_second_index_job_for_store_conflicts`); each passed alone on the integration branch. |
+| Gate | done | 2026-11-23, `feature/obserwator-3.2.0` (0.4.0, Obserwator `v3.2.0`): the full gate passed, 3,132 passed, 93.36 %, 3,293 s. Nogat's `set verify` of candidate-11 (Obserwator `4bf0ce3`) passed; in one of its runs `tests/integration/test_jobs.py::test_worker_logs_warnings_and_errors_as_app_records_and_deletes_nothing` failed once and passed alone 5 of 5 (a race, Next 2). 2026-11-22, `chore/copies-round` (Obserwator `4bf0ce3`): the full gate passed, 3,059 passed, 93.69 %, 4,200 s. 2026-11-22, `chore/round-integration` (`37346f1`, Obserwator `de06926`): the full gate passed, 3,059 passed, 93.69 %, 4,576 s. The gates of its merged branches had failed only under load: `feat/phone-sources-strip` 17 (preview warm-up and `serve` tests, timeouts in a run of 3 h 28 min) and `fix/national-provider-names` 2 (`test_pasted_command.py` offline, `test_jobs.py::test_second_index_job_for_store_conflicts`); each passed alone on the integration branch. |
 | CI (Linux) | done | `ci.yml` runs the gate (Python 3.12, the required check, and 3.15), the suite without the extra `obserwator` and a dependency audit; every job passed on `develop` at `1c18fb3`, `7a11c76` and `747ee1f` (2026-11-14 and 2026-11-15). `live.yml` ran once, on its schedule of 2026-11-09 (`90c5ac9`), and passed (Next 9) |
-| v0.5 "IMGW stations", the rest | blocked | its built part (the Obserwator source and the station views above) is in release 0.3.0 with Obserwator 3.0.0 and in 0.3.3 with Obserwator 3.1.0; the archive badge of the stations (SPEC 9.2, 4.8.4) and the input archives of the station card need a producer capability the source interface lacks |
+| v0.5 "IMGW stations", the rest | blocked | its built part (the Obserwator source and the station views above) is in release 0.3.0 with Obserwator 3.0.0, in 0.3.3 with Obserwator 3.1.0 and in 0.4.0 with Obserwator 3.2.0; the archive badge of the stations (SPEC 9.2, 4.8.4) and the input archives of the station card need a producer capability the source interface lacks |
 | v0.6 "PL + CZ" | blocked | Kartograf KF (merged PL + CZ surface) |
 | Producer requirements behind open gaps | blocked | „U źródła” offers only NMT, NMPT and LAZ until Kartograf KD-3/KD-4 (meanwhile paste the producer's command, which „Obszar polecenia” runs on a project's area); plans show „rozmiar nieznany” until Kartograf KH; the „pobrane” badge cannot match LAZ, whose sidecar records no survey work (Kartograf `docs/PROGRESS.md` Next 30); A15 waits for Kartograf KB-7; Archiwista's later versions need KA-4, KB-1 to KB-5, KB-7, KC-1 to KC-3, KD-1 to KD-4, KH |
 | GPU measurement (v0.2) | blocked | 30 frames per second or more with 5,000 footprints needs hardware WebGL; the test account has no access to `/dev/dri/renderD128` |
@@ -58,12 +66,15 @@ projects of A-ADR-049 and the built part of v0.5 "IMGW stations"), 0.3.1 (2026-1
 1. Hydrograf's admin panel cannot re-process from a store; the author moved that fix to the
    release after the first joint release (2026-11-15). Kaczawa's re-processing runs from the
    command line with project `kaczawa`, set `2026-1` (Hydrograf PROGRESS).
-2. Flaky tests, for 0.3.4:
+2. Flaky tests, for the next release:
    - `tests/integration/test_jobs.py::test_worker_logs_warnings_and_errors_as_app_records_and_deletes_nothing`
-     failed once in Nogat's `set verify` of candidate-11 and passed alone 5 of 5: a race, to
-     be fixed in 0.3.4. [INFERENCE] The test reads the server's `app` records as soon as
-     the cancelled scan's state is `cancelled`, and the worker's warning „Job … interrupted”
-     may be written after that state.
+     failed once in Nogat's `set verify` of candidate-11 and passed alone 5 of 5: a race, not
+     fixed. The earlier inference (the worker's warning „Job … interrupted” written after the
+     state `cancelled`) does not hold: the supervisor sets `cancelled` only after
+     `process.wait()`, and the worker writes the record synchronously (`os.write`). Likelier
+     causes: the interrupt lands outside the runner's `try` in `jobs/worker.py` (about lines
+     306–319) when the scan has already finished, or the 30 s `faulthandler` or the killer
+     stops a stalled exit. Settling it needs the failing run's job log.
    - Still open in the page: `src/boot.js` loads the page once more when an import fails,
      and Firefox fails the imports of a page being left the same way, so leaving the page
      while its modules load reloads the page it left (probe: `page.goto` fails with
@@ -124,7 +135,7 @@ projects of A-ADR-049 and the built part of v0.5 "IMGW stations"), 0.3.1 (2026-1
     the map that the author reported was not reproduced.
 14. Known problems from Nogat's integration run of candidate-5 and the scenario test of
     2026-11-15 and 2026-11-16 on the Barycz and the Bóbr (its report's section 4; "§6 B3"
-    names a row of its section 6), open after 0.3.3. Fixed: C2, C6, E2-06 and E7-01 in 0.3.1;
+    names a row of its section 6), open after 0.4.0. Fixed: C2, C6, E2-06 and E7-01 in 0.3.1;
     E3-05, E7-12, G01-1 and §6 B1 in 0.3.2, and E7-03 documented there (USAGE mounts an
     encrypted SMB share with `rsize=wsize=1048576`; this computer's `/etc/fstab` still mounts
     `agent-tmp` with the default, the author's change); the CHANGELOG has each.
@@ -166,6 +177,12 @@ projects of A-ADR-049 and the built part of v0.5 "IMGW stations"), 0.3.1 (2026-1
       the plan window cannot fill NMT 5 m gaps with 1 m).
     - With Obserwator: E3-02 (synoptic and climate term data are not in Obserwator's store;
       Archiwista refuses them with 400).
+15. Release 0.4.0 (A-ADR-059) is prepared on `chore/release-0.4.0` (version 0.4.0, the
+    CHANGELOG section dated): merge it into `main` and `develop` and tag `v0.4.0` with the
+    author's approval (DEV-3.3). Deploy it on a shared store before Obserwator 3.2.0 writes
+    captures or hourly series there (ECO-085; the test server's `agent-tmp`, which runs
+    `v0.3.1`), and run `archiwista reindex --store <store>` once if Obserwator 3.2.0 wrote
+    there first: USAGE, "Updating to 0.4.0".
 
 ## Open questions
 
@@ -186,7 +203,7 @@ Decisions awaiting the author:
 - `Approved:` lines of the executed plans v0.1 and v0.2 (DEV-17.4): approval is the
   author's statement.
 - PyPI name `nogat-archiwista` and publishing (adoption phases 5 and 6); the tag `v0.3.0`
-  and the pins by tags are decided (Status: releases 0.3.0 to 0.3.3).
+  and the pins by tags are decided (Status: releases 0.3.0 to 0.4.0).
 - Basemap: one default provider (OpenFreeMap) is an availability risk outside offline mode.
 - PRD "Open decisions" (merge results as Kartograf products before v0.6, the ČHMÚ
   adapter) and the mockup questions M6 to M8 and M10 (SPEC 16; the assistant proposal
@@ -200,3 +217,12 @@ Decisions awaiting the author:
   `subset` of `series.json` in `SeriesListing`, `GET /stations/datasets` and the card,
   e.g. „wersja częściowa: 12 stacji, lata 2020–2024”) changes the source interface and
   the API, so it needs a plan the author approves (DEV-17.4).
+- Private versions (Obserwator ADR-030 D5, Nogat ECO-084): 0.4.0 shows a version's tier and
+  publication state and leaves the downloads as they were, so every signed-in person may
+  download a private version (the coordinator's ruling). ECO-084's „honours `private` in its
+  downloads in a later minor” is for a future public view without sign-in, which needs a
+  plan the author approves.
+- Hourly series in the labels of SPEC 4.8.4: a year is known only when all its units are,
+  so the label of an hourly series whose months do not fill a year is „nieznane” (the card
+  still gives its first and last values and its gaps in UTC hours). Whether such a series
+  should be labelled over its known months instead is the author's decision.
