@@ -1,7 +1,7 @@
 # Archiwista — specification
 
 **Date:** 2026-10-17
-**Status:** living specification of release 0.3.3: v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0, with the defect fixes of 0.3.1 to 0.3.3 and Obserwator 3.1.0 in 0.3.3; the later versions in development or planned (section 13); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
+**Status:** living specification of release 0.3.3 and of 0.4.0 in development (Obserwator 3.2.0, A-ADR-059): v0.1 and v0.2 released; v0.3, v0.4 and the projects in release 0.3.0, with the defect fixes of 0.3.1 to 0.3.3 and Obserwator 3.1.0 in 0.3.3; the later versions in development or planned (section 13); product requirements: [`docs/PRD.md`](PRD.md), scope and release priorities: [`docs/SCOPE.md`](SCOPE.md) (they take precedence on scope and priorities); details in this spec; decisions:
 [`docs/DECISIONS.md`](DECISIONS.md); interface mockup: the `mockup/` directory
 (section 16)
 **Dependency:** Kartograf 0.8 (tag `v0.8.2` in release 0.3.3) — public API
@@ -11,7 +11,7 @@ update plan `kartograf-plan/1`, availability report
 `kartograf-availability/1`, the command of a stored file (KB-6); from v0.6 also KF (merged
 PL + CZ surface, 12.5); from v0.5 Obserwator (IMGW data) —
 a release with requirements IMGW-1..IMGW-13 and IMGW-21 (section 12.7; met since 3.0.0, and
-release 0.3.3 reads 3.1.0, tag `v3.1.0`): a raw root `obserwator-store/1` and a data root `obserwator-data/1` (Obserwator's
+release 0.3.3 reads 3.1.0, tag `v3.1.0`; 0.4.0 reads 3.2.0, tag `v3.2.0`, 4.8.7): a raw root `obserwator-store/1` and a data root `obserwator-data/1` (Obserwator's
 ADR-017, A-ADR-056), sidecar `obserwator-meta/1`, series `obserwator-series/1` (12.8), and from
 v0.6 a release with ČHMÚ stations (IMGW-15..IMGW-19). Projects are Archiwista's own
 file `archiwista-project/1` (4.7, A-ADR-049); the producers' project manifests
@@ -652,14 +652,14 @@ Contents (logical tables; the schema will be set by the implementation plan):
 | Table | What it holds |
 |---|---|
 | `stores` | stores: identifier (a short name given by the user, e.g. `zespol`), producer directories (Kartograf, Obserwator) and path aliases, availability, scan times and statistics |
-| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for Obserwator the name of the dataset from the Obserwator registry in Polish, for a station catalog or stored analyses the name after its provider, the country of the provider and the family of the dataset as the product: `hydro`, `meteo`, `imgw_pmaxtp` (the slug of PMAXTP, which has no family), `stations` or `analyses`, because Obserwator has no products and the "Magazyn" (Store) view and the Map panel group by product — ADR 0032, decision 10; a producer without a list of segments, like Obserwator, describes the segments that its entries named, after the pass), recognized / unrecognized |
-| `slots` | slots: segment, hierarchy, name, unit kind and code, the producer's slot key (`slot_key`, opaque to the index), current version, `full_sheet/` version, number of versions; in the Obserwator catalog a slot is an archive file (path on the server), a station directory or the dataset series — the name of an archive slot is its file, that of a station directory its key (`catalog:pl.imgw.stations`), and the slot key is the Obserwator key (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) |
-| `versions` | versions: label and its source, `sha256`, size, coordinate systems, resolution, `nodata`, data year and date, campaign and request number, release, download date, provider (`provider`: `IMGW`, `CHMU`), full sheet, coverage (`extra.coverage`), license, `parent_request` group key, native extent and its source, kind of location (`footprint`, `country`, `none` with a reason; A-ADR-022), state, full sidecar (JSON) |
+| `segments` | segments: producer, product, source (`dataset`), human-readable name (`describe_segment`; for Obserwator the name of the dataset from the Obserwator registry in Polish, for a station catalog or stored analyses the name after its provider, the country of the provider and the family of the dataset as the product: `hydro`, `meteo`, `groundwater` (from 0.4.0, „Stacje wód podziemnych”), `imgw_pmaxtp` (the slug of PMAXTP, which has no family), `stations` or `analyses`, because Obserwator has no products and the "Magazyn" (Store) view and the Map panel group by product — ADR 0032, decision 10; a producer without a list of segments, like Obserwator, describes the segments that its entries named, after the pass), recognized / unrecognized |
+| `slots` | slots: segment, hierarchy, name, unit kind and code, the producer's slot key (`slot_key`, opaque to the index), current version, `full_sheet/` version, number of versions; in the Obserwator catalog a slot is an archive file (path on the server), a station directory or the dataset series (from 0.4.0 also one slot per month of an hourly series, `series:<key>:<YYYY-MM>`, 4.8.7) — the name of an archive slot is its file, that of a station directory its key (`catalog:pl.imgw.stations`), and the slot key is the Obserwator key (`archive:pl.imgw.hydro_daily:2024/codz_2024.zip`) |
+| `versions` | versions: label and its source, `sha256`, size, coordinate systems, resolution, `nodata`, data year and date, campaign and request number, release, download date, provider (`provider`: `IMGW`, `CHMU`), full sheet, coverage (`extra.coverage`), license, `parent_request` group key, native extent and its source, kind of location (`footprint`, `country`, `none` with a reason; A-ADR-022), state, the tier and publication state its sidecar records (`tier`: `telemetry`, `operational`; `publication`: `public`, `private`; empty for none, 4.8.7), full sidecar (JSON) |
 | `observations` | the publication history of a slot (Obserwator only): a source served other bytes with the content of a version the producer already has — time, address, `ETag`, `Last-Modified`, size, `sha256` and the version with that content; it is neither a version nor a current version and enters no count; a record the pass did not see disappears |
 | `footprints` | R*Tree: version extent in WGS84 (area filter and map) — only versions with a footprint |
-| `stations` | stations from the current version of the station catalog: code, kind, name, river, hydrographic code (with a prefix index, P19) and order, location (WGS84) with source and uncertainty, or no location with the reason from the catalog (IMGW-9), 1° square from the code, active or historical, year established, gauge zero elevation, river kilometre |
+| `stations` | stations from the current version of the station catalog: code, kind (`hydro`, `meteo`, `groundwater`, with a groundwater object's `groundwater_kind` `bore` or `spring`, 4.8.7), name, river, hydrographic code (with a prefix index, P19) and order, location (WGS84) with source and uncertainty, or no location with the reason from the catalog (IMGW-9), 1° square from the code, active or historical, year established, gauge zero elevation, river kilometre |
 | `station_points` | R*Tree: station points (degenerate rectangles) — area filter and station layer |
-| `station_series` | a variable of a station's series in the current dataset series version: file, `sha256` and rows, the variable's key (with the half-year period, e.g. `Q_max@winter`) and unit, first and last date with a value, list of gaps, units with a value and aggregate sums (from the `series.json` listing, IMGW-8) and the station's own known periods (datasets of station files, ČHMÚ); `series_catalogs` keeps the version read, with the dataset's unit, kind of years of its archives, first year and the periods known to the version |
+| `station_series` | a variable of a station's series in the current dataset series version: file, `sha256` and rows, the variable's key (with the half-year period, e.g. `Q_max@winter`) and unit, first and last date with a value (of an hourly series the start of an hour, a UTC time), list of gaps, units with a value and aggregate sums (from the `series.json` listing, IMGW-8) and the station's own known periods (datasets of station files, ČHMÚ); `series_catalogs` keeps the version read, with the dataset's unit (`day`, `week`, `month`, `half_year`, `hour`), kind of years of its archives, first year and the periods known to the version, and of a series kept as one version per month the version of its latest month and every month read (`months`, 4.8.7); `skipped_series` keeps the series slots whose current version the index does not read because it knows no series of its unit (4.4) |
 | `series_years` | each year of a variable in hydrological and calendar years (half-year characteristics: hydrological only): units, known units, units with a value — computed during indexing from the gap lists against the known periods (4.8.4); the labels, the Timeline and filters, whose longest gap comes from the gap list |
 | `search` | FTS5: sheet codes, TERYT, KU, labels, request numbers, file names, human-readable product names, project names and the names of their pin groups, station codes and names, river names |
 | `projects`, `project_stores`, `pin_groups`, `pins` | known projects, one per directory, as their file `archiwista-project.json` was last read (its state or problem, name, description, area): the store of each producer it names with the configured store matched, its groups with their origin, state (`open`, `closed`), the members of their closing (`closed_at`, `closed_by`, `pins_sha256`) and `digest_state` (`ok`, `mismatch`: the recorded digest against the pins as read; `NULL` without one), and the pins of each group with their `calls` linked to versions by store and path — the "which projects use the file" index (SCOPE 3.3; A-ADR-049 and its erratum 6) |
@@ -793,7 +793,17 @@ Rules common to all producers and products:
   each year of each variable in both kinds of years from the gap lists against the
   known periods (4.8.4). A dataset whose series has no current version has no
   coverage; a version Obserwator refuses leaves it none, with the scan notice
-  `series_unreadable`, and is read again by the next scan.
+  `series_unreadable`, and is read again by the next scan. From 0.4.0 (A-ADR-059) a
+  series kept as one version per calendar month (slots `series:<dataset key>:<YYYY-MM>`,
+  Obserwator's hourly series) is one series of its dataset: when the current version of
+  any of its months is not the one read, every month is read again and the months are
+  joined (4.8.7); a month Obserwator refuses is left out with `series_unreadable`, and
+  the dataset has no coverage only when no month is left. A series of a unit Archiwista
+  does not know (`unsupported`, reason `series_unit`; Nogat ECO-085) is skipped, never a
+  failure: its versions stay listed, the coverage of its stations is not read, its slots
+  are recorded in `skipped_series` with the version refused, and the scan gives one
+  warning notice `series_skipped` per dataset when the version of one of its slots is not
+  the one recorded, and on every full scan.
 - **Triggers:** application start (incremental, if the last one is older than
   15 min), interval (by default 15 min for a share, 5 min for a local
   disk), the "Odśwież" (Refresh) button (store, segment, view), end of a background
@@ -815,7 +825,16 @@ Rules common to all producers and products:
   "brak pliku" (file missing) (with a date); projects pinning it are marked. The entry
   disappears from the index only after the next full scan.
 - **A change of index schema** in a new version of Archiwista = rebuild (it is a
-  cache — no migration).
+  cache — no migration): an index of another `SCHEMA_VERSION` is emptied and recreated,
+  its job history included, and the next full scan fills it. An addition within version
+  1 (Nogat ECO-085: a column, a table or a wider constraint that older code never reads)
+  keeps the number and is made in place instead, in one transaction, keeping everything
+  the index holds (`initialize` answers `completed`, then `current`). The additions of
+  0.4.0 (A-ADR-059): `versions.tier` and `versions.publication`, `stations.groundwater_kind`,
+  the table `skipped_series`, and `series_catalogs` rebuilt in place with its rows for its
+  wider `time_unit` check (`day`, `week`, `month`, `half_year`, `hour`) and its new column
+  `months`. Versions an older Archiwista indexed keep an empty tier and publication until
+  a full scan (`archiwista reindex`, "Pełny skan"), which reads every sidecar again.
 - Producer commands run outside Archiwista (Kartograf's CLI
   and Obserwator's, Hydrograf) are a normal situation: the index will see them at the
   next refresh.
@@ -1115,7 +1134,7 @@ data (`pl.imgw.actinometric`) (Obserwator ADR-023); Archiwista does not index th
 | Entity | Attributes | Source |
 |---|---|---|
 | **Station** | code — 9 digits as text (e.g. `149190310`; first digit: `1` hydro, `2` or `3` meteo; digits 2–3 and 4–5 are the degrees of latitude and longitude of the 1° square — an inference from the data, to be confirmed with IMGW: consistent for 905 of 910 hydro stations from the map API and 786 of 787 stations of the public meteo API); kind (`hydro`, `meteo`), for meteo also synoptic, climatological or precipitation (`meteo_kind`: `synoptic` — a station in the current `pl.imgw.meteo_synop_daily` series (Obserwator's `synop`, ADR-022 D5 of Obserwator), `climate` — otherwise one in the current `pl.imgw.meteo_climate_daily` series, `precipitation` — only in the current `pl.imgw.meteo_precip_daily` series, `null` — a station without a current series, and always for ČHMÚ; Archiwista shows a meteo station with `null` as "stacja meteorologiczna" (meteorological station), not as an error); name; river and its hydrographic code from the IMGW list (e.g. Raba `2138`, Mszanka `21382`); order from the IMGW list (grows along the river's course — an inference from the data); location (lon, lat; EPSG:4326 assumed — IMGW does not declare it) or none, the source and uncertainty of the location, catalog date (the label of the catalog version and `downloaded_at` of its sidecar, not a station field); active (present in the public API on the catalog date; `active`) or historical; year of establishment, gauge zero elevation, river kilometre, height of the meteo station | station catalog (IMGW-9; `stations.geojson` fields) |
-| **Series** | station × dataset: variables with units, interval (day, month, half-year, year), kind of years, for each variable the first and last date with a value and a list of gaps | the station's Parquet file in the dataset's series version and the `series.json` listing (IMGW-7, IMGW-8) |
+| **Series** | station × dataset: variables with units, interval (day, week, month, half-year, year, hour; 4.8.7), kind of years, for each variable the first and last date with a value and a list of gaps | the station's Parquet file in the dataset's series version and the `series.json` listing (IMGW-7, IMGW-8) |
 | **Dataset series** | version = snapshot of the series of all stations in the dataset built from specified versions of archives (`source_files[]`); the periods of the inputs (`periods`, and for ČHMÚ stations — the station periods `stations[<code>].periods`) determine the known years (4.8.4) | `obserwator-meta/1` sidecar and the listing (12.8) |
 | **IMGW archive** | path on the server (slot `archive:<key>:<path relative to the dataset directory>`, e.g. `archive:pl.imgw.hydro_daily:2024/codz_2024.zip`), period (year or month), versions with `sha256`, size, `ETag`, `Last-Modified` and download date; for ČHMÚ also signal observations (`observations/`, `obserwator-observation/1`) — the publication history of a file without new content, not versions (4.8.6) | `obserwator-meta/1` sidecar (IMGW-3, IMGW-5, IMGW-16) |
 | **Station catalog** | a version of the station list with locations, separate for each provider (slots `catalog:pl.imgw.stations`, `catalog:cz.chmu.stations`); sources (URL, time, number of stations) in the sidecar | IMGW-9, IMGW-17 |
@@ -1240,8 +1259,9 @@ and a variable:
 
 - **R** — the year range of the view in the selected kind of years (4.8.2); by default from the
   first year of the dataset to the last published one.
-- **Time unit** — day (daily datasets), month (monthly),
-  half-year (half-year and annual).
+- **Time unit** — day (daily datasets), week (weekly: a calendar week, Monday to Sunday,
+  in the year of its Monday), month (monthly), half-year (half-year and annual), hour
+  (sub-daily: a UTC hour); the week and the hour from 0.4.0 (4.8.7).
 - **Known units** — units of R in the input periods of the current version of the
   dataset's series (`periods`); when the inventory gives station periods
   (`stations[<code>].periods` — datasets with station files, ČHMÚ), the units
@@ -1378,6 +1398,82 @@ Differences from IMGW, which Obserwator handles and Archiwista only displays:
 - **License** CC BY 4.0 (`license.id` `CC-BY-4.0`, additive `terms_url`): ČHMÚ attribution in `license.attribution` of sidecars (IMGW-19; in series, catalog and export with a note about processing). Archiwista's products carry the line C "Źródło danych: Český hydrometeorologický ústav (ČHMÚ), https://opendata.chmi.cz, licencja CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)" and, for processed data, the line CP "Dane ČHMÚ zostały przetworzone", once and never saying how (Nogat ECO-071): Obserwator's series and station catalog, as stored and in a hand-off, and Archiwista's station views (map, lists, card, chart, comparison); an older product's "Dane ČHMÚ zostały przetworzone (…)", whatever its words in parentheses, is read as CP; an archive as published C alone; never a terms notice (4.8.5, A-ADR-055). The lines come from Archiwista's catalog, not from the sidecar; the IMGW regulations (4.8.5) do not apply to ČHMÚ stations.
 
 Out of scope for v0.6: current and hourly ČHMÚ data, CAP warnings, SPA states (shown at most as station attributes). Adapter: one Obserwator adapter — Obserwator 3.0.0 has ČHMÚ in the `obserwator` package (ADR-003 Obserwator; the tool and its package were renamed from IMGWTools and `imgwtools` in ECO-057, and the adapter and the extra follow as `archiwista.adapter.obserwator` and `archiwista[obserwator]`); should the provider ever move to a separate package, the decision on the adapter and extra will be made at that release (5.8, A-ADR-024; open question in the PRD).
+
+#### 4.8.7 Obserwator 3.2.0: tiers, captures, hourly series and groundwater (from 0.4.0)
+
+Obserwator 3.2.0 adds to version 1 of its formats (Nogat ECO-085: a reader that does not
+know an addition can skip it) the tiers and captures of operational data (its ADR-030,
+Nogat ECO-084), the hourly series kept as one version per month (ADR-031) and ČHMÚ's
+groundwater (ADR-032). Archiwista 0.4.0 reads them (A-ADR-059); it is deployed on a shared
+store before Obserwator 3.2.0 writes these additions there.
+
+- **Tier and publication of a version.** A sidecar of a dataset whose tier is not
+  `verified` has `tier` — `telemetry` (IMGW-PIB's monthly telemetry) or `operational` (what
+  a source gives as current or unverified: the captures, ČHMÚ's `recent`, the hourly
+  series) — and `publication`, `public` or `private`, the state of the version's source
+  when it was written. A verified version's sidecar has neither, which Archiwista reads as
+  verified and public (`null`). The index keeps both (4.3); the API's `Version` gives them,
+  the command line prints „telemetria: dane operacyjne, niezweryfikowane” or „dane
+  operacyjne, niezweryfikowane” and the state, and the „Katalog” and the file card show
+  them as badges (with „publiczne” or „prywatne” when the sidecar records a state).
+  Downloads are unchanged: a signed-in person may download a private version, as
+  Obserwator's ADR-030 D5 allows Archiwista's signed-in users; a view without sign-in that
+  honours `private` is a later release's (ECO-084).
+- **Captures.** The answers a source of current data gives are archive versions of the raw
+  root, one a dataset and UTC day (slot `archive:<key>:<YYYY-MM-DD>.jsonl.gz`), which
+  Obserwator's `store sync` seals from its spool `<state_dir>/obserwator/captures/`.
+  Archiwista indexes them as any archive version, with their tier and publication; it never
+  reads the spool.
+- **The week.** ČHMÚ's weekly groundwater readings (`cz.chmu.groundwater_weekly`) keep each
+  reading at its own date. A unit is a calendar week, Monday to Sunday, named by its
+  Monday; a week belongs to the year of its Monday, so the last week of a year may end in
+  the next one, and the range R never runs past the year of the last known day. A
+  variable's `first` and `last` are the dates of readings; a gap runs from the Monday of
+  its first week without a reading to the Sunday of its last (a label writes it in days).
+- **The hour.** A sub-daily series (`pl.imgw.hydro_subdaily`, `cz.chmu.hydro_subdaily`;
+  tier `operational`, each value with its own tier inside the series) counts UTC hours: a
+  variable's `first` and `last` and a gap's ends are the starts of hours, UTC times
+  `YYYY-MM-DDTHH:MM:SSZ` in the API; a known period (days) covers every hour of its days,
+  so it ends at 23:00 UTC of its last day; a year has 8,760 or 8,784 units. A label writes
+  a gap `2026.09.15 06:00–11:00 UTC`, the date of the last hour only when it is another
+  day. As for every unit, a year is known only when all its units are, so the label of an
+  hourly series whose months do not fill a year is „nieznane”, while its first and last
+  values and its gaps are given.
+- **A series of months joined.** Each month of an hourly series is a version of its own
+  slot `series:<key>:<YYYY-MM>` (`series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/`, with
+  `month` in `series.json` and `request.month` in the sidecar, which gives the version's
+  data year). Archiwista makes one series of the dataset from the current version of
+  every month: its known periods are the union of the months'; a station's are its own
+  periods in each month that has it (else that month's periods) and the periods of each
+  month without it whose stations have no periods of their own — a country-wide source
+  publishes every station there, so the station's hours in that month are known without a
+  value (gaps), while a month of a per-station source that lacks the station leaves them
+  unknown. A variable's `first` is the earliest of the months', `last` the latest, its
+  gaps every known unit between them without a value, across the months' boundaries too,
+  and its units with a value and accumulated sums the sums. The series' version
+  (`series_version`) is its latest month's, the station's file that of the latest month
+  that has it, and `months` lists the months (`YYYY-MM`). A new version of any month makes
+  the scan read every month again (4.4).
+- **Groundwater stations.** The station kind `groundwater`: ČHMÚ's observation bores and
+  springs (`groundwater_kind` `bore` or `spring`) from the ČHMÚ catalog, whose positions
+  come from `cz.chmu.groundwater_now` or `cz.chmu.groundwater_stations` (and a meteo
+  station's from 3.2.0 also from `pl.imgw.meteo_details`, the station page of IMGW-PIB's
+  hydrological service). Their series are `cz.chmu.groundwater_daily` (day) and
+  `cz.chmu.groundwater_weekly` (week), calendar years, with the variables `H_asl` [m]
+  („rzędna zwierciadła wody”), `spring_yield` [l/s] („wydajność źródła”) and `T`; without
+  `year_type` they take the year type remembered for meteo data (6.7). The map draws them
+  as a diamond (6.7). `cz.chmu.groundwater_recent` (operational) is stored as archive
+  versions without a series, and the statistics `cz.chmu.groundwater_characteristic`
+  (`time_unit` `statistics`, one file per object) are archive versions that never form a
+  series slot.
+- **No chart of hours or weeks.** The station card's chart and the comparison take series
+  of days, months and half-year characteristics (annual) only: a series of weeks or hours
+  is never offered, and asked by `dataset` it is `400` with reason `no_chart`
+  (`details.unit` `hour` or `week`); its coverage is listed. Obserwator's interface draws
+  the hourly chart.
+- **A unit Archiwista does not know.** A series of any other `time_unit` (a later
+  Obserwator's) is skipped: its versions stay listed, the coverage of its stations is not
+  read, and the scan records it with one warning `series_skipped` (4.4).
 
 ## 5. Architecture
 
@@ -1859,8 +1955,9 @@ reading formats and calling the CLI without dependencies (breaks A-ADR-014),
 producers as HTTP services (cost).
 
 **Installation.** Kartograf is a required dependency (pinned by its tag, in release 0.3.3
-`v0.8.2`, and Obserwator's `v3.1.0`; while a producer's release is pending, by its commit,
-REL-5.3; the adapters read Kartograf `>=0.8.0,<0.9` and Obserwator `>=3.1.0,<4`,
+`v0.8.2`, and Obserwator's `v3.1.0`, in 0.4.0 `v3.2.0`; while a producer's release is
+pending, by its commit, REL-5.3; the adapters read Kartograf `>=0.8.0,<0.9` and
+Obserwator `>=3.1.0,<4`, in 0.4.0 `>=3.2.0,<4`,
 `SUPPORTED_VERSIONS`, which start at the development version while a commit is pinned,
 REL-5.6 — the public store reading KA-1..KA-6 arrives in Kartograf 0.8.0;
 A-ADR-024 erratum 1), Obserwator is an extra:
@@ -2677,7 +2774,9 @@ confirmed by the user on 2026-10-26, M11):
 
 - **Points on the map.** Stations of the area from the `station_points` layer. The
   **shape** of a point says the station type: a water gauge is a triangle, a
-  climatological or synoptic station a square, a precipitation post a circle; colour is reserved
+  climatological or synoptic station a square, a precipitation post a circle, a groundwater
+  station (a bore or a spring, from 0.4.0, 4.8.7) a diamond, brown where the legend and the
+  lists show the type without coverage; colour is reserved
   for coverage. The colour and fill say the coverage state of one variable (4.8.4,
   "Wygląd" (Appearance)): "ciągły" green solid, "luki" orange solid, "częściowy" orange
   half fill, "brak danych" grey hollow, "nieznane" grey dashed outline. Label —
@@ -3640,9 +3739,9 @@ and visual comparison); KF blocks v0.6, and so the MVP too (user decision
 | `GET /stations/timeline` | a page of the stations of one dataset year by year, the "Oś czasu" (Timeline) tab of the Catalog (6.5 j): the filters, order and cursor of `GET /stations` with `dataset` required; each item the station (code, name, kind, river with its hydrographic code, active, location) and its series as `GET /stations/{code}/coverage` gives it for the same `variable`, `years` and `year_type`; `variable` (repeatable) keeps the stations with a value of each variable and only their rows; the years of the whole page are read from the index at once; `attribution` and `terms_notice` as in `GET /stations`; `503` without Obserwator (ADR 0045 decision 6) |
 | `GET /stations/{code}` | station card: metadata, location with source and uncertainty, coverage of each variable separately, versions of series with the file and its SHA-256, the licence and the attribution of the version's sidecar (`attribution` of an item of `station.series`, a string; the input archives are not built yet), `paths`: each series file by dataset on this computer and as mounted on others (path aliases, 4.6), and `charts`: the charts of `GET /stations/{code}/series` its series give (`dataset`, `time_unit`, `resolution`, `variables` with their unit and first and last day; days, then months, then the annual charts of half-year characteristics; A-ADR-051); `attribution` and `terms_notice` (9.1), the lines to show: IMGW-PIB S, P, RD, with RH when the station has a point; ČHMÚ C and CP (4.8.5, 4.8.6); a code several stations share (two stores or providers) is `400` (reason `ambiguous_station`, `details.stations`) until `store` and `provider` name one |
 | `GET /stations/{code}/coverage` | coverage of variables by year (`variable` repeatable, by default all variables of the station; `dataset`, `year_type`, `years`) — the Timeline: every year of R with its units, the known ones and those with a value, and its cell (`full`, `fraction`, `none`, `unknown`); `attribution` and `terms_notice` (9.1) of the station's series, without positions (IMGW-PIB S, P, RD; ČHMÚ C and CP) |
-| `GET /stations/{code}/series` | chart data, for display only (`variable` once or twice, `store`, `provider`, `dataset` — by default the one series of the station with every variable, one of days before one of months —, `resolution`, `from`, `to` — by default the variables' known span —, `year_type`, `max_points` ≤ 2,000, `version` — the index's current one, else `409`): the current series version read through the producer; each unit's value up to `max_points` units, else the least, mean and greatest value of each interval of `ceil(units / max_points)` units (`null` without a value, never interpolated); a variable of a monthly series (`Q`, not `Q_max`) gives each month's published minimum, mean and maximum, an interval the least minimum, the mean of the means and the greatest maximum; `gaps` the gaps each variable's label counts in `year_type` (4.8.4) cut at the range's ends; `markers` the accumulated sums and the extremes IMGW published in the half-year characteristics (with their dates); half-year characteristics are not drawn as a line (`400 half_year_chart`). `resolution=annual` (A-ADR-051) reads the station's half-year characteristics instead (`400 no_annual_source` without them; `variable` optional, by default each variable with a value; hydrological years only, else `400 annual_year_type`): a point a hydrological year with `max` and `min`, the greater of the winter and summer maxima and the lesser of their minima, each with `value`, `start`, `end`, `occurrences`, `halves` and `partial` (the half without a value), `null` when neither half has one; `derived` `annual_extremes`, found for display and never stored; `attribution` and `terms_notice` (9.1): IMGW-PIB S, P, RD; ČHMÚ C and CP; `attribution` is an array since A-ADR-055 (before, the sidecar's formula as a string or `null`) |
+| `GET /stations/{code}/series` | chart data, for display only (`variable` once or twice, `store`, `provider`, `dataset` — by default the one series of the station with every variable, one of days before one of months —, `resolution`, `from`, `to` — by default the variables' known span —, `year_type`, `max_points` ≤ 2,000, `version` — the index's current one, else `409`): the current series version read through the producer; each unit's value up to `max_points` units, else the least, mean and greatest value of each interval of `ceil(units / max_points)` units (`null` without a value, never interpolated); a variable of a monthly series (`Q`, not `Q_max`) gives each month's published minimum, mean and maximum, an interval the least minimum, the mean of the means and the greatest maximum; `gaps` the gaps each variable's label counts in `year_type` (4.8.4) cut at the range's ends; `markers` the accumulated sums and the extremes IMGW published in the half-year characteristics (with their dates); half-year characteristics are not drawn as a line (`400 half_year_chart`); a series of weeks or hours has no chart (from 0.4.0, 4.8.7): without `dataset` it is not chosen, and named by `dataset` it is `400 no_chart` (`details.unit` `week` or `hour`). `resolution=annual` (A-ADR-051) reads the station's half-year characteristics instead (`400 no_annual_source` without them; `variable` optional, by default each variable with a value; hydrological years only, else `400 annual_year_type`): a point a hydrological year with `max` and `min`, the greater of the winter and summer maxima and the lesser of their minima, each with `value`, `start`, `end`, `occurrences`, `halves` and `partial` (the half without a value), `null` when neither half has one; `derived` `annual_extremes`, found for display and never stored; `attribution` and `terms_notice` (9.1): IMGW-PIB S, P, RD; ČHMÚ C and CP; `attribution` is an array since A-ADR-055 (before, the sidecar's formula as a string or `null`) |
 | `GET /stations/{code}/handoff` | a variable of a station's series as a hand-off to Hydrolog's statistics (A-ADR-052): `nogat-handoff/1` around `hydrolog-series/1`; the station, `dataset`, `variable` (one), `resolution`, `from` and `to` as for the chart, but by default the variable's values, not its known span (A-ADR-052 erratum 4); `unit`: every day of a series of days over the range, by default from the variable's first value to its last, `null` without a value (a series not of days is `400 no_daily_series`); `annual`: the annual maxima of the annual chart, by default from the first to the last year with a maximum, a year missing a half `null` and named in `provenance.series.left_out`; the optional `attribution` and `terms_notice` of the envelope (DEV-20.6, A-ADR-055), each left out when empty: IMGW-PIB S, P with RD; ČHMÚ C and CP as Obserwator stores the series, without `terms_notice` (4.8.5, 4.8.6) |
-| `GET /stations/compare` | 2–5 stations of one variable on a common time axis (`station` repeatable as `<store>/<provider>/<code>`, `dataset`, `variable`, `from`, `to` — by default the variable's known spans at the stations together —, `year_type`, `max_points` ≤ 2,000): one range and one interval for every station; each station with its location, its series version, the variable's label and facts as on its card (`coverage`) and its chart as `GET /stations/{code}/series` gives it for that range (`chart`); a station without the series or the variable keeps its place with `null` ("brak danych", P14); `attribution` and `terms_notice` (9.1) of the stations' providers, merged (IMGW-PIB with RH when a station has a point), a station's own `attribution` staying its sidecar's string; `400` (reason `unknown_variable`) when no station's series has the variable, `404` when none has a series of the dataset |
+| `GET /stations/compare` | 2–5 stations of one variable on a common time axis (`station` repeatable as `<store>/<provider>/<code>`, `dataset`, `variable`, `from`, `to` — by default the variable's known spans at the stations together —, `year_type`, `max_points` ≤ 2,000): one range and one interval for every station; each station with its location, its series version, the variable's label and facts as on its card (`coverage`) and its chart as `GET /stations/{code}/series` gives it for that range (`chart`); a station without the series or the variable keeps its place with `null` ("brak danych", P14); `attribution` and `terms_notice` (9.1) of the stations' providers, merged (IMGW-PIB with RH when a station has a point), a station's own `attribution` staying its sidecar's string; `400` (reason `unknown_variable`) when no station's series has the variable, `400 no_chart` for a dataset of weeks or hours (from 0.4.0, 4.8.7), `404` when none has a series of the dataset |
 | `POST /areas` | area from GeoJSON or from a geometry file → `id`, surface area, countries (limits: 10.1) |
 | `GET /areas/{id}` | area: geometry (WGS84), surface area, countries |
 | `GET /local-coverage` | store state for an area and product ("lokalnie 83% obszaru"; `area_id`, `product`, `store`) after refreshing the area's slots (4.4); the percentage in the flat coordinate system of the product's country |
@@ -4286,7 +4385,7 @@ over TLS.
   test checks each kit file against the kit's own manifest `nogat-kit.json`
   (A-ADR-054). The Python
   environment is pinned by `uv.lock` (`uv sync --locked`, DEV-6.3); Kartograf and Obserwator
-  are pinned by tag in `pyproject.toml` (release 0.3.3: `v0.8.2` and `v3.1.0`; by commit while a producer's release is pending, REL-5.3). Updating an external library: download
+  are pinned by tag in `pyproject.toml` (release 0.3.3: `v0.8.2` and `v3.1.0`; 0.4.0: `v0.8.2` and `v3.2.0`; by commit while a producer's release is pending, REL-5.3). Updating an external library: download
   the package from the source, check `integrity`, replace the files and sums
   in the manifest in the same commit.
 
@@ -4908,6 +5007,20 @@ and a reader of both versions during the transition period. Archiwista declares 
 supported versions, and a directory in an unknown version it does not read, only
 reports it (UC-13).
 
+**Obserwator 3.2.0: additions within `/1` (Nogat ECO-085; its ADR-030 to ADR-032;
+Archiwista 0.4.0, A-ADR-059, 4.8.7).** A new value of an existing field or a new form of
+an identifier stays at `/1` when a reader that does not know it can skip it and every
+consumer is changed first. The values Archiwista reads:
+
+| Where | Addition | Archiwista |
+|---|---|---|
+| `obserwator-meta/1` | optional `tier` (`telemetry`, `operational`; absent: `verified`) and `publication` (`public`, `private`; absent: public), written only on a version of a dataset whose tier is not `verified` | `EntryMeta.tier`, `.publication`; the index, `Version.tier`, `Version.publication` (`null` for none) |
+| raw root | captures: archive versions of one dataset and UTC day (`archive:<key>:<YYYY-MM-DD>.jsonl.gz`, e.g. `pl.imgw.hydro_operational`, `pl.imgw.hydro_current`), sealed by `store sync` from the spool `<state_dir>/obserwator/captures/`; IMGW-PIB's monthly telemetry (`pl.imgw.hydro_telemetry`, tier `telemetry`); ČHMÚ's `recent` (operational) and its validated hourly years | archive versions, listed with their tier and publication |
+| data root, slot grammar | one slot per calendar month of a sub-daily series, `series:<key>:<YYYY-MM>`, in `series/versions/<slug>/<YYYY-MM>/<label>_<sha8>/` (`pl.imgw.hydro_subdaily`, `cz.chmu.hydro_subdaily`); `series.json` with `month` and `tiers`, the sidecar with `request.month` | `series_dataset` takes both forms; the months joined into one series (4.8.7) |
+| `time_unit` | `hour` (coverage as UTC times `YYYY-MM-DDTHH:MM:SSZ`, gaps of hours) and `week` (each reading at its date; a gap named by the Mondays of its first and last week); `ten_minutes`, `snapshot` and `statistics` of datasets that build no series | `hour` and `week` indexed with their coverage; any other unit of a series skipped (`unsupported`, reason `series_unit`; `skipped_series`, `series_skipped`) |
+| station catalog | the kind `groundwater` with `groundwater_kind` `bore` or `spring`; `location_source` `cz.chmu.groundwater_now`, `cz.chmu.groundwater_stations` and `pl.imgw.meteo_details`; the variables `H_asl` [m] and `spring_yield` [l/s] | `Station.groundwater_kind`, `kind` `groundwater`; the product „Stacje wód podziemnych” |
+| ČHMÚ groundwater archives | `cz.chmu.groundwater_daily` and `cz.chmu.groundwater_weekly` (series), `cz.chmu.groundwater_recent` (operational, no series), the statistics `cz.chmu.groundwater_characteristic` (`time_unit` `statistics`, `archive_scope` `station`) | the statistics and `recent` are archive versions without series |
+
 ### 12.9 What we do not require
 
 - No Archiwista fields in sidecars; no Archiwista file
@@ -5175,6 +5288,17 @@ entry point of the Obserwator adapter, a check of the version and of the `obserw
 schema, and a second CI configuration (with `[obserwator]`). Without
 Obserwator the application works as in v0.4, and the IMGW views are
 hidden (5.8).
+
+Release 0.4.0 (A-ADR-059) carries the built part of v0.5 to Obserwator 3.2.0 (4.8.7): a
+version's tier and publication state in the API, the CLI and the interface, downloads
+unchanged; ČHMÚ's groundwater stations; weekly and hourly series indexed with their
+coverage, the months of an hourly series joined into one series, without a chart (`400
+no_chart`); a series of an unknown unit skipped with a warning; the index completed in
+place within schema version 1. Its acceptance: a store built by `obserwator.testing`
+with the groundwater variant, telemetry, a sealed capture and two months of
+`pl.imgw.hydro_subdaily` scans without warnings, a second scan gives none, and the
+coverage, tiers and kinds read back as 4.8.7 says; an index written by 0.3.3 opens as
+`completed` with its rows, then `current`.
 
 Acceptance criteria:
 

@@ -381,3 +381,12 @@ name a provider by its id through one table (`common.provider_imgw`,
 changes and nothing is translated: the index is rebuilt (`archiwista reindex`) from a
 data root Obserwator 3.1.0 built, which reads stored sidecars with the provider
 `IMGW-PIB` as `IMGW`.
+
+**Erratum 5 (2026-11-23, A-ADR-059; Nogat ECO-085, Obserwator 3.2.0):** decision 12's "a
+unit the index cannot count is refused the same way" no longer holds. The index counts
+days, weeks, months, half-years and hours; a series of any other unit is refused by the
+adapter as `unsupported` (reason `series_unit`) before its file is read, and the scan
+skips it without failing: its versions stay listed, its slots are recorded in
+`skipped_series` and one warning `series_skipped` is given per dataset when a slot's
+version changes and on a full scan. The months of an hourly series, each in a slot
+`series:<key>:<YYYY-MM>`, are joined into one series of the dataset.
