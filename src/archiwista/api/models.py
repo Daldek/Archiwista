@@ -312,12 +312,12 @@ _STORE_EXAMPLE = {
 _SOURCE_EXAMPLE = {
     "producer": "kartograf",
     "status": "available",
-    "package_version": "0.8.0",
-    "supported_versions": ">=0.8.0,<0.9",
+    "package_version": "0.9.0",
+    "supported_versions": ">=0.9.0,<0.10",
     "schemas": ["kartograf-meta/1", "kartograf-store/1"],
     "detail": None,
     "message": (
-        "Wtyczka kartograf: wersja 0.8.0 (wspierane >=0.8.0,<0.9;"
+        "Wtyczka kartograf: wersja 0.9.0 (wspierane >=0.9.0,<0.10;"
         " schematy: kartograf-meta/1, kartograf-store/1)"
     ),
     "fix": None,

@@ -280,6 +280,21 @@ def test_installed_kartograf_within_supported_range() -> None:
     assert supported.contains(Version(kartograf.__version__), prereleases=True)
 
 
+def test_the_supported_range_is_kartograf_0_9_with_its_development_versions() -> None:
+    """Kartograf 0.8.x is outside the range; 0.9's development versions are inside.
+
+    ``pyproject.toml`` pins the commit of Kartograf's ``develop`` at ``0.9.0.dev0``
+    while its release 0.9.0 is pending, so the range admits the development versions
+    PEP 440 sorts below ``0.9.0`` (REL-5.6).
+    """
+    supported = SpecifierSet(SUPPORTED_VERSIONS)
+
+    assert not supported.contains(Version("0.8.2"), prereleases=True)
+    assert supported.contains(Version("0.9.0.dev0"), prereleases=True)
+    assert supported.contains(Version("0.9.0"), prereleases=True)
+    assert not supported.contains(Version("0.10.0.dev0"), prereleases=True)
+
+
 def test_adapter_entries_match_iter_store(
     store: StoreManifest, adapter: KartografAdapter
 ) -> None:
