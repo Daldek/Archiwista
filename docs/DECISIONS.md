@@ -137,7 +137,7 @@ removed its projects (ECO-054, ADR-049). Until Kartograf's release the adapter's
 erratum 2's.
 
 **Erratum 4 (2026-11-24, Nogat's candidate-13):** the range of erratum 2 is Kartograf 0.9:
-`>=0.9.0.dev0,<0.10` while `pyproject.toml` pins Kartograf's commit `630af02d`, narrowed to
+`>=0.9.0.dev0,<0.10` while `pyproject.toml` pins Kartograf's commit `05052b3a`, narrowed to
 `>=0.9.0,<0.10` by the release that pins the tag `v0.9.0` (ADR-024 erratum 3).
 
 ---
@@ -1366,13 +1366,13 @@ plugin also offers commands.
 
 **Erratum 3 (2026-11-24, Nogat's candidate-13, approved by the author on 2026-11-24):** the
 range of item 1 and erratum 1 is Kartograf 0.9. `pyproject.toml` pins Kartograf's `develop`
-at `630af02d1739e4979a817951490667c3fc2f9cdd` (`0.9.0.dev0`, its pending release 0.9.0;
+at `05052b3a924bfabd5d0fbb21bf30c9e78a8d640a` (`0.9.0.dev0`, its pending release 0.9.0;
 REL-5.3) and Kartograf's `SUPPORTED_VERSIONS` is `>=0.9.0.dev0,<0.10` (REL-5.6; was
 `>=0.8.0,<0.9` in release 0.4.0); the release that pins the tag `v0.9.0` narrows it to
 `>=0.9.0,<0.10`. Kartograf 0.9.0 adds to the public API (the CAMELS-PL segment
 `hydro/pl_camels`, Kartograf ADR-062) and removes nothing the adapter calls, but the range
 admits one pending release only (REL-5.6), so 0.8.x is outside it. Obserwator's range stays
-`>=3.2.0,<4`, which admits 3.2.1 (the commit `472446d` of `hotfix/3.2.1`).
+`>=3.2.0,<4`, which admits 3.2.1 (the commit `ffcaa23` of `hotfix/3.2.1`).
 
 ---
 

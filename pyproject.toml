@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Piotr de Bever", email = "git@debever.pl" }]
 dependencies = [
-    # Kartograf 0.9.0.dev0, the commit 630af02d of its `develop` in Nogat's release set
+    # Kartograf 0.9.0.dev0, the commit 05052b3a of its `develop` in Nogat's release set
     # candidate-13, pinned while its release 0.9.0 is pending (REL-5.3; 0.4.0 pinned the
     # tag v0.8.2): the store root `root`, the marker `kartograf-store.json`, the
     # default root (`store_root()`), `kartograf.testing` (ADR-054),
@@ -24,7 +24,7 @@ dependencies = [
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`
     # (REL-5.6), `>=0.9.0.dev0,<0.10` while the commit is pinned. The release commit
     # replaces the commit with the tag v0.9.0 and narrows the range to `>=0.9.0,<0.10`.
-    "kartograf @ git+https://github.com/Daldek/Kartograf@630af02d1739e4979a817951490667c3fc2f9cdd",
+    "kartograf @ git+https://github.com/Daldek/Kartograf@05052b3a924bfabd5d0fbb21bf30c9e78a8d640a",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
@@ -56,7 +56,7 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057).
-# Obserwator 3.2.1, the commit 472446d of its branch `hotfix/3.2.1` in Nogat's release set
+# Obserwator 3.2.1, the commit ffcaa23 of its branch `hotfix/3.2.1` in Nogat's release set
 # candidate-13, pinned while its release 3.2.1 is pending (REL-5.3; 0.4.0 pinned the tag
 # v3.2.0), keeps a store in two roots,
 # the raw root `store sync` downloads into and the data root of the series, catalogs
@@ -71,7 +71,7 @@ dependencies = [
 # `archiwista.adapter.obserwator` (REL-5.6), `>=3.2.0,<4`, which admits 3.2.1 by commit.
 # The release commit replaces the commit with the tag v3.2.1.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@472446d3d3ac29cc9b4f46b89e4fba83e555f1ba",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@ffcaa23a066aaf424eb0a64fb6c4c63c52e19aab",
 ]
 
 [dependency-groups]
