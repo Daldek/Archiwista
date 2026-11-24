@@ -7,8 +7,10 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 
 ## Status
 
-The working branch is `chore/release-0.4.0` (from `develop` `24a43d6`); every other branch
-named below is merged into `develop`.
+The working branch is `chore/pins-candidate-13` (from `develop` `8805a78`, release 0.4.0, which
+is merged into `main` and tagged `v0.4.0`): `develop` opens 0.4.1 (`0.4.1.dev0`) with the
+producers of Nogat's candidate-13 by commit, not merged until the author approves; every
+other branch named below is merged into `develop`.
 
 **Release 0.4.0** is Archiwista's part A1 of Obserwator 3.2.0 (Nogat ECO-084, ECO-085;
 A-ADR-059), a minor release with Nogat's standard 1.1 (1.2 is open on Nogat's `develop`, not
@@ -22,8 +24,8 @@ no hourly or weekly chart (`400 no_chart`); a series of an unknown unit skipped 
 version 1. It is deployed before Obserwator 3.2.0 writes captures or hourly series to shared
 roots, and a store Obserwator 3.2.0 wrote to first is rebuilt once with `archiwista reindex
 --store <store>` (README "Upgrading to 0.4.0", USAGE "Updating to 0.4.0").
-`feature/obserwator-3.2.0` is merged into `develop` (`24a43d6`); the release is prepared on
-`chore/release-0.4.0`, not merged or tagged until the author approves (Next 15).
+`feature/obserwator-3.2.0` is merged into `develop` (`24a43d6`); the release was merged into
+`main` and `develop` and tagged `v0.4.0` on 2026-11-23 (Next 15: its deployment).
 
 **Earlier releases**, tagged on `main`: 0.3.0 (2026-11-16, Archiwista's first tag, a member of
 the first joint release of the Nogat ecosystem, ECO-074: v0.3 "Actions", v0.4 "Team", the
@@ -48,7 +50,7 @@ of Firefox's page errors on leaving a page.
 | User guide `/instrukcja` (A-ADR-048) | done | 13 Polish slides served without a session, „Instrukcja” in the top bar; no link on the sign-in page; its pictures need taking again when the views they show change |
 | Nogat standard 1.1 | done | 1.0: structure and tooling (uv, `src/` layout, `scripts/gate.sh`, CI, Dependabot), English documentation, error registry (A-ADR-030); 1.1, in 0.3.3: the providers' identifiers by their national acronyms (DEV-2.5), the files Archiwista names (DEV-19.21), the strip folded on a phone (DEV-20.5), kit 1.1.0 and the error registry of 1.1; 0.4.0 follows 1.1 (1.2 is open on Nogat's `develop`, not released); the items that need the author: Open questions |
 | Test server :8090 | done | https://archiwista-test.debever.pl, user unit `archiwista-public.service`, its checkout `<data-dir>/archiwista-public/app` is at `v0.3.1` (`0b66beb`; it ran `7a11c76` of `develop` from 2026-11-15). One store, `agent-tmp` („Magazyn agent-tmp”, kind share), the author's single place for downloaded data (2026-11-15): `kartograf` = `<share>/agent-tmp/hydroni/kartograf` and `obserwator` = `<share>/agent-tmp/obserwator` on the NAS (CIFS), `obserwator_data` = `<data-dir>/obserwator-target/data` on the local disk (processed, served fast). Projects `h07` (4 sets, 2909 pins) and `kaczawa` (Hydrograf :8080's Kaczawa, set `2026-1`, 205 pins) use `agent-tmp`, 0 missing; one known problem (`missing_sidecar` of an `.aux.xml`). State schema 1 and index schema 1 since `1c18fb3`. Backups in `<data-dir>/archiwista-public/backup-2026-11-14-v1/`, rollback steps in `<data-dir>/archiwista-public/backup-2026-11-13/ROLLBACK.txt` |
-| Producers' pins | done | Kartograf `v0.8.2` (`>=0.8.0,<0.9`) and Obserwator `v3.2.0` (extra `obserwator`, `>=3.2.0,<4`), the tags of release 0.4.0 in `pyproject.toml` and `uv.lock` (0.3.3 pinned Obserwator `v3.1.0`) |
+| Producers' pins | done | on `chore/pins-candidate-13`, for Nogat's candidate-13 (REL-5.3, REL-5.6; A-ADR-024 erratum 3): Kartograf `05052b3a` (`0.9.0.dev0`, `>=0.9.0.dev0,<0.10`) and Obserwator `ffcaa23` (3.2.1 of `hotfix/3.2.1`, extra `obserwator`, `>=3.2.0,<4`) in `pyproject.toml` and `uv.lock`; release 0.4.1 replaces them with the tags `v0.9.0` and `v3.2.1` and narrows Kartograf's range to `>=0.9.0,<0.10`. Release 0.4.0 pinned the tags `v0.8.2` (`>=0.8.0,<0.9`) and `v3.2.0` |
 | Obserwator 3.1.0 for Nogat's release round of 2026-11-21 | done, in 0.3.3 | `chore/obserwator-3.1.0`, merged (`58f4c5c`); Obserwator 3.1.0, Kartograf `v0.8.2`; a series version of chosen stations and years (Obserwator ADR-026) is read as any version (`tests/integration/test_obserwator_subset.py`, SPEC 4.8.4), ČHMÚ's snow files and variables (SPEC 4.8.6); Nogat's `handoff-1.schema.json` of `263e83c` (Nogat plan `2026-11-19-hydrolog-0.9.0-consumers.md`, step 6). Full gate passed on `4d42cf7` (3,049 passed, 93.32 %, 3,249 s) |
 | Obserwator 3.2.0, Archiwista's A1 (Nogat ECO-084, ECO-085; A-ADR-059) | done, in 0.4.0 | `feature/obserwator-3.2.0`, merged (`24a43d6`): tier and publication of a version (`Version.tier`, `Version.publication`, the CLI's version lines, the badges of the „Katalog” and the file card; downloads unchanged, signed-in people download private versions); ČHMÚ's groundwater stations (`groundwater_kind`, the diamond, the kind filter, the location sources and the variables `H_asl`, `spring_yield`); weekly and hourly series indexed with their coverage (`index/series.py`: the week of its Monday, UTC hours; `join_months` of the monthly slots, `months` in the station and dataset answers, „Miesiące szeregu”); no hourly or weekly chart (`400 no_chart`); `skipped_series` and `series_skipped` for an unknown unit; the index completed in place at schema 1 (`initialize` gives `completed`). Tests: `tests/e2e/test_version_tiers.py`, `tests/e2e/test_groundwater_stations.py`, the fixture store `tests/fixtures/obserwator_tiers.py` (`tiers_store`) |
 | Providers' national names and the files Archiwista names (Nogat ECO-082, ECO-083, DEV-2.5, DEV-19.21; A-ADR-032 errata 3 and 4, A-ADR-055 erratum 5) | done, in 0.3.3 | merged into `develop` (`bfd42c8`): the providers `IMGW` and `CHMU`, the keys `cz.chmu.*`, each provider's slugs and store directories `imgw_*` and `chmu_*` (`stations/versions/imgw_stations` beside `chmu_stations`; PMAXTP's product `imgw_pmaxtp`), a station's `location_source` the key of its dataset; old names are neither read nor translated, the index is rebuilt from a data root Obserwator 3.1.0 built; the files Archiwista names for a person are `archiwista_<content>_<qualifiers>.<extension>` (`file_names.py`) |
@@ -177,12 +179,14 @@ of Firefox's page errors on leaving a page.
       the plan window cannot fill NMT 5 m gaps with 1 m).
     - With Obserwator: E3-02 (synoptic and climate term data are not in Obserwator's store;
       Archiwista refuses them with 400).
-15. Release 0.4.0 (A-ADR-059) is prepared on `chore/release-0.4.0` (version 0.4.0, the
-    CHANGELOG section dated): merge it into `main` and `develop` and tag `v0.4.0` with the
-    author's approval (DEV-3.3). Deploy it on a shared store before Obserwator 3.2.0 writes
-    captures or hourly series there (ECO-085; the test server's `agent-tmp`, which runs
-    `v0.3.1`), and run `archiwista reindex --store <store>` once if Obserwator 3.2.0 wrote
-    there first: USAGE, "Updating to 0.4.0".
+15. Release 0.4.0 (A-ADR-059) is merged and tagged `v0.4.0`. Deploy it on a shared store
+    before Obserwator 3.2.0 writes captures or hourly series there (ECO-085; the test
+    server's `agent-tmp`, which runs `v0.3.1`), and run `archiwista reindex --store <store>`
+    once if Obserwator 3.2.0 wrote there first: USAGE, "Updating to 0.4.0".
+16. Release 0.4.1 for Nogat's candidate-13: `chore/pins-candidate-13` (Kartograf `05052b3a`,
+    Obserwator `ffcaa23`, `0.4.1.dev0`) is merged into `develop` with the author's approval;
+    once Kartograf `v0.9.0` and Obserwator `v3.2.1` are tagged, the release pull request pins
+    the tags and narrows Kartograf's range to `>=0.9.0,<0.10` (REL-2.1, REL-5.6).
 
 ## Open questions
 

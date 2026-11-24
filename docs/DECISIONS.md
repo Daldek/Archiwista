@@ -27,7 +27,7 @@ ECO-057); the decisions keep the names of their time, and ADR-032 erratum 2 maps
 
 | ADR | Title | Date | Status |
 |---|---|---|---|
-| [ADR-001](#adr-001-separate-project-kartograf-as-a-dependency) | Separate project, Kartograf as a dependency | 2026-10-17 | accepted (amended by ADR-024; erratum 2: `kartograf>=0.8.0,<0.9`; erratum 3: a GitHub remote, no `kartograf-project/1`, the range until Kartograf's release) |
+| [ADR-001](#adr-001-separate-project-kartograf-as-a-dependency) | Separate project, Kartograf as a dependency | 2026-10-17 | accepted (amended by ADR-024; erratum 2: `kartograf>=0.8.0,<0.9`; erratum 3: a GitHub remote, no `kartograf-project/1`, the range until Kartograf's release; erratum 4: Kartograf 0.9, ADR-024 erratum 3) |
 | [ADR-002](#adr-002-source-of-truth-on-disk-local-index-as-a-cache) | Source of truth on disk, local index as a cache | 2026-10-17 | accepted, amended by ADR-029 (separate local database for state that is not rebuildable); erratum 2: additions within the index's version 1 made in place, ADR-059 |
 | [ADR-003](#adr-003-read-only-store-writes-only-through-kartograf) | Read-only store, writes only through Kartograf | 2026-10-17 | accepted, partly superseded by ADR-019; erratum 3: Archiwista's writes are a project's file, areas and exports (ADR-049) and own-data snapshots (ADR-027) |
 | [ADR-004](#adr-004-python-server-with-fastapi) | Python server with FastAPI | 2026-10-17 | accepted (erratum 2: confirmed after the architecture review, 2026-10-18) |
@@ -50,7 +50,7 @@ ECO-057); the decisions keep the names of their time, and ADR-032 erratum 2 maps
 | [ADR-021](#adr-021-coverage-labels-of-imgw-series) | Coverage labels of IMGW series | 2026-10-17 | accepted (P14, P15 — erratum 1; P16 — erratum 2; erratum 3: units known per ČHMÚ station; erratum 4: appearance, M11, user decision 2026-10-26; erratum 5: the units week and hour, ADR-059) |
 | [ADR-022](#adr-022-data-without-location-catalog-instead-of-the-map) | Data without location: Catalog instead of a map | 2026-10-17 | accepted (SPEC 15: P13) |
 | [ADR-023](#adr-023-imgw-data-in-projects-the-imgwtools-manifest) | IMGW data in projects: IMGWTools manifest | 2026-10-17 | accepted, partly superseded by ADR-049 (the IMGWTools manifest `imgw-project.json` and the producer's project functions; IMGW versions stay pinnable in projects, as pins of `archiwista-project/1`); IMGW data in a project in v1.0: SPEC 15, P18; erratum 2: shape of `imgw-project/1` from IMGWTools 3.0.0; erratum 3: ADR-049; erratum 4: archive pins checked, re-pinned and restored (ADR-050), series and catalog pins `not_checkable` (ADR-056) |
-| [ADR-024](#adr-024-data-sources-as-plugins-kartograf-required-imgwtools-optional) | Data sources as plugins: Kartograf required, IMGWTools optional | 2026-10-17 | accepted (amends ADR-001 and ADR-019; erratum 1: `kartograf>=0.8.0,<0.9`; amended by ADR-032 and ADR-050; erratum 2: the schemas read and the adapters' version ranges) |
+| [ADR-024](#adr-024-data-sources-as-plugins-kartograf-required-imgwtools-optional) | Data sources as plugins: Kartograf required, IMGWTools optional | 2026-10-17 | accepted (amends ADR-001 and ADR-019; erratum 1: `kartograf>=0.8.0,<0.9`; amended by ADR-032 and ADR-050; erratum 2: the schemas read and the adapters' version ranges; erratum 3: Kartograf `>=0.9.0.dev0,<0.10` by commit, candidate-13) |
 | [ADR-025](#adr-025-mvp-scope-and-release-order) | MVP scope and release order | 2026-10-17 | accepted (user decision; erratum 3: "PL + CZ" as v0.6 in the MVP, with ČHMÚ stations; erratum 4: IMGW-14 withdrawn, ČHMÚ in Obserwator's package) |
 | [ADR-026](#adr-026-mit-license-and-contributions-with-a-cla) | MIT license and contributions with a CLA | 2026-10-17 | accepted (MIT; CLA — erratum 1, user decision 2026-10-18) |
 | [ADR-027](#adr-027-own-data-in-the-project-directory-and-archiwista-snapshots) | Own data in the project directory and Archiwista snapshots | 2026-10-18 | accepted (user decision; erratum 1: in a team the snapshot is made by the project owner or an administrator, ADR-029) |
@@ -135,6 +135,10 @@ removed its projects (ECO-054, ADR-049). Until Kartograf's release the adapter's
 `>=0.8.0.dev0,<0.9` (`SUPPORTED_VERSIONS` of `archiwista.adapter.kartograf`) and
 `pyproject.toml` pins Kartograf by commit (ADR-030 item 3); the release narrows the range to
 erratum 2's.
+
+**Erratum 4 (2026-11-24, Nogat's candidate-13):** the range of erratum 2 is Kartograf 0.9:
+`>=0.9.0.dev0,<0.10` while `pyproject.toml` pins Kartograf's commit `05052b3a`, narrowed to
+`>=0.9.0,<0.10` by the release that pins the tag `v0.9.0` (ADR-024 erratum 3).
 
 ---
 
@@ -1359,6 +1363,16 @@ with the producers' projects, ADR-049). The range of item 1 and erratum 1 is the
 Item 6's two configurations are the jobs of `.github/workflows/ci.yml`, the gate with every
 extra and the tests without the extra `obserwator`. ADR-050 amends item 3: the Obserwator
 plugin also offers commands.
+
+**Erratum 3 (2026-11-24, Nogat's candidate-13, approved by the author on 2026-11-24):** the
+range of item 1 and erratum 1 is Kartograf 0.9. `pyproject.toml` pins Kartograf's `develop`
+at `05052b3a924bfabd5d0fbb21bf30c9e78a8d640a` (`0.9.0.dev0`, its pending release 0.9.0;
+REL-5.3) and Kartograf's `SUPPORTED_VERSIONS` is `>=0.9.0.dev0,<0.10` (REL-5.6; was
+`>=0.8.0,<0.9` in release 0.4.0); the release that pins the tag `v0.9.0` narrows it to
+`>=0.9.0,<0.10`. Kartograf 0.9.0 adds to the public API (the CAMELS-PL segment
+`hydro/pl_camels`, Kartograf ADR-062) and removes nothing the adapter calls, but the range
+admits one pending release only (REL-5.6), so 0.8.x is outside it. Obserwator's range stays
+`>=3.2.0,<4`, which admits 3.2.1 (the commit `ffcaa23` of `hotfix/3.2.1`).
 
 ---
 
