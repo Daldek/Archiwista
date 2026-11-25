@@ -4,16 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "archiwista"
-version = "0.4.1.dev0"
+version = "0.4.1"
 description = "Local web application for browsing the spatial-data stores that Kartograf writes: catalog, map, file previews, projects with snapshots. Web interface, HTTP API and CLI; never writes to a store."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
 authors = [{ name = "Piotr de Bever", email = "git@debever.pl" }]
 dependencies = [
-    # Kartograf 0.9.0.dev0, the commit 05052b3a of its `develop` in Nogat's release set
-    # candidate-13, pinned while its release 0.9.0 is pending (REL-5.3; 0.4.0 pinned the
-    # tag v0.8.2): the store root `root`, the marker `kartograf-store.json`, the
+    # Kartograf 0.9.0, the tag v0.9.0 in Nogat's release round of 2026-11-25 (0.4.0
+    # pinned the tag v0.8.2): the store root `root`, the marker `kartograf-store.json`, the
     # default root (`store_root()`), `kartograf.testing` (ADR-054),
     # `find_sheet_outlines` (PL-2000 zones of powiats, Kartograf ADR-055), the
     # refresh TTL of the metadata cache (Kartograf ADR-056), `store_state()`,
@@ -22,9 +21,8 @@ dependencies = [
     # `obserwator-store.json` of another tool's store (Nogat ECO-057) and, from 0.9.0,
     # the CAMELS-PL segment `hydro/pl_camels` (Kartograf ADR-062). The versions the
     # adapter reads are `SUPPORTED_VERSIONS` in `archiwista.adapter.kartograf`
-    # (REL-5.6), `>=0.9.0.dev0,<0.10` while the commit is pinned. The release commit
-    # replaces the commit with the tag v0.9.0 and narrows the range to `>=0.9.0,<0.10`.
-    "kartograf @ git+https://github.com/Daldek/Kartograf@05052b3a924bfabd5d0fbb21bf30c9e78a8d640a",
+    # (REL-5.6), `>=0.9.0,<0.10`.
+    "kartograf @ git+https://github.com/Daldek/Kartograf@v0.9.0",
     "fastapi>=0.115,<1",
     # The server's TLS is Archiwista's own context (`security.tls_context`), given
     # through `Config(ssl_context_factory=...)`; 0.54 is the version tested with it.
@@ -56,9 +54,8 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057).
-# Obserwator 3.2.1, the commit ffcaa23 of its branch `hotfix/3.2.1` in Nogat's release set
-# candidate-13, pinned while its release 3.2.1 is pending (REL-5.3; 0.4.0 pinned the tag
-# v3.2.0), keeps a store in two roots,
+# Obserwator 3.2.1, the tag v3.2.1 in Nogat's release round of 2026-11-25 (0.4.0 pinned
+# the tag v3.2.0), keeps a store in two roots,
 # the raw root `store sync` downloads into and the data root of the series, catalogs
 # and analyses it builds
 # offline (its ADR-015, ADR-017; A-ADR-056), with the default root of each
@@ -68,10 +65,9 @@ dependencies = [
 # of its ADR-030, the hourly series of one version per month of its ADR-031 and ČHMÚ's
 # groundwater of its ADR-032 (A-ADR-059). `[store]` brings `pyarrow` for the Parquet
 # series. The versions the adapter reads are `SUPPORTED_VERSIONS` in
-# `archiwista.adapter.obserwator` (REL-5.6), `>=3.2.0,<4`, which admits 3.2.1 by commit.
-# The release commit replaces the commit with the tag v3.2.1.
+# `archiwista.adapter.obserwator` (REL-5.6), `>=3.2.0,<4`.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@ffcaa23a066aaf424eb0a64fb6c4c63c52e19aab",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@v3.2.1",
 ]
 
 [dependency-groups]
