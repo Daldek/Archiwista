@@ -1372,7 +1372,7 @@ REL-5.3) and Kartograf's `SUPPORTED_VERSIONS` is `>=0.9.0.dev0,<0.10` (REL-5.6; 
 `>=0.9.0,<0.10`. Kartograf 0.9.0 adds to the public API (the CAMELS-PL segment
 `hydro/pl_camels`, Kartograf ADR-062) and removes nothing the adapter calls, but the range
 admits one pending release only (REL-5.6), so 0.8.x is outside it. Obserwator's range stays
-`>=3.2.0,<4`, which admits 3.2.1 (the commit `ffcaa23` of `hotfix/3.2.1`).
+`>=3.2.0,<4`, which admits 3.2.1 (the commit `1ffe40d` of `hotfix/3.2.1`).
 
 ---
 
