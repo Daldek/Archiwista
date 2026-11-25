@@ -63,15 +63,20 @@ def test_only_the_obserwator_adapter_has_station_catalogs(
 def test_each_provider_of_the_registry_has_its_catalog_slot(
     adapter: ObserwatorAdapter,
 ) -> None:
-    """``catalog:<key prefix>.stations`` is the catalog of the provider it names."""
+    """``catalog:<key prefix>.stations`` is the catalog of the provider it names.
+
+    Every provider of the producer's registry: IMGW-PIB's and ČHMÚ's, and those that
+    come with its releases (Gdańskie Wody and PIG-PIB in Obserwator 3.3.0).
+    """
     named = {
-        adapter.station_catalog(f"catalog:{provider.key_prefix}.stations"): str(
-            provider.id
+        str(provider.id): adapter.station_catalog(
+            f"catalog:{provider.key_prefix}.stations"
         )
         for provider in providers()
     }
 
-    assert named == {"IMGW": "IMGW", "CHMU": "CHMU"}
+    assert named == {str(provider.id): str(provider.id) for provider in providers()}
+    assert {"IMGW", "CHMU"} <= named.keys()
     assert adapter.station_catalog(PL_CATALOG) == "IMGW"
     assert adapter.station_catalog(CZ_CATALOG) == "CHMU"
 

@@ -40,8 +40,8 @@ specification: [docs/SPEC.md](docs/SPEC.md); the Nogat standard 1.1:
   an explicit directory; documents write data paths as `<data-dir>`.
 - Python only from `.venv`, through `uv` (DEV-6.2). `uv.lock` is committed; install
   with `uv sync --locked --all-extras` (DEV-6.3; the extra `obserwator` is the Obserwator
-  source). Kartograf and Obserwator are pinned by tag in `pyproject.toml` (0.4.1: `v0.9.0`,
-  `v3.2.1`); while a producer's release is pending, by its commit (REL-5.3, REL-5.6).
+  source). Kartograf and Obserwator are pinned by tag in `pyproject.toml` (0.4.2: `v0.9.0`,
+  `v3.3.0`); while a producer's release is pending, by its commit (REL-5.3, REL-5.6).
 - Code, identifiers, comments, docstrings, logs, commit messages, ADRs, plans and
   documents are English (DEV-2.1). Every text for a person has an English and a Polish
   variant in the catalog `src/archiwista/messages/` (one module per area, key
