@@ -54,8 +54,8 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057).
-# Obserwator 3.3.0, the commit 2637350 of its `chore/release-3.3.0` in Nogat's release set
-# candidate-16, until its tag v3.3.0 (REL-5.3; 0.4.1 pinned the tag v3.2.1), keeps a store in two roots,
+# Obserwator 3.3.0, the tag v3.3.0 in Nogat's release set candidate-16 (0.4.1 pinned
+# the tag v3.2.1), keeps a store in two roots,
 # the raw root `store sync` downloads into and the data root of the series, catalogs
 # and analyses it builds
 # offline (its ADR-015, ADR-017; A-ADR-056), with the default root of each
@@ -68,7 +68,7 @@ dependencies = [
 # series. The versions the adapter reads are `SUPPORTED_VERSIONS` in
 # `archiwista.adapter.obserwator` (REL-5.6), `>=3.2.0,<4`.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@2637350d009896d4554b3b252a725c7613897f5d",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@v3.3.0",
 ]
 
 [dependency-groups]

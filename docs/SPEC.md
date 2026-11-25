@@ -1957,7 +1957,7 @@ producers as HTTP services (cost).
 **Installation.** Kartograf is a required dependency (pinned by its tag, in release 0.4.0
 `v0.8.2`, and Obserwator's `v3.2.0`; while a producer's release is pending, by its commit,
 REL-5.3; release 0.4.1 pins Kartograf `v0.9.0` and Obserwator `v3.2.1`, release 0.4.2
-Obserwator 3.3.0 by its commit `2637350` until its tag `v3.3.0`;
+Obserwator `v3.3.0`;
 the adapters read Kartograf `>=0.9.0,<0.10` and Obserwator `>=3.2.0,<4`,
 `SUPPORTED_VERSIONS`, which start at the development version while a commit is pinned,
 REL-5.6 (release 0.4.0 read

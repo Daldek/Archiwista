@@ -8,21 +8,20 @@ command-line interface may change.
 ## [0.4.2] - 2026-11-25
 
 Changes since 0.4.1, a patch from the tag `v0.4.1` (REL-2.4) for Nogat's release set
-candidate-16: Obserwator 3.3.0 by commit and two contract tests that held Obserwator 3.2's
+candidate-16: Obserwator 3.3.0 by tag and two contract tests that held Obserwator 3.2's
 registry.
 
 ### Changed
 
-- **Obserwator (extra `obserwator`) is re-pinned from the tag `v3.2.1` to `2637350`, Obserwator
-  3.3.0 of its branch `chore/release-3.3.0`, until its tag `v3.3.0`** (REL-5.3); its range stays
-  `>=3.2.0,<4`, which admits it (REL-5.6; A-ADR-024 erratum 4). Kartograf stays `v0.9.0`. Every
-  version of PIG-PIB's groundwater (`pl.pig.*`) and of Gdańskie Wody (`pl.gdanskiewody.*`, off
-  in Obserwator by default) is listed as Obserwator lists it, as a known dataset of Poland with
-  its current version, and PIG-PIB's catalog is its provider's. Archiwista knows the terms of
-  neither: a version of theirs shown or copied as it is carries the attribution of its sidecar,
-  and the station products of a PIG-PIB station only the G and Z of its catalog (PIG-PIB's own
-  lines are step A1 of Nogat's plan `2026-11-24-pig-groundwater`). **Migration:** `uv sync
-  --locked --all-extras` installs it.
+- **Obserwator (extra `obserwator`) is re-pinned from the tag `v3.2.1` to `v3.3.0`** (REL-5.1);
+  its range stays `>=3.2.0,<4`, which admits it (REL-5.6; A-ADR-024 erratum 4). Kartograf stays
+  `v0.9.0`. Every version of PIG-PIB's groundwater (`pl.pig.*`) and of Gdańskie Wody
+  (`pl.gdanskiewody.*`, off in Obserwator by default) is listed as Obserwator lists it, as a
+  known dataset of Poland with its current version, and PIG-PIB's catalog is its provider's.
+  Archiwista knows the terms of neither: a version of theirs shown or copied as it is carries
+  the attribution of its sidecar, and the station products of a PIG-PIB station only the G and
+  Z of its catalog (PIG-PIB's own lines are step A1 of Nogat's plan
+  `2026-11-24-pig-groundwater`). **Migration:** `uv sync --locked --all-extras` installs it.
 
 ### Fixed
 
