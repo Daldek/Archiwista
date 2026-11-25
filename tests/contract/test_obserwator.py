@@ -467,9 +467,10 @@ def test_every_dataset_of_the_registry_is_a_known_segment_of_its_providers_count
         provider.country,
         key,
     )
-    # The family the producer declares; PMAXTP, the one dataset without it, is its
-    # own, named by its slug.
-    assert described.product == (dataset.kind or "imgw_pmaxtp")
+    # The family the producer declares; a dataset without one (PMAXTP, and from
+    # Obserwator 3.3.0 Gdańskie Wody's station list and month files) is its own,
+    # named by its slug.
+    assert described.product == (dataset.kind or dataset.slug)
     assert described.name not in ("", key)
 
 
