@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "archiwista"
-version = "0.4.1"
+version = "0.4.2"
 description = "Local web application for browsing the spatial-data stores that Kartograf writes: catalog, map, file previews, projects with snapshots. Web interface, HTTP API and CLI; never writes to a store."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -54,8 +54,8 @@ dependencies = [
 [project.optional-dependencies]
 # The IMGW-PIB and ČHMÚ source (plan 2026-10-25, I1): archives, series and station
 # catalogs of an Obserwator store (the tool IMGWTools renamed, Nogat ECO-057).
-# Obserwator 3.2.1, the tag v3.2.1 in Nogat's release round of 2026-11-25 (0.4.0 pinned
-# the tag v3.2.0), keeps a store in two roots,
+# Obserwator 3.3.0, the tag v3.3.0 in Nogat's release set candidate-16 (0.4.1 pinned
+# the tag v3.2.1), keeps a store in two roots,
 # the raw root `store sync` downloads into and the data root of the series, catalogs
 # and analyses it builds
 # offline (its ADR-015, ADR-017; A-ADR-056), with the default root of each
@@ -63,11 +63,12 @@ dependencies = [
 # version may hold a subset of stations and years (`SeriesIndex.subset`, its ADR-026).
 # 3.2.0 adds, within version 1 of its formats (Nogat ECO-085), the tiers and captures
 # of its ADR-030, the hourly series of one version per month of its ADR-031 and ČHMÚ's
-# groundwater of its ADR-032 (A-ADR-059). `[store]` brings `pyarrow` for the Parquet
+# groundwater of its ADR-032 (A-ADR-059); 3.3.0 adds Gdańskie Wody and PIG-PIB, whose
+# datasets the adapter lists as datasets of Poland. `[store]` brings `pyarrow` for the Parquet
 # series. The versions the adapter reads are `SUPPORTED_VERSIONS` in
 # `archiwista.adapter.obserwator` (REL-5.6), `>=3.2.0,<4`.
 obserwator = [
-    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@v3.2.1",
+    "obserwator[store] @ git+https://github.com/Daldek/Obserwator@v3.3.0",
 ]
 
 [dependency-groups]

@@ -1376,6 +1376,12 @@ admits one pending release only (REL-5.6), so 0.8.x is outside it. Obserwator's 
 `>=3.2.0,<4`, which admits 3.2.1 (the commit `1ffe40d` of `hotfix/3.2.1`). Release 0.4.1
 (2026-11-25) pins the tags `v0.9.0` (`>=0.9.0,<0.10`) and `v3.2.1`.
 
+**Erratum 4 (2026-11-25, Nogat's candidate-16):** release 0.4.2, a patch from the tag `v0.4.1`
+(REL-2.4), pins Obserwator 3.3.0 by the commit `2637350d009896d4554b3b252a725c7613897f5d` of
+its `chore/release-3.3.0` (REL-5.3) until its tag `v3.3.0`; Obserwator's range stays
+`>=3.2.0,<4`, which admits it, and Kartograf stays `v0.9.0`. Release 0.4.2 (2026-11-25) pins
+the tag `v3.3.0`.
+
 ---
 
 ## ADR-025: MVP scope and release order
