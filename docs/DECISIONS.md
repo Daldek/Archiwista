@@ -138,7 +138,8 @@ erratum 2's.
 
 **Erratum 4 (2026-11-24, Nogat's candidate-13):** the range of erratum 2 is Kartograf 0.9:
 `>=0.9.0.dev0,<0.10` while `pyproject.toml` pins Kartograf's commit `05052b3a`, narrowed to
-`>=0.9.0,<0.10` by the release that pins the tag `v0.9.0` (ADR-024 erratum 3).
+`>=0.9.0,<0.10` by the release that pins the tag `v0.9.0` (ADR-024 erratum 3). Release
+0.4.1 (2026-11-25) pins `v0.9.0` with `>=0.9.0,<0.10`.
 
 ---
 
@@ -1372,7 +1373,8 @@ REL-5.3) and Kartograf's `SUPPORTED_VERSIONS` is `>=0.9.0.dev0,<0.10` (REL-5.6; 
 `>=0.9.0,<0.10`. Kartograf 0.9.0 adds to the public API (the CAMELS-PL segment
 `hydro/pl_camels`, Kartograf ADR-062) and removes nothing the adapter calls, but the range
 admits one pending release only (REL-5.6), so 0.8.x is outside it. Obserwator's range stays
-`>=3.2.0,<4`, which admits 3.2.1 (the commit `1ffe40d` of `hotfix/3.2.1`).
+`>=3.2.0,<4`, which admits 3.2.1 (the commit `1ffe40d` of `hotfix/3.2.1`). Release 0.4.1
+(2026-11-25) pins the tags `v0.9.0` (`>=0.9.0,<0.10`) and `v3.2.1`.
 
 ---
 

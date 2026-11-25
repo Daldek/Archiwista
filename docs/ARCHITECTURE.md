@@ -60,9 +60,8 @@ commands, `list_commands`, `command_schema`, `parse_command`, `validate_command`
 (section 2.2). The rest of the application knows only the source interface
 `src/archiwista/sources/`. A missing Kartograf function is a requirement on
 Kartograf (SPEC 12), not a workaround in Archiwista. The adapter reads Kartograf
-`>=0.9.0.dev0,<0.10` with KA-1..KA-6 (`SUPPORTED_VERSIONS`; while a commit is pinned the range
-starts at the development version, REL-5.6, and the release narrows it to `>=0.9.0,<0.10`;
-release 0.4.0 read `>=0.8.0,<0.9`), and the Obserwator adapter Obserwator `>=3.2.0,<4`.
+`>=0.9.0,<0.10` with KA-1..KA-6 (`SUPPORTED_VERSIONS`, release 0.4.1, tag `v0.9.0`; while a
+commit is pinned the range starts at the development version, REL-5.6; release 0.4.0 read `>=0.8.0,<0.9`), and the Obserwator adapter Obserwator `>=3.2.0,<4`.
 
 **Release boundaries:** Archiwista does not download data itself: a download is the
 producer's command run by its adapter in a `download` job (v0.3, ADR-037); it does not

@@ -1956,10 +1956,10 @@ producers as HTTP services (cost).
 
 **Installation.** Kartograf is a required dependency (pinned by its tag, in release 0.4.0
 `v0.8.2`, and Obserwator's `v3.2.0`; while a producer's release is pending, by its commit,
-REL-5.3, on `develop` for Nogat's candidate-13 Kartograf `05052b3a` and Obserwator `1ffe40d`;
-the adapters read Kartograf `>=0.9.0.dev0,<0.10` and Obserwator `>=3.2.0,<4`,
+REL-5.3; release 0.4.1 pins Kartograf `v0.9.0` and Obserwator `v3.2.1`;
+the adapters read Kartograf `>=0.9.0,<0.10` and Obserwator `>=3.2.0,<4`,
 `SUPPORTED_VERSIONS`, which start at the development version while a commit is pinned,
-REL-5.6, and the release narrows Kartograf's to `>=0.9.0,<0.10` (release 0.4.0 read
+REL-5.6 (release 0.4.0 read
 `>=0.8.0,<0.9`) — the public store reading KA-1..KA-6 arrives in Kartograf 0.8.0;
 A-ADR-024 errata 1 and 3), Obserwator is an extra:
 

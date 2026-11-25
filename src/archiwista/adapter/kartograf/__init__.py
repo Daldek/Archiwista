@@ -15,7 +15,7 @@ PACKAGE = "kartograf"
 # requirement on Kartograf is a tag (REL-5.1) or a commit (REL-5.3), so it cannot
 # hold the range; the range starts at the release Archiwista pins, or at the
 # development versions of the pending release while it pins a commit (REL-5.6).
-SUPPORTED_VERSIONS = ">=0.9.0.dev0,<0.10"
+SUPPORTED_VERSIONS = ">=0.9.0,<0.10"
 SCHEMAS = ("kartograf-meta/1", "kartograf-store/1")
 
 
