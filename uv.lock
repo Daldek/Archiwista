@@ -52,7 +52,7 @@ wheels = [
 
 [[package]]
 name = "archiwista"
-version = "0.4.1"
+version = "0.4.2"
 source = { editable = "." }
 dependencies = [
     { name = "affine" },
@@ -94,7 +94,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "kartograf", git = "https://github.com/Daldek/Kartograf?rev=v0.9.0" },
     { name = "laspy", extras = ["lazrs"], specifier = ">=2.7,<3" },
-    { name = "obserwator", extras = ["store"], marker = "extra == 'obserwator'", git = "https://github.com/Daldek/Obserwator?rev=v3.2.1" },
+    { name = "obserwator", extras = ["store"], marker = "extra == 'obserwator'", git = "https://github.com/Daldek/Obserwator?rev=0f8fd3144657a76c785b6bc6156690196c73d01b" },
     { name = "packaging", specifier = ">=24" },
     { name = "platformdirs", specifier = ">=4,<5" },
     { name = "pydantic", specifier = ">=2,<3" },
@@ -1158,8 +1158,8 @@ wheels = [
 
 [[package]]
 name = "obserwator"
-version = "3.2.1"
-source = { git = "https://github.com/Daldek/Obserwator?rev=v3.2.1#288b32e44af21bfa0bedfdbe4635231082c92aa4" }
+version = "3.3.0"
+source = { git = "https://github.com/Daldek/Obserwator?rev=0f8fd3144657a76c785b6bc6156690196c73d01b#0f8fd3144657a76c785b6bc6156690196c73d01b" }
 dependencies = [
     { name = "httpx" },
     { name = "platformdirs" },

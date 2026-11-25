@@ -7,9 +7,10 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 
 ## Status
 
-The working branch is `chore/release-0.4.1` (from `develop`): release 0.4.1 pins the tags
-Kartograf `v0.9.0` and Obserwator `v3.2.1` (Nogat's release round of 2026-11-25), not merged
-until the author approves; every other branch named below is merged into `develop`.
+The working branch is `hotfix/0.4.2` (from the tag `v0.4.1`): release 0.4.2 pins Obserwator
+3.3.0 by its commit `0f8fd31` (Nogat's release set candidate-16) and takes two contract tests'
+datasets and catalogs from Obserwator's registry, not merged until the author approves; every
+other branch named below is merged into `develop`.
 
 **Release 0.4.0** is Archiwista's part A1 of Obserwator 3.2.0 (Nogat ECO-084, ECO-085;
 A-ADR-059), a minor release with Nogat's standard 1.1 (1.2 is open on Nogat's `develop`, not
@@ -183,8 +184,13 @@ of Firefox's page errors on leaving a page.
     server's `agent-tmp`, which runs `v0.3.1`), and run `archiwista reindex --store <store>`
     once if Obserwator 3.2.0 wrote there first: USAGE, "Updating to 0.4.0".
 16. Done: release 0.4.1 (`chore/release-0.4.1`) pins Kartograf `v0.9.0` and Obserwator
-    `v3.2.1` and narrows Kartograf's range to `>=0.9.0,<0.10` (REL-2.1, REL-5.6); merge and
-    tag `v0.4.1` await the author's approval.
+    `v3.2.1` and narrows Kartograf's range to `>=0.9.0,<0.10` (REL-2.1, REL-5.6); tagged
+    `v0.4.1`.
+17. Release 0.4.2 (`hotfix/0.4.2` from `v0.4.1`, Nogat's candidate-16): Obserwator 3.3.0 by
+    commit; its tag `v3.3.0` replaces the commit. PIG-PIB's and Gdańskie Wody's lines are not
+    Archiwista's yet (PIG plan step A1; Gdańskie Wody is off by default): a version shown as it
+    is carries its sidecar's attribution, a PIG-PIB station's products only G and Z. Merge, tag
+    `v0.4.2` and the fix's way back into `develop` await the author's approval.
 
 ## Open questions
 

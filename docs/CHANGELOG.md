@@ -5,6 +5,33 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
+## [0.4.2] - 2026-11-25
+
+Changes since 0.4.1, a patch from the tag `v0.4.1` (REL-2.4) for Nogat's release set
+candidate-16: Obserwator 3.3.0 by commit and two contract tests that held Obserwator 3.2's
+registry.
+
+### Changed
+
+- **Obserwator (extra `obserwator`) is re-pinned from the tag `v3.2.1` to `0f8fd31`, Obserwator
+  3.3.0 of its branch `chore/release-3.3.0`, until its tag `v3.3.0`** (REL-5.3); its range stays
+  `>=3.2.0,<4`, which admits it (REL-5.6; A-ADR-024 erratum 4). Kartograf stays `v0.9.0`. Every
+  version of PIG-PIB's groundwater (`pl.pig.*`) and of Gdańskie Wody (`pl.gdanskiewody.*`, off
+  in Obserwator by default) is listed as Obserwator lists it, as a known dataset of Poland with
+  its current version, and PIG-PIB's catalog is its provider's. Archiwista knows the terms of
+  neither: a version of theirs shown or copied as it is carries the attribution of its sidecar,
+  and the station products of a PIG-PIB station only the G and Z of its catalog (PIG-PIB's own
+  lines are step A1 of Nogat's plan `2026-11-24-pig-groundwater`). **Migration:** `uv sync
+  --locked --all-extras` installs it.
+
+### Fixed
+
+- **Two contract tests of the Obserwator adapter take Obserwator's registry as it is**
+  (`tests/contract/test_obserwator.py`, `tests/contract/test_obserwator_stations.py`): a dataset
+  without a kind is its own family named by its slug (PMAXTP and, in 3.3.0, Gdańskie Wody's
+  station list and month files), and every provider of the registry names its own catalog slot.
+  Against Obserwator 3.3.0 three cases failed while the adapter was right.
+
 ## [0.4.1] - 2026-11-25
 
 Changes since 0.4.0: the producers of Nogat's release round of 2026-11-25 by tag.
