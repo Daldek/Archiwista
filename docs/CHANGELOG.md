@@ -13,7 +13,7 @@ registry.
 
 ### Changed
 
-- **Obserwator (extra `obserwator`) is re-pinned from the tag `v3.2.1` to `0f8fd31`, Obserwator
+- **Obserwator (extra `obserwator`) is re-pinned from the tag `v3.2.1` to `2637350`, Obserwator
   3.3.0 of its branch `chore/release-3.3.0`, until its tag `v3.3.0`** (REL-5.3); its range stays
   `>=3.2.0,<4`, which admits it (REL-5.6; A-ADR-024 erratum 4). Kartograf stays `v0.9.0`. Every
   version of PIG-PIB's groundwater (`pl.pig.*`) and of Gdańskie Wody (`pl.gdanskiewody.*`, off

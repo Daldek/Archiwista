@@ -8,7 +8,7 @@ are in git (`docs/PROGRESS.md` before the commit that introduced this file).
 ## Status
 
 The working branch is `hotfix/0.4.2` (from the tag `v0.4.1`): release 0.4.2 pins Obserwator
-3.3.0 by its commit `0f8fd31` (Nogat's release set candidate-16) and takes two contract tests'
+3.3.0 by its commit `2637350` (Nogat's release set candidate-16) and takes two contract tests'
 datasets and catalogs from Obserwator's registry, not merged until the author approves; every
 other branch named below is merged into `develop`.
 

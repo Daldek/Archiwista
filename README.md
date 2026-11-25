@@ -21,7 +21,7 @@ Archiwista is a local web application for browsing the spatial-data stores that 
 
 ## Run
 
-Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista 0.4.2 needs Kartograf 0.9 (`>=0.9.0,<0.10`) with its public read API of the store (KA-1 to KA-6) and its commands, and, for the optional extra `obserwator`, Obserwator 3.2 or 3.3 (`>=3.2.0,<4`; 0.3.3 needs Obserwator 3.1). `pyproject.toml` pins Kartograf by its tag `v0.9.0` and Obserwator 3.3.0 by its commit `0f8fd31` until its tag `v3.3.0`, and `uv.lock` pins every package with its SHA-256 sum.
+Requirements: Linux (checked on Debian 13), Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). Archiwista 0.4.2 needs Kartograf 0.9 (`>=0.9.0,<0.10`) with its public read API of the store (KA-1 to KA-6) and its commands, and, for the optional extra `obserwator`, Obserwator 3.2 or 3.3 (`>=3.2.0,<4`; 0.3.3 needs Obserwator 3.1). `pyproject.toml` pins Kartograf by its tag `v0.9.0` and Obserwator 3.3.0 by its commit `2637350` until its tag `v3.3.0`, and `uv.lock` pins every package with its SHA-256 sum.
 
 ```bash
 uv sync --locked                      # the environment in .venv, from uv.lock
