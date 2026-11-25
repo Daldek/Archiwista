@@ -5,6 +5,19 @@ Notable changes of Archiwista by release. The format follows
 numbers follow [SemVer](https://semver.org/). Before v1.0 the HTTP API and the
 command-line interface may change.
 
+## [0.4.1] - 2026-11-25
+
+Changes since 0.4.0: the producers of Nogat's release round of 2026-11-25 by tag.
+
+### Changed
+
+- **Kartograf is re-pinned from the tag `v0.8.2` to `v0.9.0`, and Archiwista reads only
+  Kartograf 0.9: the adapter's `SUPPORTED_VERSIONS` is `>=0.9.0,<0.10` (was `>=0.8.0,<0.9`), so a
+  Kartograf 0.8 installed beside Archiwista is reported incompatible by `archiwista doctor`
+  and `GET /sources` (`source_incompatible`).** Obserwator (extra `obserwator`) is re-pinned
+  from the tag `v3.2.0` to `v3.2.1`; its range stays `>=3.2.0,<4` (REL-5.6; A-ADR-024
+  erratum 3). **Migration:** `uv sync --locked --all-extras` installs them.
+
 ## [0.4.0] - 2026-11-23
 
 Changes since 0.3.3: release 0.4.0, Archiwista's part (A1) of Obserwator 3.2.0 (Nogat

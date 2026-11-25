@@ -12,9 +12,10 @@ from archiwista.sources.registry import check_package, source_error
 PRODUCER = "kartograf"
 PACKAGE = "kartograf"
 # The Kartograf versions the adapter reads (PEP 440). Archiwista's own
-# requirement on Kartograf is a tag (REL-5.1), so it cannot hold the range;
-# the range starts at the release Archiwista pins (REL-5.6).
-SUPPORTED_VERSIONS = ">=0.8.0,<0.9"
+# requirement on Kartograf is a tag (REL-5.1) or a commit (REL-5.3), so it cannot
+# hold the range; the range starts at the release Archiwista pins, or at the
+# development versions of the pending release while it pins a commit (REL-5.6).
+SUPPORTED_VERSIONS = ">=0.9.0,<0.10"
 SCHEMAS = ("kartograf-meta/1", "kartograf-store/1")
 
 
